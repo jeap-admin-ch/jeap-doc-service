@@ -17,6 +17,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the default site.
 - The upload endpoint is served at `/api/uploads/{uploadId}` and rejects a bundle larger than
   `jeap.doc.upload.max-size` (100MB by default) with `413`, without reading it into memory.
+- An upload is authorized against the `uploads` resource: a pipeline needs
+  `<system-name>_%<system>_@uploads_#write` for the system it uploads documentation for, where it needed the
+  `docs` resource before.
 
 ## [0.1.0] - 2026-08-21
 

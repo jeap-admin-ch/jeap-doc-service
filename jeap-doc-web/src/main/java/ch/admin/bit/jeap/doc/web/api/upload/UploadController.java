@@ -49,7 +49,7 @@ class UploadController {
                           "are required depends on the type of the documentation set and on the format of its " +
                           "documents.")
     @PutMapping(path = "/{uploadId}", consumes = "application/zip")
-    @PreAuthorize(Roles.HAS_DOCS_WRITE_ROLE_FOR_SYSTEM)
+    @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM)
     public void upload(
             @Parameter(description = "Identifier of this upload, chosen by the client so it can be retried")
             @PathVariable UUID uploadId,

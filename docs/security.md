@@ -5,19 +5,20 @@
 The doc service authorizes against **semantic roles**, which requires
 `jeap.security.oauth2.resourceserver.system-name` to be set on the instance. Two roles are foreseen:
 
-| Role                                   | Grants                                                            |
-| -------------------------------------- | ----------------------------------------------------------------- |
-| `<system-name>_%<system>_@docs_#write` | Changing the documentation of the system named in the tenant part |
-| `<system-name>_@docs_#read`            | Reading the doc service's API                                     |
+| Role                                      | Grants                                                              |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| `<system-name>_%<system>_@uploads_#write` | Uploading documentation for the system named in the tenant part     |
+| `<system-name>_@docs_#read`               | Reading the doc service's API                                       |
 
 ## A system may only change its own documentation
 
 The system a documentation set belongs to is a parameter of the upload, and the write role carries the system it
-is granted for in its **tenant** part, so the service authorizes every upload against exactly that system.
+is granted for in its **tenant** part, so the service authorizes every upload against exactly that system. The
+role names the resource `uploads` because the upload is the API resource a pipeline acts on.
 
-A pipeline holding `<system-name>_%wvs_@docs_#write` can upload documentation for the system `wvs` and receives
-`403` for every other system. Granting the role without a tenant part makes it a wildcard over all systems, which
-is what an administrative client would hold.
+A pipeline holding `<system-name>_%wvs_@uploads_#write` can upload documentation for the system `wvs` and
+receives `403` for every other system. Granting the role without a tenant part makes it a wildcard over all
+systems, which is what an administrative client would hold.
 
 ## Authentication
 

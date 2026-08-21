@@ -35,13 +35,13 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
 
     @Test
     void upload_whenSystemDocumentationInMarkdown_thenAccepted() throws Exception {
-        mockMvc.perform(uploadOf(systemDocs()).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(systemDocs()).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isOk());
     }
 
     @Test
     void upload_whenComponentDocumentationInMarkdown_thenAccepted() throws Exception {
-        mockMvc.perform(uploadOf(componentDocs()).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(componentDocs()).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isOk());
     }
 
@@ -52,13 +52,13 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         parameters.put("library", "wvs-common-lib");
         parameters.put("version", "1.4.0");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isOk());
     }
 
     @Test
     void upload_whenComponentDocumentationInHtml_thenAccepted() throws Exception {
-        mockMvc.perform(uploadOf(htmlComponentDocs()).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(htmlComponentDocs()).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isOk());
     }
 
@@ -67,7 +67,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = systemDocs();
         parameters.put("site", "dazit");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isOk());
     }
 
@@ -76,7 +76,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = systemDocs();
         parameters.put("site", "DaziT");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER_VALUE"))
                 .andExpect(jsonPath("$.detail").value(containsString("site")));
@@ -87,7 +87,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = componentDocs();
         parameters.put("location", "6-runtime-view");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER_VALUE"))
                 .andExpect(jsonPath("$.detail").value(containsString("location")));
@@ -103,7 +103,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         parameters.remove("source-format");
         parameters.put("sourceFormat", "markdown");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("UNKNOWN_PARAMETER"))
                 .andExpect(jsonPath("$.detail").value(containsString("sourceFormat")));
@@ -113,7 +113,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
     void upload_whenBundleIsLargerThanAccepted_thenPayloadTooLarge() throws Exception {
         mockMvc.perform(uploadOf(systemDocs())
                         .content(bundleOfAtLeast(128 * 1024))
-                        .with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+                        .with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isPayloadTooLarge())
                 .andExpect(jsonPath("$.code").value("SIZE_LIMIT_EXCEEDED"));
     }
@@ -123,7 +123,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = componentDocs();
         parameters.remove("component");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.code").value("MISSING_PARAMETER"))
@@ -135,7 +135,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = componentDocs();
         parameters.remove("version");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("MISSING_PARAMETER"))
                 .andExpect(jsonPath("$.detail").value(containsString("version")));
@@ -146,7 +146,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = htmlComponentDocs();
         parameters.remove("location");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("MISSING_PARAMETER"))
                 .andExpect(jsonPath("$.detail").value(containsString("location")));
@@ -157,7 +157,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = systemDocs();
         parameters.remove("template");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("MISSING_PARAMETER"))
                 .andExpect(jsonPath("$.detail").value(containsString("template")));
@@ -168,7 +168,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = systemDocs();
         parameters.put("type", "service-docs");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER_VALUE"))
                 .andExpect(jsonPath("$.detail").value(containsString("system-docs")));
@@ -179,7 +179,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = systemDocs();
         parameters.put("source-timestamp", "yesterday");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER_VALUE"))
                 .andExpect(jsonPath("$.detail").value(containsString("source-timestamp")));
@@ -190,7 +190,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         Map<String, String> parameters = systemDocs();
         parameters.put("sourceFormat", "markdown");
 
-        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("UNKNOWN_PARAMETER"))
                 .andExpect(jsonPath("$.detail").value(containsString("sourceFormat")));
@@ -198,13 +198,13 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
 
     @Test
     void upload_whenWriteRoleForAnotherSystem_thenForbidden() throws Exception {
-        mockMvc.perform(uploadOf(systemDocs()).with(authentication(tokenWithRoles(docsRole("other-system", "write")))))
+        mockMvc.perform(uploadOf(systemDocs()).with(authentication(tokenWithRoles(uploadsRole("other-system", "write")))))
                 .andExpect(status().isForbidden());
     }
 
     @Test
-    void upload_whenOnlyReadRole_thenForbidden() throws Exception {
-        mockMvc.perform(uploadOf(systemDocs()).with(authentication(tokenWithRoles(docsRole(SYSTEM, "read")))))
+    void upload_whenOnlyDocsReadRole_thenForbidden() throws Exception {
+        mockMvc.perform(uploadOf(systemDocs()).with(authentication(tokenWithRoles(docsRole("read")))))
                 .andExpect(status().isForbidden());
     }
 
@@ -219,7 +219,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         mockMvc.perform(uploadOf(systemDocs())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}")
-                        .with(authentication(tokenWithRoles(docsRole(SYSTEM, "write")))))
+                        .with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isUnsupportedMediaType());
     }
 

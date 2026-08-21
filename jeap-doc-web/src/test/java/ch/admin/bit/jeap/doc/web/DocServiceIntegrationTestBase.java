@@ -78,14 +78,25 @@ public abstract class DocServiceIntegrationTestBase {
     }
 
     /**
-     * A role granting an operation on the documentation of one system - the system is carried in the tenant part
-     * of the role.
+     * A role granting an operation on the uploads of one system - the system is carried in the tenant part of
+     * the role.
      */
-    protected static SemanticApplicationRole docsRole(String tenantSystem, String operation) {
+    protected static SemanticApplicationRole uploadsRole(String tenantSystem, String operation) {
+        return role(tenantSystem, "uploads", operation);
+    }
+
+    /**
+     * A role granting an operation on the documentation, independent of a single system.
+     */
+    protected static SemanticApplicationRole docsRole(String operation) {
+        return role(null, "docs", operation);
+    }
+
+    private static SemanticApplicationRole role(String tenantSystem, String resource, String operation) {
         return SemanticApplicationRole.builder()
                 .system(SYSTEM_NAME)
                 .tenant(tenantSystem)
-                .resource("docs")
+                .resource(resource)
                 .operation(operation)
                 .build();
     }

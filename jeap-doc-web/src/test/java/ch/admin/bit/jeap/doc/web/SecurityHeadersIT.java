@@ -26,7 +26,7 @@ class SecurityHeadersIT extends DocServiceIntegrationTestBase {
     @Test
     void get_whenPathIsNotTheApi_thenCarriesTheContentSecurityPolicyOfTheDocService() throws Exception {
         mockMvc.perform(get("/some-documentation-page.html")
-                        .with(authentication(tokenWithRoles(docsRole(SYSTEM_NAME, "read")))))
+                        .with(authentication(tokenWithRoles(docsRole("read")))))
                 .andExpect(header().string("Content-Security-Policy", EXPECTED_CONTENT_SECURITY_POLICY));
     }
 }

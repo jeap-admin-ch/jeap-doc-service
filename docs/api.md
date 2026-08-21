@@ -23,6 +23,7 @@ configuration through instead of translating it.
 | Parameter           | Required                             | Value                                                            |
 | ------------------- | ------------------------------------ | ---------------------------------------------------------------- |
 | `{uploadId}` (path) | yes                                  | UUID the client chooses, so an upload can be retried under it    |
+| `site`              | no                                   | Documentation site the documents belong to                       |
 | `type`              | yes                                  | `system-docs`, `component-docs` or `library-docs`                |
 | `system`            | yes                                  | System the documents belong to; the write role is checked for it |
 | `component`         | for `component-docs`                 | Component the documents belong to                                |
@@ -45,7 +46,7 @@ which is what a repository that does not care about sites sends.
 
 `component` and `library` name the owner of the documents and belong to their type: a `system-docs` upload names
 neither, a `component-docs` upload names a component, a `library-docs` upload a library. `system`, `component`,
-`library`, `template`, `location` and `topic` are slugs - lower case letters, digits and single hyphens.
+`library`, `site`, `template`, `location` and `topic` are slugs - lower case letters, digits and single hyphens.
 
 ### Examples
 

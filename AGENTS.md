@@ -57,7 +57,7 @@ on another adapter.
   the type and the source format - the rules live in `DocumentationSetUpload`. An unknown parameter is rejected
   by `UploadParameterInterceptor`, which runs before the parameters are bound so a typo is reported as such.
 - **Security**: semantic roles, with the system a role is granted for in the tenant part
-  (`hasRole(#system, 'docs', 'write')`) - see `docs/security.md`.
+  (`hasRole(#system, 'uploads', 'write')`) - see `docs/security.md`.
 - **Swagger**: contributed by `jeap-spring-boot-swagger-starter`, disabled unless `jeap.swagger.status` is set;
   the description is served at `/api-docs`, the UI at `/swagger-ui.html`.
 - **Startup validation**: configuration errors of an instance should fail the startup instead of the first
