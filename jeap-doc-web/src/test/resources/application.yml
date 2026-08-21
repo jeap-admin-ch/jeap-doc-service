@@ -8,7 +8,7 @@ jeap:
   security:
     oauth2:
       resourceserver:
-        system-name: jeap-doc
+        system-name: jeapdoc
         authorization-server:
           issuer: http://localhost/auth/realms/test
   swagger:

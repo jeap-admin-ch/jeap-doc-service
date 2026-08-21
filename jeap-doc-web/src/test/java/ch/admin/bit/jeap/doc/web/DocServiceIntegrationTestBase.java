@@ -33,7 +33,7 @@ import java.net.URI;
 @Import(DisableJeapPermitAllSecurityConfiguration.class)
 public abstract class DocServiceIntegrationTestBase {
 
-    protected static final String SYSTEM_NAME = "jeap-doc";
+    protected static final String SYSTEM_NAME = "jeapdoc";
     protected static final String TEST_BUCKET_NAME = "jeap-doc-test";
 
     private static final String RUSTFS_IMAGE = "rustfs/rustfs:1.0.0-beta.10";

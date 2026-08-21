@@ -55,7 +55,7 @@ on another adapter.
   doc workflow configuration (`source-format`, `source-repository`, ...). Which of them are required depends on
   the type and the source format - the rules live in `DocumentationSetUpload`, an unknown parameter is rejected.
 - **Security**: semantic roles, with the system a role is granted for in the tenant part
-  (`hasRole(#system, 'docs', 'write')`). The API chain disables CSRF deliberately - see `docs/security.md`.
+  (`hasRole(#system, 'docs', 'write')`) - see `docs/security.md`.
 - **Swagger**: contributed by `jeap-spring-boot-swagger-starter`, disabled unless `jeap.swagger.status` is set;
   the description is served at `/api-docs`, the UI at `/swagger-ui.html`.
 - **Startup validation**: configuration errors of an instance should fail the startup instead of the first

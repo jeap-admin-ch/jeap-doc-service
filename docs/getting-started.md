@@ -44,7 +44,7 @@ jeap:
   security:
     oauth2:
       resourceserver:
-        system-name: my-doc          # activates the semantic role model
+        system-name: mydoc           # activates the semantic role model
         authorization-server:
           issuer: https://keycloak.example.ch/auth/realms/system
   s3:
