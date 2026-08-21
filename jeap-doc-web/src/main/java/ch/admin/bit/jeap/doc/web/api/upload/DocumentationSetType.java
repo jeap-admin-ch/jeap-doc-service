@@ -1,4 +1,4 @@
-package ch.admin.bit.jeap.doc.web.api;
+package ch.admin.bit.jeap.doc.web.api.upload;
 
 import java.util.Arrays;
 import java.util.stream.Collectors;
@@ -7,7 +7,7 @@ import java.util.stream.Collectors;
  * What an uploaded documentation set documents: a system as a whole, one of its components, or one of its
  * libraries.
  */
-public enum DocumentationSetType {
+enum DocumentationSetType {
 
     SYSTEM_DOCS("system-docs"),
     COMPONENT_DOCS("component-docs"),
@@ -19,18 +19,18 @@ public enum DocumentationSetType {
         this.parameterValue = parameterValue;
     }
 
-    public String parameterValue() {
+    String parameterValue() {
         return parameterValue;
     }
 
-    public static DocumentationSetType fromParameterValue(String value) {
+    static DocumentationSetType fromParameterValue(String value) {
         return Arrays.stream(values())
                 .filter(type -> type.parameterValue.equals(value))
                 .findFirst()
                 .orElseThrow(() -> InvalidUploadException.invalidValue("type", value, acceptedValues()));
     }
 
-    public static String acceptedValues() {
+    static String acceptedValues() {
         return Arrays.stream(values()).map(DocumentationSetType::parameterValue).collect(Collectors.joining(", "));
     }
 }

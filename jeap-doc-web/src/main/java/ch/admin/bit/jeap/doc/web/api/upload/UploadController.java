@@ -1,21 +1,24 @@
-package ch.admin.bit.jeap.doc.web.api;
+package ch.admin.bit.jeap.doc.web.api.upload;
 
+import ch.admin.bit.jeap.doc.web.api.Roles;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -30,14 +33,16 @@ import java.util.UUID;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/uploads")
+@RequestMapping(UploadController.UPLOADS_PATH)
+@RequiredArgsConstructor
 @Tag(name = "uploads", description = "Upload of documentation")
-public class UploadController {
+class UploadController {
 
-    private static final List<String> KNOWN_QUERY_PARAMETERS = List.of(
-            "type", "system", "component", "library", "template", "source-format", "location", "topic", "label",
-            "source-repository", "source-revision", "source-ref", "source-timestamp", "version", "build-url",
-            "generated-at");
+    static final String UPLOADS_PATH = "/api/uploads";
+
+    private static final int BUFFER_SIZE = 8192;
+
+    private final UploadProperties uploadProperties;
 
     @Operation(summary = "Upload a documentation set",
             description = "Uploads the ZIP bundle of one documentation set of the given system. Which parameters " +
@@ -48,6 +53,8 @@ public class UploadController {
     public void upload(
             @Parameter(description = "Identifier of this upload, chosen by the client so it can be retried")
             @PathVariable UUID uploadId,
+            @Parameter(description = "Site the documents belong to; without it the default site")
+            @RequestParam(name = "site", required = false) String site,
             @Parameter(description = "What the documents document: system-docs, component-docs or library-docs")
             @RequestParam("type") String type,
             @Parameter(description = "System the documents belong to, and the system the write role is checked for")
@@ -80,11 +87,9 @@ public class UploadController {
             @RequestParam(name = "build-url", required = false) String buildUrl,
             @Parameter(description = "When the documents were generated, ISO-8601")
             @RequestParam(name = "generated-at", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime generatedAt,
-            @RequestBody byte[] documentationSet,
             HttpServletRequest request) {
-        rejectUnknownQueryParameters(request);
-
         DocumentationSetUpload upload = DocumentationSetUpload.builder()
+                .site(site)
                 .type(DocumentationSetType.fromParameterValue(type))
                 .system(system)
                 .component(component)
@@ -103,20 +108,35 @@ public class UploadController {
                 .generatedAt(generatedAt)
                 .build();
 
-        log.info("Accepted the upload {} of {} of the system {} ({} bytes).",
-                uploadId, upload.type().parameterValue(), upload.system(), documentationSet.length);
+        long size = readBundle(request);
+
+        log.info("Accepted the upload {} of {} of the system {} for the site {} ({} bytes).",
+                uploadId, upload.type().parameterValue(), upload.system(),
+                upload.site() == null ? "default" : upload.site(), size);
     }
 
     /**
-     * A typo in a doc workflow configuration must fail loudly instead of silently publishing something else than
-     * the repository intended.
+     * Reads the bundle and stops as soon as it exceeds the accepted size, so a large body cannot fill the heap of
+     * the service. The bundle is not kept: storing it comes with the story that persists a documentation set.
      */
-    private static void rejectUnknownQueryParameters(HttpServletRequest request) {
-        request.getParameterMap().keySet().stream()
-                .filter(parameterName -> !KNOWN_QUERY_PARAMETERS.contains(parameterName))
-                .findFirst()
-                .ifPresent(parameterName -> {
-                    throw InvalidUploadException.unknown(parameterName, String.join(", ", KNOWN_QUERY_PARAMETERS));
-                });
+    private long readBundle(HttpServletRequest request) {
+        long limit = uploadProperties.getMaxSize().toBytes();
+        if (request.getContentLengthLong() > limit) {
+            throw InvalidUploadException.tooLarge(limit);
+        }
+        try (InputStream bundle = request.getInputStream()) {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            long size = 0;
+            int read;
+            while ((read = bundle.read(buffer)) != -1) {
+                size += read;
+                if (size > limit) {
+                    throw InvalidUploadException.tooLarge(limit);
+                }
+            }
+            return size;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 }

@@ -16,3 +16,6 @@ jeap:
   doc:
     storage:
       bucket: jeap-doc-test
+    upload:
+      # small enough to test the limit with a bundle the test can build in memory
+      max-size: 64KB

@@ -1,4 +1,4 @@
-package ch.admin.bit.jeap.doc.web.api;
+package ch.admin.bit.jeap.doc.web.api.upload;
 
 import org.junit.jupiter.api.Test;
 
@@ -102,6 +102,38 @@ class DocumentationSetUploadTest {
     @Test
     void build_whenMarkdownWithoutLocationTopicAndLabel_thenAccepted() {
         assertThatCode(() -> componentDocs().build()).doesNotThrowAnyException();
+    }
+
+    @Test
+    void build_whenSiteIsGiven_thenAccepted() {
+        assertThat(systemDocs().site("dazit").build().site()).isEqualTo("dazit");
+    }
+
+    @Test
+    void build_whenSiteIsMissing_thenAcceptedForTheDefaultSite() {
+        assertThat(systemDocs().build().site()).isNull();
+    }
+
+    @Test
+    void build_whenSiteIsNoSlug_thenRejected() {
+        assertThatThrownBy(() -> systemDocs().site("DaziT").build())
+                .isInstanceOfSatisfying(InvalidUploadException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
+                .hasMessageContaining("site");
+    }
+
+    @Test
+    void build_whenMarkdownCarriesTheParametersOfHtmlDocuments_thenRejected() {
+        assertThatThrownBy(() -> componentDocs().location("6-runtime-view").build())
+                .isInstanceOfSatisfying(InvalidUploadException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
+                .hasMessageContaining("location");
+        assertThatThrownBy(() -> componentDocs().topic("spring-rest-docs").build())
+                .isInstanceOf(InvalidUploadException.class)
+                .hasMessageContaining("topic");
+        assertThatThrownBy(() -> componentDocs().label("Spring REST Docs").build())
+                .isInstanceOf(InvalidUploadException.class)
+                .hasMessageContaining("label");
     }
 
     @Test

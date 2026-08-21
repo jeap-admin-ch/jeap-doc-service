@@ -24,6 +24,14 @@ the instance, and it should surface in the deployment instead of in the first up
 The connection to the object storage itself is configured with the `jeap.s3.client.*` properties of the jEAP
 object storage starter.
 
+## Uploads
+
+| Property                   | Default | Description                                                             |
+| -------------------------- | ------- | ----------------------------------------------------------------------- |
+| `jeap.doc.upload.max-size` | `100MB` | Maximum size of an uploaded bundle; a larger one is rejected with `413` |
+
+The service stops reading a bundle as soon as it exceeds the limit, so an oversized upload cannot fill its heap.
+
 ## Database
 
 The doc service persists on PostgreSQL with Flyway. The instance configures the connection, and it also chooses

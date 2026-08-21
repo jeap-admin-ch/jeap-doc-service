@@ -43,7 +43,8 @@ Ports and adapters, one auto-configuration per module - see `docs/architecture.m
 - `jeap-doc-persistence/` - JPA adapter on PostgreSQL, and the Flyway migrations in `db/migration`.
 - `jeap-doc-objectstorage/` - S3 adapter over the `S3Client` of `jeap-spring-boot-object-storage-starter`, plus
   `DocStorageBucketAvailabilityCheck`, which fails the startup when the configured bucket is not available.
-- `jeap-doc-web/` - `DocServiceApplication`, `UploadController` and `DocsWebSecurityConfiguration`.
+- `jeap-doc-web/` - `DocServiceApplication` and `DocsWebSecurityConfiguration`; the REST API lives under
+  `web/api`, with one subpackage per endpoint family (`web/api/upload`) whose classes are package-private.
 - `jeap-doc-service-instance/` - POM-only module for downstream instances.
 
 Keep the layering: business logic goes into the domain, technology into an adapter, and an adapter never depends
@@ -53,7 +54,8 @@ on another adapter.
 
 - **Upload parameters**: the query parameters of the upload endpoint are kebab-case and mirror the keys of the
   doc workflow configuration (`source-format`, `source-repository`, ...). Which of them are required depends on
-  the type and the source format - the rules live in `DocumentationSetUpload`, an unknown parameter is rejected.
+  the type and the source format - the rules live in `DocumentationSetUpload`. An unknown parameter is rejected
+  by `UploadParameterInterceptor`, which runs before the parameters are bound so a typo is reported as such.
 - **Security**: semantic roles, with the system a role is granted for in the tenant part
   (`hasRole(#system, 'docs', 'write')`) - see `docs/security.md`.
 - **Swagger**: contributed by `jeap-spring-boot-swagger-starter`, disabled unless `jeap.swagger.status` is set;

@@ -1,7 +1,6 @@
-package ch.admin.bit.jeap.doc.web.api;
+package ch.admin.bit.jeap.doc.web.api.upload;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,10 +12,13 @@ import java.net.URI;
 /**
  * Turns a rejected upload into an RFC 9457 problem response carrying the machine-readable reason, so a pipeline
  * can tell a misconfigured upload from a failing service.
+ * <p>
+ * Scoped to the {@link UploadController}: the framework exceptions handled here occur on every endpoint, and an
+ * unrelated one must not answer with the problem type of an upload.
  */
 @Slf4j
-@RestControllerAdvice
-public class UploadExceptionHandler {
+@RestControllerAdvice(assignableTypes = UploadController.class)
+class UploadExceptionHandler {
 
     static final String PROBLEM_TYPE = "https://jeap.admin.ch/problems/docs/invalid-upload";
 
@@ -47,7 +49,7 @@ public class UploadExceptionHandler {
     }
 
     private static ProblemDetail problem(InvalidUploadException.Code code, String detail) {
-        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(code.status(), detail);
         problemDetail.setType(URI.create(PROBLEM_TYPE));
         problemDetail.setTitle("The upload does not describe a documentation set");
         problemDetail.setProperty("code", code.name());

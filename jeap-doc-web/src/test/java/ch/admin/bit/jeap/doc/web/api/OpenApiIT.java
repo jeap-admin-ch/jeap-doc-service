@@ -34,7 +34,7 @@ class OpenApiIT extends DocServiceIntegrationTestBase {
         mockMvc.perform(get("/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(UPLOAD_PARAMETERS).value(hasItems(
-                        "uploadId", "type", "system", "component", "library", "template", "source-format",
+                        "uploadId", "site", "type", "system", "component", "library", "template", "source-format",
                         "location", "topic", "label", "source-repository", "source-revision", "source-ref",
                         "source-timestamp", "version", "build-url", "generated-at")));
     }

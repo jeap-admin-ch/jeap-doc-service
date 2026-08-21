@@ -1,4 +1,4 @@
-package ch.admin.bit.jeap.doc.web.api;
+package ch.admin.bit.jeap.doc.web.api.upload;
 
 import lombok.Builder;
 import org.springframework.util.StringUtils;
@@ -14,6 +14,7 @@ import java.util.regex.Pattern;
  * HTML documents name the section they are embedded in. The record enforces those rules when it is built, so an
  * upload that cannot be placed is rejected before anything is read from it.
  *
+ * @param site            the site the documents belong to, or null for the default site
  * @param type            what the documents document
  * @param system          the system the documents belong to, and the system the write role must be granted for
  * @param component       the component the documents belong to, for component documentation
@@ -32,7 +33,8 @@ import java.util.regex.Pattern;
  * @param generatedAt     when the documents were generated
  */
 @Builder
-public record DocumentationSetUpload(
+record DocumentationSetUpload(
+        String site,
         DocumentationSetType type,
         String system,
         String component,
@@ -57,8 +59,10 @@ public record DocumentationSetUpload(
     private static final String COMPONENT_PARAMETER = "component";
     private static final String LIBRARY_PARAMETER = "library";
     private static final String PROVENANCE_REQUIRED = "to record where the documents came from";
+    private static final String MARKDOWN_DOCUMENTATION = "markdown documentation";
 
     public DocumentationSetUpload {
+        requireSlugIfPresent(site, "site");
         requirePresent(type, "type", "to know what the documents document");
         requireSlug(system, "system");
         requireSlug(template, "template");
@@ -85,6 +89,10 @@ public record DocumentationSetUpload(
             requireSlug(location, "location");
             requireSlug(topic, "topic");
             requireText(label, "label", "for HTML documents");
+        } else {
+            requireAbsent(location, "location", MARKDOWN_DOCUMENTATION);
+            requireAbsent(topic, "topic", MARKDOWN_DOCUMENTATION);
+            requireAbsent(label, "label", MARKDOWN_DOCUMENTATION);
         }
 
         requireText(sourceRepository, "source-repository", PROVENANCE_REQUIRED);
@@ -102,6 +110,12 @@ public record DocumentationSetUpload(
     private static void requireText(String value, String parameter, String requiredBecause) {
         if (!StringUtils.hasText(value)) {
             throw InvalidUploadException.missing(parameter, requiredBecause);
+        }
+    }
+
+    private static void requireSlugIfPresent(String value, String parameter) {
+        if (StringUtils.hasText(value)) {
+            requireSlug(value, parameter);
         }
     }
 

@@ -40,6 +40,9 @@ configuration through instead of translating it.
 | `build-url`         | no                                   | Build that uploaded the documents                                |
 | `generated-at`      | no                                   | When the documents were generated, ISO-8601                      |
 
+The doc service will host more than one documentation site. An upload without a `site` targets the default site,
+which is what a repository that does not care about sites sends.
+
 `component` and `library` name the owner of the documents and belong to their type: a `system-docs` upload names
 neither, a `component-docs` upload names a component, a `library-docs` upload a library. `system`, `component`,
 `library`, `template`, `location` and `topic` are slugs - lower case letters, digits and single hyphens.
@@ -79,6 +82,7 @@ curl -X PUT "https://docs.example.ch/api/uploads/$(uuidgen)?type=component-docs&
 | `400`  | The parameters do not describe a documentation set           |
 | `401`  | No or invalid token                                          |
 | `403`  | The token does not grant the write role for the given system |
+| `413`  | The bundle is larger than the accepted size                  |
 | `415`  | The body is not a ZIP archive                                |
 
 A rejected upload answers with an RFC 9457 problem document that names the reason in its `code` member, so a

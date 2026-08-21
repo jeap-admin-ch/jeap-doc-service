@@ -10,7 +10,10 @@ All notable changes to this project will be documented in this file.
   `component`/`library`, `template`), the format of its documents (`source-format`, and `location`, `topic` and
   `label` for HTML) and their provenance (`source-repository`, `source-revision`, `source-ref`,
   `source-timestamp`, `version`, `build-url`, `generated-at`). Rejected uploads answer with an RFC 9457 problem
-  document naming the reason.
+  document naming the reason. An upload may name the `site` its documents belong to; without it they belong to
+  the default site.
+- The upload endpoint is served at `/api/uploads/{uploadId}` and rejects a bundle larger than
+  `jeap.doc.upload.max-size` (100MB by default) with `413`, without reading it into memory.
 
 ## [0.1.0] - 2026-08-21
 
