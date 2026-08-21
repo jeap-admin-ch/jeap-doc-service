@@ -26,7 +26,9 @@ object storage starter.
 
 ## Database
 
-The doc service uses the jEAP PostgreSQL starter and Flyway. The instance configures the connection:
+The doc service persists on PostgreSQL with Flyway. The instance configures the connection, and it also chooses
+how the connection is authenticated: on AWS by adding `jeap-spring-boot-postgresql-aws-starter`, elsewhere with a
+user and a password.
 
 ```yaml
 spring:
