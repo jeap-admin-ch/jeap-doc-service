@@ -1,0 +1,61 @@
+publiccodeYmlVersion: 0.7.0
+name: jeap-doc-service
+applicationSuite: jEAP
+softwareVersion: 0.1.0
+releaseDate: 2026-08-21
+url: "https://github.com/jeap-admin-ch/jeap-doc-service.git"
+landingURL: "https://github.com/jeap-admin-ch/jeap"
+platforms:
+  - web
+categories:
+  - application-development
+developmentStatus: development
+softwareType: library
+organisation:
+  uri: https://ld.admin.ch/office/V.1.7
+  name: Federal Office of Information Technology, Systems and Telecommunication
+description:
+  en:
+    localisedName: jeap-doc-service
+    shortDescription: Receives, stores, generates and serves the documentation of systems, components and libraries.
+    longDescription: |
+      The jEAP Doc Service is the central piece of the hybrid documentation approach of the jEAP platform:
+      documentation lives next to the code, and the doc service turns it into one generated documentation site.
+
+      ## Purpose
+
+      Teams write the documentation of their systems, components and libraries as Markdown in their Git
+      repositories. Their build pipelines validate it and upload it to the doc service, which stores it on S3
+      object storage and records its metadata. The doc service reads the architecture model from the jEAP Arch
+      Repo Service, generates the architecture documentation from it, combines it with the uploaded documents into
+      one site per structure template, and serves that site to the browser.
+
+      ## Key Features
+
+      - **Documentation next to the code:** teams document in their own repository, in the same review and pull
+        request process as the code itself
+      - **One site from generated and hand-written content:** the architecture documentation and the documents a
+        team writes end up in one navigation, cross-linked
+      - **A system may only change its own documentation:** the write role is granted per system, so a pipeline
+        can never publish into another system's documentation
+
+      ## Usage
+
+      A service instance is created by depending on this template and adding the configuration of its object
+      storage and its database.
+    features:
+      - Receives the documentation of systems, components and libraries from build pipelines
+      - Stores the uploaded documents on S3 and their metadata in PostgreSQL
+      - Serves the generated documentation site
+      - Restricts every system to changing only its own documentation
+legal:
+  license: Apache-2.0
+maintenance:
+  type: internal
+  contacts:
+    - name: Federal Office of Information Technology, Systems and Telecommunication FOITT
+      email: jeap-community@bit.admin.ch
+localisation:
+  localisationReady: false
+  availableLanguages:
+    - en

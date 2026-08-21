@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: jeap-doc-service-test
+  main:
+    banner-mode: off
+
+jeap:
+  security:
+    oauth2:
+      resourceserver:
+        system-name: jeap-doc
+        authorization-server:
+          issuer: http://localhost/auth/realms/test
+  swagger:
+    status: OPEN
+  doc:
+    storage:
+      bucket: jeap-doc-test
