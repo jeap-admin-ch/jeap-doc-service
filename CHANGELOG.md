@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- The upload endpoint takes the full description of a documentation set: what it documents (`type`, `system`,
+  `component`/`library`, `template`), the format of its documents (`source-format`, and `location`, `topic` and
+  `label` for HTML) and their provenance (`source-repository`, `source-revision`, `source-ref`,
+  `source-timestamp`, `version`, `build-url`, `generated-at`). Rejected uploads answer with an RFC 9457 problem
+  document naming the reason.
+
 ## [0.1.0] - 2026-08-21
 
 ### Added

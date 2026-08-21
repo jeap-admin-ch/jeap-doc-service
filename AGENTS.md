@@ -51,6 +51,9 @@ on another adapter.
 
 ## Conventions worth knowing
 
+- **Upload parameters**: the query parameters of the upload endpoint are kebab-case and mirror the keys of the
+  doc workflow configuration (`source-format`, `source-repository`, ...). Which of them are required depends on
+  the type and the source format - the rules live in `DocumentationSetUpload`, an unknown parameter is rejected.
 - **Security**: semantic roles, with the system a role is granted for in the tenant part
   (`hasRole(#system, 'docs', 'write')`). The API chain disables CSRF deliberately - see `docs/security.md`.
 - **Swagger**: contributed by `jeap-spring-boot-swagger-starter`, disabled unless `jeap.swagger.status` is set;

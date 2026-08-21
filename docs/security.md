@@ -17,7 +17,10 @@ is granted for in its **tenant** part. The endpoint therefore authorizes the req
 
 ```java
 @PreAuthorize("hasRole(#system, 'docs', 'write')")
-public void upload(@PathVariable UUID uploadId, @RequestParam String system, @RequestBody byte[] documentationSet)
+public void upload(@PathVariable UUID uploadId,
+                   @RequestParam("type") String type,
+                   @RequestParam("system") String system,
+                   ...)
 ```
 
 A pipeline holding `<system-name>_%wvs_@docs_#write` can upload documentation for the system `wvs` and receives
