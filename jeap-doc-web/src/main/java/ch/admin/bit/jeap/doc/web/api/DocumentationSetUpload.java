@@ -50,7 +50,13 @@ public record DocumentationSetUpload(
         String buildUrl,
         OffsetDateTime generatedAt) {
 
-    private static final Pattern SLUG = Pattern.compile("[a-z0-9]+(-[a-z0-9]+)*");
+    // Possessive quantifiers: the parameter values come from outside, and a nested repetition that can
+    // backtrack would let a long value overflow the stack of the regex engine.
+    private static final Pattern SLUG = Pattern.compile("[a-z0-9]++(?:-[a-z0-9]++)*+");
+
+    private static final String COMPONENT_PARAMETER = "component";
+    private static final String LIBRARY_PARAMETER = "library";
+    private static final String PROVENANCE_REQUIRED = "to record where the documents came from";
 
     public DocumentationSetUpload {
         requirePresent(type, "type", "to know what the documents document");
@@ -60,17 +66,17 @@ public record DocumentationSetUpload(
 
         switch (type) {
             case SYSTEM_DOCS -> {
-                requireAbsent(component, "component", "system documentation");
-                requireAbsent(library, "library", "system documentation");
+                requireAbsent(component, COMPONENT_PARAMETER, "system documentation");
+                requireAbsent(library, LIBRARY_PARAMETER, "system documentation");
             }
             case COMPONENT_DOCS -> {
-                requireSlug(component, "component");
-                requireAbsent(library, "library", "component documentation");
+                requireSlug(component, COMPONENT_PARAMETER);
+                requireAbsent(library, LIBRARY_PARAMETER, "component documentation");
                 requireText(version, "version", "for component documentation");
             }
             case LIBRARY_DOCS -> {
-                requireSlug(library, "library");
-                requireAbsent(component, "component", "library documentation");
+                requireSlug(library, LIBRARY_PARAMETER);
+                requireAbsent(component, COMPONENT_PARAMETER, "library documentation");
                 requireText(version, "version", "for library documentation");
             }
         }
@@ -81,10 +87,10 @@ public record DocumentationSetUpload(
             requireText(label, "label", "for HTML documents");
         }
 
-        requireText(sourceRepository, "source-repository", "to record where the documents came from");
-        requireText(sourceRevision, "source-revision", "to record where the documents came from");
-        requireText(sourceRef, "source-ref", "to record where the documents came from");
-        requirePresent(sourceTimestamp, "source-timestamp", "to record where the documents came from");
+        requireText(sourceRepository, "source-repository", PROVENANCE_REQUIRED);
+        requireText(sourceRevision, "source-revision", PROVENANCE_REQUIRED);
+        requireText(sourceRef, "source-ref", PROVENANCE_REQUIRED);
+        requirePresent(sourceTimestamp, "source-timestamp", PROVENANCE_REQUIRED);
     }
 
     private static void requirePresent(Object value, String parameter, String requiredBecause) {
