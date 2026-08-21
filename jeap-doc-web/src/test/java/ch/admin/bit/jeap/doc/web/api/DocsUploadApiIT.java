@@ -201,7 +201,7 @@ class DocsUploadApiIT extends DocServiceIntegrationTestBase {
     }
 
     private static MockHttpServletRequestBuilder uploadOf(Map<String, String> parameters) {
-        MockHttpServletRequestBuilder request = put("/api/docs/uploads/{uploadId}", UUID.randomUUID())
+        MockHttpServletRequestBuilder request = put("/api/uploads/{uploadId}", UUID.randomUUID())
                 .contentType("application/zip")
                 .content(documentationSetBundle());
         parameters.forEach(request::param);

@@ -7,7 +7,7 @@ and a technology can be replaced without touching the business logic.
 
 ```mermaid
 flowchart LR
-    Pipeline[Doc pipeline] -->|PUT /api/docs/uploads| Web
+    Pipeline[Doc pipeline] -->|PUT /api/uploads| Web
     Browser[Browser] -->|GET| Web
     subgraph Adapters
         Web[jeap-doc-web<br/>driving adapter]

@@ -30,9 +30,9 @@ import java.util.UUID;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/docs")
-@Tag(name = "docs", description = "Upload of documentation")
-public class DocsUploadController {
+@RequestMapping("/api/uploads")
+@Tag(name = "uploads", description = "Upload of documentation")
+public class UploadController {
 
     private static final List<String> KNOWN_QUERY_PARAMETERS = List.of(
             "type", "system", "component", "library", "template", "source-format", "location", "topic", "label",
@@ -43,7 +43,7 @@ public class DocsUploadController {
             description = "Uploads the ZIP bundle of one documentation set of the given system. Which parameters " +
                           "are required depends on the type of the documentation set and on the format of its " +
                           "documents.")
-    @PutMapping(path = "/uploads/{uploadId}", consumes = "application/zip")
+    @PutMapping(path = "/{uploadId}", consumes = "application/zip")
     @PreAuthorize(Roles.HAS_DOCS_WRITE_ROLE_FOR_SYSTEM)
     public void upload(
             @Parameter(description = "Identifier of this upload, chosen by the client so it can be retried")

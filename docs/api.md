@@ -9,7 +9,7 @@ UI at `/swagger-ui.html`; both are switched off unless the instance sets `jeap.s
 ## Uploading a documentation set
 
 ```
-PUT /api/docs/uploads/{uploadId}
+PUT /api/uploads/{uploadId}
 Content-Type: application/zip
 Authorization: Bearer ...
 ```
@@ -49,7 +49,7 @@ neither, a `component-docs` upload names a component, a `library-docs` upload a 
 Markdown documentation of a component:
 
 ```bash
-curl -X PUT "https://docs.example.ch/api/docs/uploads/$(uuidgen)?type=component-docs&system=wvs\
+curl -X PUT "https://docs.example.ch/api/uploads/$(uuidgen)?type=component-docs&system=wvs\
 &component=foo-bar-scs&template=arc42&source-format=markdown&version=1.4.0\
 &source-repository=ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git&source-revision=9a1c2f8&source-ref=main\
 &source-timestamp=2026-08-21T09:12:00%2B02:00" \
@@ -61,7 +61,7 @@ curl -X PUT "https://docs.example.ch/api/docs/uploads/$(uuidgen)?type=component-
 HTML documentation a build generated, embedded into a section of the template:
 
 ```bash
-curl -X PUT "https://docs.example.ch/api/docs/uploads/$(uuidgen)?type=component-docs&system=wvs\
+curl -X PUT "https://docs.example.ch/api/uploads/$(uuidgen)?type=component-docs&system=wvs\
 &component=foo-bar-scs&template=arc42&source-format=html&location=6-runtime-view&topic=spring-rest-docs\
 &label=Spring+REST+Docs&version=1.4.0\
 &source-repository=ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git&source-revision=9a1c2f8&source-ref=main\

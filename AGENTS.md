@@ -43,7 +43,7 @@ Ports and adapters, one auto-configuration per module - see `docs/architecture.m
 - `jeap-doc-persistence/` - JPA adapter on PostgreSQL, and the Flyway migrations in `db/migration`.
 - `jeap-doc-objectstorage/` - S3 adapter over the `S3Client` of `jeap-spring-boot-object-storage-starter`, plus
   `DocStorageBucketAvailabilityCheck`, which fails the startup when the configured bucket is not available.
-- `jeap-doc-web/` - `DocServiceApplication`, `DocsUploadController` and `DocsWebSecurityConfiguration`.
+- `jeap-doc-web/` - `DocServiceApplication`, `UploadController` and `DocsWebSecurityConfiguration`.
 - `jeap-doc-service-instance/` - POM-only module for downstream instances.
 
 Keep the layering: business logic goes into the domain, technology into an adapter, and an adapter never depends
