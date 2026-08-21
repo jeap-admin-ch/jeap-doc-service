@@ -27,8 +27,8 @@ uploaded documentation and the generator are built on top of it.
 ./mvnw install -pl jeap-doc-web
 
 # One test class or method
-./mvnw verify -pl jeap-doc-web -Dit.test=DocsUploadApiIT
-./mvnw verify -pl jeap-doc-web -Dit.test=DocsUploadApiIT#upload_whenWriteRoleForAnotherSystem_thenForbidden
+./mvnw verify -pl jeap-doc-web -Dit.test=UploadApiIT
+./mvnw verify -pl jeap-doc-web -Dit.test=UploadApiIT#upload_whenWriteRoleForAnotherSystem_thenForbidden
 
 # Regenerate the third-party license list after a dependency change
 ./mvnw org.codehaus.mojo:license-maven-plugin:aggregate-add-third-party

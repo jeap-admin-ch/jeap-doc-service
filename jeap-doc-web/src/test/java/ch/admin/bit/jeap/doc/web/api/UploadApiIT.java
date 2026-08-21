@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-class DocsUploadApiIT extends DocServiceIntegrationTestBase {
+class UploadApiIT extends DocServiceIntegrationTestBase {
 
     private static final String SYSTEM = "wvs";
 

@@ -16,7 +16,7 @@ import java.net.URI;
  */
 @Slf4j
 @RestControllerAdvice
-public class DocsUploadExceptionHandler {
+public class UploadExceptionHandler {
 
     static final String PROBLEM_TYPE = "https://jeap.admin.ch/problems/docs/invalid-upload";
 
