@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.objectstorage;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage;
 import org.springframework.context.annotation.Bean;
 import software.amazon.awssdk.services.s3.S3Client;
 
@@ -12,6 +13,16 @@ import software.amazon.awssdk.services.s3.S3Client;
 @AutoConfiguration
 @EnableConfigurationProperties(DocObjectStorageProperties.class)
 public class DocObjectStorageConfiguration {
+
+    @Bean
+    DocumentationBundleStorage documentationBundleStorage(S3Client s3Client, DocObjectStorageProperties properties) {
+        return new S3DocumentationBundleStorage(s3Client, properties);
+    }
+
+    @Bean
+    DocSpoolDirectoryAvailabilityCheck docSpoolDirectoryAvailabilityCheck(DocObjectStorageProperties properties) {
+        return new DocSpoolDirectoryAvailabilityCheck(properties);
+    }
 
     @Bean
     DocStorageBucketAvailabilityCheck docStorageBucketAvailabilityCheck(S3Client s3Client,

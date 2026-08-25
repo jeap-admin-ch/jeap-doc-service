@@ -15,6 +15,7 @@ to their code, their build pipelines upload it, and the doc service combines it 
 | [Architecture](docs/architecture.md)       | The ports-and-adapters layout, the modules and the rules they follow                |
 | [Configuration](docs/configuration.md)     | The configuration properties, with their defaults                                   |
 | [API](docs/api.md)                         | The REST API and its OpenAPI description                                            |
+| [Uploads](docs/uploads.md)                 | What happens to an uploaded bundle, the state of an upload, and what a retry does   |
 | [Security](docs/security.md)               | The semantic roles and the rule that a system may only change its own documentation |
 
 ## License

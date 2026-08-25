@@ -1,6 +1,7 @@
-package ch.admin.bit.jeap.doc.web.api.upload;
+package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
+import ch.admin.bit.jeap.doc.web.api.upload.UploadPaths;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -33,16 +34,17 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
     @Autowired
     private MockMvc mockMvc;
 
+
     @Test
     void upload_whenSystemDocumentationInMarkdown_thenAccepted() throws Exception {
         mockMvc.perform(uploadOf(systemDocs()).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
     }
 
     @Test
     void upload_whenComponentDocumentationInMarkdown_thenAccepted() throws Exception {
         mockMvc.perform(uploadOf(componentDocs()).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
     }
 
     @Test
@@ -53,13 +55,13 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         parameters.put("version", "1.4.0");
 
         mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
     }
 
     @Test
     void upload_whenComponentDocumentationInHtml_thenAccepted() throws Exception {
         mockMvc.perform(uploadOf(htmlComponentDocs()).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
     }
 
     @Test
@@ -68,7 +70,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         parameters.put("site", "dazit");
 
         mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
     }
 
     @Test
@@ -214,6 +216,21 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
                 .andExpect(status().isUnauthorized());
     }
 
+    /**
+     * Content-Length is mandatory: it lets an oversized bundle be rejected before it is transferred, it is what
+     * the object storage is told to expect, and it is what a body cut short is recognised by.
+     */
+    @Test
+    void upload_whenTheSizeIsNotAnnounced_thenLengthRequired() throws Exception {
+        MockHttpServletRequestBuilder request = put(UploadPaths.DOCS + "/{uploadId}", UUID.randomUUID())
+                .contentType("application/zip");
+        systemDocs().forEach(request::param);
+
+        mockMvc.perform(request.with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
+                .andExpect(status().isLengthRequired())
+                .andExpect(jsonPath("$.code").value("LENGTH_REQUIRED"));
+    }
+
     @Test
     void upload_whenBodyIsNoZip_thenUnsupportedMediaType() throws Exception {
         mockMvc.perform(uploadOf(systemDocs())
@@ -236,7 +253,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         parameters.put("source-revision", "9a1c2f8");
         parameters.put("source-ref", "main");
         parameters.put("source-timestamp", "2026-08-21T09:12:00+02:00");
-        parameters.put("build-url", "https://jenkins.example.ch/job/wvs-docs/42/");
+        parameters.put("build-url", "https://github.com/wvs/wvs-docs/actions/runs/1234567890");
         parameters.put("generated-at", "2026-08-21T09:15:00+02:00");
         return parameters;
     }
@@ -259,7 +276,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
     }
 
     private static MockHttpServletRequestBuilder uploadOf(Map<String, String> parameters) {
-        MockHttpServletRequestBuilder request = put("/api/uploads/{uploadId}", UUID.randomUUID())
+        MockHttpServletRequestBuilder request = put(UploadPaths.DOCS + "/{uploadId}", UUID.randomUUID())
                 .contentType("application/zip")
                 .content(documentationSetBundle());
         parameters.forEach(request::param);

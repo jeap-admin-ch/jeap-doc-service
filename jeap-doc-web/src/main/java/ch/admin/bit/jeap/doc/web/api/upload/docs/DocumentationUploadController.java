@@ -1,6 +1,14 @@
-package ch.admin.bit.jeap.doc.web.api.upload;
+package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
+import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.DocumentationUploadDescriptor;
+import ch.admin.bit.jeap.doc.domain.DocumentationUploadService;
+import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.UploadProperties;
+import ch.admin.bit.jeap.doc.domain.UploadReceipt;
 import ch.admin.bit.jeap.doc.web.api.Roles;
+import ch.admin.bit.jeap.doc.web.api.upload.UploadBodies;
+import ch.admin.bit.jeap.doc.web.api.upload.UploadPaths;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -9,11 +17,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,24 +45,22 @@ import java.util.UUID;
  */
 @Slf4j
 @RestController
-@RequestMapping(UploadController.UPLOADS_PATH)
+@RequestMapping(UploadPaths.DOCS)
 @RequiredArgsConstructor
-@Tag(name = "uploads", description = "Upload of documentation")
-class UploadController {
+@Tag(name = "doc-uploads", description = "Upload of documentation")
+class DocumentationUploadController {
 
-    static final String UPLOADS_PATH = "/api/uploads";
-
-    private static final int BUFFER_SIZE = 8192;
-
+    private final DocumentationUploadService uploadService;
     private final UploadProperties uploadProperties;
 
     @Operation(summary = "Upload a documentation set",
             description = "Uploads the ZIP bundle of one documentation set of the given system. Which parameters " +
                           "are required depends on the type of the documentation set and on the format of its " +
-                          "documents.")
-    @PutMapping(path = "/{uploadId}", consumes = "application/zip")
+                          "documents. Answers 201 when the bundle was stored, and 200 when the upload had " +
+                          "already been stored under the same upload id.")
+    @PutMapping(path = "/{uploadId}", consumes = "application/zip", produces = "application/json")
     @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM)
-    public void upload(
+    public ResponseEntity<DocumentationUploadResultDto> upload(
             @Parameter(description = "Identifier of this upload, chosen by the client so it can be retried")
             @PathVariable UUID uploadId,
             @Parameter(description = "Site the documents belong to; without it the default site")
@@ -88,14 +98,14 @@ class UploadController {
             @Parameter(description = "When the documents were generated, ISO-8601")
             @RequestParam(name = "generated-at", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime generatedAt,
             HttpServletRequest request) {
-        DocumentationSetUpload upload = DocumentationSetUpload.builder()
+        DocumentationUploadDescriptor upload = DocumentationUploadDto.builder()
                 .site(site)
-                .type(DocumentationSetType.fromParameterValue(type))
+                .type(DocumentationTypeDto.fromParameterValue(type))
                 .system(system)
                 .component(component)
                 .library(library)
                 .template(template)
-                .sourceFormat(SourceFormat.fromParameterValue(sourceFormat))
+                .sourceFormat(SourceFormatDto.fromParameterValue(sourceFormat))
                 .location(location)
                 .topic(topic)
                 .label(label)
@@ -106,35 +116,61 @@ class UploadController {
                 .version(version)
                 .buildUrl(buildUrl)
                 .generatedAt(generatedAt)
-                .build();
+                .build()
+                .toDescriptor();
 
-        long size = readBundle(request);
+        long announcedSize = announcedSize(request);
+        try (InputStream bundle = limited(request)) {
+            UploadReceipt receipt = uploadService.receive(uploadId, upload, bundle, announcedSize);
+            // A request that stored a bundle created the upload; one that repeated an upload already stored did
+            // not - the target URI is the upload itself, so a 201 needs no Location.
+            return ResponseEntity.status(receipt.stored() ? HttpStatus.CREATED : HttpStatus.OK)
+                    .body(DocumentationUploadResultDto.of(receipt.upload()));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
-        log.info("Accepted the upload {} of {} of the system {} for the site {} ({} bytes).",
-                uploadId, upload.type().parameterValue(), upload.system(),
-                upload.site() == null ? "default" : upload.site(), size);
+    @Operation(summary = "Read the state of an upload",
+               description = "Answers what became of an upload of the given system - whether its bundle was " +
+                             "stored and is waiting for the documentation generator.")
+    @GetMapping(path = "/{uploadId}", produces = "application/json")
+    @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM)
+    public DocumentationUploadStatusDto status(
+            @Parameter(description = "Identifier of the upload")
+            @PathVariable UUID uploadId,
+            @Parameter(description = "System the upload belongs to, and the system the write role is checked for")
+            @RequestParam("system") String system) {
+        return uploadService.statusOf(uploadId, system)
+                .map(DocumentationUploadStatusDto::of)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No upload %s of the system %s.".formatted(uploadId, system)));
     }
 
     /**
-     * Reads the bundle and stops as soon as it exceeds the accepted size, so a large body cannot fill the heap of
-     * the service. The bundle is not kept: storing it comes with the story that persists a documentation set.
+     * The size the upload announces. Content-Length is mandatory: it lets an oversized bundle be rejected before
+     * it is transferred, it is what the object storage is told to expect, and it is what a body cut short is
+     * recognised by - a chunked request would offer none of that.
      */
-    private long readBundle(HttpServletRequest request) {
+    private long announcedSize(HttpServletRequest request) {
+        long announced = request.getContentLengthLong();
+        if (announced < 0) {
+            throw new InvalidUploadException(InvalidUploadException.Code.LENGTH_REQUIRED,
+                    "The upload has to announce the size of its bundle in the Content-Length header.");
+        }
         long limit = uploadProperties.getMaxSize().toBytes();
-        if (request.getContentLengthLong() > limit) {
+        if (announced > limit) {
             throw InvalidUploadException.tooLarge(limit);
         }
-        try (InputStream bundle = request.getInputStream()) {
-            byte[] buffer = new byte[BUFFER_SIZE];
-            long size = 0;
-            int read;
-            while ((read = bundle.read(buffer)) != -1) {
-                size += read;
-                if (size > limit) {
-                    throw InvalidUploadException.tooLarge(limit);
-                }
-            }
-            return size;
+        return announced;
+    }
+
+    /**
+     * The body, with the accepted size enforced while it is read.
+     */
+    private InputStream limited(HttpServletRequest request) {
+        try {
+            return UploadBodies.limitedTo(request.getInputStream(), uploadProperties.getMaxSize().toBytes());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

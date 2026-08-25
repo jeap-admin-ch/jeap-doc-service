@@ -55,9 +55,15 @@ public abstract class DocServiceIntegrationTestBase {
             .withEnv("RUSTFS_SECRET_KEY", RUSTFS_SECRET_KEY)
             .withCommand("/data");
 
+    /**
+     * The object storage as the tests see it, to check what an upload actually stored.
+     */
+    protected static final S3Client S3_CLIENT;
+
     static {
         POSTGRES.start();
         RUST_FS.start();
+        S3_CLIENT = createS3Client();
         createTestBucket();
     }
 
@@ -105,15 +111,20 @@ public abstract class DocServiceIntegrationTestBase {
         return "http://" + RUST_FS.getHost() + ":" + RUST_FS.getMappedPort(RUSTFS_PORT);
     }
 
-    private static void createTestBucket() {
-        try (S3Client s3Client = S3Client.builder()
+    private static S3Client createS3Client() {
+        return S3Client.builder()
                 .region(Region.of(RUSTFS_REGION))
                 .endpointOverride(URI.create(rustFsEndpoint()))
-                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(RUSTFS_ACCESS_KEY, RUSTFS_SECRET_KEY)))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(RUSTFS_ACCESS_KEY, RUSTFS_SECRET_KEY)))
                 .httpClientBuilder(UrlConnectionHttpClient.builder())
                 .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
-                .build()) {
-            s3Client.createBucket(CreateBucketRequest.builder().bucket(TEST_BUCKET_NAME).build());
+                .build();
+    }
+
+    private static void createTestBucket() {
+        try {
+            S3_CLIENT.createBucket(CreateBucketRequest.builder().bucket(TEST_BUCKET_NAME).build());
         } catch (BucketAlreadyOwnedByYouException e) {
             // the bucket survives between test classes sharing the container
         }

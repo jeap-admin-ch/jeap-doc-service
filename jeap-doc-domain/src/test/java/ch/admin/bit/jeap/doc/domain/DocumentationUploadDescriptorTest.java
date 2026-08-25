@@ -1,14 +1,15 @@
-package ch.admin.bit.jeap.doc.web.api.upload;
+package ch.admin.bit.jeap.doc.domain;
 
 import org.junit.jupiter.api.Test;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
+
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class DocumentationSetUploadTest {
+class DocumentationUploadDescriptorTest {
 
     @Test
     void build_whenSystemDocumentationInMarkdown_thenAccepted() {
@@ -17,14 +18,14 @@ class DocumentationSetUploadTest {
 
     @Test
     void build_whenComponentDocumentationInHtml_thenAccepted() {
-        DocumentationSetUpload upload = componentDocs()
+        DocumentationUploadDescriptor upload = componentDocs()
                 .sourceFormat(SourceFormat.HTML)
                 .location("6-runtime-view")
                 .topic("spring-rest-docs")
                 .label("Spring REST Docs")
                 .build();
 
-        assertThat(upload.type()).isEqualTo(DocumentationSetType.COMPONENT_DOCS);
+        assertThat(upload.type()).isEqualTo(DocumentationType.COMPONENT_DOCS);
         assertThat(upload.component()).isEqualTo("foo-bar-scs");
     }
 
@@ -109,9 +110,34 @@ class DocumentationSetUploadTest {
         assertThat(systemDocs().site("dazit").build().site()).isEqualTo("dazit");
     }
 
+    /**
+     * The site is normalized rather than defaulted on reading, so an upload that names no site and one that names
+     * the default site are the same upload - which is what a retry has to be recognised as.
+     */
     @Test
-    void build_whenSiteIsMissing_thenAcceptedForTheDefaultSite() {
-        assertThat(systemDocs().build().site()).isNull();
+    void build_whenSiteIsMissing_thenTheDefaultSite() {
+        assertThat(systemDocs().build().site()).isEqualTo(DocumentationUploadDescriptor.DEFAULT_SITE);
+        assertThat(systemDocs().build()).isEqualTo(systemDocs().site("default").build());
+    }
+
+    /**
+     * What a retry is compared with is what came back from the database, and it keeps microseconds. A timestamp
+     * that carries more than that has to be cut down when it arrives, or the upload it was sent with could never
+     * be retried.
+     */
+    @Test
+    void build_whenATimestampIsMorePreciseThanTheDatabase_thenItIsCutDownToWhatSurvives() {
+        DocumentationUploadDescriptor descriptor = systemDocs()
+                .sourceTimestamp(Instant.parse("2026-08-21T07:12:00.123456789Z"))
+                .generatedAt(Instant.parse("2026-08-21T07:15:00.987654321Z"))
+                .build();
+
+        assertThat(descriptor.sourceTimestamp()).isEqualTo(Instant.parse("2026-08-21T07:12:00.123456Z"));
+        assertThat(descriptor.generatedAt()).isEqualTo(Instant.parse("2026-08-21T07:15:00.987654Z"));
+        assertThat(descriptor).isEqualTo(systemDocs()
+                .sourceTimestamp(Instant.parse("2026-08-21T07:12:00.123456Z"))
+                .generatedAt(Instant.parse("2026-08-21T07:15:00.987654Z"))
+                .build());
     }
 
     @Test
@@ -165,40 +191,29 @@ class DocumentationSetUploadTest {
         assertThatCode(() -> systemDocs().buildUrl(null).generatedAt(null).build()).doesNotThrowAnyException();
     }
 
-    @Test
-    void fromParameterValue_whenValueIsUnknown_thenRejected() {
-        assertThatThrownBy(() -> DocumentationSetType.fromParameterValue("service-docs"))
-                .isInstanceOfSatisfying(InvalidUploadException.class,
-                        e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
-                .hasMessageContaining("component-docs");
-        assertThatThrownBy(() -> SourceFormat.fromParameterValue("asciidoc"))
-                .isInstanceOf(InvalidUploadException.class)
-                .hasMessageContaining("markdown");
-    }
-
-    private static DocumentationSetUpload.DocumentationSetUploadBuilder systemDocs() {
+    private static DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder systemDocs() {
         return provenance()
-                .type(DocumentationSetType.SYSTEM_DOCS)
+                .type(DocumentationType.SYSTEM_DOCS)
                 .system("wvs")
                 .template("arc42")
                 .sourceFormat(SourceFormat.MARKDOWN);
     }
 
-    private static DocumentationSetUpload.DocumentationSetUploadBuilder componentDocs() {
+    private static DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder componentDocs() {
         return systemDocs()
-                .type(DocumentationSetType.COMPONENT_DOCS)
+                .type(DocumentationType.COMPONENT_DOCS)
                 .component("foo-bar-scs")
                 .version("1.4.0");
     }
 
-    private static DocumentationSetUpload.DocumentationSetUploadBuilder libraryDocs() {
+    private static DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder libraryDocs() {
         return systemDocs()
-                .type(DocumentationSetType.LIBRARY_DOCS)
+                .type(DocumentationType.LIBRARY_DOCS)
                 .library("wvs-common-lib")
                 .version("1.4.0");
     }
 
-    private static DocumentationSetUpload.DocumentationSetUploadBuilder htmlComponentDocs() {
+    private static DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder htmlComponentDocs() {
         return componentDocs()
                 .sourceFormat(SourceFormat.HTML)
                 .location("6-runtime-view")
@@ -206,13 +221,13 @@ class DocumentationSetUploadTest {
                 .label("Spring REST Docs");
     }
 
-    private static DocumentationSetUpload.DocumentationSetUploadBuilder provenance() {
-        return DocumentationSetUpload.builder()
+    private static DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder provenance() {
+        return DocumentationUploadDescriptor.builder()
                 .sourceRepository("ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git")
                 .sourceRevision("9a1c2f8")
                 .sourceRef("main")
-                .sourceTimestamp(OffsetDateTime.parse("2026-08-21T09:12:00+02:00"))
-                .buildUrl("https://jenkins.example.ch/job/foo-bar-scs/42/")
-                .generatedAt(OffsetDateTime.parse("2026-08-21T09:15:00+02:00"));
+                .sourceTimestamp(Instant.parse("2026-08-21T07:12:00Z"))
+                .buildUrl("https://github.com/wvs/foo-bar-scs/actions/runs/1234567890")
+                .generatedAt(Instant.parse("2026-08-21T07:15:00Z"));
     }
 }

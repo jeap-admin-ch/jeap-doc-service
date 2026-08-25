@@ -16,7 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class OpenApiIT extends DocServiceIntegrationTestBase {
 
-    private static final String UPLOAD_PARAMETERS = "$.paths['/api/uploads/{uploadId}'].put.parameters[*].name";
+    private static final String UPLOAD_PARAMETERS = "$.paths['/api/uploads/docs/{uploadId}'].put.parameters[*].name";
 
     @Autowired
     private MockMvc mockMvc;
@@ -26,7 +26,7 @@ class OpenApiIT extends DocServiceIntegrationTestBase {
         mockMvc.perform(get("/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.info.title").value("jEAP Doc Service API"))
-                .andExpect(jsonPath("$.paths['/api/uploads/{uploadId}'].put").exists());
+                .andExpect(jsonPath("$.paths['/api/uploads/docs/{uploadId}'].put").exists());
     }
 
     @Test
