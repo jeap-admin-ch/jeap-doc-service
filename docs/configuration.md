@@ -303,7 +303,7 @@ sets any of these itself wins**; they are defaults, not decisions.
 | `spring.web.resources.add-mappings`           | `false`                                   | Spring Boot's catch-all `/**` resource handler is matched just ahead of the one that serves the documentation, and would answer for every page of it                                                                   |
 | `server.shutdown`                             | `graceful`                                | An upload is a bundle of up to 50MB; a deployment landing on one would make the client retry a transfer it had all but completed                                                                                       |
 | `spring.lifecycle.timeout-per-shutdown-phase` | `20s`                                     | Above `jeap.doc.build.shutdown-timeout`, so giving up a running build is never the phase that is cut short. **This is the number the platform's stop timeout is derived from** - see [Generation](generation.md)       |
-| `server.compression.*`                        | on, from 1KB                              | The documentation is text throughout - HTML, the bundles, `llms-full.txt` and the search index the search bar downloads whole. An instance behind a compressing CDN can turn it off                                    |
+| `server.compression.*`                        | on, from 1KB                              | The documentation is text throughout - HTML, the bundles, `llms-full.txt` and the part of the search index a page's search bar downloads. An instance behind a compressing CDN can turn it off                                    |
 
 ## Related
 

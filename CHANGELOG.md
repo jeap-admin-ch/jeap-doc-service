@@ -20,6 +20,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and what has been built. Asking is not building - the ask leaves the same collapsing request an upload leaves,
   recorded as the new `MANUAL` build trigger. Two new roles: `<system-name>_@sites_#admin` for the ask and
   `<system-name>_@sites_#read` for the reading.
+- **The site search is scoped to the environment being read.** The index is split one part per environment and
+  the search box takes the part from the page it is on, so a query answers with the tree the reader is in
+  instead of with the same page once per environment. The search page carries a selector for changing it.
 - **Meters for the uploads and the builds** under `jeap.doc.*`, with the alarms in `docs/observability.md`.
 - New pages: [Generation](docs/generation.md), [The site image](docs/site-image.md),
   [Observability](docs/observability.md), [Operating the bucket](docs/operating-the-bucket.md).

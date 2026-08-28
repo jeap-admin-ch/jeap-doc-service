@@ -148,6 +148,24 @@ const config = {
                 // rejects an empty string outright, so this is how the site root is expressed.
                 docsRouteBasePath: searchOrder.map((environment) => routePrefixOf(environment) || '/'),
                 docsDir: searchOrder.map((environment) => `content/${environment.id}`),
+                // One index per environment, so a reader searches the tree they are in rather than being
+                // offered the same page once per environment. The plugin sorts each page into the bucket of
+                // the first path it matches and skips the leftover bucket for it, and the navbar picks the
+                // bucket from the URL - so this needs nothing from the reader.
+                //
+                // The main environment is deliberately not in this list. It is served at the site root, so its
+                // pages match none of these paths and fall into the leftover bucket, which is then exactly the
+                // main environment. The paths are relative to the base URL and carry no leading slash.
+                //
+                // The two options this pairs with are left at their defaults on purpose, and each of them
+                // would undo this quietly:
+                //   useAllContextsWithNoSearchContext would put every page into the leftover bucket as well,
+                //     and the main environment would be back to one hit per environment;
+                //   hideSearchBarWithNoSearchContext would stop the leftover bucket being written at all, and
+                //     the main environment would have no search box.
+                searchContextByPaths: searchOrder
+                    .filter((environment) => !environment.main)
+                    .map((environment) => ({label: environment.label, path: environment.id})),
                 highlightSearchTermsOnTargetPage: true,
                 searchBarShortcut: true,
                 searchBarPosition: 'auto',

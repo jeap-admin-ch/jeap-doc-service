@@ -15,6 +15,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Stream;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,27 +57,67 @@ class DocusaurusSiteBuilderIT {
 
 
     /**
-     * The search index has to hold something for every environment.
+     * Every environment has a search index of its own, holding that environment and nothing else.
      * <p>
-     * Two independently sensible settings once left it empty: the banner puts a {@code noindex} meta on every
-     * page of a non-main environment, which the search plugin reads as "unlisted" and skips, and the plugin
-     * drops the site's front page unless the main environment is the first route base path it is given. The
-     * result was a search bar on every page that found nothing at all - and nothing failed.
+     * Two things are asserted at once here, and both have been wrong before. That an environment is indexed at
+     * all: two independently sensible settings once left the index empty - the banner puts a {@code noindex}
+     * meta on every page of a non-main environment, which the search plugin reads as "unlisted" and skips, and
+     * the plugin drops the site's front page unless the main environment is the first route base path it is
+     * given, so the result was a search bar on every page that found nothing, and nothing failed. And that the
+     * indexes are separate: the environments hold the same pages, so one index over all of them answers every
+     * query with the same page once per environment.
+     * <p>
+     * The main environment is the one served at the site root. It is not one of the configured search paths but
+     * what is left when none of them matched, so its index is the file with no environment in its name.
      */
     @Test
-    void generate_thenEveryEnvironmentIsInTheSearchIndex() throws Exception {
+    void generate_thenEachEnvironmentHasASearchIndexOfItsOwn() throws Exception {
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
 
         BuiltSite built = builder.generate(6, site, GENERATED_AT);
 
-        String index = Files.readString(built.directory().resolve("search-index.json"), StandardCharsets.UTF_8);
         for (SiteEnvironment environment : site.environments()) {
             // The tree's own route, so a hit actually leads somewhere - the main environment is at the root.
             String route = environment.main() ? "/docs/" : "/docs/" + environment.id() + "/";
+            String index = searchIndexOf(built, environment);
             assertThat(index)
-                    .describedAs("the search index should hold the root page of %s", environment.id())
+                    .describedAs("the search index of %s should hold its own root page", environment.id())
                     .contains("\"u\":\"" + route + "\"");
+            for (SiteEnvironment other : site.environments()) {
+                if (other.main() || other.id().equals(environment.id())) {
+                    // The main environment's route is a prefix of every other one, so it cannot be looked for
+                    // by its route; that it holds only itself is what the three assertions below add up to.
+                    continue;
+                }
+                assertThat(index)
+                        .describedAs("the search index of %s should not hold pages of %s",
+                                environment.id(), other.id())
+                        .doesNotContain("\"u\":\"/docs/" + other.id() + "/");
+            }
         }
+    }
+
+    /**
+     * The index file of one environment. The plugin names the main environment's - the one it knows as the
+     * leftover of every configured path - without an environment in it at all.
+     */
+    private static String searchIndexOf(BuiltSite built, SiteEnvironment environment) throws IOException {
+        String infix = environment.main() ? "" : "-" + environment.id();
+        List<Path> written;
+        try (Stream<Path> files = Files.walk(built.directory())) {
+            written = files.filter(file -> file.getFileName().toString().startsWith("search-index")).toList();
+        }
+        Path index = written.stream()
+                // The exact name: `hashed: true` puts the hash in the query rather than in the file name, and a
+                // pattern tolerating one here would make the main environment's lookup - whose infix is empty -
+                // match another environment's file as well.
+                .filter(file -> file.getFileName().toString().equals("search-index" + infix + ".json"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("No search index was written for the environment "
+                        + environment.id() + "; the build produced "
+                        + written.stream().map(built.directory()::relativize).map(Path::toString)
+                                .sorted().toList()));
+        return Files.readString(index, StandardCharsets.UTF_8);
     }
 
     /**

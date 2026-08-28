@@ -6,8 +6,8 @@ what makes one happen, and what to look at when one does not.
 
 ## What a build is
 
-A **documentation site** is one published whole: one navigation, one layout, one search index. Which sites exist
-is [configuration](configuration.md#documentation-sites); each of them is generated and published on its own, and
+A **documentation site** is one published whole: one navigation, one layout, one search. Which sites exist is
+[configuration](configuration.md#documentation-sites); each of them is generated and published on its own, and
 each has its own **environments** - trees of the same documentation showing the state of a different stage.
 
 One run of the generator is a **build**, and a build is five steps:
@@ -25,6 +25,20 @@ it**, and everything at the top level of the workspace that is neither the conte
 removed. The application that runs is therefore the template's, byte for byte and at every depth, whatever was
 generated into the content directory - which is what will keep documentation uploaded by a team from being able
 to become part of the program that builds the site.
+
+### Search is the environment the reader is in
+
+The environments hold the same pages, so one index over all of them would answer every query with the same page
+once per environment and leave the reader to find the tree they are already in. The index is therefore split one
+part per environment, and **the search box takes the part from the page it is on** - no setting, nothing to
+choose. A reader on the DEV tree searches DEV.
+
+The parts are separate files and a page loads only its own, so it is not a filter over the results: a PROD hit is
+not something a DEV page has and hides, it is something it never fetched.
+
+The search page at `/search` is the exception, because it is one page at the site root and cannot take the
+environment from its own path. It reads it from the `ctx` query parameter, which the search box puts into the
+link it offers, and it carries a selector for changing it.
 
 ## What makes a build happen
 

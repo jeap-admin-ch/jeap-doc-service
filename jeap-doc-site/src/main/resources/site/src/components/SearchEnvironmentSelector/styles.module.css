@@ -1,0 +1,33 @@
+.selector {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 1rem;
+}
+
+.label {
+    font-weight: 600;
+}
+
+.input {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--ifm-color-emphasis-300);
+    border-radius: var(--ifm-global-radius);
+    background: var(--ifm-background-color);
+    color: var(--ifm-font-color-base);
+}
+
+/*
+ * The search plugin's own context selector, which this one replaces. It is hidden rather than left beside this
+ * one because it cannot offer the main environment at all - see index.js - so it would show a reader a control
+ * that is blank exactly where they started. `:global` because the plugin renders it, so the class names in its
+ * column are not this module's to hash.
+ */
+:global(.col:has(#context-selector)) {
+    display: none;
+}
+
+/* And the row it was in keeps its width for the query, rather than a quarter of it standing empty. */
+:global(.row:has(#context-selector)) :global(.col:not(:has(#context-selector))) {
+    --ifm-col-width: 100%;
+}

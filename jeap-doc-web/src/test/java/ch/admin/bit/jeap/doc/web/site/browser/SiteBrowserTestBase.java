@@ -298,7 +298,7 @@ public abstract class SiteBrowserTestBase extends DocServiceIntegrationTestBase 
             public void write(Site written, Path content, Instant generatedAt) throws IOException {
                 super.write(written, content, generatedAt);
                 for (SiteEnvironment environment : written.environments()) {
-                    writeGuidePage(content.resolve(environment.id()));
+                    writeGuidePage(content.resolve(environment.id()), environment);
                 }
             }
         };
@@ -307,15 +307,29 @@ public abstract class SiteBrowserTestBase extends DocServiceIntegrationTestBase 
     }
 
     /**
-     * A page in every environment, holding the two things the generated root pages do not: a term that appears
-     * nowhere else, so a search hit is unambiguous, and a diagram fence, so that the plugin rendering it has
-     * something to render.
+     * What the guide page of one environment says about itself.
+     * <p>
+     * The four copies are otherwise the same page, and the search index is split one bucket per environment -
+     * so a test that only counted hits could not tell a correctly scoped search from a search of the wrong
+     * tree. This is how a hit names the tree it came out of.
      */
-    private static void writeGuidePage(Path environmentTree) throws IOException {
+    protected static String guideMarkerOf(SiteEnvironment environment) {
+        return "This copy is the one in the %s tree.".formatted(environment.id());
+    }
+
+    /**
+     * A page in every environment, holding the three things the generated root pages do not: a term that
+     * appears nowhere else, so a search hit is unambiguous, a line naming the environment it belongs to, so a
+     * hit can be told from its neighbours, and a diagram fence, so that the plugin rendering it has something
+     * to render.
+     */
+    private static void writeGuidePage(Path environmentTree, SiteEnvironment environment) throws IOException {
         Files.writeString(environmentTree.resolve(GUIDE_ROUTE + ".md"), """
                 # The upload guide
 
                 %s documentation reaches the doc service through the upload API of its pipeline.
+
+                %s
 
                 ```plantuml
                 @startuml
@@ -324,6 +338,6 @@ public abstract class SiteBrowserTestBase extends DocServiceIntegrationTestBase 
                 pipeline --> doc : uploads
                 @enduml
                 ```
-                """.formatted(SEARCHABLE_TERM), StandardCharsets.UTF_8);
+                """.formatted(SEARCHABLE_TERM, guideMarkerOf(environment)), StandardCharsets.UTF_8);
     }
 }
