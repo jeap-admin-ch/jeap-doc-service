@@ -1,0 +1,77 @@
+/*
+ * A scheme with a stronger contrast than the other two, for readers who need it and for projection. Same
+ * tokens, harder edges: darker type, deeper accent, borders that carry rather than suggest.
+ */
+:root {
+    --ifm-color-primary: #00366b;
+    --ifm-color-primary-dark: #002f5d;
+    --ifm-color-primary-darker: #002c58;
+    --ifm-color-primary-darkest: #002348;
+    --ifm-color-primary-light: #003d79;
+    --ifm-color-primary-lighter: #00417e;
+    --ifm-color-primary-lightest: #004a91;
+
+    --ifm-color-content: #101418;
+    --ifm-color-content-secondary: #33404d;
+    --ifm-heading-color: #000000;
+    --ifm-background-color: #ffffff;
+    --ifm-background-surface-color: #ffffff;
+    --ifm-navbar-background-color: #ffffff;
+
+    --docusaurus-highlighted-code-line-bg: rgba(0, 54, 107, 0.15);
+
+    --jeap-border: #b9c0c8;
+    --jeap-border-strong: #6b7783;
+    --jeap-surface: #eef1f4;
+    --jeap-surface-alt: #f7f8fa;
+    --jeap-muted: #33404d;
+    --jeap-accent-soft: #dce8f4;
+
+    --jeap-environment-main: #0b4a22;
+    --jeap-environment-main-bg: #dcf0e3;
+    --jeap-environment-main-border: #7fae92;
+    --jeap-environment-other: #00366b;
+    --jeap-environment-other-bg: #dce8f4;
+    --jeap-environment-other-border: #7f9cb9;
+
+    --jeap-banner-background: #ffe9a8;
+    --jeap-banner-color: #2b2100;
+    --jeap-banner-border: #c9a83c;
+}
+
+[data-theme='dark'] {
+    --ifm-color-primary: #9ed4ff;
+    --ifm-color-primary-dark: #79c3ff;
+    --ifm-color-primary-darker: #66bbff;
+    --ifm-color-primary-darkest: #2ea1ff;
+    --ifm-color-primary-light: #c3e5ff;
+    --ifm-color-primary-lighter: #d6edff;
+    --ifm-color-primary-lightest: #ffffff;
+
+    --ifm-color-content: #f2f6fa;
+    --ifm-color-content-secondary: #c3ccd6;
+    --ifm-heading-color: #ffffff;
+    --ifm-background-color: #0b0d10;
+    --ifm-background-surface-color: #0b0d10;
+    --ifm-navbar-background-color: #0b0d10;
+
+    --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.15);
+
+    --jeap-border: #414a54;
+    --jeap-border-strong: #6d7a87;
+    --jeap-surface: #171b20;
+    --jeap-surface-alt: #121519;
+    --jeap-muted: #c3ccd6;
+    --jeap-accent-soft: #16283a;
+
+    --jeap-environment-main: #a8e6c1;
+    --jeap-environment-main-bg: #13261a;
+    --jeap-environment-main-border: #3f6b4d;
+    --jeap-environment-other: #9ed4ff;
+    --jeap-environment-other-bg: #10202e;
+    --jeap-environment-other-border: #3a5b78;
+
+    --jeap-banner-background: #4a3c00;
+    --jeap-banner-color: #ffefbe;
+    --jeap-banner-border: #8a7200;
+}

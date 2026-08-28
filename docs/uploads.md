@@ -30,11 +30,11 @@ Two rules are worth knowing, because everything else follows from them:
 
 ## The state of an upload
 
-| State       | Meaning                                                                                              |
-| ----------- | ---------------------------------------------------------------------------------------------------- |
+| State       | Meaning                                                                                               |
+|-------------|-------------------------------------------------------------------------------------------------------|
 | `UPLOADING` | The upload is recorded and its bundle is on its way. One attempt holds the upload id while this lasts |
-| `PENDING`   | The bundle is stored: the upload is waiting for the documentation generator                          |
-| `FAILED`    | The bundle could not be stored. Nothing picks the upload up, and a retry replaces the attempt        |
+| `PENDING`   | The bundle is stored: the upload is waiting for the documentation generator                           |
+| `FAILED`    | The bundle could not be stored. Nothing picks the upload up, and a retry replaces the attempt         |
 
 On its way to the object storage a bundle is spooled to a file in
 [`jeap.doc.storage.spool-directory`](configuration.md#object-storage) rather than kept in memory, and the file is
@@ -62,14 +62,14 @@ gives an upload is the path its bundle lies under.
 produces a second documentation set and never a second upload - so a pipeline may retry without asking whether its
 previous attempt got through. What a repetition does depends on what became of the attempt before it.
 
-| The upload id                                          | What the request does                                                     | Answer                                        |
-| ------------------------------------------------------ | ------------------------------------------------------------------------- | --------------------------------------------- |
-| is unknown                                             | The upload is recorded, its bundle stored                                 | `201` with the result                         |
-| belongs to a stored upload                             | Nothing is written, the body is read and discarded                        | `200` with the result of the attempt that stored it |
-| belongs to a failed upload                             | The upload is claimed again and the bundle stored, under the key of the new attempt | `201` with the result                         |
-| belongs to an upload another attempt is receiving      | Nothing happens - the body is not even read                               | `409` `UPLOAD_IN_PROGRESS`, with `Retry-After` |
-| belongs to an upload that has been in progress too long | The attempt is taken over as abandoned                                    | `201` with the result                         |
-| belongs to an upload that describes something else     | Nothing is written                                                        | `409` `UPLOAD_ID_CONFLICT`                    |
+| The upload id                                           | What the request does                                                               | Answer                                              |
+|---------------------------------------------------------|-------------------------------------------------------------------------------------|-----------------------------------------------------|
+| is unknown                                              | The upload is recorded, its bundle stored                                           | `201` with the result                               |
+| belongs to a stored upload                              | Nothing is written, the body is read and discarded                                  | `200` with the result of the attempt that stored it |
+| belongs to a failed upload                              | The upload is claimed again and the bundle stored, under the key of the new attempt | `201` with the result                               |
+| belongs to an upload another attempt is receiving       | Nothing happens - the body is not even read                                         | `409` `UPLOAD_IN_PROGRESS`, with `Retry-After`      |
+| belongs to an upload that has been in progress too long | The attempt is taken over as abandoned                                              | `201` with the result                               |
+| belongs to an upload that describes something else      | Nothing is written                                                                  | `409` `UPLOAD_ID_CONFLICT`                          |
 
 **A retry of an upload that is currently being received is refused, not queued.** An upload belongs to one
 attempt at a time: it names one bundle, and two attempts filling it at once would make it a race which one it
@@ -98,10 +98,10 @@ a new upload, which is what a new upload id is for.
 An upload is not kept forever, and the two halves of it are removed by two different mechanisms - **the database
 by the doc service, the object storage by the bucket itself**:
 
-| | Removes | After | By |
-| --- | --- | --- | --- |
-| The doc service | the upload in the database | `jeap.doc.upload.housekeeping.retention`, **14 days** by default | a nightly job, `0 30 2 * * *` by default |
-| The bucket | the bundle in the object storage | **15 days**, in the lifecycle rule | the object storage |
+|                 | Removes                          | After                                                            | By                                       |
+|-----------------|----------------------------------|------------------------------------------------------------------|------------------------------------------|
+| The doc service | the upload in the database       | `jeap.doc.upload.housekeeping.retention`, **14 days** by default | a nightly job, `0 30 2 * * *` by default |
+| The bucket      | the bundle in the object storage | **15 days**, in the lifecycle rule                               | the object storage                       |
 
 **In that order, and not the other way round.** The lifecycle rule has to be set *longer* than the retention, so
 an upload never points at a bundle that is already gone; between the two an orphaned bundle lies around for a day,
@@ -155,6 +155,15 @@ announced.
 The **content** of the bundle is not inspected yet - neither the folder structure against the template nor the
 Markdown itself - and it is not scanned for malware. Those checks belong to later stories.
 
+## What happens next
+
+An upload that stored its bundle **asks for its site to be published**, unless that site is configured not to be
+(`publish-on-upload`). It does not wait for the build: several uploads arriving while one runs are one request,
+and the next run serves all of them - see [Generating the documentation](generation.md).
+
+The upload itself stays `PENDING`. Taking the uploaded documentation over into the generated site is not yet
+implemented; until it is, a build publishes what the doc service generates itself.
+
 ## Related
 
 - [API](api.md)
@@ -162,3 +171,4 @@ Markdown itself - and it is not scanned for malware. Those checks belong to late
 - [Architecture](architecture.md)
 - [Security](security.md)
 - [jeap-doc-service](../README.md)
+- [Generating the documentation](generation.md)

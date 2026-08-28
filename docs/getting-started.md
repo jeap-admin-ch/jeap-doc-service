@@ -53,9 +53,27 @@ jeap:
   doc:
     storage:
       bucket: my-doc-service-documents
+    build:
+      node-command: /opt/node/bin/node
+      node-modules-directory: /opt/jeap-doc/node_modules
+    publication:
+      url: https://doc.example.ch
 ```
 
 See [Configuration](configuration.md) for the properties and [Security](security.md) for the roles a client needs.
+
+## An instance needs a Node runtime
+
+The doc service generates the documentation site by running the site generator as a child process, so **the
+instance's image has to carry a Node runtime and the site template's installed dependencies**, and the service
+does not start without them. [The site image](site-image.md) is the Dockerfile to copy.
+
+On a developer machine that means Node 24 on the `PATH` (`nvm`, `asdf` or the distribution's package) and
+`node-modules-directory` pointing at an installed copy of the template's dependencies.
+
+Building the repository additionally needs **Chrome**: the site template is a React application, and the tests
+that drive it in a browser take the one installed on the machine rather than downloading one. A missing browser
+fails the build - a browser suite that skips itself would be green because it ran nothing.
 
 ## Running it locally
 
@@ -87,3 +105,5 @@ RustFS container and run the service against them.
 - [Architecture](architecture.md)
 - [API](api.md)
 - [Configuration](configuration.md)
+- [Generating the documentation](generation.md)
+- [The site image](site-image.md)

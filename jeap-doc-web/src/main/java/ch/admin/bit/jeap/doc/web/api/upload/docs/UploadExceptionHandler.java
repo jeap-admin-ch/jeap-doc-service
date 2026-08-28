@@ -13,7 +13,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+
 import java.net.URI;
+import java.util.EnumSet;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -34,9 +40,30 @@ class UploadExceptionHandler {
 
     private static final Pattern LINE_BREAK = Pattern.compile("[\\r\\n]");
 
+    /**
+     * The codes that are raised before the domain ever sees the upload - a parameter that is missing, unknown or
+     * wrong, or a request that announced no length. They can never appear in the upload timer, because nothing
+     * was timed, and a typo in a workflow configuration would otherwise be invisible.
+     * <p>
+     * <b>Everything else is counted by the domain</b>, which timed it. Counting it here as well would count one
+     * outcome twice - the same trap the logging rule of this class guards against.
+     */
+    private static final Set<InvalidUploadException.Code> REJECTED_BEFORE_THE_DOMAIN = EnumSet.of(
+            InvalidUploadException.Code.MISSING_PARAMETER,
+            InvalidUploadException.Code.UNKNOWN_PARAMETER,
+            InvalidUploadException.Code.INVALID_PARAMETER_VALUE,
+            InvalidUploadException.Code.LENGTH_REQUIRED);
+
+    private final MeterRegistry meterRegistry;
+
+    UploadExceptionHandler(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
+
     @ExceptionHandler(InvalidUploadException.class)
     ResponseEntity<ProblemDetail> handleInvalidUpload(InvalidUploadException exception, HttpServletRequest request) {
         logRejection(exception.getCode(), exception.getMessage(), request);
+        countIfRejectedBeforeTheDomain(exception.getCode());
         ProblemDetail problem = problem(exception.getCode(), exception.getMessage());
         BodyBuilder response = ResponseEntity.status(problem.getStatus());
         if (exception.getRetryAfter() != null) {
@@ -51,6 +78,7 @@ class UploadExceptionHandler {
                                          HttpServletRequest request) {
         String detail = "The parameter '%s' is required.".formatted(exception.getParameterName());
         logRejection(InvalidUploadException.Code.MISSING_PARAMETER, detail, request);
+        countIfRejectedBeforeTheDomain(InvalidUploadException.Code.MISSING_PARAMETER);
         return problem(InvalidUploadException.Code.MISSING_PARAMETER, detail);
     }
 
@@ -59,7 +87,20 @@ class UploadExceptionHandler {
         String detail = "The parameter '%s' has a value that cannot be read as %s."
                 .formatted(exception.getName(), describeRequiredType(exception));
         logRejection(InvalidUploadException.Code.INVALID_PARAMETER_VALUE, detail, request);
+        countIfRejectedBeforeTheDomain(InvalidUploadException.Code.INVALID_PARAMETER_VALUE);
         return problem(InvalidUploadException.Code.INVALID_PARAMETER_VALUE, detail);
+    }
+
+    /** Counts an upload that was refused before the doc service read anything of it. */
+    private void countIfRejectedBeforeTheDomain(InvalidUploadException.Code code) {
+        if (!REJECTED_BEFORE_THE_DOMAIN.contains(code)) {
+            return;
+        }
+        Counter.builder("jeap.doc.upload.rejected")
+                .description("Uploads rejected before the doc service read anything of them")
+                .tag("reason", code.name().toLowerCase(Locale.ROOT))
+                .register(meterRegistry)
+                .increment();
     }
 
     /**
@@ -113,8 +154,8 @@ class UploadExceptionHandler {
 
     private static HttpStatus statusOf(InvalidUploadException.Code code) {
         return switch (code) {
-            case MISSING_PARAMETER, UNKNOWN_PARAMETER, INVALID_PARAMETER_VALUE, CONTENT_LENGTH_MISMATCH ->
-                    HttpStatus.BAD_REQUEST;
+            case MISSING_PARAMETER, UNKNOWN_PARAMETER, INVALID_PARAMETER_VALUE, UNKNOWN_SITE,
+                 CONTENT_LENGTH_MISMATCH -> HttpStatus.BAD_REQUEST;
             case UPLOAD_IN_PROGRESS, UPLOAD_ID_CONFLICT -> HttpStatus.CONFLICT;
             case LENGTH_REQUIRED -> HttpStatus.LENGTH_REQUIRED;
             case SIZE_LIMIT_EXCEEDED -> HttpStatus.PAYLOAD_TOO_LARGE;

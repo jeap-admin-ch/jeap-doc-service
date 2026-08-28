@@ -1,0 +1,12 @@
+{
+  "id": "fixture",
+  "title": "Documentation",
+  "tagline": "A fixture site, for working on the template without the doc service",
+  "colorScheme": "jeap",
+  "logo": "img/logo.svg",
+  "favicon": "img/favicon.svg",
+  "url": "http://localhost:3000",
+  "baseUrl": "/",
+  "generatedAt": "2026-08-25T06:05:02Z",
+  "generatedAtDisplay": "2026-08-25 08:05:02"
+}

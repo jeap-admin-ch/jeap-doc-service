@@ -1,0 +1,76 @@
+/*
+ * A restrained grey scheme, for a documentation site that would rather not look like anything in particular.
+ */
+:root {
+    --ifm-color-primary: #414c57;
+    --ifm-color-primary-dark: #3b444e;
+    --ifm-color-primary-darker: #37404a;
+    --ifm-color-primary-darkest: #2d353d;
+    --ifm-color-primary-light: #475460;
+    --ifm-color-primary-lighter: #4a5864;
+    --ifm-color-primary-lightest: #566673;
+
+    --ifm-color-content: #1b1f24;
+    --ifm-color-content-secondary: #55606c;
+    --ifm-heading-color: #12161a;
+    --ifm-background-color: #ffffff;
+    --ifm-background-surface-color: #ffffff;
+    --ifm-navbar-background-color: #ffffff;
+
+    --docusaurus-highlighted-code-line-bg: rgba(65, 76, 87, 0.1);
+
+    --jeap-border: #e0e3e7;
+    --jeap-border-strong: #c6ccd3;
+    --jeap-surface: #f5f6f8;
+    --jeap-surface-alt: #fafbfc;
+    --jeap-muted: #5b6673;
+    --jeap-accent-soft: #eceef1;
+
+    --jeap-environment-main: #38424d;
+    --jeap-environment-main-bg: #eceef1;
+    --jeap-environment-main-border: #ccd2d9;
+    --jeap-environment-other: #6b7684;
+    --jeap-environment-other-bg: #f3f4f6;
+    --jeap-environment-other-border: #dce0e5;
+
+    --jeap-banner-background: #eceef0;
+    --jeap-banner-color: #2f3742;
+    --jeap-banner-border: #d5d9de;
+}
+
+[data-theme='dark'] {
+    --ifm-color-primary: #adb9c6;
+    --ifm-color-primary-dark: #98a7b7;
+    --ifm-color-primary-darker: #8d9eb0;
+    --ifm-color-primary-darkest: #6c8098;
+    --ifm-color-primary-light: #c2cbd5;
+    --ifm-color-primary-lighter: #cdd4dc;
+    --ifm-color-primary-lightest: #edf0f3;
+
+    --ifm-color-content: #dfe3e8;
+    --ifm-color-content-secondary: #a4aeb9;
+    --ifm-heading-color: #f2f4f6;
+    --ifm-background-color: #16191d;
+    --ifm-background-surface-color: #16191d;
+    --ifm-navbar-background-color: #16191d;
+
+    --docusaurus-highlighted-code-line-bg: rgba(173, 185, 198, 0.16);
+
+    --jeap-border: #2d333a;
+    --jeap-border-strong: #3e464f;
+    --jeap-surface: #1d2126;
+    --jeap-surface-alt: #1a1e22;
+    --jeap-muted: #a4aeb9;
+    --jeap-accent-soft: #262c33;
+
+    --jeap-environment-main: #cdd4dc;
+    --jeap-environment-main-bg: #262c33;
+    --jeap-environment-main-border: #3e464f;
+    --jeap-environment-other: #9aa5b1;
+    --jeap-environment-other-bg: #21262c;
+    --jeap-environment-other-border: #363e46;
+
+    --jeap-banner-background: #2f353c;
+    --jeap-banner-color: #dbe1e8;
+    --jeap-banner-border: #444c55;
+}

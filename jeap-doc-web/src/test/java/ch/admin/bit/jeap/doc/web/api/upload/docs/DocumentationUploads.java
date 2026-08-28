@@ -66,7 +66,12 @@ final class DocumentationUploads {
     static byte[] bundle(String content) {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
-            zip.putNextEntry(new ZipEntry("1-intro/why-we-built-this.md"));
+            ZipEntry entry = new ZipEntry("1-intro/why-we-built-this.md");
+            // A fixed time, so that the same content always produces the same bytes. A zip entry carries a DOS
+            // timestamp with two-second granularity, so a test that built the same bundle twice - once to
+            // upload and once to compare - failed whenever the two calls straddled a boundary.
+            entry.setTime(0L);
+            zip.putNextEntry(entry);
             zip.write(content.getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
         } catch (IOException e) {

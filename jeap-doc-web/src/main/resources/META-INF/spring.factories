@@ -1,2 +1,3 @@
 org.springframework.boot.EnvironmentPostProcessor=\
+  ch.admin.bit.jeap.doc.web.DocDefaultPropertiesEnvironmentPostProcessor,\
   ch.admin.bit.jeap.doc.web.api.upload.UploadSwallowSizeEnvironmentPostProcessor

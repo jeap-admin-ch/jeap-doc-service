@@ -21,7 +21,14 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 
+import org.springframework.core.io.ClassPathResource;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * Runs the doc service against a real PostgreSQL and a real S3-compatible object storage.
@@ -45,7 +52,7 @@ public abstract class DocServiceIntegrationTestBase {
     // Started once for the whole test JVM: the Spring context is shared between the test classes, so a container
     // managed per test class would be gone while the context still uses it.
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
-            DockerImageName.parse("postgres:17-alpine").asCompatibleSubstituteFor("postgres:17-alpine"));
+            DockerImageName.parse("postgres:18-alpine").asCompatibleSubstituteFor("postgres:18-alpine"));
 
     @SuppressWarnings("resource")
     private static final GenericContainer<?> RUST_FS = new GenericContainer<>(
@@ -77,7 +84,36 @@ public abstract class DocServiceIntegrationTestBase {
         registry.add("jeap.s3.client.access-key", () -> RUSTFS_ACCESS_KEY);
         registry.add("jeap.s3.client.secret-key", () -> RUSTFS_SECRET_KEY);
         registry.add("jeap.s3.client.tls", () -> false);
+        registry.add("jeap.doc.build.node-modules-directory", () -> installedTemplate().resolve("node_modules"));
+        registry.add("jeap.doc.build.workspace-directory", () -> installedTemplate().resolve("workspaces"));
     }
+
+    /**
+     * What the image build of an instance produces, in miniature.
+     * <p>
+     * These tests never generate a site - the build poller is set to an interval longer than the suite - but the
+     * service checks while it starts that it *could*, and that check is worth running here rather than switching
+     * off: it is what tells an instance that its image and its jar disagree. So the directory holds an empty
+     * {@code node_modules} and the lockfile of the template that is actually on the classpath, which is exactly
+     * what the check compares.
+     */
+    private static synchronized Path installedTemplate() {
+        if (installedTemplate == null) {
+            try {
+                installedTemplate = Files.createTempDirectory("jeap-doc-template");
+                Files.createDirectories(installedTemplate.resolve("node_modules"));
+                Files.createDirectories(installedTemplate.resolve("workspaces"));
+                try (InputStream lockfile = new ClassPathResource("site/package-lock.json").getInputStream()) {
+                    Files.copy(lockfile, installedTemplate.resolve("package-lock.json"));
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+        return installedTemplate;
+    }
+
+    private static Path installedTemplate;
 
     protected static JeapAuthenticationToken tokenWithRoles(SemanticApplicationRole... roles) {
         return JeapAuthenticationTestTokenBuilder.create().withUserRoles(roles).build();
@@ -96,6 +132,14 @@ public abstract class DocServiceIntegrationTestBase {
      */
     protected static SemanticApplicationRole docsRole(String operation) {
         return role(null, "docs", operation);
+    }
+
+    /**
+     * A role granting an operation on the documentation sites, independent of a single system - a site carries
+     * the documentation of every system on it, so it is not any one system's to administer.
+     */
+    protected static SemanticApplicationRole sitesRole(String operation) {
+        return role(null, "sites", operation);
     }
 
     private static SemanticApplicationRole role(String tenantSystem, String resource, String operation) {

@@ -27,6 +27,13 @@ public class DocObjectStorageProperties {
     private String uploadPrefix = "uploads";
 
     /**
+     * Prefix the generated sites are published under, which is what keeps them apart from the documentation that
+     * was uploaded. The site, the build that produced it and the file follow, e.g.
+     * {@code sites/default/42/index.html}.
+     */
+    private String sitePrefix = "sites";
+
+    /**
      * Directory the uploaded bundles are spooled to while they are transferred to the object storage. Without it
      * the temporary directory of the JVM is used.
      * <p>
@@ -36,6 +43,15 @@ public class DocObjectStorageProperties {
      * the same time.
      */
     private Path spoolDirectory;
+
+    /**
+     * How many files of a generated site are written into the bucket at a time.
+     * <p>
+     * A site is thousands of small files, so publishing it is bound by round trips: one at a time takes about
+     * as long as generating it did. Above the connection pool of the S3 client this buys nothing - it only
+     * moves the queue from the network to the pool.
+     */
+    private int publicationConcurrency = 16;
 
     /**
      * The directory the bundles are spooled to - the configured one, or the temporary directory of the JVM.

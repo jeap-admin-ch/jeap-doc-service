@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -31,7 +32,9 @@ class UploadExceptionHandlerTest {
 
     private static final String UPLOAD_ID = "8f1c9a2e-6a1a-4a5f-9a5e-2b0f9a3c1d77";
 
-    private final UploadExceptionHandler handler = new UploadExceptionHandler();
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    private final UploadExceptionHandler handler = new UploadExceptionHandler(meterRegistry);
 
     private ListAppender<ILoggingEvent> log;
 
@@ -156,4 +159,82 @@ class UploadExceptionHandlerTest {
         assertThat(problem.getProperties()).containsEntry("code", "INVALID_PARAMETER_VALUE");
         assertThat(problem.getDetail()).contains("source-timestamp").contains("OffsetDateTime");
     }
+
+    /**
+     * The counter exists for what the doc service refuses <b>before</b> it reads anything - a typo in a workflow
+     * configuration would otherwise be invisible, since nothing was timed and so nothing reached the timer.
+     */
+    @Test
+    void handleMissingParameter_thenCountedAsRejectedBeforeTheDomain() {
+        handler.handleMissingParameter(
+                new org.springframework.web.bind.MissingServletRequestParameterException("system", "String"),
+                new org.springframework.mock.web.MockHttpServletRequest());
+
+        assertThat(meterRegistry.get("jeap.doc.upload.rejected").tag("reason", "missing_parameter")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void handleTypeMismatch_thenCountedAsRejectedBeforeTheDomain() {
+        handler.handleTypeMismatch(
+                new org.springframework.web.method.annotation.MethodArgumentTypeMismatchException(
+                        "nonsense", Integer.class, "version", null, null),
+                new org.springframework.mock.web.MockHttpServletRequest());
+
+        assertThat(meterRegistry.get("jeap.doc.upload.rejected").tag("reason", "invalid_parameter_value")
+                .counter().count()).isEqualTo(1);
+    }
+
+    /**
+     * What the doc service itself timed is counted there, and counting it here as well would count one outcome
+     * twice - the same rule the logging follows.
+     */
+    @Test
+    void handleInvalidUpload_whenTheReasonCameFromTheDomain_thenNotCountedAgainHere() {
+        handler.handleInvalidUpload(
+                new InvalidUploadException(InvalidUploadException.Code.STORAGE_FAILED, "no"),
+                new org.springframework.mock.web.MockHttpServletRequest());
+
+        assertThat(meterRegistry.find("jeap.doc.upload.rejected").counter()).isNull();
+    }
+    /**
+     * An unknown site is refused by the domain, inside the block that times the upload, so the upload timer has
+     * already counted it. Counting it here as well would break the one-count-per-outcome rule that the whole
+     * split between these two meters rests on.
+     */
+    @Test
+    void handleInvalidUpload_whenTheSiteIsUnknown_thenNotCountedAgainHere() {
+        handler.handleInvalidUpload(new InvalidUploadException(InvalidUploadException.Code.UNKNOWN_SITE,
+                "no such site"), request());
+
+        assertThat(meterRegistry.find("jeap.doc.upload.rejected").counter()).isNull();
+    }
+
+    @Test
+    void handleInvalidUpload_whenTheSiteIsUnknown_thenBadRequestNamingTheCode() {
+        ProblemDetail problem = handler.handleInvalidUpload(
+                new InvalidUploadException(InvalidUploadException.Code.UNKNOWN_SITE, "no such site"), request())
+                .getBody();
+
+        assertThat(problem).isNotNull();
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+        assertThat(problem.getProperties()).containsEntry("code", "UNKNOWN_SITE");
+    }
+
+    /**
+     * The counter exists for the typo in a workflow configuration, which never reaches the domain and is
+     * therefore counted only here. Asserted from both sides, so neither half of the set can drift.
+     */
+    @ParameterizedTest
+    @CsvSource({"UNKNOWN_PARAMETER", "LENGTH_REQUIRED", "MISSING_PARAMETER", "INVALID_PARAMETER_VALUE"})
+    void handleInvalidUpload_whenTheUploadNeverReachedTheDomain_thenItIsCountedHere(String code) {
+        InvalidUploadException.Code rejected = InvalidUploadException.Code.valueOf(code);
+
+        handler.handleInvalidUpload(new InvalidUploadException(rejected, "rejected"), request());
+
+        assertThat(meterRegistry.get("jeap.doc.upload.rejected")
+                .tag("reason", code.toLowerCase(java.util.Locale.ROOT))
+                .counter().count()).isEqualTo(1.0);
+    }
+
 }

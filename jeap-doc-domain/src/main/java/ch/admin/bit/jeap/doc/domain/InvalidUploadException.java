@@ -18,6 +18,13 @@ public class InvalidUploadException extends RuntimeException {
         MISSING_PARAMETER,
         UNKNOWN_PARAMETER,
         INVALID_PARAMETER_VALUE,
+        /**
+         * The upload names a documentation site this instance does not configure. Its own code rather than an
+         * invalid parameter value, because it is the one of these the domain raises: which sites exist is
+         * configuration the web layer cannot see, so it is answered after the upload has been timed and must
+         * not also be counted as a rejection that happened before the domain.
+         */
+        UNKNOWN_SITE,
         SIZE_LIMIT_EXCEEDED,
         LENGTH_REQUIRED,
         CONTENT_LENGTH_MISMATCH,
@@ -59,6 +66,13 @@ public class InvalidUploadException extends RuntimeException {
     public static InvalidUploadException unknown(String parameter, String knownParameters) {
         return new InvalidUploadException(Code.UNKNOWN_PARAMETER,
                 "Unknown parameter '%s', expected one of: %s.".formatted(parameter, knownParameters));
+    }
+
+    public static InvalidUploadException unknownSite(String site, Object configuredSites) {
+        return new InvalidUploadException(Code.UNKNOWN_SITE,
+                ("The documentation site '%s' is not one this doc service is configured with: %s. Which sites "
+                 + "exist is configuration, so a site nobody configured is refused rather than published "
+                 + "nowhere.").formatted(site, configuredSites));
     }
 
     public static InvalidUploadException invalidValue(String parameter, String value, String expected) {

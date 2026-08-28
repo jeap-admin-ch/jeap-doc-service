@@ -1,0 +1,6 @@
+{
+  "environments": [
+    {"id": "dev", "short": "DEV", "label": "Development", "order": 1, "main": false, "latest": true},
+    {"id": "prod", "short": "PROD", "label": "Production", "order": 2, "main": true, "latest": false}
+  ]
+}

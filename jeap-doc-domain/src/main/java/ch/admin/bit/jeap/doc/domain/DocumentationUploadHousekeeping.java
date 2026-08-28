@@ -2,11 +2,12 @@ package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
 import lombok.RequiredArgsConstructor;
-import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 
 /**
@@ -31,15 +32,25 @@ public class DocumentationUploadHousekeeping {
 
     private final DocumentationUploadRepository uploadRepository;
     private final UploadProperties uploadProperties;
+    /** How long the lock of this nightly job survives an instance that dies holding it. */
+    private static final Duration HOUSEKEEPING_LEASE = Duration.ofMinutes(30);
+
     private final Clock clock;
+    private final ExclusiveWork exclusiveWork;
 
     /**
      * When this runs, and whether it runs at all, is decided by
      * {@link DocumentationUploadHousekeepingScheduling} from the configured values - there is one place that says
      * what the defaults are, and it is {@link UploadProperties.Housekeeping}.
      */
-    @SchedulerLock(name = "documentationUploadHousekeeping", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
     public void removeOldUploads() {
+        // Of several instances only one runs this. The lease is long enough that a clean-up which takes its time
+        // is not run twice, and short enough that an instance dying with the lock does not skip more than one
+        // night; it is extended while the work runs.
+        exclusiveWork.underLock("documentationUploadHousekeeping", HOUSEKEEPING_LEASE, this::removeOldUploadsNow);
+    }
+
+    private void removeOldUploadsNow() {
         Instant receivedBefore = clock.instant().minus(uploadProperties.getHousekeeping().getRetention());
         int removed = uploadRepository.deleteReceivedBefore(receivedBefore);
         if (removed > 0) {

@@ -1,0 +1,197 @@
+/*
+ * The layout of the generated documentation: type, spacing and the shape of the components.
+ *
+ * Not one colour lives here - every one of them is a token the colour schemes next door define, so that a site
+ * can pick a scheme without this file, or any later change to it, having to know which one.
+ */
+
+html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+:root {
+    --ifm-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans',
+        sans-serif;
+    --ifm-font-family-monospace: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+        monospace;
+
+    --ifm-code-font-size: 88%;
+    --ifm-line-height-base: 1.65;
+    --ifm-heading-font-weight: 650;
+    --ifm-h1-font-size: 2.1rem;
+    --ifm-spacing-horizontal: 1.25rem;
+
+    --ifm-navbar-height: 3.75rem;
+    --ifm-navbar-shadow: none;
+    --ifm-global-radius: 6px;
+
+    --ifm-toc-border-color: var(--jeap-border);
+}
+
+/* --- Navbar and footer ---------------------------------------------------------------------------------- */
+
+.navbar {
+    border-bottom: 1px solid var(--jeap-border);
+}
+
+.navbar__title {
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+.footer {
+    border-top: 1px solid var(--jeap-border);
+    --ifm-footer-background-color: var(--jeap-surface-alt);
+    --ifm-footer-color: var(--jeap-muted);
+    --ifm-footer-padding-vertical: 1.5rem;
+    font-size: 0.85rem;
+}
+
+.footer__copyright {
+    color: var(--jeap-muted);
+    font-size: 0.8125rem;
+}
+
+/* --- Sidebar -------------------------------------------------------------------------------------------- */
+
+.theme-doc-sidebar-container {
+    border-right: 1px solid var(--jeap-border) !important;
+}
+
+.menu {
+    padding: 1rem 0.75rem 3rem !important;
+    font-size: 0.875rem;
+}
+
+.menu__link {
+    border-radius: 4px;
+    line-height: 1.4;
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+    background-color: var(--jeap-accent-soft);
+    font-weight: 600;
+}
+
+.menu__list-item-collapsible:hover,
+.menu__link:hover {
+    background-color: var(--jeap-surface);
+}
+
+/* A top-level entry reads as a section title rather than as one more clickable row. */
+.menu > .menu__list > .menu__list-item > .menu__list-item-collapsible > .menu__link,
+.menu > .menu__list > .menu__list-item > .menu__link {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--jeap-muted);
+}
+
+.menu__list .menu__list {
+    border-left: 1px solid var(--jeap-border);
+    margin-left: 0.6rem;
+    padding-left: 0.35rem;
+}
+
+/* --- Content -------------------------------------------------------------------------------------------- */
+
+.markdown h1:first-child {
+    letter-spacing: -0.02em;
+    margin-bottom: 0.6rem;
+}
+
+/* A rule above every section: generated documentation is long, and the chapters have to be findable at a glance. */
+.markdown > h2 {
+    margin-top: 2.5rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--jeap-border);
+    font-size: 1.4rem;
+}
+
+.markdown > h3 {
+    margin-top: 1.9rem;
+    font-size: 1.125rem;
+}
+
+.markdown table {
+    width: 100%;
+    font-size: 0.875rem;
+    border-collapse: collapse;
+}
+
+.markdown table th,
+.markdown table td {
+    border: 1px solid var(--jeap-border);
+    padding: 0.5rem 0.7rem;
+}
+
+.markdown table thead tr {
+    border-bottom: 2px solid var(--jeap-border-strong);
+}
+
+.markdown table thead th {
+    background-color: var(--jeap-surface);
+    text-align: left;
+}
+
+.markdown blockquote {
+    border-left: 3px solid var(--jeap-border-strong);
+    background: var(--jeap-surface-alt);
+    color: var(--jeap-muted);
+    padding: 0.75rem 1rem;
+    border-radius: 0 4px 4px 0;
+}
+
+/* Wide content scrolls inside its own box rather than making the page scroll. */
+.theme-doc-markdown table {
+    display: block;
+    overflow-x: auto;
+}
+
+@media (min-width: 997px) {
+    .theme-doc-markdown table {
+        display: table;
+    }
+}
+
+.breadcrumbs {
+    font-size: 0.8125rem;
+}
+
+.breadcrumbs__item--active .breadcrumbs__link {
+    background: var(--jeap-surface);
+    font-weight: 600;
+}
+
+.pagination-nav__link {
+    border: 1px solid var(--jeap-border);
+    border-radius: var(--ifm-global-radius);
+    transition: border-color 150ms ease;
+}
+
+.pagination-nav__link:hover {
+    border-color: var(--ifm-color-primary);
+}
+
+.pagination-nav__sublabel {
+    color: var(--jeap-muted);
+}
+
+/* Diagrams are rendered in the browser from their source; they get the room they need and no more. */
+.docusaurus-mermaid-container {
+    overflow-x: auto;
+    text-align: center;
+}
+
+/* --- Keyboard ------------------------------------------------------------------------------------------- */
+
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+.menu__link:focus-visible {
+    outline: 2px solid var(--ifm-color-primary);
+    outline-offset: 2px;
+    border-radius: 3px;
+}

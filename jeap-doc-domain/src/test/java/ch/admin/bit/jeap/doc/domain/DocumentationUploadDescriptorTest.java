@@ -116,7 +116,7 @@ class DocumentationUploadDescriptorTest {
      */
     @Test
     void build_whenSiteIsMissing_thenTheDefaultSite() {
-        assertThat(systemDocs().build().site()).isEqualTo(DocumentationUploadDescriptor.DEFAULT_SITE);
+        assertThat(systemDocs().build().site()).isEqualTo(Site.DEFAULT_SITE);
         assertThat(systemDocs().build()).isEqualTo(systemDocs().site("default").build());
     }
 

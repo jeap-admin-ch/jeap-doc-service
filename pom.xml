@@ -28,25 +28,47 @@
     <parent>
         <groupId>ch.admin.bit.jeap</groupId>
         <artifactId>jeap-spring-boot-parent</artifactId>
-        <version>40.2.0</version>
+        <version>40.4.0</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
     <artifactId>jeap-doc-service</artifactId>
     <name>${project.groupId}:${project.artifactId}</name>
-    <version>0.4.0-SNAPSHOT</version>
+    <version>0.5.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <properties>
         <maven.javadoc.skip>false</maven.javadoc.skip>
         <java.version>25</java.version>
         <maven.compiler.release>25</maven.compiler.release>
+        <!-- The site generator is installed for the integration tests only, so skipping them skips it. Both
+             ways of skipping have to be covered: -Dmaven.test.skip=true leaves skipTests undefined, and it is
+             the one AGENTS.md documents. -->
+        <skipSiteInstall>${skipTests}</skipSiteInstall>
     </properties>
 
+    <profiles>
+        <profile>
+            <id>skip-site-install</id>
+            <activation>
+                <property>
+                    <name>maven.test.skip</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <skipSiteInstall>true</skipSiteInstall>
+            </properties>
+        </profile>
+    </profiles>
+
     <modules>
+        <module>jeap-doc-site</module>
         <module>jeap-doc-domain</module>
         <module>jeap-doc-persistence</module>
         <module>jeap-doc-objectstorage</module>
+        <module>jeap-doc-sitegenerator</module>
+        <module>jeap-doc-metrics</module>
         <module>jeap-doc-web</module>
         <module>jeap-doc-service-instance</module>
     </modules>
@@ -55,23 +77,38 @@
         <dependencies>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
+                <artifactId>jeap-doc-site</artifactId>
+                <version>0.5.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-domain</artifactId>
-                <version>0.4.0-SNAPSHOT</version>
+                <version>0.5.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-persistence</artifactId>
-                <version>0.4.0-SNAPSHOT</version>
+                <version>0.5.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-objectstorage</artifactId>
-                <version>0.4.0-SNAPSHOT</version>
+                <version>0.5.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.admin.bit.jeap</groupId>
+                <artifactId>jeap-doc-sitegenerator</artifactId>
+                <version>0.5.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.admin.bit.jeap</groupId>
+                <artifactId>jeap-doc-metrics</artifactId>
+                <version>0.5.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-web</artifactId>
-                <version>0.4.0-SNAPSHOT</version>
+                <version>0.5.0-SNAPSHOT</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -79,6 +116,65 @@
     <build>
         <pluginManagement>
             <plugins>
+                <!--
+                    What the integration tests need in order to build a real site, prepared the way the image of
+                    an instance prepares it: the two files npm reads are unpacked out of the jeap-doc-site jar,
+                    and npm ci installs node_modules beside them, into the module's own target directory.
+                    Declared here so that the two modules that need it - jeap-doc-sitegenerator, which runs the
+                    generator, and jeap-doc-web, which drives the result in a browser - do not each carry a copy
+                    of it. Node is a precondition of this build, like Docker.
+                -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>unpack-site-manifest</id>
+                            <phase>pre-integration-test</phase>
+                            <goals>
+                                <goal>unpack</goal>
+                            </goals>
+                            <configuration>
+                                <skip>${skipSiteInstall}</skip>
+                                <artifactItems>
+                                    <artifactItem>
+                                        <groupId>ch.admin.bit.jeap</groupId>
+                                        <artifactId>jeap-doc-site</artifactId>
+                                        <includes>site/package.json,site/package-lock.json</includes>
+                                        <outputDirectory>${project.build.directory}/site-install</outputDirectory>
+                                        <fileMappers>
+                                            <org.codehaus.plexus.components.io.filemappers.FlattenFileMapper/>
+                                        </fileMappers>
+                                    </artifactItem>
+                                </artifactItems>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>exec-maven-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>install-site-dependencies</id>
+                            <phase>pre-integration-test</phase>
+                            <goals>
+                                <goal>exec</goal>
+                            </goals>
+                            <configuration>
+                                <skip>${skipSiteInstall}</skip>
+                                <executable>npm</executable>
+                                <workingDirectory>${project.build.directory}/site-install</workingDirectory>
+                                <arguments>
+                                    <argument>ci</argument>
+                                    <argument>--omit=dev</argument>
+                                    <argument>--no-audit</argument>
+                                    <argument>--no-fund</argument>
+                                </arguments>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
                 <!-- Add license entry to jar manifest -->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

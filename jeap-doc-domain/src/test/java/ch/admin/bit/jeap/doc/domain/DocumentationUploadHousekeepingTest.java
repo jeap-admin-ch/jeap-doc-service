@@ -49,6 +49,6 @@ class DocumentationUploadHousekeepingTest {
 
     private DocumentationUploadHousekeeping housekeeping(UploadProperties properties) {
         return new DocumentationUploadHousekeeping(uploadRepository, properties,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC), new DirectExclusiveWork());
     }
 }

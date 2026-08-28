@@ -67,10 +67,25 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
     @Test
     void upload_whenSiteIsGiven_thenAccepted() throws Exception {
         Map<String, String> parameters = systemDocs();
-        parameters.put("site", "dazit");
+        parameters.put("site", "governance");
 
         mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isCreated());
+    }
+
+    /**
+     * Which sites exist is configuration. A typo in a doc workflow is refused here rather than answered with a
+     * 201 and published nowhere - the failure nobody notices, because there is nothing to see.
+     */
+    @Test
+    void upload_whenSiteIsNotConfigured_thenBadRequestNamingTheSitesThatAre() throws Exception {
+        Map<String, String> parameters = systemDocs();
+        parameters.put("site", "dazit");
+
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("dazit")))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("governance")));
     }
 
     @Test

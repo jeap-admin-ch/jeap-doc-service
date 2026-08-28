@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ch.admin.bit.jeap</groupId>
+        <artifactId>jeap-doc-service</artifactId>
+        <version>0.5.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>jeap-doc-site</artifactId>
+    <name>${project.groupId}:${project.artifactId}</name>
+    <description>
+        The Docusaurus application the doc service generates the documentation site with. It holds no Java: the
+        sources under site/ are packaged into an ordinary jar, the site generator extracts them from the
+        classpath into its build workspace, and an image build takes package.json and package-lock.json out of
+        the same jar to install node_modules.
+    </description>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <excludes>
+                    <!-- The fixture content tree is for `npm start` and for the site generator's test; the
+                         generator writes its own content/ into the workspace and must not find leftovers. -->
+                    <exclude>site/content/**</exclude>
+                    <exclude>site/node_modules/**</exclude>
+                    <exclude>site/build/**</exclude>
+                    <exclude>site/.docusaurus/**</exclude>
+                </excludes>
+            </resource>
+        </resources>
+    </build>
+
+</project>

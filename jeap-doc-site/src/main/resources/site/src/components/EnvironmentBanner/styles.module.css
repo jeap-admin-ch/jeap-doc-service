@@ -1,0 +1,22 @@
+.banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    padding: 0.45rem 1rem;
+    border-bottom: 1px solid var(--jeap-banner-border);
+    background-color: var(--jeap-banner-background);
+    color: var(--jeap-banner-color);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.code {
+    border: 1px solid var(--jeap-banner-border);
+    border-radius: 3px;
+    padding: 0.05em 0.45em 0.1em;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+}

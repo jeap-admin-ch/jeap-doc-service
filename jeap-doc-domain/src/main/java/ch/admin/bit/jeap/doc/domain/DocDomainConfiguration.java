@@ -5,7 +5,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
-import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.time.Clock;
@@ -19,10 +18,8 @@ import java.time.Clock;
 @AutoConfiguration
 @ComponentScan
 @EnableScheduling
-// Long enough that a clean-up which takes its time is not run twice, short enough that an instance dying with the
-// lock does not skip more than one night.
-@EnableSchedulerLock(defaultLockAtMostFor = "PT30M")
-@EnableConfigurationProperties(UploadProperties.class)
+@EnableConfigurationProperties({UploadProperties.class, SiteProperties.class, BuildProperties.class,
+        PublicationProperties.class})
 public class DocDomainConfiguration {
 
     /**

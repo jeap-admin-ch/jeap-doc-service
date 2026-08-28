@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
@@ -12,13 +11,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * The doc service ships its own defaults for the headers of the jEAP web config starter. They only hold if they
  * win over the defaults of the starter itself, which this test pins: the documentation the service serves is
  * self-contained, so the policy must allow no external content - not even the origin of the OAuth2 issuer, which
- * the starter adds to its own default policy.
+ * the starter adds to its own default policy. What it does have to allow is what the site generator itself
+ * emits: an inline script for the colour mode, and the diagram plugin's engine.
  */
 class SecurityHeadersIT extends DocServiceIntegrationTestBase {
 
     private static final String EXPECTED_CONTENT_SECURITY_POLICY =
-            "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
-            "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+            "default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; " +
+            "worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
     @Autowired
     private MockMvc mockMvc;
@@ -26,7 +27,26 @@ class SecurityHeadersIT extends DocServiceIntegrationTestBase {
     @Test
     void get_whenPathIsNotTheApi_thenCarriesTheContentSecurityPolicyOfTheDocService() throws Exception {
         mockMvc.perform(get("/some-documentation-page.html")
-                        .with(authentication(tokenWithRoles(docsRole("read")))))
+                )
                 .andExpect(header().string("Content-Security-Policy", EXPECTED_CONTENT_SECURITY_POLICY));
     }
+    /**
+     * The jEAP web configuration leaves `/api` prefixes and `-api` suffixes without security headers, and a
+     * documentation site is served under a path segment that only has to be a slug. The doc service pins both
+     * skip lists so that a site called `wvs-api` keeps its Content-Security-Policy - a whole site served
+     * without one is not something to discover later.
+     */
+    @Test
+    void get_whenThePathLooksLikeAnApiOfSomeSystem_thenTheSecurityHeadersAreStillThere() throws Exception {
+        mockMvc.perform(get("/wvs-api/index.html"))
+                .andExpect(header().exists("Content-Security-Policy"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"));
+    }
+
+    @Test
+    void get_whenThePathStartsWithApiButIsNotTheApi_thenTheSecurityHeadersAreStillThere() throws Exception {
+        mockMvc.perform(get("/api-gateway/index.html"))
+                .andExpect(header().exists("Content-Security-Policy"));
+    }
+
 }

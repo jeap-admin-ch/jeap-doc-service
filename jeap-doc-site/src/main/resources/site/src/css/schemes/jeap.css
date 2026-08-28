@@ -1,0 +1,80 @@
+/*
+ * The default scheme: the jEAP blue, on light neutral surfaces with subtle borders instead of shadows.
+ *
+ * A scheme defines colours and nothing else. Every token below is used by custom.css, by the environment
+ * switcher and by the environment banner - so a new scheme is this file with other values, and no other change.
+ */
+:root {
+    --ifm-color-primary: #0a5b91;
+    --ifm-color-primary-dark: #09527f;
+    --ifm-color-primary-darker: #084d78;
+    --ifm-color-primary-darkest: #063f63;
+    --ifm-color-primary-light: #0b64a3;
+    --ifm-color-primary-lighter: #0c69aa;
+    --ifm-color-primary-lightest: #0e77bf;
+
+    --ifm-color-content: #1b1f24;
+    --ifm-color-content-secondary: #55606c;
+    --ifm-heading-color: #12161a;
+    --ifm-background-color: #ffffff;
+    --ifm-background-surface-color: #ffffff;
+    --ifm-navbar-background-color: #ffffff;
+
+    --docusaurus-highlighted-code-line-bg: rgba(10, 91, 145, 0.1);
+
+    --jeap-border: #dde1e6;
+    --jeap-border-strong: #c3c9d0;
+    --jeap-surface: #f6f7f9;
+    --jeap-surface-alt: #fbfbfc;
+    --jeap-muted: #55606c;
+    --jeap-accent-soft: #eaf2f8;
+
+    /* The environment badges: the main environment reads as settled, the others as work in progress. */
+    --jeap-environment-main: #1f6f43;
+    --jeap-environment-main-bg: #ecf5f0;
+    --jeap-environment-main-border: #bcdcca;
+    --jeap-environment-other: #0a5c8a;
+    --jeap-environment-other-bg: #eaf3f9;
+    --jeap-environment-other-border: #b9d6e8;
+
+    --jeap-banner-background: #fdf3d7;
+    --jeap-banner-color: #4a3a05;
+    --jeap-banner-border: #efdda2;
+}
+
+[data-theme='dark'] {
+    --ifm-color-primary: #6bb8e8;
+    --ifm-color-primary-dark: #4aa8e2;
+    --ifm-color-primary-darker: #39a0df;
+    --ifm-color-primary-darkest: #1d84c4;
+    --ifm-color-primary-light: #8cc8ee;
+    --ifm-color-primary-lighter: #9dd0f1;
+    --ifm-color-primary-lightest: #cfe8f8;
+
+    --ifm-color-content: #dfe3e8;
+    --ifm-color-content-secondary: #a4aeb9;
+    --ifm-heading-color: #f2f4f6;
+    --ifm-background-color: #15181c;
+    --ifm-background-surface-color: #15181c;
+    --ifm-navbar-background-color: #15181c;
+
+    --docusaurus-highlighted-code-line-bg: rgba(107, 184, 232, 0.16);
+
+    --jeap-border: #2c3238;
+    --jeap-border-strong: #3d454d;
+    --jeap-surface: #1c2025;
+    --jeap-surface-alt: #191d21;
+    --jeap-muted: #a4aeb9;
+    --jeap-accent-soft: #17242e;
+
+    --jeap-environment-main: #86cea5;
+    --jeap-environment-main-bg: #16261d;
+    --jeap-environment-main-border: #2c4d39;
+    --jeap-environment-other: #7ec2e8;
+    --jeap-environment-other-bg: #14252f;
+    --jeap-environment-other-border: #2b4a5e;
+
+    --jeap-banner-background: #3d3413;
+    --jeap-banner-color: #f4e6b8;
+    --jeap-banner-border: #5c4f1d;
+}

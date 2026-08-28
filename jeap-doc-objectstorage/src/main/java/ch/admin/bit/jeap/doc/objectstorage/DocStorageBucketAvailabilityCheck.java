@@ -24,6 +24,13 @@ public class DocStorageBucketAvailabilityCheck implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() {
+        if (properties.getPublicationConcurrency() < 1) {
+            // Otherwise the site generator runs to the end and only the publication fails, once per poll, with
+            // a message from the thread pool naming neither the property nor the service.
+            throw new IllegalStateException(("jeap.doc.storage.publication-concurrency is %d; at least one file "
+                                             + "has to be written at a time.")
+                    .formatted(properties.getPublicationConcurrency()));
+        }
         String bucket = properties.getBucket();
         if (!StringUtils.hasText(bucket)) {
             throw new IllegalStateException("No object storage bucket configured, set 'jeap.doc.storage.bucket'.");

@@ -15,11 +15,13 @@ jeap:
       spool-directory: /var/doc-service/spool
 ```
 
-| Property                           | Default              | Description                                                       |
-| ---------------------------------- | -------------------- | ------------------------------------------------------------------ |
-| `jeap.doc.storage.bucket`          | -                    | Bucket holding the documentation                                  |
-| `jeap.doc.storage.upload-prefix`   | `uploads`            | Prefix the bundles of the uploads are stored under, in the bucket |
-| `jeap.doc.storage.spool-directory` | JVM temp directory   | Directory an uploaded bundle is spooled to while it is transferred |
+| Property                                   | Default            | Description                                                                                                                                                                                                          |
+|--------------------------------------------|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.storage.bucket`                  | -                  | Bucket holding the documentation                                                                                                                                                                                     |
+| `jeap.doc.storage.upload-prefix`           | `uploads`          | Prefix the bundles of the uploads are stored under, in the bucket                                                                                                                                                    |
+| `jeap.doc.storage.site-prefix`             | `sites`            | Prefix the generated sites are published under, in the bucket                                                                                                                                                        |
+| `jeap.doc.storage.spool-directory`         | JVM temp directory | Directory an uploaded bundle is spooled to while it is transferred                                                                                                                                                   |
+| `jeap.doc.storage.publication-concurrency` | `16`               | How many files of a generated site are written into the bucket at a time. A site is thousands of small files, so publishing it is bound by round trips; above the connection pool of the S3 client this buys nothing |
 
 The uploaded documentation lies under its own prefix, separately from the documentation the generator writes: an
 upload is stored as `<upload-prefix>/docs/<id>/<attempt>/bundle.zip`, where `<id>` is the identifier the doc
@@ -41,9 +43,9 @@ object storage starter.
 
 ## Uploads
 
-| Property                              | Default | Description                                                                          |
-| ------------------------------------- | ------- | -------------------------------------------------------------------------------------- |
-| `jeap.doc.upload.max-size`            | `50MB`  | Maximum size of an uploaded bundle; a larger one is rejected with `413`               |
+| Property                              | Default | Description                                                                                         |
+|---------------------------------------|---------|-----------------------------------------------------------------------------------------------------|
+| `jeap.doc.upload.max-size`            | `50MB`  | Maximum size of an uploaded bundle; a larger one is rejected with `413`                             |
 | `jeap.doc.upload.in-progress-timeout` | `PT2M`  | How long an upload may be in progress before another attempt under the same upload id takes it over |
 
 The service stops reading a bundle as soon as it exceeds the limit, so an oversized upload cannot fill its heap.
@@ -72,16 +74,189 @@ jeap:
         cron: "0 30 2 * * *"
 ```
 
-| Property                                   | Default         | Description                                                   |
-| ------------------------------------------ | --------------- | --------------------------------------------------------------- |
-| `jeap.doc.upload.housekeeping.enabled`     | `true`          | Whether old uploads are removed at all                        |
-| `jeap.doc.upload.housekeeping.retention`   | `P14D`          | How long an upload is kept after it was last received         |
-| `jeap.doc.upload.housekeeping.cron`        | `0 30 2 * * *`  | When to look, in the time zone of the service                 |
+| Property                                 | Default        | Description                                           |
+|------------------------------------------|----------------|-------------------------------------------------------|
+| `jeap.doc.upload.housekeeping.enabled`   | `true`         | Whether old uploads are removed at all                |
+| `jeap.doc.upload.housekeeping.retention` | `P14D`         | How long an upload is kept after it was last received |
+| `jeap.doc.upload.housekeeping.cron`      | `0 30 2 * * *` | When to look, in the time zone of the service         |
 
 The job removes the uploads **from the database only**, whatever state they are in; the bundles are expired by a
 lifecycle rule of the bucket, which has to be set a little longer than the retention - see
 [Uploads](uploads.md#how-an-upload-is-cleaned-up-again). Of several instances only one runs it, using a lock in
 the `shedlock` table.
+
+## Documentation sites
+
+**Which sites exist is configuration, not something the service works out from what has been uploaded.** An
+upload naming a site nobody configured is rejected: a typo in a doc workflow would otherwise produce a second
+documentation site, generated and served next to the real one, and nobody would notice.
+
+An instance that configures no site gets one called `default`, with every default value below - which is all a
+single-site instance needs. **An instance that configures named sites has a `default` site only if it names
+one**, and an upload that omits the `site` parameter targets `default` whatever else is configured - so an
+instance with named sites that expects such uploads has to configure `default` as well. Written out in full, that default site is:
+
+```yaml
+jeap:
+  doc:
+    sites:
+      default:
+        title: Documentation                   # the site id for any site but this one
+        tagline:                               # none
+        logo:                                  # the template's own mark
+        favicon:                               # the logo
+        color-scheme: jeap
+        publication-schedule: "0 5 6-20 * * *"
+        publish-on-upload: true
+        environments:
+          - id: dev
+            short-name: DEV
+            label: Development
+            order: 1
+            main: false
+            latest: true                       # documentation of what is not deployed anywhere yet
+          - id: ref
+            short-name: REF
+            label: Reference
+            order: 2
+            main: false
+            latest: false
+          - id: abn
+            short-name: ABN
+            label: Acceptance
+            order: 3
+            main: false
+            latest: false
+          - id: prod
+            short-name: PROD
+            label: Production
+            order: 4
+            main: true                         # served at the site root, and the only indexed tree
+            latest: false
+```
+
+Every one of those values is what an instance gets without writing any of them down. A second site, and a first
+one that departs from the defaults:
+
+```yaml
+jeap:
+  doc:
+    sites:
+      default:
+        title: JME Documentation
+        publication-schedule: "0 5 6-20 * * *"
+      governance:
+        title: Governance
+        tagline: How the platform is governed
+        color-scheme: neutral
+        logo: classpath:/branding/governance.svg
+        publication-schedule: "0 15 * * * *"   # refreshed hourly
+        publish-on-upload: false               # on the schedule only
+        environments:                          # this one exists on production only
+          - id: prod
+            short-name: PROD
+            label: Production
+            order: 1
+            main: true
+            latest: true
+```
+
+| Property               | Default                                                         | Description                                                                                                                                                                                                                             |
+|------------------------|-----------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `title`                | `Documentation` for the default site, the site id for any other | What the navbar, the browser tab and `llms.txt` say                                                                                                                                                                                     |
+| `tagline`              | -                                                               | One line under the title on the root page                                                                                                                                                                                               |
+| `logo`, `favicon`      | the template's                                                  | A `classpath:` or filesystem resource with the site's own mark. Without a favicon the logo is used                                                                                                                                      |
+| `color-scheme`         | `jeap`                                                          | One of the schemes the site template ships: `jeap`, `neutral`, `high-contrast`. A site does not bring its own CSS - a free-form stylesheet would make every later change to the template able to break it                               |
+| `environments`         | `dev`, `ref`, `abn`, `prod`                                     | The environments of this site, below                                                                                                                                                                                                    |
+| `publication-schedule` | `0 5 6-20 * * *`                                                | When the site is regenerated, in the time zone of the service. The default is hourly through the working day, 06:05 to 20:05. **An empty value means never on a schedule**: the site is then published only when something is uploaded to it. There is no separate enabled flag - a schedule that is not there is one that does not run |
+| `publish-on-upload`    | `true`                                                          | Whether an upload for this site asks for a build of it                                                                                                                                                                                  |
+
+The default site is served at the context root of the service, and every other site under a path segment of its
+own (`/governance/`).
+
+**A site may not be named after a path the service answers on itself**, and neither may an environment of the
+default site - both occupy a top-level path segment. Reserved: `api`, `actuator`, `swagger-ui`, `api-docs`,
+`webjars`, `error`, `assets`, `img`. An environment may not be called `default` either, which is the id the site
+generator's own documentation instance uses. All of it is checked while the service starts. A name that merely
+*ends* in `-api` is fine.
+
+### Environments
+
+An environment is a tree of the same documentation showing the state of one stage. **Exactly one environment of a
+site is `main` and exactly one is `latest`, and the service does not start otherwise.**
+
+| Property     | Default              | Description                                                                                                                                 |
+|--------------|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`         | -                    | The identifier, and the path segment the tree is served under. A slug                                                                       |
+| `short-name` | the id in upper case | What the switcher and the banner show, e.g. `DEV`                                                                                           |
+| `label`      | the id               | The name a reader sees                                                                                                                      |
+| `order`      | `0`                  | Where it appears in the switcher                                                                                                            |
+| `main`       | `false`              | **The tree served at the site root**, and the only one search engines are invited to index. Every other tree carries a banner and `noindex` |
+| `latest`     | `false`              | **Where the documentation of a component's current state goes**, before it is deployed anywhere - the fast-feedback tree                    |
+
+`main` and `latest` may be the same environment, and usually are not: `prod` is `main`, `dev` is `latest`.
+
+**A site may not be named after an environment of the default site.** Both would be served under the same
+segment, and which of them answered would depend on the order of the checks - so the service refuses to start.
+
+## Building the documentation
+
+Cross-site: one Node, one workspace root, one timeout per container, however many sites.
+
+```yaml
+jeap:
+  doc:
+    build:
+      node-command: /opt/node/bin/node
+      node-modules-directory: /opt/jeap-doc/node_modules
+      workspace-directory: /app/build
+      poll-interval: PT30S
+      lock-lease: PT2M
+      timeout: PT15M
+      max-node-memory: 1024MB
+      retention: 3
+      history-retention: P90D
+```
+
+| Property                                | Default            | Description                                                                                                                                                                                                                                                                      |
+|-----------------------------------------|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.build.node-command`           | `node`             | The Node runtime the site is generated with. **An absolute path in a container**: the child process gets an environment built from nothing, and its `PATH` is derived from this value                                                                                            |
+| `jeap.doc.build.node-modules-directory` | -                  | Where the site template's dependencies are installed - by the image build, see [The site image](site-image.md). The service does not start without them                                                                                                                          |
+| `jeap.doc.build.workspace-directory`    | JVM temp directory | Where a build works. **It belongs on storage that belongs to this container alone** - the writable layer of a task on ECS, an `emptyDir` on Kubernetes. Nothing in it has to survive a restart, and a `/tmp` that is a memory-backed tmpfs would put the build into memory       |
+| `jeap.doc.build.keep-workspace`         | `false`            | Keeps the workspace of a build instead of deleting it. For reproducing a failure, and nothing else: it is a disk leak with a purpose, and it warns while it is on                                                                                                                |
+| `jeap.doc.build.poll-interval`          | `PT30S`            | How often an instance looks whether a build has been asked for                                                                                                                                                                                                                   |
+| `jeap.doc.build.timeout`                | `PT15M`            | How long a build may take before it is given up on                                                                                                                                                                                                                               |
+| `jeap.doc.build.lock-lease`             | `PT2M`             | How long a site's build lock is leased for - and therefore **how long after an instance dies its lock survives it**. Far shorter than a build may take, because the lock is extended while the build runs. The shortest accepted is 30 seconds, checked while the service starts |
+| `jeap.doc.build.shutdown-timeout`       | `PT15S`            | How long a stopping instance may spend giving up its build. It has to stay below `spring.lifecycle.timeout-per-shutdown-phase`, and the platform's stop timeout has to be above both - see [Generation](generation.md)                                                           |
+| `jeap.doc.build.max-node-memory`        | `1024MB`           | The heap the site generator may use. It has to fit **beside** the JVM in the container                                                                                                                                                                                           |
+| `jeap.doc.build.retention`              | `3`                | How many published sites are kept per site. **At least 2**, checked while the service starts: the one being served, and the one other instances may still be serving from their publication cache                                                                                |
+| `jeap.doc.build.history-retention`      | `P90D`             | How long the record of a build is kept. **The published build of a site is kept whatever its age** - it is what says which site is served                                                                                                                                        |
+| `jeap.doc.build.history-cron`           | `0 45 2 * * *`     | When old build records are removed, in the time zone of the service                                                                                                                                                                                                              |
+
+The service **does not start** when the site template's dependencies are missing, when they were installed from a
+different `package-lock.json` than the one this version of the service carries, or when Node cannot be run - a
+configuration error of an instance belongs in its deployment rather than fifteen minutes into its first build.
+
+## Publishing and serving
+
+```yaml
+jeap:
+  doc:
+    publication:
+      url: https://doc.example.ch
+      refresh: PT10S
+```
+
+| Property                       | Default | Description                                                                                                                                                    |
+|--------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.publication.url`     | -       | The origin the documentation is published under, without a path. It is what the sitemap and the page metadata name                                             |
+| `jeap.doc.publication.refresh` | `PT10S` | How often an instance re-reads which build of a site is the published one, so it picks up what another instance published without asking the database per file |
+
+The path below the origin is derived rather than configured: it is `server.servlet.context-path`, and below it
+the site. A path that has to agree with another value is computed, not written twice.
+
+The generated sites are stored under `jeap.doc.storage.site-prefix` (`sites` by default) and are served to
+**anyone who can reach the service** - see [Security](security.md).
 
 ## Database
 
@@ -113,13 +288,22 @@ jeap:
 
 ## Defaults the service sets itself
 
-The service ships `jeapDocDefaultProperties.properties`, which an instance can override:
+The service ships `jeapDocDefaultProperties.properties`, contributed to the environment before the context is
+built - so a value read while the web server or the lifecycle processor is created sees it. **An instance that
+sets any of these itself wins**; they are defaults, not decisions.
 
-| Property                                      | Value                                     | Why                                                                                 |
-| --------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------- |
-| `jeap.web.headers.content-security-policy`    | a policy allowing only `self` and `data:` | The documentation is self-contained and loads no external content                   |
-| `jeap.web.headers.additional-content-sources` | empty                                     | The web config starter would otherwise add the OAuth2 issuer's origin to the policy |
-| `spring.jpa.open-in-view`                     | `false`                                   | jEAP guideline                                                                      |
+| Property                                      | Value                                     | Why                                                                                                                                                                                                                    |
+|-----------------------------------------------|-------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.web.headers.content-security-policy`    | a policy allowing only `self` and `data:` | The documentation is self-contained and loads no external content                                                                                                                                                      |
+| `jeap.web.headers.additional-content-sources` | empty                                     | The web config starter would otherwise add the OAuth2 issuer's origin to the policy                                                                                                                                    |
+| `jeap.web.headers.skip-path-prefixes`         | `/api/,/actuator/`                        | The starter's defaults are `/api` and `-api`, matched against the first path segment - and a documentation site is served under one. A site called `wvs-api` would otherwise be served with no security headers at all |
+| `jeap.web.headers.skip-path-suffixes`         | empty                                     | The same                                                                                                                                                                                                               |
+| `spring.jpa.open-in-view`                     | `false`                                   | jEAP guideline                                                                                                                                                                                                         |
+| `spring.task.scheduling.pool.size`            | `4`                                       | A build runs on the scheduler for as long as `jeap.doc.build.timeout` allows; with one thread it would hold the only one and stop every cron trigger beside it                                                         |
+| `spring.web.resources.add-mappings`           | `false`                                   | Spring Boot's catch-all `/**` resource handler is matched just ahead of the one that serves the documentation, and would answer for every page of it                                                                   |
+| `server.shutdown`                             | `graceful`                                | An upload is a bundle of up to 50MB; a deployment landing on one would make the client retry a transfer it had all but completed                                                                                       |
+| `spring.lifecycle.timeout-per-shutdown-phase` | `20s`                                     | Above `jeap.doc.build.shutdown-timeout`, so giving up a running build is never the phase that is cut short. **This is the number the platform's stop timeout is derived from** - see [Generation](generation.md)       |
+| `server.compression.*`                        | on, from 1KB                              | The documentation is text throughout - HTML, the bundles, `llms-full.txt` and the search index the search bar downloads whole. An instance behind a compressing CDN can turn it off                                    |
 
 ## Related
 

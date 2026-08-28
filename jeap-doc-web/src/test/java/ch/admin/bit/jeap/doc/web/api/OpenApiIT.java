@@ -30,6 +30,17 @@ class OpenApiIT extends DocServiceIntegrationTestBase {
     }
 
     @Test
+    void apiDocs_whenSwaggerIsOpen_thenDescribesTheSiteAdministration() throws Exception {
+        mockMvc.perform(get("/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/sites'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/sites/{site}'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/sites/{site}/builds'].post").exists())
+                .andExpect(jsonPath("$.paths['/api/sites/{site}/builds'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/sites/{site}/builds/{buildId}'].get").exists());
+    }
+
+    @Test
     void apiDocs_whenSwaggerIsOpen_thenNamesTheUploadParameters() throws Exception {
         mockMvc.perform(get("/api-docs"))
                 .andExpect(status().isOk())

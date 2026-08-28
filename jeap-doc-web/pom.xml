@@ -7,11 +7,18 @@
     <parent>
         <groupId>ch.admin.bit.jeap</groupId>
         <artifactId>jeap-doc-service</artifactId>
-        <version>0.4.0-SNAPSHOT</version>
+        <version>0.5.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>jeap-doc-web</artifactId>
     <name>${project.groupId}:${project.artifactId}</name>
+
+    <properties>
+        <!-- Not managed by jeap-spring-boot-parent, so the version is declared here, as
+             jeap-error-handling-service does. It has to agree with the browser in the build image: the
+             Jenkinsfile builds on bit/eclipse-temurin-node-extras:25-node-24-browsers. -->
+        <playwright.version>1.62.0</playwright.version>
+    </properties>
 
     <dependencies>
         <dependency>
@@ -25,6 +32,14 @@
         <dependency>
             <groupId>ch.admin.bit.jeap</groupId>
             <artifactId>jeap-doc-objectstorage</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-doc-sitegenerator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-doc-metrics</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -88,6 +103,29 @@
             <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <!-- drives a real browser over the site the service serves; see the browser tests in
+                 ch.admin.bit.jeap.doc.web.site.browser -->
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>${playwright.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Unpacks the site template's manifest and runs npm ci into target/site-install; configured in
+                 the parent, because jeap-doc-sitegenerator needs exactly the same install for its own tests. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

@@ -1,0 +1,82 @@
+.switcher {
+    margin-left: 0.5rem;
+}
+
+.trigger {
+    /*
+     * Infima switches pointer events off for the trigger of a dropdown that carries no href
+     * (`.navbar__item.dropdown .navbar__link:not([href])`), because its own dropdowns open on hover and their
+     * trigger is decorative - Docusaurus' own gives itself `href="#"` to escape the rule. This one is a real
+     * button and carries the handler that opens the menu, so a click has to reach it: without this the
+     * switcher opens on hover and on nothing else, which is precisely what a keyboard or a tablet does not
+     * have. `!important` because the rule above is four classes wide and restating it here would tie.
+     */
+    pointer-events: auto !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.7rem 0.25rem 0.45rem;
+    border: 1px solid var(--jeap-border-strong);
+    border-radius: 999px;
+    background: var(--ifm-background-color);
+    color: var(--ifm-color-content);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 150ms ease;
+}
+
+.trigger:hover {
+    border-color: var(--ifm-color-primary);
+}
+
+.triggerLabel {
+    color: var(--jeap-muted);
+    font-weight: 500;
+}
+
+@media (max-width: 996px) {
+    .triggerLabel {
+        display: none;
+    }
+}
+
+/*
+ * The badge of one environment. Which environments a site has is configuration, so there is no styling per
+ * name here: what the colour says is whether this is the environment served at the site root.
+ */
+.code {
+    display: inline-block;
+    padding: 0.05em 0.45em 0.1em;
+    border: 1px solid var(--jeap-environment-other-border);
+    border-radius: 3px;
+    background: var(--jeap-environment-other-bg);
+    color: var(--jeap-environment-other);
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+}
+
+.codeMain {
+    border-color: var(--jeap-environment-main-border);
+    background: var(--jeap-environment-main-bg);
+    color: var(--jeap-environment-main);
+}
+
+.option {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.8rem;
+    white-space: normal;
+}
+
+.optionLabel {
+    font-weight: 600;
+}
+
+/* The sidebar copy of the switcher: a heading over the environments, not a control. */
+.mobileHeading {
+    cursor: default;
+    font-weight: 600;
+}

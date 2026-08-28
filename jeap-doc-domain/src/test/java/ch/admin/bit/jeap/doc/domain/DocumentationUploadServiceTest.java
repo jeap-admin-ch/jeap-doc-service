@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -50,13 +51,18 @@ class DocumentationUploadServiceTest {
     private DocumentationSubjectRepository subjectRepository;
     @Mock
     private DocumentationBundleStorage bundleStorage;
+    @Mock
+    private DocumentationBuildTrigger buildTrigger;
 
     private DocumentationUploadService service;
+    private RecordingUploadMetrics metrics;
 
     @BeforeEach
     void setUp() {
+        metrics = new RecordingUploadMetrics();
         service = new DocumentationUploadService(uploadRepository, subjectRepository, bundleStorage,
-                new UploadProperties(), Clock.fixed(NOW, ZoneOffset.UTC));
+                new UploadProperties(), new DocumentationSites(new SiteProperties()), buildTrigger,
+                metrics, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     /**
@@ -244,6 +250,74 @@ class DocumentationUploadServiceTest {
                 UploadState.UPLOADING, null, null, 0, 1, NOW, null, null);
     }
 
+    /**
+     * The one line that connects the upload API to publication. Without it every uploaded document is stored
+     * and never published, and nothing anywhere says so - which is why it is asserted here rather than left to
+     * the integration tests, where the runner is deliberately not ticking.
+     */
+    @Test
+    void receive_whenTheUploadIsStored_thenABuildOfItsSiteIsAskedFor() {
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed()));
+        when(bundleStorage.store(eq(42L), eq(1), any(), anyLong())).thenReturn(STORED);
+        when(uploadRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
+
+        verify(buildTrigger).requestBecauseOfUpload(Site.DEFAULT_SITE);
+        assertThat(metrics.results).containsExactly("stored:COMPONENT_DOCS:" + BUNDLE.length);
+    }
+
+    /**
+     * A repetition writes nothing, but it does ask for a build. The request is one row per site however often
+     * it is asked for, so this costs nothing - and it is what makes a retry repair a trigger that was lost
+     * because the first attempt stored the bundle and then failed to ask for one.
+     */
+    @Test
+    void receive_whenTheUploadIsARepetition_thenNothingIsWrittenButABuildIsStillAskedFor() {
+        when(uploadRepository.findByUploadId(UPLOAD_ID))
+                .thenReturn(Optional.of(claimed().completed(STORED, BUNDLE.length, NOW)));
+
+        service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
+
+        verify(uploadRepository, never()).save(any());
+        verifyNoInteractions(bundleStorage);
+        verify(buildTrigger).requestBecauseOfUpload(Site.DEFAULT_SITE);
+        assertThat(metrics.results).containsExactly("repeated:COMPONENT_DOCS");
+    }
+
+    /**
+     * The bundle is stored and the upload recorded before the build is asked for, so a failure there must not
+     * become a 500 for an upload that worked - the client would retry, and the retry is what repairs it.
+     */
+    @Test
+    void receive_whenAskingForABuildFails_thenTheUploadIsStillAnsweredAsStored() {
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed()));
+        when(bundleStorage.store(eq(42L), eq(1), any(), anyLong())).thenReturn(STORED);
+        when(uploadRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        org.mockito.Mockito.doThrow(new IllegalStateException("the database went away"))
+                .when(buildTrigger).requestBecauseOfUpload(anyString());
+
+        UploadReceipt receipt = service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
+
+        assertThat(receipt.stored()).isTrue();
+        assertThat(metrics.results).containsExactly("stored:COMPONENT_DOCS:" + BUNDLE.length);
+    }
+
+    @Test
+    void receive_whenTheSiteIsNotConfigured_thenNoBuildIsAskedForAndItIsCountedAsARefusal() {
+        DocumentationUploadDescriptor unknownSite = descriptor().site("a-site-nobody-configured").build();
+
+        assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle(), BUNDLE.length))
+                .isInstanceOf(InvalidUploadException.class);
+
+        verify(buildTrigger, never()).requestBecauseOfUpload(anyString());
+        assertThat(metrics.results).containsExactly("failed:COMPONENT_DOCS:UNKNOWN_SITE");
+    }
+
     private static InputStream bundle() {
         return new ByteArrayInputStream(BUNDLE);
     }
@@ -261,5 +335,35 @@ class DocumentationUploadServiceTest {
                 .sourceRef("main")
                 .sourceTimestamp(Instant.parse("2026-08-21T07:12:00Z"))
                 .buildUrl("https://github.com/wvs/foo-bar-scs/actions/runs/1234567890");
+    }
+
+    /**
+     * Which sites exist is configuration. An upload naming anything else is refused rather than stored: a typo
+     * in a doc workflow would otherwise be answered with a 2xx, put a bundle in the object storage and be
+     * published nowhere - the failure nobody notices, because there is nothing to see.
+     */
+    @Test
+    void receive_whenTheSiteIsNotConfigured_thenItIsRefusedAndNothingIsStored() {
+        DocumentationUploadDescriptor unknownSite = descriptor().site("a-site-nobody-configured").build();
+
+        assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle(), BUNDLE.length))
+                .isInstanceOf(InvalidUploadException.class)
+                .extracting(failure -> ((InvalidUploadException) failure).getCode())
+                .isEqualTo(InvalidUploadException.Code.UNKNOWN_SITE);
+
+        verifyNoInteractions(bundleStorage);
+        verify(uploadRepository, never()).claim(any(), any(), any(), any(), any());
+    }
+
+    /**
+     * The message has to say what does exist, or the pipeline that made the typo has nothing to go on.
+     */
+    @Test
+    void receive_whenTheSiteIsNotConfigured_thenTheReasonNamesTheSitesThatAre() {
+        DocumentationUploadDescriptor unknownSite = descriptor().site("a-site-nobody-configured").build();
+
+        assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle(), BUNDLE.length))
+                .hasMessageContaining("a-site-nobody-configured")
+                .hasMessageContaining(Site.DEFAULT_SITE);
     }
 }

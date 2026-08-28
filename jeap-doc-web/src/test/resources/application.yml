@@ -14,8 +14,25 @@ jeap:
   swagger:
     status: OPEN
   doc:
+    # Two sites, so that the tests can tell 'the site parameter was honoured' from 'the default was used', and
+    # so that an upload naming a site nobody configured has something to be refused against.
+    sites:
+      default:
+        title: Documentation
+      governance:
+        title: Governance
     storage:
       bucket: jeap-doc-test
     upload:
       # small enough to test the limit with a bundle the test can build in memory
       max-size: 64KB
+    publication:
+      url: http://localhost
+      # No caching of which build is the published one: these tests publish a fresh site per test and one of
+      # them removes a site's objects, so a cache shared across them would answer for the previous test.
+      refresh: PT0S
+    build:
+      # These tests are about the API and about serving what has been published - they never generate a site, and
+      # the upload tests leave build requests behind. Without a poll interval longer than the suite the runner
+      # would pick one up and start a real site generator against the empty node_modules of the fixture below.
+      poll-interval: PT1H

@@ -5,7 +5,6 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.regex.Pattern;
 
 /**
  * What one upload documents, and where its documents came from.
@@ -57,14 +56,6 @@ public record DocumentationUploadDescriptor(
         String buildUrl,
         Instant generatedAt) {
 
-    /**
-     * The site documents belong to when the upload names none.
-     */
-    public static final String DEFAULT_SITE = "default";
-
-    // Possessive quantifiers: the values come from outside, and a nested repetition that can backtrack would
-    // let a long value overflow the stack of the regex engine.
-    private static final Pattern SLUG = Pattern.compile("[a-z0-9]++(?:-[a-z0-9]++)*+");
 
     private static final String COMPONENT_PARAMETER = "component";
     private static final String LIBRARY_PARAMETER = "library";
@@ -74,7 +65,7 @@ public record DocumentationUploadDescriptor(
     public DocumentationUploadDescriptor {
         // Normalized, not defaulted on reading: an upload that names no site and one that names the default site
         // are the same upload, and a retry of the one has to be recognised as a retry of the other.
-        site = StringUtils.hasText(site) ? site : DEFAULT_SITE;
+        site = StringUtils.hasText(site) ? site : Site.DEFAULT_SITE;
         // For the same reason: what is compared with a retry is what came back from the database, and PostgreSQL
         // keeps microseconds. A timestamp carrying more precision than that would come back as something else
         // than it went in, and every retry of that upload would be answered as a different upload.
@@ -151,9 +142,8 @@ public record DocumentationUploadDescriptor(
 
     private static void requireSlug(String value, String parameter) {
         requireText(value, parameter, "to identify the documentation set");
-        if (!SLUG.matcher(value).matches()) {
-            throw InvalidUploadException.invalidValue(parameter, value,
-                    "lower case letters, digits and single hyphens");
+        if (!Slugs.isSlug(value)) {
+            throw InvalidUploadException.invalidValue(parameter, value, Slugs.DESCRIPTION);
         }
     }
 
