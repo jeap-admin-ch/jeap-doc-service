@@ -23,14 +23,14 @@
     "clsx": "2.1.1",
     "docusaurus-plugin-llms": "0.5.1",
     "prism-react-renderer": "2.4.1",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "unist-util-visit": "5.1.0"
   },
   "overrides": {
     "serialize-javascript": "7.1.0",
     "docusaurus-plugin-llms": {
-      "minimatch": "9.0.9",
+      "minimatch": "10.2.6",
       "yaml": "2.9.0"
     },
     "sockjs": {
