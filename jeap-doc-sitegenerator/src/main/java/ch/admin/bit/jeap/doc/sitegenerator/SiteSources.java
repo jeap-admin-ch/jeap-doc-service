@@ -1,5 +1,11 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
+import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
+import ch.admin.bit.jeap.doc.domain.BuildProperties;
+import ch.admin.bit.jeap.doc.domain.DocumentationFacts;
+import ch.admin.bit.jeap.doc.domain.DocumentationProvenance;
+import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 
@@ -16,13 +22,13 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Writes what a documentation site contains, into the content directory of a build workspace.
@@ -70,34 +76,58 @@ public class SiteSources {
      */
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /**
-     * How a generated timestamp is written where a person reads it - the footer of every page and the row on
-     * the root page. An {@code Instant} prints as {@code 2026-08-28T08:05:02.085482247Z}, which says the same
-     * thing and says it to a machine.
-     * <p>
-     * The display form is the service's own local time, which is what the instances are configured with - the
-     * same zone the publication schedules are evaluated in, and the one the configuration documents them as
-     * using. Whoever needs the instant reads {@code generatedAt} from {@code site.json}, which stays ISO-8601.
-     */
-    private static final DateTimeFormatter GENERATED_AT_DISPLAY =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
-
     private final SiteUrls urls;
     private final ResourceLoader resourceLoader;
 
+    /** Writes the systems. This class writes the site-level files, and templates write the rest. */
+    private final SystemPages systemPages;
+
+    /** All the sites this instance serves, so the footer of one can link to the others. */
+    private final DocumentationSites sites;
+
     /**
-     * Writes the site into the given content directory.
+     * What the build is configured to do, for the settings the site template has to know about - the worker
+     * threads of the static generation. It travels in {@code site.json} rather than in the child's environment,
+     * which is built from nothing on purpose.
      */
-    public void write(Site site, Path contentDirectory, Instant generatedAt) throws IOException {
+    private final BuildProperties buildProperties;
+
+    /** What the service may say about itself, and the page that says it. */
+    private final DocumentationProvenance provenance;
+
+    private final AboutThisDocumentation aboutThisDocumentation;
+
+    /**
+     * Writes the site into the given content directory, and answers what each environment's architecture model
+     * contributed - only the environments that read one, because one that reads none has nothing to say about
+     * that, and a zero would say the landscape is empty.
+     */
+    public Map<String, EnvironmentModel> write(long buildId, Site site, Path contentDirectory,
+                                               Instant generatedAt) throws IOException {
         Files.createDirectories(contentDirectory);
         writeJson(contentDirectory, "environments.json", environmentsOf(site));
-        writeJson(contentDirectory, "site.json", descriptionOf(site, generatedAt));
         writeBranding(site, contentDirectory);
+        boolean mainHasSystems = false;
+        Map<String, EnvironmentModel> models = new LinkedHashMap<>();
         for (SiteEnvironment environment : site.environments()) {
-            writeRootPage(site, environment, contentDirectory, generatedAt);
+            Path directory = contentDirectory.resolve(environment.id());
+            // The systems first, so the root page can say whether there are any.
+            Optional<EnvironmentModel> model = systemPages.write(site, environment, directory, generatedAt);
+            writeRootPage(site, environment, contentDirectory, generatedAt, model);
+            model.ifPresent(counts -> models.put(environment.id(), counts));
+            if (environment.main() && model.map(EnvironmentModel::systems).orElse(0) > 0) {
+                mainHasSystems = true;
+            }
         }
+        // After the loop, because the page prints what every environment's model contributed and the loop is
+        // what counted it. One page per tree - see AboutThisDocumentation.
+        writeAboutThisDocumentation(buildId, site, contentDirectory, generatedAt, models);
+        // Last, because it records whether the main environment has a systems page: the footer links to it,
+        // and a link to a page that was not written fails the whole build.
+        writeJson(contentDirectory, "site.json", descriptionOf(site, generatedAt, mainHasSystems));
         log.debug("Wrote the sources of the site {} with {} environments into {}.",
                 site.id(), site.environments().size(), contentDirectory);
+        return models;
     }
 
     /**
@@ -124,7 +154,7 @@ public class SiteSources {
      * What the site is, as the site generator reads it - including where it is published, which the generated
      * site needs for its sitemap and its metadata.
      */
-    private Map<String, Object> descriptionOf(Site site, Instant generatedAt) {
+    private Map<String, Object> descriptionOf(Site site, Instant generatedAt, boolean mainHasSystems) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", site.id());
         values.put("title", site.title());
@@ -133,14 +163,38 @@ public class SiteSources {
         values.put(LOGO, brandingUrlOf(site.logo(), LOGO));
         // A site that names a logo but no favicon uses the logo as both, and only one file is written - so the
         // favicon has to point at that file rather than at a name nothing wrote.
-        values.put(FAVICON, java.util.Objects.equals(site.favicon(), site.logo())
+        values.put(FAVICON, Objects.equals(site.favicon(), site.logo())
                 ? brandingUrlOf(site.logo(), LOGO)
                 : brandingUrlOf(site.favicon(), FAVICON));
         values.put("url", urls.url());
         values.put("baseUrl", urls.baseUrl(site));
+        // Whether /systems/ exists in the main environment, so the footer links to it only when it does.
+        values.put("hasSystems", mainHasSystems);
+        // Whether the static generation may use a pool of worker threads - a memory decision, made by the
+        // service and read by the template, because Docusaurus has no environment variable for it.
+        values.put("ssgWorkerThreads", buildProperties.isSsgWorkerThreads());
+        values.put("sites", siblingSites());
         values.put("generatedAt", generatedAt.toString());
-        values.put("generatedAtDisplay", GENERATED_AT_DISPLAY.format(generatedAt));
+        values.put("generatedAtDisplay", DisplayTime.of(generatedAt));
         return values;
+    }
+
+    /**
+     * Every site this instance serves, with its title and its absolute URL, for the footer's Sites group -
+     * including the current one, so the group reads as a complete list rather than "the others". The URL is
+     * absolute because a link from one site to another crosses base URLs - each site is its own Docusaurus
+     * application. The footer shows the group only when there is more than one site.
+     */
+    private List<Map<String, Object>> siblingSites() {
+        return sites.all().stream()
+                .map(other -> {
+                    Map<String, Object> values = new LinkedHashMap<>();
+                    values.put("id", other.id());
+                    values.put("title", other.title());
+                    values.put("url", urls.url() + urls.baseUrl(other));
+                    return values;
+                })
+                .toList();
     }
 
     /**
@@ -194,11 +248,37 @@ public class SiteSources {
     }
 
     /**
+     * The page describing the documentation, into every environment tree of the site.
+     * <p>
+     * <b>There is no graceful path here.</b> The root page and the footer of the template both link the page,
+     * and the site is built with {@code onBrokenLinks: 'throw'} - so a run that left it out would fail anyway,
+     * later and with a message about a link rather than about the facts. The facts are absent only for a site
+     * that is not configured, and only a configured site is ever built, so this says what went wrong instead of
+     * pretending to carry on.
+     */
+    private void writeAboutThisDocumentation(long buildId, Site site, Path contentDirectory,
+                                             Instant generatedAt, Map<String, EnvironmentModel> models)
+            throws IOException {
+        DocumentationFacts facts = provenance.of(site.id(), DocServiceVersion.get(), generatedAt)
+                .orElseThrow(() -> new SiteBuildException(
+                        "The site %s is being built and is not configured, so the page describing the "
+                        .formatted(site.id())
+                        + "documentation cannot be written - and the root page links it."));
+        // Where the numbers of this build are published: the origin, the base URL of this site, and the file
+        // the run writes beside the site once it knows them.
+        String statusUrl = urls.url() + urls.baseUrl(site) + AboutThisDocumentation.STATUS_FILE;
+        for (SiteEnvironment environment : site.environments()) {
+            aboutThisDocumentation.write(facts, environment, models, buildId, statusUrl,
+                    contentDirectory.resolve(environment.id()));
+        }
+    }
+
+    /**
      * The one page this story generates: what this documentation is, which site and which environment it is,
      * and when it was generated. Every further page is the business of the stories that generate content.
      */
-    private void writeRootPage(Site site, SiteEnvironment environment, Path contentDirectory, Instant generatedAt)
-            throws IOException {
+    private void writeRootPage(Site site, SiteEnvironment environment, Path contentDirectory,
+                               Instant generatedAt, Optional<EnvironmentModel> model) throws IOException {
         Path directory = contentDirectory.resolve(environment.id());
         Files.createDirectories(directory);
         String page = ROOT_PAGE_TEMPLATE
@@ -213,7 +293,13 @@ public class SiteSources {
                 .replace("{{environmentLabel}}", MarkdownText.escaped(environment.label()))
                 .replace("{{environmentId}}", environment.id())
                 .replace("{{siteId}}", site.id())
-                .replace("{{generatedAt}}", GENERATED_AT_DISPLAY.format(generatedAt))
+                .replace("{{contents}}", contentsOf(model))
+                .replace("{{systemsRow}}", systemsRowOf(model))
+                .replace("{{generatedAt}}", DisplayTime.of(generatedAt))
+                // Front matter, so YAML scalars: an environment id is a slug and an instant is safe either
+                // way, and quoting them is what keeps that true of a value somebody changes later.
+                .replace("{{environmentIdScalar}}", JSON.writeValueAsString(environment.id()))
+                .replace("{{generatedAtScalar}}", JSON.writeValueAsString(generatedAt.toString()))
                 // The front matter is YAML, and a title is free text: 'jEAP: Documentation' or one starting
                 // with # or [ would be invalid front matter, and the build would fail minutes later with a
                 // js-yaml message naming neither the property nor the site. A JSON string is a valid YAML
@@ -224,6 +310,27 @@ public class SiteSources {
                 // replacement follows it, and the browser tab would show the tagline instead of the title.
                 .replace("{{titleScalar}}", JSON.writeValueAsString(site.title()));
         Files.writeString(directory.resolve("index.md"), page, StandardCharsets.UTF_8);
+    }
+
+    /** What the root page says about this tree: where to start, or that nothing has been published yet. */
+    private static String contentsOf(Optional<EnvironmentModel> model) {
+        if (model.map(EnvironmentModel::systems).orElse(0) == 0) {
+            return "Nothing has been published into it yet: the documentation of the systems, their components "
+                   + "and their libraries arrives as the pipelines of those repositories upload it, and as the "
+                   + "architecture model is read.";
+        }
+        return "Start at [Systems](/systems/), which lists every system of the landscape with its components, "
+               + "its events and its commands.";
+    }
+
+    /**
+     * The row counting the systems, or no row at all.
+     * <p>
+     * An environment that reads no architecture model knows nothing about how many systems there are. A zero
+     * would say the landscape is empty rather than that it was never looked at.
+     */
+    private static String systemsRowOf(Optional<EnvironmentModel> model) {
+        return model.map(counts -> "| Systems | " + counts.systems() + " |\n").orElse("");
     }
 
     /**

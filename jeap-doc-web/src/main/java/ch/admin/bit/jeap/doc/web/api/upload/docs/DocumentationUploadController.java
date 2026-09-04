@@ -1,11 +1,11 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
-import ch.admin.bit.jeap.doc.domain.DocumentationUploadDescriptor;
-import ch.admin.bit.jeap.doc.domain.DocumentationUploadService;
-import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
-import ch.admin.bit.jeap.doc.domain.UploadProperties;
-import ch.admin.bit.jeap.doc.domain.UploadReceipt;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadService;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
+import ch.admin.bit.jeap.doc.domain.upload.UploadReceipt;
 import ch.admin.bit.jeap.doc.web.api.Roles;
 import ch.admin.bit.jeap.doc.web.api.upload.UploadBodies;
 import ch.admin.bit.jeap.doc.web.api.upload.UploadPaths;

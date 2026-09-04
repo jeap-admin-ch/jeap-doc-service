@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.ComponentScan;
 
 /**
@@ -12,5 +13,6 @@ import org.springframework.context.annotation.ComponentScan;
  */
 @AutoConfiguration
 @ComponentScan
+@EnableConfigurationProperties(GeneratorProperties.class)
 public class DocSiteGeneratorConfiguration {
 }

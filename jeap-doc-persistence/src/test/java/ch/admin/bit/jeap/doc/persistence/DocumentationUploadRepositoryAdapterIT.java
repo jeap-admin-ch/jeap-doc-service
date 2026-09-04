@@ -1,12 +1,12 @@
 package ch.admin.bit.jeap.doc.persistence;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationSubject;
-import ch.admin.bit.jeap.doc.domain.DocumentationType;
-import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
-import ch.admin.bit.jeap.doc.domain.DocumentationUploadDescriptor;
-import ch.admin.bit.jeap.doc.domain.SourceFormat;
-import ch.admin.bit.jeap.doc.domain.SubjectKind;
-import ch.admin.bit.jeap.doc.domain.UploadState;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationSubject;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
+import ch.admin.bit.jeap.doc.domain.upload.UploadState;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationSubjectRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
@@ -190,7 +190,7 @@ class DocumentationUploadRepositoryAdapterIT extends PostgresTestContainerBase {
     @Test
     void findOrCreate_whenTheSubjectIsRequestedTwice_thenCreatedOnce() {
         DocumentationSubject subject = new DocumentationSubject(null, "default", SubjectKind.SYSTEM,
-                "wvs-" + UUID.randomUUID().toString().substring(0, 8), null, null);
+                "orders-" + UUID.randomUUID().toString().substring(0, 8), null, null);
 
         DocumentationSubject created = subjects.findOrCreate(subject, NOW);
         DocumentationSubject foundAgain = subjects.findOrCreate(subject, NOW.plusSeconds(60));
@@ -229,15 +229,15 @@ class DocumentationUploadRepositoryAdapterIT extends PostgresTestContainerBase {
     private static DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder descriptor() {
         return DocumentationUploadDescriptor.builder()
                 .type(DocumentationType.COMPONENT_DOCS)
-                .system("wvs")
+                .system("orders")
                 .component("foo-bar-scs")
                 .version("1.4.0")
                 .template("arc42")
                 .sourceFormat(SourceFormat.MARKDOWN)
-                .sourceRepository("ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git")
+                .sourceRepository("ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git")
                 .sourceRevision("9a1c2f8")
                 .sourceRef("main")
                 .sourceTimestamp(Instant.parse("2026-08-21T07:12:00Z"))
-                .buildUrl("https://github.com/wvs/foo-bar-scs/actions/runs/1234567890");
+                .buildUrl("https://github.com/orders/foo-bar-scs/actions/runs/1234567890");
     }
 }

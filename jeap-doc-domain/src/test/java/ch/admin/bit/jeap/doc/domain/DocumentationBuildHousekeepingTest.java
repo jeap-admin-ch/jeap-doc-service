@@ -80,6 +80,6 @@ class DocumentationBuildHousekeepingTest {
 
     private static DocumentationBuild build(long id) {
         return new DocumentationBuild(id, Site.DEFAULT_SITE, BuildTrigger.SCHEDULE, BuildState.SUCCEEDED,
-                NOW, NOW, "test", "default/" + id, 1, 1, 1, null);
+                NOW, NOW, "test", "default/" + id, 1, 1, 1, null, null);
     }
 }

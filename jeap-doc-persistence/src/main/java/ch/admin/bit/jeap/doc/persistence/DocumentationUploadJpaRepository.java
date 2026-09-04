@@ -3,7 +3,7 @@ package ch.admin.bit.jeap.doc.persistence;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
-import ch.admin.bit.jeap.doc.domain.UploadState;
+import ch.admin.bit.jeap.doc.domain.upload.UploadState;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,14 +54,14 @@ interface DocumentationUploadJpaRepository extends JpaRepository<DocumentationUp
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             update DocumentationUploadEntity u
-               set u.state = ch.admin.bit.jeap.doc.domain.UploadState.UPLOADING,
+               set u.state = ch.admin.bit.jeap.doc.domain.upload.UploadState.UPLOADING,
                    u.attempt = u.attempt + 1,
                    u.receivedAt = :now,
                    u.completedAt = null,
                    u.failureReason = null
              where u.uploadId = :uploadId
-               and (u.state = ch.admin.bit.jeap.doc.domain.UploadState.FAILED
-                    or (u.state = ch.admin.bit.jeap.doc.domain.UploadState.UPLOADING and u.receivedAt < :staleBefore))
+               and (u.state = ch.admin.bit.jeap.doc.domain.upload.UploadState.FAILED
+                    or (u.state = ch.admin.bit.jeap.doc.domain.upload.UploadState.UPLOADING and u.receivedAt < :staleBefore))
             """)
     int claim(@Param("uploadId") UUID uploadId, @Param("now") Instant now, @Param("staleBefore") Instant staleBefore);
 }

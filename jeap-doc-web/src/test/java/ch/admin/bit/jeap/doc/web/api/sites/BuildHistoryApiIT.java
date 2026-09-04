@@ -77,7 +77,7 @@ class BuildHistoryApiIT extends DocServiceIntegrationTestBase {
     void build_thenTheOneBuildWithWhatWentWrongWithIt() throws Exception {
         Instant now = Instant.now();
         DocumentationBuild build = builds.start(SITE, BuildTrigger.MANUAL, INSTANCE, now);
-        builds.failed(build.id(), "Docusaurus exited with 1", now.plusSeconds(11));
+        builds.failed(build.id(), "Docusaurus exited with 1", null, now.plusSeconds(11));
 
         mockMvc.perform(get(SiteApiPaths.BUILDS + "/{buildId}", SITE, build.id()).with(readRole()))
                 .andExpect(status().isOk())
@@ -132,7 +132,7 @@ class BuildHistoryApiIT extends DocServiceIntegrationTestBase {
     private DocumentationBuild finished(BuildTrigger trigger) {
         Instant now = Instant.now();
         DocumentationBuild build = builds.start(SITE, trigger, INSTANCE, now);
-        builds.succeeded(build.id(), SITE + "/" + build.id(), 3, 512, 100, now.plusSeconds(5));
+        builds.succeeded(build.id(), SITE + "/" + build.id(), 3, 512, 100, null, now.plusSeconds(5));
         return build;
     }
 

@@ -1,10 +1,16 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
+import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
+import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
+import ch.admin.bit.jeap.doc.sitegenerator.GeneratorProperties;
+import ch.admin.bit.jeap.doc.sitegenerator.SystemPages;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
@@ -44,6 +50,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -257,7 +264,7 @@ public abstract class SiteBrowserTestBase extends DocServiceIntegrationTestBase 
 
     private void recordAsPublished(DocumentationBuild build) {
         builds.succeeded(build.id(), publishedPrefix, builtSite.pageCount(), builtSite.sizeInBytes(),
-                builtSite.docusaurusMillis(), Instant.now());
+                builtSite.docusaurusMillis(), null, Instant.now());
     }
 
     /**
@@ -284,6 +291,116 @@ public abstract class SiteBrowserTestBase extends DocServiceIntegrationTestBase 
         }
     }
 
+    /**
+     * These tests drive the site template in a browser, not the documentation in it: they build a site with the
+     * pages they need and nothing else. What a real build reads from the architecture repository is covered by
+     * {@code DocumentationGenerationIT}.
+     */
+    private SystemPages withoutSystemPages() {
+        return new SystemPages(withoutArchitectureModel(), withoutMessageSchemas(), new StructureTemplates(List.of()), new GeneratorProperties(),
+                new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
+                BuildMetrics.NONE, urls);
+    }
+
+    /** An instance whose message schemas have never been replicated - these tests are not about them. */
+    private static ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository withoutMessageSchemas() {
+        return new ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository() {
+
+            // Throwing, not answering "none": this site configures no architecture repository, so
+            // SystemPages.write returns before it asks - and a stub that answers quietly would let a change
+            // that made it ask look like a landscape with no schemas rather than like a test to rewrite.
+            @Override
+            public java.util.List<ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef> findRefs(
+                    String environment) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public java.util.List<ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas> findAll(
+                    String environment, String system) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public void store(ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas schemas) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public void confirm(String environment, String system, String message, String version,
+                                java.time.Instant checkedAt) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public void remove(java.util.Collection<
+                    ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef> versions) {
+                throw new UnsupportedOperationException();
+            }
+        };
+    }
+
+    /** An instance with no architecture repository configured, which is a legitimate one. */
+    private static ArchitectureModelSource withoutArchitectureModel() {
+        return new ArchitectureModelSource() {
+
+            @Override
+            public boolean isConfiguredFor(String environment) {
+                return false;
+            }
+
+            @Override
+            public Optional<String> sourceUrlOf(String environment) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
+                return Optional.empty();
+            }
+
+            @Override
+            public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(String environment) {
+                return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot.empty();
+            }
+        };
+    }
+
+    /**
+     * The publishable facts, for a suite that builds one real site per JVM. The imports have never run here,
+     * which is what a fresh instance looks like, and the page describing the documentation is written all the
+     * same - these tests are what prove it renders.
+     */
+    private static ch.admin.bit.jeap.doc.domain.DocumentationProvenance provenance() {
+        return new ch.admin.bit.jeap.doc.domain.DocumentationProvenance(
+                new DocumentationSites(new SiteProperties()), new NeverImported(),
+                withoutArchitectureModel(),
+                new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
+                new BuildProperties(), new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
+                java.time.Clock.systemDefaultZone());
+    }
+
+    /** An instance whose architecture imports have never run. */
+    private static final class NeverImported
+            implements ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository {
+
+        @Override
+        public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState state(
+                String environment, ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind) {
+            return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState.none(environment, kind);
+        }
+
+        @Override
+        public java.util.List<ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState> states() {
+            return java.util.List.of();
+        }
+
+        @Override
+        public void save(ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState state) {
+            // nothing: this suite never imports
+        }
+    }
+
     private BuiltSite buildTheSite(Site site) {
         BuildProperties properties = new BuildProperties();
         properties.setNodeModulesDirectory(NODE_MODULES);
@@ -293,17 +410,33 @@ public abstract class SiteBrowserTestBase extends DocServiceIntegrationTestBase 
             throw new UncheckedIOException(e);
         }
         properties.setWorkspaceDirectory(workspaceRoot);
-        SiteSources sources = new SiteSources(urls, new DefaultResourceLoader()) {
+        SiteSources sources = new SiteSources(urls, new DefaultResourceLoader(), withoutSystemPages(),
+                new DocumentationSites(new SiteProperties()), properties, provenance(),
+                new ch.admin.bit.jeap.doc.sitegenerator.AboutThisDocumentation()) {
             @Override
-            public void write(Site written, Path content, Instant generatedAt) throws IOException {
-                super.write(written, content, generatedAt);
+            public Map<String, ch.admin.bit.jeap.doc.sitegenerator.EnvironmentModel> write(
+                    long buildId, Site written, Path content, Instant generatedAt) throws IOException {
+                Map<String, ch.admin.bit.jeap.doc.sitegenerator.EnvironmentModel> models =
+                        super.write(buildId, written, content, generatedAt);
                 for (SiteEnvironment environment : written.environments()) {
                     writeGuidePage(content.resolve(environment.id()), environment);
                 }
+                return models;
             }
         };
-        return new DocusaurusSiteBuilder(properties, new BuildWorkspaces(properties), new SiteTemplate(),
-                new NodeProcess(properties), sources).generate(1, site, GENERATED_AT);
+        DocusaurusSiteBuilder builder = new DocusaurusSiteBuilder(properties, new BuildWorkspaces(properties),
+                new SiteTemplate(), new NodeProcess(properties), sources);
+        BuiltSite built = builder.generate(1, site, GENERATED_AT);
+        // What a run cost, as the runner writes it at the seam between the generator and the upload. Without
+        // it the page describing the documentation has nothing to fetch, and these tests are what prove the
+        // fetching works at all - under the site's own Content-Security-Policy, in a real browser.
+        // Through of(...), which is what DocumentationBuildRunner calls: built positionally, this fixture
+        // would keep compiling through a reordering of two same-typed components and quietly change what
+        // SiteServingBrowserIT asserts the page shows.
+        builder.describeRun(built, ch.admin.bit.jeap.doc.domain.port.DocumentationStatus.of(1L, GENERATED_AT,
+                92_000L, built, new ch.admin.bit.jeap.doc.domain.port.ContainerMemory.Peak(
+                        11L * 1024 * 1024 * 1024, 16L * 1024 * 1024 * 1024, true)));
+        return built;
     }
 
     /**
@@ -323,6 +456,27 @@ public abstract class SiteBrowserTestBase extends DocServiceIntegrationTestBase 
      * hit can be told from its neighbours, and a diagram fence, so that the plugin rendering it has something
      * to render.
      */
+    /**
+     * The PlantUML the generator writes, in the syntax it writes it.
+     * <p>
+     * The generator's own tests assert that it emits these constructs; nothing there says PlantUML accepts
+     * them. A diagram that does not parse renders as an error box in the reader's browser and the site build
+     * does not notice, so the constructs are rendered here for real: the package block of a whitebox view, a
+     * box that is bolded and linked at once, the dotted arrow of a REST call, and a label carrying the escaped
+     * line break that several messages on one arrow produce.
+     */
+    private static final String GENERATED_DIAGRAM = """
+            @startuml
+            left to right direction
+            package "orders" {
+              component "orders-intake" as c_orders_intake [[/guide/]]
+              component "orders-risk" as c_orders_risk [[/guide/]]
+            }
+            component "shipping" as c_shipping [[/guide/]] #line.bold
+            c_orders_intake --> c_orders_risk : OrdersPaymentAcceptedEvent\\nOrdersPaymentRejectedEvent
+            c_orders_intake ..> c_shipping : GET /api/shipments
+            @enduml""";
+
     private static void writeGuidePage(Path environmentTree, SiteEnvironment environment) throws IOException {
         Files.writeString(environmentTree.resolve(GUIDE_ROUTE + ".md"), """
                 # The upload guide
@@ -332,12 +486,9 @@ public abstract class SiteBrowserTestBase extends DocServiceIntegrationTestBase 
                 %s
 
                 ```plantuml
-                @startuml
-                component "pipeline" as pipeline
-                component "jeap-doc-service" as doc
-                pipeline --> doc : uploads
-                @enduml
+                %s
                 ```
-                """.formatted(SEARCHABLE_TERM, guideMarkerOf(environment)), StandardCharsets.UTF_8);
+                """.formatted(SEARCHABLE_TERM, guideMarkerOf(environment), GENERATED_DIAGRAM),
+                StandardCharsets.UTF_8);
     }
 }

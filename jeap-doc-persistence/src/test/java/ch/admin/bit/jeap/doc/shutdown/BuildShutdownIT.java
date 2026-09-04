@@ -1,5 +1,10 @@
 package ch.admin.bit.jeap.doc.shutdown;
 
+import ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef;
+import ch.admin.bit.jeap.doc.domain.port.MessageSchemaUpstream;
+import ch.admin.bit.jeap.doc.domain.port.SchemaFetch;
+
+import java.util.List;
 import ch.admin.bit.jeap.doc.persistence.DocPostgresTestContainer;
 
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildRunner;
@@ -153,55 +158,37 @@ class BuildShutdownIT {
 
         /**
          * The meters are not what is under test, and the metrics adapter is not on this module's classpath -
-         * the domain asks for its ports, so a pair that says nothing is exactly enough.
+         * the domain asks for its ports, so a set that says nothing is exactly enough. The container's memory
+         * is read by that adapter too, and it is no more under test here than the meters are.
          */
         @Bean
         ch.admin.bit.jeap.doc.domain.port.BuildMetrics buildMetrics() {
-            return new ch.admin.bit.jeap.doc.domain.port.BuildMetrics() {
-                @Override
-                public void succeeded(String site, ch.admin.bit.jeap.doc.domain.BuildTrigger trigger,
-                                      java.time.Duration duration,
-                                      ch.admin.bit.jeap.doc.domain.port.BuiltSite generated) {
-                    // Nothing is measured here.
-                }
+            return ch.admin.bit.jeap.doc.domain.port.BuildMetrics.NONE;
+        }
 
-                @Override
-                public void failed(String site, ch.admin.bit.jeap.doc.domain.BuildTrigger trigger,
-                                   java.time.Duration duration) {
-                    // Nothing is measured here.
-                }
-
-                @Override
-                public void aborted(String site, ch.admin.bit.jeap.doc.domain.BuildTrigger trigger,
-                                    java.time.Duration duration) {
-                    // Nothing is measured here.
-                }
-
-                @Override
-                public void abandoned(String site, int count) {
-                    // Nothing is measured here.
-                }
-            };
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.ContainerMemory containerMemory() {
+            return ch.admin.bit.jeap.doc.domain.port.ContainerMemory.NONE;
         }
 
         @Bean
         ch.admin.bit.jeap.doc.domain.port.UploadMetrics uploadMetrics() {
             return new ch.admin.bit.jeap.doc.domain.port.UploadMetrics() {
                 @Override
-                public void stored(ch.admin.bit.jeap.doc.domain.DocumentationType type, long sizeInBytes,
+                public void stored(ch.admin.bit.jeap.doc.domain.upload.DocumentationType type, long sizeInBytes,
                                    java.time.Duration duration) {
                     // Nothing is measured here.
                 }
 
                 @Override
-                public void repeated(ch.admin.bit.jeap.doc.domain.DocumentationType type,
+                public void repeated(ch.admin.bit.jeap.doc.domain.upload.DocumentationType type,
                                      java.time.Duration duration) {
                     // Nothing is measured here.
                 }
 
                 @Override
-                public void failed(ch.admin.bit.jeap.doc.domain.DocumentationType type,
-                                   ch.admin.bit.jeap.doc.domain.InvalidUploadException.Code reason,
+                public void failed(ch.admin.bit.jeap.doc.domain.upload.DocumentationType type,
+                                   ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException.Code reason,
                                    java.time.Duration duration) {
                     // Nothing is measured here.
                 }
@@ -211,6 +198,90 @@ class BuildShutdownIT {
         @Bean
         BlockingSiteBuilder blockingSiteBuilder() {
             return new BlockingSiteBuilder();
+        }
+
+        /**
+         * No architecture repository: the client of it is not on this module's classpath, and what a build
+         * does with an imported model is not what is under test. An instance with no environment configured
+         * behaves exactly like this, so it is also a shape that really occurs.
+         */
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream architectureModelUpstream() {
+            return new ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream() {
+
+                @Override
+                public java.util.Set<String> environments() {
+                    return java.util.Set.of();
+                }
+
+                @Override
+                public java.util.Optional<String> urlOf(String environment) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public java.util.List<String> systemNames(String environment) {
+                    return java.util.List.of();
+                }
+
+                @Override
+                public java.util.Optional<ch.admin.bit.jeap.doc.domain.architecture.SystemTopology> topology(
+                        String environment, String system) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public java.util.Optional<java.util.List<
+                        ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage>> messages(
+                        String environment, String system) {
+                    return java.util.Optional.empty();
+                }
+            };
+        }
+
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactUpstream architectureArtifactUpstream() {
+            return new ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactUpstream() {
+
+                @Override
+                public java.util.Optional<ch.admin.bit.jeap.doc.domain.port.Fetched<java.util.List<
+                        ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactRef>>> index(
+                        String environment,
+                        ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind,
+                        String knownIndexEtag) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public ch.admin.bit.jeap.doc.domain.port.ArtifactFetch content(
+                        String environment,
+                        ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactRef entry,
+                        String knownEtag) {
+                    return ch.admin.bit.jeap.doc.domain.port.ArtifactFetch.skipped("nothing is served here");
+                }
+            };
+        }
+
+        /** The fourth import kind needs an upstream too; this context serves nothing from any of them. */
+        @Bean
+        MessageSchemaUpstream messageSchemaUpstream() {
+            return new MessageSchemaUpstream() {
+
+                @Override
+                public List<MessageVersionRef> index(String environment) {
+                    return List.of();
+                }
+
+                @Override
+                public SchemaFetch version(String environment, MessageVersionRef ref, String knownEtag) {
+                    return SchemaFetch.skipped("nothing is served here");
+                }
+            };
+        }
+
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics architectureImportMetrics() {
+            return ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics.NONE;
         }
 
         /** The publication is not what is under test here, and S3 is not part of this module's tests. */
@@ -244,6 +315,12 @@ class BuildShutdownIT {
     /** Blocks the way a real Docusaurus build blocks, and ends when it is given up on. */
     static class BlockingSiteBuilder implements SiteBuilder {
 
+        @Override
+        public void describeRun(ch.admin.bit.jeap.doc.domain.port.BuiltSite generated,
+                                ch.admin.bit.jeap.doc.domain.port.DocumentationStatus status) {
+            // What the run cost is not what this test is about.
+        }
+
         private final CountDownLatch started = new CountDownLatch(1);
         private final CountDownLatch aborted = new CountDownLatch(1);
 
@@ -253,7 +330,7 @@ class BuildShutdownIT {
             started.countDown();
             try {
                 if (!aborted.await(60, TimeUnit.SECONDS)) {
-                    return new BuiltSite(Path.of("build"), 1, 1, 1);
+                    return new BuiltSite(Path.of("build"), 1, 1, 1, java.util.Map.of());
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

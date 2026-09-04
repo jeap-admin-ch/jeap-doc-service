@@ -22,8 +22,9 @@ final class MediaTypes {
     private static final String DEFAULT_TYPE = MediaType.APPLICATION_OCTET_STREAM_VALUE;
 
     /**
-     * What Spring's table has no entry for. Both come out of a documentation build: source maps beside every
-     * bundle, and Markdown wherever a page's source is published next to it.
+     * What Spring's table has no entry for. The source maps come out of every documentation build, beside the
+     * bundles. Markdown does not - the generator's {@code .md} files are its input and are not published - and
+     * the entry is kept for the uploaded custom documentation, which is served from the same bucket.
      */
     private static final Map<String, String> ALSO_KNOWN = Map.of(
             "map", MediaType.APPLICATION_JSON_VALUE,

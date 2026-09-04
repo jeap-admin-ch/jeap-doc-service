@@ -1,11 +1,11 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationSubject;
-import ch.admin.bit.jeap.doc.domain.DocumentationType;
-import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
-import ch.admin.bit.jeap.doc.domain.DocumentationUploadDescriptor;
-import ch.admin.bit.jeap.doc.domain.SourceFormat;
-import ch.admin.bit.jeap.doc.domain.UploadState;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationSubject;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
+import ch.admin.bit.jeap.doc.domain.upload.UploadState;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
 import org.junit.jupiter.api.Test;
 
@@ -29,7 +29,7 @@ class DocumentationUploadStatusDtoTest {
         assertThat(status.type()).isEqualTo("component-docs");
         assertThat(status.component()).isEqualTo("foo-bar-scs");
         assertThat(status.library()).isNull();
-        assertThat(status.system()).isEqualTo("wvs");
+        assertThat(status.system()).isEqualTo("orders");
         assertThat(status.template()).isEqualTo("arc42");
         assertThat(status.state()).isEqualTo(UploadState.UPLOADING);
         assertThat(status.attempt()).isEqualTo(1);
@@ -41,7 +41,7 @@ class DocumentationUploadStatusDtoTest {
         DocumentationUploadStatusDto status = DocumentationUploadStatusDto.of(upload(libraryDocs()));
 
         assertThat(status.type()).isEqualTo("library-docs");
-        assertThat(status.library()).isEqualTo("wvs-common-lib");
+        assertThat(status.library()).isEqualTo("orders-common-lib");
         assertThat(status.component()).isNull();
     }
 
@@ -70,15 +70,15 @@ class DocumentationUploadStatusDtoTest {
     }
 
     private static DocumentationUploadDescriptor libraryDocs() {
-        return provenance().type(DocumentationType.LIBRARY_DOCS).library("wvs-common-lib").version("1.4.0").build();
+        return provenance().type(DocumentationType.LIBRARY_DOCS).library("orders-common-lib").version("1.4.0").build();
     }
 
     private static DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder provenance() {
         return DocumentationUploadDescriptor.builder()
-                .system("wvs")
+                .system("orders")
                 .template("arc42")
                 .sourceFormat(SourceFormat.MARKDOWN)
-                .sourceRepository("ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git")
+                .sourceRepository("ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git")
                 .sourceRevision("9a1c2f8")
                 .sourceRef("main")
                 .sourceTimestamp(Instant.parse("2026-08-21T07:12:00Z"));

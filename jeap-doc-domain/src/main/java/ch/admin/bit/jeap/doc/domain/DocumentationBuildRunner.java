@@ -2,8 +2,10 @@ package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
+import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
+import ch.admin.bit.jeap.doc.domain.port.DocumentationStatus;
 import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
 import ch.admin.bit.jeap.doc.domain.port.PublishedSite;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuilder;
@@ -59,6 +61,8 @@ public class DocumentationBuildRunner {
     private final BuildProperties properties;
     private final BuildMetrics metrics;
     private final ExclusiveWork exclusiveWork;
+    private final ArchitectureModelReadiness readiness;
+    private final ContainerMemory containerMemory;
     private final Clock clock;
 
     /**
@@ -116,11 +120,15 @@ public class DocumentationBuildRunner {
 
     private boolean runTick() {
         for (String site : sitesOwedABuild()) {
-            if (sites.find(site).isEmpty()) {
+            Optional<Site> configured = sites.find(site);
+            if (configured.isEmpty()) {
                 forgetSiteThatIsGone(site);
                 continue;
             }
-            if (buildUnderLock(site)) {
+            // Readiness is checked before the request is claimed, and short-circuits the build: claiming it and
+            // then declining to build would throw it away, and nothing would ask again until the next upload or
+            // the next schedule.
+            if (readiness.isReadyToBuild(configured.get()) && buildUnderLock(site)) {
                 return true;
             }
         }
@@ -258,11 +266,15 @@ public class DocumentationBuildRunner {
         DocumentationBuild build = builds.start(site.id(), trigger, instanceName(), clock.instant());
         log.info("Publishing the documentation site {} ({}), asked for by {}.", site.id(), build.id(), trigger);
         long startedAt = System.nanoTime();
+        // From here to the end of the build, so that what the container held is this build's rather than the
+        // container's history. It is the kernel's own high-water mark, not a sample: nothing runs while the
+        // build does, and nothing between two readings is missed.
+        ContainerMemory.Measurement memory = containerMemory.measure();
         // Past a publication nothing may take it back, so what follows one is deliberately outside the block
         // that can turn a build into a failure: a database hiccup while measuring the build or clearing away
         // what it superseded would otherwise rewrite a published build as failed - or, while stopping, as
         // aborted, and delete the very objects the row points at.
-        Published result = publish(site, build, trigger, startedAt);
+        Published result = publish(site, build, trigger, startedAt, memory);
         if (result != null) {
             afterPublishing(site, build, trigger, result, startedAt);
         }
@@ -272,21 +284,37 @@ public class DocumentationBuildRunner {
      * Generates the site, puts it in the object storage and records the build as the published one - or records
      * why it is not, and reports nothing.
      */
-    private Published publish(Site site, DocumentationBuild build, BuildTrigger trigger, long startedAt) {
+    private Published publish(Site site, DocumentationBuild build, BuildTrigger trigger, long startedAt,
+                              ContainerMemory.Measurement memory) {
         try {
             siteBuilder.sweepWorkspaces(builds.runningIds());
-            BuiltSite generated = siteBuilder.generate(build.id(), site, clock.instant());
+            Instant generatedAt = clock.instant();
+            BuiltSite generated = siteBuilder.generate(build.id(), site, generatedAt);
+            // Read once, here, and used by all three of the places that report this build: the file beside the
+            // site, the row, and the line that says it was published. The kernel's mark only rises, so reading
+            // it again after the upload would give the row a higher number than the file it was written beside
+            // - two numbers for one build, and an operator comparing them for nothing.
+            ContainerMemory.Peak peak = memory.peak().orElse(null);
+            // The seam: the numbers of this run exist now, the site is still on local disk, and the page that
+            // prints them was written at the start of the run. So they are written into the output before the
+            // upload, and the page fetches them - see DocumentationStatus.
+            siteBuilder.describeRun(generated, DocumentationStatus.of(build.id(), generatedAt,
+                    elapsed(startedAt).toMillis(), generated, peak));
             PublishedSite published = publication.publish(prefixOf(site, build.id()), generated.directory());
             builds.succeeded(build.id(), published.prefix(), generated.pageCount(), published.sizeInBytes(),
-                    generated.docusaurusMillis(), clock.instant());
-            return new Published(generated, published);
+                    generated.docusaurusMillis(), peak, clock.instant());
+            return new Published(generated, published, peak);
         } catch (RuntimeException e) {
             if (stopping) {
                 // Not a failure: this instance asked the generator to stop. Recorded apart from one, because
                 // the alarm is on failures and a deployment landing on a build must not page anybody.
                 recordAbort(site, build, trigger, e, startedAt);
             } else {
-                builds.failed(build.id(), e.getMessage(), clock.instant());
+                // On the row and in the prose of the reason, from one reading: a build killed for want of
+                // memory exits with a number, and 'how close did it come' belongs beside that number - as a
+                // column an operator can compare, and as a sentence in the reason they read first.
+                ContainerMemory.Peak peak = memory.peak().orElse(null);
+                builds.failed(build.id(), e.getMessage() + memoryClause(peak, ". "), peak, clock.instant());
                 log.error("The documentation site {} ({}) could not be published; the site published before it "
                           + "is still being served.", site.id(), build.id(), e);
                 metrics.failed(site.id(), trigger, elapsed(startedAt));
@@ -297,8 +325,11 @@ public class DocumentationBuildRunner {
         }
     }
 
-    /** What a successful build produced, and where it went. */
-    private record Published(BuiltSite generated, PublishedSite published) {
+    /**
+     * What a successful build produced, where it went, and what its container held - the last of these read
+     * once, so that everything reporting this build reports the same number.
+     */
+    private record Published(BuiltSite generated, PublishedSite published, ContainerMemory.Peak peak) {
     }
 
     /**
@@ -310,8 +341,9 @@ public class DocumentationBuildRunner {
         BuiltSite generated = result.generated();
         try {
             log.info("The documentation site {} ({}) is published: {} pages, {} bytes, {} of which was the site "
-                     + "generator.", site.id(), build.id(), generated.pageCount(),
-                    result.published().sizeInBytes(), Duration.ofMillis(generated.docusaurusMillis()));
+                     + "generator{}.", site.id(), build.id(), generated.pageCount(),
+                    result.published().sizeInBytes(), Duration.ofMillis(generated.docusaurusMillis()),
+                    memoryClause(result.peak(), ", "));
             metrics.succeeded(site.id(), trigger, elapsed(startedAt), generated);
             removeSitesBeyondRetention(site);
         } catch (RuntimeException e) {
@@ -386,6 +418,41 @@ public class DocumentationBuildRunner {
                 log.warn("The superseded site under {} could not be removed.", prefix, e);
             }
         }
+    }
+
+    /**
+     * What the container held while this build ran, as a clause to append - and nothing at all where that
+     * cannot be read, which is every platform but Linux and every kernel without a high-water mark.
+     * <p>
+     * It is the number a container is sized from: a build is a child process whose bundler allocates outside
+     * any heap this service can see, so the JVM's own meters say nothing about it. Reported in megabytes
+     * against the limit, because what an operator does with it is compare the two.
+     *
+     * @param separator what joins it to the sentence before it - the line and the failure reason differ
+     */
+    private static String memoryClause(ContainerMemory.Peak peak, String separator) {
+        if (peak == null) {
+            return "";
+        }
+        String at = peak.exact() ? "peak " : "peak at most ";
+        if (peak.limitBytes() <= 0) {
+            return separator + at + megabytes(peak.usedBytes()) + " in the container";
+        }
+        return separator + at + megabytes(peak.usedBytes()) + " of " + megabytes(peak.limitBytes())
+               + " (" + percent(peak) + "%) in the container";
+    }
+
+    /**
+     * How much of the container the build held, rounded rather than truncated - the same arithmetic the page
+     * does in the browser, so that the log line and the page agree on the number.
+     */
+    private static long percent(ContainerMemory.Peak peak) {
+        return Math.round(peak.usedBytes() * 100.0 / peak.limitBytes());
+    }
+
+    /** Megabytes, rounded, as the page in the browser writes them too. */
+    private static String megabytes(long bytes) {
+        return Math.round(bytes / (1024.0 * 1024.0)) + "MB";
     }
 
     /**

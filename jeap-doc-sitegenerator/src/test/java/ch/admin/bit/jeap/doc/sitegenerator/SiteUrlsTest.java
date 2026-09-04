@@ -34,12 +34,13 @@ class SiteUrlsTest {
     }
 
     @Test
-    void baseUrl_whenTheSiteIsNotTheDefaultOne_thenUnderItsOwnSegment() {
+    void baseUrl_whenTheSiteIsNotTheDefaultOne_thenBelowTheSiteSegment() {
         SiteProperties properties = new SiteProperties();
         properties.setSites(java.util.Map.of("governance", new SiteProperties.Site()));
         Site governance = new DocumentationSites(properties).find("governance").orElseThrow();
 
-        assertThat(urls("/docs", "https://doc.example.ch").baseUrl(governance)).isEqualTo("/docs/governance/");
+        assertThat(urls("/docs", "https://doc.example.ch").baseUrl(governance))
+                .isEqualTo("/docs/site/governance/");
     }
 
     @Test

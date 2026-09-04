@@ -1,9 +1,9 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationType;
-import ch.admin.bit.jeap.doc.domain.DocumentationUploadDescriptor;
-import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
-import ch.admin.bit.jeap.doc.domain.SourceFormat;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
@@ -37,12 +37,12 @@ class DocumentationUploadDtoTest {
     void toDescriptor_thenCarriesTheParametersAsTheDomainTypes() {
         DocumentationUploadDescriptor descriptor = DocumentationUploadDto.builder()
                 .type(DocumentationTypeDto.COMPONENT_DOCS)
-                .system("wvs")
+                .system("orders")
                 .component("foo-bar-scs")
                 .version("1.4.0")
                 .template("arc42")
                 .sourceFormat(SourceFormatDto.MARKDOWN)
-                .sourceRepository("ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git")
+                .sourceRepository("ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git")
                 .sourceRevision("9a1c2f8")
                 .sourceRef("main")
                 .sourceTimestamp(OffsetDateTime.parse("2026-08-21T09:12:00+02:00"))

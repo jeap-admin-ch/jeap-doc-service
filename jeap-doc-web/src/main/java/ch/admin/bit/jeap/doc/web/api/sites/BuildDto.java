@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.web.api.sites;
 import ch.admin.bit.jeap.doc.domain.BuildState;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
+import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
@@ -24,6 +25,11 @@ import java.time.Instant;
  * @param pageCount        how many pages it produced
  * @param sizeInBytes      how large the published site is
  * @param docusaurusMillis how much of the run was the Docusaurus build itself
+ * @param memoryPeakBytes  the highest the container went during the run, or null where that cannot be read.
+ *                         It is the number a container is sized from: almost none of a build is the JVM
+ * @param memoryLimitBytes what the container is killed at, or null with the peak
+ * @param memoryPeakExact  whether the peak is this build's own, or only an upper bound on it - false where the
+ *                         kernel's high-water mark could not be reset and the build stayed below an earlier one
  * @param failureReason    what went wrong, null unless it failed or was given up on
  */
 @Schema(description = "One run of the documentation generator")
@@ -39,11 +45,19 @@ record BuildDto(
         int pageCount,
         long sizeInBytes,
         long docusaurusMillis,
+        Long memoryPeakBytes,
+        Long memoryLimitBytes,
+        Boolean memoryPeakExact,
         String failureReason) {
 
     static BuildDto of(DocumentationBuild build, Instant now) {
+        ContainerMemory.Peak peak = build.memoryPeak();
         return new BuildDto(build.id(), build.trigger(), build.state(), build.startedAt(), build.finishedAt(),
                 build.duration(now).toMillis(), build.instance(), build.objectPrefix(), build.pageCount(),
-                build.sizeInBytes(), build.docusaurusMillis(), build.failureReason());
+                build.sizeInBytes(), build.docusaurusMillis(),
+                peak == null ? null : peak.usedBytes(),
+                peak == null || peak.limitBytes() <= 0 ? null : peak.limitBytes(),
+                peak == null ? null : peak.exact(),
+                build.failureReason());
     }
 }

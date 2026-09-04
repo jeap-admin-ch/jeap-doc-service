@@ -101,15 +101,22 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
         assertThat(published.sizeInBytes()).isZero();
     }
 
+    /**
+     * The neighbours share the deleted prefix <b>as a string</b>, which is the whole point: a listing prefix of
+     * {@code .../4} matches {@code 46} and {@code 47} too, and the one thing between this delete and taking
+     * them with it is the trailing slash {@code keyOf} puts on. A pair like 46 and 47 would pass without it.
+     */
     @Test
-    void delete_thenTheWholeSiteIsGoneAndItsNeighbourIsNot() throws IOException {
+    void delete_thenTheWholeSiteIsGoneAndTheSitesWhoseIdItIsAPrefixOfAreNot() throws IOException {
         write(site.resolve("index.html"), "<h1>home</h1>");
+        storage.publish("default/4", site);
         storage.publish("default/46", site);
         storage.publish("default/47", site);
 
-        storage.delete("default/46");
+        storage.delete("default/4");
 
-        assertThat(storage.open("default/46", "index.html")).isEmpty();
+        assertThat(storage.open("default/4", "index.html")).isEmpty();
+        assertThat(storage.open("default/46", "index.html")).isPresent();
         assertThat(storage.open("default/47", "index.html")).isPresent();
     }
 

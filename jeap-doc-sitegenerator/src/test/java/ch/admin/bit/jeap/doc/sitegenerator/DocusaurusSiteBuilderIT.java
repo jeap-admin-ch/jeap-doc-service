@@ -7,15 +7,23 @@ import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 import java.util.stream.Stream;
 import java.time.Instant;
 
@@ -51,7 +59,9 @@ class DocusaurusSiteBuilderIT {
         publication.setUrl("https://doc.example.ch");
         urls = new SiteUrls(publication, "/docs");
         resourceLoader = new org.springframework.core.io.DefaultResourceLoader();
-        sources = new SiteSources(urls, resourceLoader);
+        sources = new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
+                new DocumentationSites(new SiteProperties()), properties,
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation());
         builder = builderWriting(sources);
     }
 
@@ -132,10 +142,13 @@ class DocusaurusSiteBuilderIT {
     void generate_whenPagesLinkToEachOther_thenTheLinksResolveInEveryEnvironment() throws Exception {
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
 
-        BuiltSite built = builderWriting(new SiteSources(urls, resourceLoader) {
+        BuiltSite built = builderWriting(new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
+                new DocumentationSites(new SiteProperties()), properties,
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation()) {
             @Override
-            public void write(Site written, Path content, Instant generatedAt) throws IOException {
-                super.write(written, content, generatedAt);
+            public Map<String, EnvironmentModel> write(long buildId, Site written, Path content,
+                                                       Instant generatedAt) throws IOException {
+                Map<String, EnvironmentModel> models = super.write(buildId, written, content, generatedAt);
                 for (SiteEnvironment environment : written.environments()) {
                     Path tree = content.resolve(environment.id());
                     Files.writeString(tree.resolve("other.md"), """
@@ -150,6 +163,7 @@ class DocusaurusSiteBuilderIT {
                             [the front page](/).
                             """, StandardCharsets.UTF_8);
                 }
+                return models;
             }
         }).generate(7, site, GENERATED_AT);
 
@@ -180,6 +194,24 @@ class DocusaurusSiteBuilderIT {
      * A builder whose sources are the given ones, so that a test can add a page to what the doc service writes
      * without the production code needing a hook for it.
      */
+    /**
+     * The static generation from a pool of worker threads, which an instance with room in its container may
+     * ask for. It is a real build because that is the only honest assertion about the template's configuration:
+     * Docusaurus rejects a `future.faster` key it does not know, and it refuses the worker threads outright
+     * unless the v4 flag they depend on is on - so a site that comes out of this ran with them.
+     */
+    @Test
+    void generate_whenTheStaticGenerationMayUseWorkerThreads_thenTheSiteIsStillProduced() {
+        Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
+        properties.setSsgWorkerThreads(true);
+
+        BuiltSite built = builderWriting(sources).generate(9, site, GENERATED_AT);
+
+        assertThat(built.directory().resolve("index.html")).isRegularFile();
+        assertThat(built.directory().resolve("dev/index.html")).isRegularFile();
+        assertThat(built.pageCount()).isPositive();
+    }
+
     private DocusaurusSiteBuilder builderWriting(SiteSources writing) {
         return new DocusaurusSiteBuilder(properties, new BuildWorkspaces(properties), new SiteTemplate(),
                 new NodeProcess(properties), writing);
@@ -188,8 +220,17 @@ class DocusaurusSiteBuilderIT {
     @Test
     void generate_thenASiteWithARootPagePerEnvironmentAndTheConfiguredPlugins() {
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
+        ListAppender<ILoggingEvent> logged = new ListAppender<>();
+        logged.start();
+        Logger nodeLog = (Logger) LoggerFactory.getLogger(NodeProcess.class);
+        nodeLog.addAppender(logged);
 
-        BuiltSite built = builder.generate(1, site, GENERATED_AT);
+        BuiltSite built;
+        try {
+            built = builder.generate(1, site, GENERATED_AT);
+        } finally {
+            nodeLog.detachAppender(logged);
+        }
 
         // The main environment owns the site root, the others sit behind their prefix.
         assertThat(built.directory().resolve("index.html")).isRegularFile();
@@ -197,10 +238,8 @@ class DocusaurusSiteBuilderIT {
         assertThat(built.directory().resolve("ref/index.html")).isRegularFile();
         assertThat(built.directory().resolve("abn/index.html")).isRegularFile();
 
-        // Search and llms.txt, as in the jEAP documentation.
+        // Offline search, as in the jEAP documentation.
         assertThat(built.directory().resolve("search-index.json")).isRegularFile();
-        assertThat(built.directory().resolve("llms.txt")).isRegularFile();
-        assertThat(built.directory().resolve("llms-full.txt")).isRegularFile();
 
         assertThat(built.pageCount()).isPositive();
         assertThat(built.sizeInBytes()).isPositive();
@@ -230,10 +269,13 @@ class DocusaurusSiteBuilderIT {
 
         // A page beside the ones the doc service writes, so that the fences reach the generator the same way a
         // page of real documentation will.
-        BuiltSite built = builderWriting(new SiteSources(urls, resourceLoader) {
+        BuiltSite built = builderWriting(new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
+                new DocumentationSites(new SiteProperties()), properties,
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation()) {
             @Override
-            public void write(Site written, Path content, Instant generatedAt) throws IOException {
-                super.write(written, content, generatedAt);
+            public Map<String, EnvironmentModel> write(long buildId, Site written, Path content,
+                                                       Instant generatedAt) throws IOException {
+                Map<String, EnvironmentModel> models = super.write(buildId, written, content, generatedAt);
                 Files.writeString(content.resolve("prod/diagrams.md"), """
                         # Diagrams
 
@@ -247,12 +289,24 @@ class DocusaurusSiteBuilderIT {
                         digraph { upload -> build }
                         ```
                         """, StandardCharsets.UTF_8);
+                return models;
             }
         }).generate(3, site, GENERATED_AT);
 
         String page = Files.readString(built.directory().resolve("diagrams/index.html"), StandardCharsets.UTF_8);
-        assertThat(page).contains("data-plantuml-diagram=plantuml").contains("data-plantuml-diagram=dot");
-        assertThat(page).doesNotContain(".png").doesNotContain(".svg\"");
+        // Whether the attribute value is quoted is the HTML minifier's business, not the plugin's.
+        assertThat(page).containsPattern("data-plantuml-diagram=\"?plantuml")
+                .containsPattern("data-plantuml-diagram=\"?dot");
+        // The site's own logo and favicon are images; a diagram is not - it is its source, rendered in the
+        // browser, so the figure the plugin writes carries no image at all.
+        Matcher figures = Pattern.compile("<figure[^>]*data-plantuml-diagram.*?</figure>", Pattern.DOTALL)
+                .matcher(page);
+        int seen = 0;
+        while (figures.find()) {
+            seen++;
+            assertThat(figures.group()).doesNotContain("<img").doesNotContain(".png").doesNotContain(".svg");
+        }
+        assertThat(seen).as("both fences became diagram figures").isEqualTo(2);
     }
 
     /**

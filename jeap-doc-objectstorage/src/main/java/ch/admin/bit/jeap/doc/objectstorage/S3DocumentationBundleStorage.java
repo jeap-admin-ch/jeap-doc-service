@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.objectstorage;
 
-import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
 import lombok.RequiredArgsConstructor;

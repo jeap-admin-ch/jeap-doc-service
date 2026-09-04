@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.persistence;
 
-import ch.admin.bit.jeap.doc.domain.SubjectKind;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;

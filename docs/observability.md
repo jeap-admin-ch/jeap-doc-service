@@ -5,8 +5,13 @@ The doc service exposes its meters through the
 `/actuator/prometheus`. **That endpoint is secured with Basic auth and ships with a placeholder password that
 matches no value**, so an instance has to set `jeap.monitor.prometheus.password` or nothing can scrape it.
 
-All names are dotted (`jeap.doc.…`), which Prometheus renders with underscores. A timer with a histogram already
-publishes its count, so there is one meter per event with a `result` tag rather than a counter beside a timer.
+All names are dotted (`jeap.doc.…`), which Prometheus renders with underscores. A timer already publishes its
+count, so there is one meter per event with a `result` tag rather than a counter beside a timer.
+
+**Only the upload timer publishes percentile buckets.** Micrometer's default range for a timer ends at about
+thirty seconds, which is the scale an upload takes and is nowhere near the scale of a build or an import - those
+are bounded by budgets of ten and fifteen minutes, so every real run would land in the overflow bucket, answer
+nothing, and multiply the series of that meter by sixty-seven per tag combination.
 
 ## Uploads
 
@@ -22,20 +27,80 @@ answered.
 
 ## Builds
 
-| Meter                             | Type            | Tags                                                                                                  |                                                                                                                                                                                                                                                                                                                             |
-|-----------------------------------|-----------------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `jeap.doc.build`                  | Timer           | `site`, `result` = `succeeded` / `failed` / `aborted`, `trigger` = `upload` / `schedule` / `manual` / `recovery` | The runs: how many, how long, how many failed, per site and per reason for running. **`aborted` is a build an instance gave up on because it was stopping** - a deployment, not a defect, which is why the failure alarm below does not count it. `manual` is a run somebody asked for over `/api/sites`, and `recovery` is one that a build left behind by a dead instance asked for |
-| `jeap.doc.build.step`             | Timer           | `site`, `step`                                                                                        | Where the time went. `docusaurus` is the site generator itself - the first thing to look at when a build gets slow                                                                                                                                                                                                          |
-| `jeap.doc.build.pages`            | Gauge           | `site`                                                                                                | Pages the last successful build produced. A sudden drop is a generator problem no failure counter catches, because the build succeeded                                                                                                                                                                                      |
-| `jeap.doc.build.bytes`            | Gauge           | `site`                                                                                                | Size of the site last published                                                                                                                                                                                                                                                                                             |
-| `jeap.doc.build.last.success.age` | Gauge (seconds) | `site`                                                                                                | How long ago this site was last published, and `NaN` while it never has been. **The one to alarm on** - see the alarm below, because `NaN` is not greater than anything                                                                                                                                                     |
-| `jeap.doc.build.request.age`      | Gauge (seconds) | `site`                                                                                                | How long the oldest pending request has been waiting, `0` when none                                                                                                                                                                                                                                                         |
-| `jeap.doc.build.abandoned`        | Counter         | `site`                                                                                                | Builds found still marked as running although their instance is gone - it was killed rather than stopped, so it never recorded anything. An instance that stops cleanly records `result="aborted"` instead, so this counter means **something killed a container**: the memory it is given is the first thing to look at    |
+| Meter                             | Type            | Tags                                                                                                             |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|-----------------------------------|-----------------|------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.build`                  | Timer           | `site`, `result` = `succeeded` / `failed` / `aborted`, `trigger` = `upload` / `schedule` / `manual` / `recovery` | The runs: how many, how long, how many failed, per site and per reason for running. **`aborted` is a build an instance gave up on because it was stopping** - a deployment, not a defect, which is why the failure alarm below does not count it. `manual` is a run somebody asked for over `/api/sites`, and `recovery` is one that a build left behind by a dead instance asked for                                                                                                |
+| `jeap.doc.build.step`             | Timer           | `site`, `step`                                                                                                   | Where the time went. `docusaurus` is the site generator itself - the first thing to look at when a build gets slow                                                                                                                                                                                                                                                                                                                                                                   |
+| `jeap.doc.build.pages`            | Gauge           | `site`                                                                                                           | Pages the last successful build produced. A sudden drop is a generator problem no failure counter catches, because the build succeeded                                                                                                                                                                                                                                                                                                                                               |
+| `jeap.doc.build.bytes`            | Gauge           | `site`                                                                                                           | Size of the site last published                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `jeap.doc.build.last.success.age` | Gauge (seconds) | `site`                                                                                                           | How long ago this site was last published, and `NaN` while it never has been. **The one to alarm on** - see the alarm below, because `NaN` is not greater than anything                                                                                                                                                                                                                                                                                                              |
+| `jeap.doc.build.request.age`      | Gauge (seconds) | `site`                                                                                                           | How long the oldest pending request has been waiting, `0` when none                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `jeap.doc.build.abandoned`        | Counter         | `site`                                                                                                           | Builds found still marked as running although their instance is gone - it was killed rather than stopped, so it never recorded anything. An instance that stops cleanly records `result="aborted"` instead, so this counter means **something killed a container**: the memory it is given is the first thing to look at                                                                                                                                                             |
+| `jeap.doc.build.model.read`       | Timer           | `site`, `environment`                                                                                           | Reading the stored architecture model of one environment. Against `jeap.doc.build` it answers *how much of a build is spent loading the landscape*. There is no `result`: a build makes no call to the architecture repository, and a read that fails fails the build                                                                                                                                                                                                                  |
+| `jeap.doc.build.model.systems`    | Gauge           | `site`, `environment`                                                                                            | Systems documented in the last build of that environment **this instance published**. It moves only when a build is published, never for one that read the model and then failed. **The signal no failure counter catches**: an architecture repository that comes back empty succeeds, and only a drop here shows it. Unlike the rows above it, this one is held in memory: it reads `0` on an instance that has not published yet, and again after a restart until the first build |
 
-These gauges are read from the database, and the two ages are **ages rather than timestamps**, and they are read from the database: an age is measured entirely
-by the service's own clock, where `time() - <timestamp>` subtracts the service's clock from the scraper's and
-shows the difference as a false alert. Reading them from the database is what makes them survive a restart and
-read the same on every instance.
+These gauges are read from the database - all but the systems gauge, see its row - and the two ages are
+**ages rather than timestamps**: an age is measured entirely by the service's own clock, where
+`time() - <timestamp>` subtracts the service's clock from the scraper's and shows the difference as a false
+alert. Reading them from the database is what makes them survive a restart and read the same on every
+instance.
+
+## The memory of the container
+
+A build is the largest thing the doc service does, and almost none of it is the JVM: the site generator is a
+child process whose bundler allocates natively, so **the JVM meters say nothing about it**. What a container is
+sized from is the container's own usage, read from the cgroup files the kernel keeps.
+
+| Meter                                 | Type          | Tags |                                                                                                                                                                                                        |
+|---------------------------------------|---------------|------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.container.memory.used`      | Gauge (bytes) | -    | What the container uses, page cache included                                                                                                                                                           |
+| `jeap.doc.container.memory.limit`     | Gauge (bytes) | -    | What it is killed at. From the cgroup, or, where the cgroup names none, from the total the JVM sees: on Fargate the container's own `memory.max` says `max`, the limit being enforced a level above it |
+| `jeap.doc.container.memory.oom.kills` | Counter       | -    | Processes the kernel has killed in this container for want of memory. **The one to alarm on**                                                                                                          |
+
+They are read **at scrape time** - there is no thread and no interval, and the resolution of the series is the
+scrape interval of whoever reads it. That is also where a peak belongs:
+
+```promql
+# How close a build came to the limit, over the last quarter of an hour
+max_over_time(jeap_doc_container_memory_used_bytes[15m]) / jeap_doc_container_memory_limit_bytes
+
+# Something in this container was killed for want of memory
+increase(jeap_doc_container_memory_oom_kills_total[1h]) > 0
+```
+
+The kill counter works because of what these kills are: the kernel kills the **site generator**, and the JVM
+lives to report it - which is also what turns a build into an exit code of 137. A kill that takes the whole
+task instead leaves nothing to scrape, so the platform's own memory alarm is still worth keeping beside this.
+
+**Linux only, and silent elsewhere.** The numbers come from the cgroup files, which exist on Linux and nowhere
+else. Where they cannot be read **no meter is registered at all** rather than three that always answer `NaN`:
+an alarm cannot tell those from a container that has stopped reporting. On a developer machine the meters read
+the cgroup that machine's processes are in, which is the machine rather than a container.
+
+Beside the meters, every published build says what it did on the line that records it, and a build that failed
+says it in its failure reason - `documentation_build.failure_reason`, and `GET /api/sites`:
+
+```text
+The documentation site default (246) is published: 6306 pages, 443443925 bytes, PT4M32S of which was the site
+generator, peak 11591MB of 16384MB (70%) in the container.
+```
+
+That peak is the kernel's own high-water mark rather than a sample, so nothing between two readings is missed.
+Where the kernel allows the mark to be reset it is this build's exactly; where it does not and the build stayed
+below an earlier one, the line says `peak at most`, because all that is known is that it stayed below it.
+
+## The architecture import
+
+Its four meters, and the alert to write on them, are on
+[The architecture import](architecture-import.md#what-it-reports-about-itself) - beside the explanation of what
+a partial run leaves behind, which is what that alert is really about.
+
+| Meter                                           | Kind    | Tags                             | What it is                                                                                                       |
+|-------------------------------------------------|---------|----------------------------------|------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.architecture.import.last.success.age` | Gauge   | `environment`, `kind`            | How long ago the last successful import was, `NaN` if there has never been one. **The one to alarm on**           |
+| `jeap.doc.architecture.artifacts`               | Gauge   | `environment`, `kind`            | How many things of that kind are stored, `NaN` before the first success. A drop is an arch repo that lost its data |
+| `jeap.doc.architecture.import`                  | Timer   | `environment`, `kind`, `result`  | One run: how long it took and how it ended                                                                        |
+| `jeap.doc.architecture.import.items`            | Counter | `environment`, `kind`, `outcome` | What a run did: `stored`, `unchanged`, `removed`, `skipped`                                                       |
 
 ## What to alarm on
 
@@ -70,8 +135,18 @@ No `time()` in any of them - which is the point of the age gauges.
 The first one is also what keeps the bucket's lifecycle rule safe: it fires with room to spare before a rule
 could expire a site that has stopped being regenerated. See [Operating the bucket](operating-the-bucket.md).
 
+## The memory of a build, afterwards
+
+`jeap.doc.container.memory.*` says what the container is doing now, and
+`max_over_time(jeap_doc_container_memory_used_bytes[15m])` says what it did lately - but a series is not a
+record. **Every build now stores its own peak on its row**, so `GET /api/sites/{site}/builds` answers what each
+run held, whether it succeeded, and whether the number is exact - see [the API](api.md#reading-the-builds). It is
+what to compare when a site grows: the peak of this build against the peak of the one before it, rather than a
+graph in which the builds of every site are one line.
+
 ## Related
 
 - [Generating the documentation](generation.md) - what the builds these meters describe actually do
+- [The scheduled jobs](scheduled-jobs.md) - the schedules the age gauges are read against
 - [Configuration](configuration.md)
 - [Operating the bucket](operating-the-bucket.md)

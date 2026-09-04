@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -87,18 +87,18 @@ class UploadExceptionHandlerTest {
     @Test
     void handleInvalidUpload_whenTheSystemCarriesALineBreak_thenItCannotForgeALogEntry() {
         MockHttpServletRequest request = request();
-        request.setParameter("system", "wvs\nWARN  the upload was fine actually");
+        request.setParameter("system", "orders\nWARN  the upload was fine actually");
 
         handler.handleInvalidUpload(new InvalidUploadException(
                 InvalidUploadException.Code.MISSING_PARAMETER, "rejected"), request);
 
         assertThat(log.list).singleElement().satisfies(event ->
-                assertThat(event.getFormattedMessage()).doesNotContain("\n").contains("wvs_WARN"));
+                assertThat(event.getFormattedMessage()).doesNotContain("\n").contains("orders_WARN"));
     }
 
     private static MockHttpServletRequest request() {
         MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/uploads/docs/" + UPLOAD_ID);
-        request.setParameter("system", "wvs");
+        request.setParameter("system", "orders");
         return request;
     }
 

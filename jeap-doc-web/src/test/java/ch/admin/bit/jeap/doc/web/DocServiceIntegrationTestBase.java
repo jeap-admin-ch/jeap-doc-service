@@ -84,18 +84,27 @@ public abstract class DocServiceIntegrationTestBase {
         registry.add("jeap.s3.client.access-key", () -> RUSTFS_ACCESS_KEY);
         registry.add("jeap.s3.client.secret-key", () -> RUSTFS_SECRET_KEY);
         registry.add("jeap.s3.client.tls", () -> false);
-        registry.add("jeap.doc.build.node-modules-directory", () -> installedTemplate().resolve("node_modules"));
+        registry.add("jeap.doc.build.node-modules-directory", DocServiceIntegrationTestBase::nodeModules);
         registry.add("jeap.doc.build.workspace-directory", () -> installedTemplate().resolve("workspaces"));
     }
 
     /**
-     * What the image build of an instance produces, in miniature.
+     * The dependencies of the site template, as an instance's image installs them.
      * <p>
-     * These tests never generate a site - the build poller is set to an interval longer than the suite - but the
-     * service checks while it starts that it *could*, and that check is worth running here rather than switching
-     * off: it is what tells an instance that its image and its jar disagree. So the directory holds an empty
-     * {@code node_modules} and the lockfile of the template that is actually on the classpath, which is exactly
-     * what the check compares.
+     * Most tests here never generate a site - the build poller is set to an interval longer than the suite - and
+     * for them the miniature fixture below is enough: the startup check compares the lockfile, which is what
+     * tells an instance that its image and its jar disagree. {@code DocumentationGenerationIT} does run the
+     * generator, so when the real install is there - {@code target/site-install}, produced before the
+     * integration tests by the same {@code npm ci} an image uses - that is what is used.
+     */
+    private static Path nodeModules() {
+        Path installed = Path.of("target/site-install/node_modules").toAbsolutePath();
+        return Files.isDirectory(installed) ? installed : installedTemplate().resolve("node_modules");
+    }
+
+    /**
+     * What the image build of an instance produces, in miniature: an empty {@code node_modules} and the
+     * lockfile of the template on the classpath, which is exactly what the startup check compares.
      */
     private static synchronized Path installedTemplate() {
         if (installedTemplate == null) {

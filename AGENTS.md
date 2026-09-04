@@ -41,7 +41,10 @@ S3, where the documentation generator will pick them up.
 Ports and adapters, one auto-configuration per module - see `docs/architecture.md`:
 
 - `jeap-doc-domain/` - the domain: model, services and the ports it needs (`…doc.domain.port`). Depends on no
-  adapter, no web framework and no driver.
+  adapter, no web framework and no driver. Divided by subject: `upload` is everything about an upload,
+  `architecture` is the model a page is written from, `architecture.view` the diagrams computed across it and
+  `architecture.imports` the replication - **and `architecture` does not depend on `architecture.imports`**, so
+  the records a page needs do not know they were fetched. The builds and the sites stay in the root package.
 - `jeap-doc-persistence/` - JPA adapter on PostgreSQL, and the Flyway migrations in `db/migration`.
 - `jeap-doc-objectstorage/` - S3 adapter over the `S3Client` of `jeap-spring-boot-object-storage-starter`, plus
   `DocStorageBucketAvailabilityCheck`, which fails the startup when the configured bucket is not available.
@@ -55,10 +58,60 @@ Ports and adapters, one auto-configuration per module - see `docs/architecture.m
   family that serves more than one kind of resource has one subpackage per kind (`web/api/upload/docs`), and the
   few classes the kinds share stay public in the family's package (`UploadPaths`, `UploadBodies`,
   `UploadParameterInterceptor`).
+- `jeap-doc-markdown/` - **how a page is written**: headings, tables, links, fences, front matter,
+  `_category_.json`, and the escaping. **It has no dependencies and must keep none** - the structure templates
+  and the site generator both write through it, and through the templates it will be on the path of the upload
+  validation in the web layer.
+- `jeap-doc-template-arc42/` - the **arc42 structure template**: its twelve chapters, its structural rules, and
+  the pages generated into them. A third kind of module beside a domain and an adapter; see below.
+- `jeap-doc-archrepo/` - the client of the architecture repository's `/docs-api`, behind
+  `ArchitectureModelUpstream` and `ArchitectureArtifactUpstream`. An adapter like any other.
 - `jeap-doc-service-instance/` - POM-only module for downstream instances.
 
 Keep the layering: business logic goes into the domain, technology into an adapter, and an adapter never depends
 on another adapter.
+
+### A structure template is a module
+
+**One module per structure template, and the type it implements is in the domain.** `StructureTemplate` -
+an id, its chapters, its structural rules, and *write the pages of one system* - is in `jeap-doc-domain`
+because two things that must not know about each other read it: the site generator, which asks a template for
+its subtree, and the web layer, which will validate an upload's path tree against the same rules. Neither may
+reach the other.
+
+- **A template module depends on `jeap-doc-domain` and `jeap-doc-markdown`**, plus `spring-boot-starter` for
+  its auto-configuration. A template engine, an HTTP client, a JSON mapper or a dependency on
+  `jeap-doc-sitegenerator` would be a leak, and it would travel all the way into the upload validation.
+- **Nothing outside a template names it.** `SystemPages` injects every `StructureTemplate`, and
+  `jeap-doc-template-arc42` is on the classpath with no class referring to it.
+  A second methodology is a dependency and a bean.
+- **`StructureTemplate` is a plugin point, not a driven port**, so `DocServiceWiringIT`'s *exactly one adapter
+  per port* rule does not apply to it - it asserts *at least one* instead, and says which rule it is checking.
+- **Nothing arc42-specific goes into `jeap-doc-sitegenerator`.** What belongs there is what every template
+  shares: the workspace, the site-level files, the systems index, the Docusaurus run.
+
+### Everything a page says goes through `MarkdownWriter`
+
+`Markdown` cannot be constructed from outside `jeap-doc-markdown`, and the only way to get one is a factory on
+`Md` that escapes. **`MarkdownWriter` has no `raw(String)` method, and adding one would end that** - it is the
+single definition of the escaping rule, and a second definition is the one that will be wrong. A description
+arriving from the architecture repository with a `<`, a `&` or a `|` in it cannot reach a page unescaped by
+accident.
+
+A pipe is escaped **in the table cell** and not in `Md.text`: it means something inside a table row and nowhere
+else, so escaping it twice would put a backslash on the page. What opens a **block** - a leading `-`, `+`, or a
+number and a dot - is escaped in `MarkdownWriter.paragraph` for the same reason: a heading reading
+`1. Introduction and Goals` is not an ordered list. A list item and an admonition body also stand at the start
+of a line and are **not** guarded; no caller reaches that today, and whoever writes the one that does has to
+apply `withoutOpeningABlock` there too. Leading whitespace is dropped in `Md.text` instead, because four
+*columns* of it - a tab counts to the next tab stop - open a code block wherever the fragment lands. PlantUML escaping is a third thing again - the fence body is opaque to Markdown, and `PlantUmlViews`
+does its own.
+
+**`Md.link` throws, `Md.linkOrCode` does not, and which one to use depends on where the target came from.** A
+path this service built is a link: a bad one is a defect here, and failing loudly is right. A URL out of the
+architecture repository - a descriptor, a contact address, the registry URL of a schema - goes through
+`linkOrCode`, which shows it as code when it cannot be a link. There is no `try` around `SiteBuilder.generate`,
+so one bad value out of one upstream ends the generation of **every** system of the environment.
 
 ## Conventions worth knowing
 
@@ -112,6 +165,11 @@ port has exactly one adapter in the real application context. **Add the new port
   the description is served at `/api-docs`, the UI at `/swagger-ui.html`.
 - **Startup validation**: configuration errors of an instance should fail the startup instead of the first
   request - the bucket check is the example to follow.
+- **Never `ignoreUnknownFields = false`** on `@ConfigurationProperties`; write `@ConfigurationProperties("prefix")`
+  and let an unknown property be ignored. Configuration and software are deployed separately, and a new property
+  is often rolled out before the version that knows it - with the strict setting the still-running old version
+  refuses to start, which turns a harmless config rollout into an outage. Check the values that matter with an
+  explicit check instead (`GeneratorProperties.check()`).
 - **What is recorded of a bundle**: the storage port reports where it put a bundle *and* the SHA-256 of what it
   wrote (`StoredBundle`), computed while the bundle is spooled - the bytes are read once anyway. The digest is
   the service's own: no client sends one, and it is not passed to the object storage.
@@ -135,9 +193,26 @@ port has exactly one adapter in the real application context. **Add the new port
 
 - **Documentation sites are configured, never discovered.** `jeap.doc.sites` says which exist; an upload naming
   anything else is rejected, because a typo in a workflow configuration would otherwise create a second site that
-  is generated and served next to the real one. A site may not be named after an environment of the default site,
-  and exactly one environment of a site is `main` and one `latest` - all three are checked while the service
-  starts.
+  is generated and served next to the real one. Exactly one environment of a site is `main` and one `latest`,
+  checked while the service starts.
+- **The default site owns the context root; every other site is served below `/site/<id>/`.** So a site id has no
+  reserved names: it only has to be a slug and to fit the name of its build lock. What still takes a top-level
+  segment is the **default site's environments**, and it is there - and only there - that the paths the service
+  answers on itself are refused, `site` among them. Do not reintroduce a reserved-name list for site ids; the
+  namespace is what makes one unnecessary.
+- **A query reading a child table of the architecture model binds one array, never one parameter per row.**
+  `select … where parent_id = any(:ids)` with a `Long[]`, not a derived `…IdIn(Collection)`: the derived form
+  binds every element separately, so the statement's parameter count is the row count of the table above it -
+  and PostgreSQL allows 65535. A landscape past that would not get slower, it would fail every build.
+  `ChildQueriesBindArraysTest` enumerates the package and holds the rule.
+- **What the service publishes about itself is decided in one place.** `DocumentationProvenance` assembles
+  `DocumentationFacts`, and the About page and the status JSON print only what it hands them - never an instance
+  name, an object prefix, a bucket, an upstream URL or the reason a run failed. A field added to those records
+  changes `DocumentationProvenanceTest`'s expected rendering, which is deliberate: adding one is a decision about
+  disclosure, not a refactor.
+- **An absence assertion over a value the code under test cannot reach is not an assertion.** `doesNotContain` on
+  something the class has no access to passes on every broken state; assert the whole rendering, or the shape,
+  against what it should be.
 - **The lock is taken before the request is claimed.** Claiming first and then finding another instance's lock
   held would throw a build request away, and nobody would ask again until the next upload or schedule. And the
   request is claimed *before* anything is read, which is what makes a burst of triggers one follow-up run.
@@ -169,6 +244,53 @@ port has exactly one adapter in the real application context. **Add the new port
   search or the colour mode; a suite serving the generated files itself sends none and passes regardless. They
   build one real site per JVM and publish it the way a build does.
 
+## How to write
+
+This applies to code comments, Javadoc, `docs/`, `README.md` and `CHANGELOG.md` alike.
+
+**Plain language, short sentences.** Say the thing directly. Avoid dense or compressed phrasing, long
+subordinate clauses, and strings of em-dash asides. If a sentence needs to be read twice, split it.
+
+**Comments are short.** One short sentence usually does it. A comment says *why*, when the why is not obvious
+from the code; the code already says what it does.
+
+**Do not comment the obvious.** A getter, a field whose name explains it, a constructor that assigns its
+arguments - none of these need a comment. A comment that repeats the method name is worse than none.
+
+Javadoc on a public type says what it is for in a line or two. Keep the background that a reader needs and drop
+the rest.
+
+**Invented names only.** This repository is published as open source, so no real system, component, message
+or team name from a customer's landscape belongs in it - not in test data, not in an example, not in a
+documentation snippet - and neither does the domain jargon that comes with them, in German or otherwise. The
+examples are `orders`, `shipping`, `catalog`, `OrdersPaymentAcceptedEvent`: plainly invented, and readable to
+somebody who has never seen the real landscape.
+
+**No Jira issue keys and no acceptance criteria numbers** anywhere in code, comments or documentation. They are
+ephemeral: the issue is closed and renumbered long before the code changes. Say what the rule is, not which
+ticket asked for it. Commit messages are the exception - they carry the key by convention.
+
+## Markdown tables
+
+**Align the columns.** Every row of a table is the same length, cells are padded with spaces, and the delimiter
+row is filled with dashes to the same width:
+
+```markdown
+| Property                   | Default | Description                       |
+|----------------------------|---------|-----------------------------------|
+| `jeap.doc.build.timeout`   | `PT15M` | How long a build may take         |
+| `jeap.doc.build.retention` | `3`     | How many published sites are kept |
+```
+
+It is for whoever reads and edits the source; the rendered table does not care. Most editors have a "reformat
+table" command - use it after editing a table, because a widened cell silently breaks the alignment of every
+row below it.
+
+**Generated Markdown is the exception.** The page templates the generator substitutes into, and the pages it
+writes, are read as rendered HTML and never edited by hand. Do not align those, and do not align a table whose
+cells are placeholders: the substituted value has a different width anyway, and a padded row breaks any test
+that matches a row exactly.
+
 ## Logging
 
 **Every upload has to be findable in the log by the id a pipeline quotes.** A team reporting a failed upload knows
@@ -176,8 +298,8 @@ its `uploadId`; the doc service knows the identifier its bundle is stored under.
 every further line about that upload names both:
 
 ```
-Receiving the upload 8f1c9a2e-… (42), attempt 1: COMPONENT_DOCS of the system wvs (foo-bar-scs) on the site default, 184320 bytes.
-Stored the upload 8f1c9a2e-… (42) of the system wvs as uploads/docs/42/1/bundle.zip (184320 bytes, sha-256 9f86d0…), pending generation.
+Receiving the upload 8f1c9a2e-… (42), attempt 1: COMPONENT_DOCS of the system orders (foo-bar-scs) on the site default, 184320 bytes.
+Stored the upload 8f1c9a2e-… (42) of the system orders as uploads/docs/42/1/bundle.zip (184320 bytes, sha-256 9f86d0…), pending generation.
 ```
 
 - **One line per outcome, one place per line.** A rejected upload is logged by `UploadExceptionHandler`, which
@@ -205,6 +327,41 @@ running: retrying is what a pipeline is supposed to do, so that stays at `INFO`.
 
 Every rule below cost a review finding. They are cheap to follow and expensive to rediscover.
 
+- **Do not assume an upstream resource is immutable because it usually is.** A message type version looks
+  fixed - a changed schema is published as a new version - and the first design fetched one and never asked
+  again. The architecture repository's own docs API says a consumer must not do that: `compatibleVersion` is
+  *derived* from the version list, so publishing an intermediate version changes what an already published
+  version answers. Read the upstream's contract for the resource; where it tags and serves `no-cache`,
+  revalidate with `If-None-Match` rather than inventing an immutability it does not promise.
+- **An identity is what the resource is addressed by, not what the index groups by.** The message type index is
+  grouped by system, kind and message type, while the version resource is addressed by system, message type and
+  version - so one version appears twice under one content URL. Anything that flattens an index has to
+  deduplicate on the identity it stores by, and a store behind a unique index has to replace rather than insert
+  blind: a `DataIntegrityViolationException` inside an import step is caught as a failure of the whole
+  environment, and it repeats every run.
+- **Never edit a migration that has been pushed.** Flyway validates a checksum per script, so a database that
+  already ran the old text fails the startup with no way forward - and if the edit also *removed* an object, a
+  later migration that recreates it fails again after a `flyway repair`. While a branch is unreleased the fix is
+  to squash its migrations into one; after a release, only a new migration will do.
+- **A key the database enforces and a key the code compares have to be the same key.** The unique indexes on
+  `architecture_message_schema` and `architecture_artifact` fold their names, so the lookup before a store, the
+  delete, the confirm and the import's own maps all fold them too. A lookup that folded differently from the
+  index would decide to insert where the index refuses; a comparison that folded differently would leave a
+  stored row unrecognised - refetched every run, and unprunable. Note that Spring Data renders a derived
+  `IgnoreCase` as `upper(...)`, which no index on `lower(...)` can serve: write the query out.
+- **Never join two names into one key.** A system may be called `Order Fulfilment`, so any separator that can
+  occur in a name makes the key ambiguous: `a/b` + `c` and `a` + `b/c` are one key, and one prune then deletes
+  a neighbour's row. Both replications delete one row per statement instead, and their in-memory maps are keyed
+  by a record of the parts. A prune removes nothing on almost every run, so the loop costs nothing.
+- **A composite `@IdClass` with a primitive component is always written with a `merge`.**
+  `JpaMetamodelEntityInformation.isNew` reads a composite id as non-new as soon as any attribute is non-null,
+  and an `int` never is - so `save()` calls `em.merge()`, which is a `select` before every `insert`. The four
+  child entities of the model implement `Persistable` with a transient flag for exactly this, and
+  `ArchitectureModelRepositoryAdapterIT` holds a statement-count assertion so it cannot come back.
+- **Reading a set of keys must not select the blobs.** Deciding what to replicate reads only identities and
+  tags, so `findRefs` reads a closed interface projection (`ArchitectureArtifactRefView`,
+  `MessageVersionRefView`), never the entity - and a derived `deleteBy...` selects each row before deleting it,
+  so a prune uses `@Modifying @Query`. Both are how "the replication is cheap" stops being true silently.
 - **Catch the specific exception before the general one.** Wrapping "anything that goes wrong here" into one
   service-level error also swallows the errors that already carry a meaning: a bundle that is shorter than its
   `Content-Length` was reported as `STORAGE_FAILED` because the storage call was wrapped in
@@ -239,11 +396,64 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
   they are restricted identifiers, not keywords - and Sonar reports every one of them (`java:S6213`). `record`
   is the one that keeps coming back, because it is the obvious verb for writing a row down. Name it after what
   it records instead: `recordAsPublished`, `recordOutcome`.
+- **An assertion that also passes on the broken state is not an assertion.** The test that a diagram renders
+  looked for the first `svg` inside the diagram container - and matched a 16x16 toolbar icon, so it passed
+  while *every* system context diagram failed to parse and drew an error box instead. Match something only the
+  working state produces: the text the diagram should contain, not the presence of an element. The same goes
+  for a test that ticks a shared queue - assert that *this* build ran, or it passes having built nothing.
+- **Nothing inside a fence is checked by anything.** The Markdown escaping does not reach into it, Docusaurus
+  does not resolve its links, `onBrokenLinks` does not look in, and a diagram that does not parse renders as an
+  error box without failing the build. So everything a fence needs it has to carry itself: its own escaping
+  (`PlantUmlViews.escaped`, which also neutralises `[` and `]` because PlantUML reads `[[...]]` as a link
+  *inside a label* too), its links already carrying the base URL and the environment
+  (`GenerationContext.diagramLink`), and its paths built by `DocumentationPaths` like every other link. What a
+  fence claims is only true once a browser test renders it.
+- **A name that becomes a path segment has to be unique, and a collision stops the run.** Two systems called
+  `orders` and `ORDERS`, or two message types that kebab-case the same, quietly overwrote one another's page
+  while the index still listed both. Wherever a name turns into a path, keep the segments handed out so far and
+  refuse a repeat - the import abandons the run and logs an `ERROR` naming both (see below). Nothing downstream
+  notices one file replacing another. **The importer is the only place that derives a slug** - `Slugs.toSlug`
+  for a system or component, `Slugs.toMessageSlug` for a message - and it hands the slug to the record. A
+  template reads `slug()` and never derives a segment of its own, because a template cannot refuse anything.
+  `DocumentationPaths.INDEX_SEGMENT` is refused too: a page called `index` replaces the listing of its group.
+- **One value must not mean both "none" and "not known".** The root page said `Systems 0` for an environment
+  that reads no architecture model at all, because the count returned 0 for "no systems" and for "never
+  looked". Use `OptionalInt`, an `UNKNOWN` constant, or leave the row out - and never let a parser default a
+  value it does not recognise onto a real one: an unrecognised contract role is `UNKNOWN`, not `CONSUMES`.
+- **Injecting `List<T>` fails the startup when no bean of `T` exists.** Spring raises
+  `NoSuchBeanDefinitionException` rather than injecting an empty list, so a design that allows none of
+  something - an instance with no structure template - has to ask for it with `ObjectProvider<T>`. Otherwise
+  the "this is legitimate" branch is unreachable outside its unit test.
+- **Sonar findings this repository leaves alone.** `java:S135` on guard-clause `continue`s: rewriting them into
+  nested conditions reads worse. `java:S1192` where the duplicated literal is the *label* `arc42` next to the
+  template id `ID` - the same spelling, two different things. Do not "fix" these on the next scan; everything
+  else Sonar reports is worth fixing.
+- **The architecture repository is imported, not read during a build**, and a failing import never reaches a
+  build - see `docs/architecture-import.md`. Three things about it are load-bearing and easy to undo by
+  accident:
+  - **The model resources are asked for unconditionally.** The architecture repository computes their entity
+    tag by serializing the whole body, so a conditional request costs it exactly what an unconditional one
+    costs. Adding `If-None-Match` there would look thrifty and save nothing. The artifacts are the opposite,
+    and are always asked for conditionally.
+  - **The model is replaced whole, in one transaction.** Not diffed. It is what makes a build read one
+    consistent moment, and what removes any need to detect a deletion. An artifact therefore holds no foreign
+    key into the model, or every blob would be deleted with it on each import.
+  - **Nothing is ever skipped.** A name that is not a slug is converted into one. The only things that stop an
+    import are a name that yields no slug at all and two names that yield the same one, and both abandon the
+    run rather than leaving something quietly out.
+- **arc42 is CC BY-SA and the rest of this service is Apache-2.0.** The attribution is in `NOTICE`, in
+  `jeap-doc-template-arc42`'s `README.md` and Javadoc, and **once in the generated site** at the foot of chapter
+  1 of every system - not on every page. Keeping arc42 confined to its module is what keeps that a question
+  about one module.
 - **Every change to code or configuration ends with a look at the documentation.** `docs/`, `AGENTS.md` and
   `CHANGELOG.md` are part of the change, not homework for later. Grepping for what you renamed - a class, a
   property, a status code - finds the easy half. The other half has no identifier to grep for: a sentence that
   promised something the service no longer does. So after changing *what the service guarantees*, re-read the
   pages that describe it, not only the ones that name it.
+
+  **Write what the code does today.** Planned behaviour goes in the future tense or is left out. Four pages
+  described an upload validation against the structure templates in the present tense, and no such code
+  exists - which matters because these pages are the brief the next story is written from.
 
 ## Commits
 
@@ -270,6 +480,7 @@ it touched and check them against what the code now does:
 | A meter, or what to alarm on                                                                 | `docs/observability.md`        |
 | What an instance's image has to carry                                                        | `docs/site-image.md`           |
 | What the bucket has to expire                                                                | `docs/operating-the-bucket.md` |
+| A structure template, a chapter, or where a page is served                                   | `docs/structure-templates.md`  |
 
 Three statements in `docs/uploads.md` went stale within a single branch this way - each true when it was written,
 and false one commit later, without any name changing that a search would have found.

@@ -1,7 +1,7 @@
 package ch.admin.bit.jeap.doc.persistence;
 
-import ch.admin.bit.jeap.doc.domain.SourceFormat;
-import ch.admin.bit.jeap.doc.domain.UploadState;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
+import ch.admin.bit.jeap.doc.domain.upload.UploadState;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

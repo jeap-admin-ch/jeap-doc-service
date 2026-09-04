@@ -55,6 +55,12 @@ html {
 
 /* --- Sidebar -------------------------------------------------------------------------------------------- */
 
+/* Wider than the Docusaurus default of 300px: the entries are generated page titles - a system name, a
+ * message type name, a whitebox view - and at 300px many of them wrap or are cut off. */
+:root {
+    --doc-sidebar-width: 450px;
+}
+
 .theme-doc-sidebar-container {
     border-right: 1px solid var(--jeap-border) !important;
 }

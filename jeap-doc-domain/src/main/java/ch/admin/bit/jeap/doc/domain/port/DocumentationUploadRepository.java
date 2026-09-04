@@ -1,8 +1,8 @@
 package ch.admin.bit.jeap.doc.domain.port;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationSubject;
-import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
-import ch.admin.bit.jeap.doc.domain.DocumentationUploadDescriptor;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationSubject;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor;
 
 import java.time.Instant;
 import java.util.Optional;

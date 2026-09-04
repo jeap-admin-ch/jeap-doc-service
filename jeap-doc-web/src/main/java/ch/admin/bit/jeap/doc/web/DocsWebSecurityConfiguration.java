@@ -41,7 +41,7 @@ public class DocsWebSecurityConfiguration {
     SecurityFilterChain documentationSiteSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
                 // A path match, not a substring one: a generated page may perfectly well live at
-                // /systems/wvs/api/, and testing whether the URI *contains* "/api/" would drop exactly that
+                // /systems/orders/api/, and testing whether the URI *contains* "/api/" would drop exactly that
                 // page out of this chain and answer a public documentation page with 401.
                 .securityMatcher(new NegatedRequestMatcher(
                         PathPatternRequestMatcher.withDefaults().matcher(API_PATH_PREFIX + "/**")))

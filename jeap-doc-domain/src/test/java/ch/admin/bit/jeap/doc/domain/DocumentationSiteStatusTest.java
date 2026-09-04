@@ -127,7 +127,7 @@ class DocumentationSiteStatusTest {
                 build(51, BuildState.RUNNING, BuildTrigger.MANUAL),
                 build(52, BuildState.RUNNING, BuildTrigger.SCHEDULE),
                 new DocumentationBuild(53L, OTHER_SITE, BuildTrigger.UPLOAD, BuildState.RUNNING, NOW, null,
-                        "doc-service-2", null, 0, 0, 0, null)));
+                        "doc-service-2", null, 0, 0, 0, null, null)));
 
         assertThat(status.of(Site.DEFAULT_SITE).orElseThrow().running())
                 .extracting(DocumentationBuild::id).containsExactly(51L, 52L);
@@ -137,7 +137,7 @@ class DocumentationSiteStatusTest {
     void all_thenTheRunningBuildsAreSortedOntoTheSiteTheyBelongTo() {
         when(builds.running()).thenReturn(List.of(
                 new DocumentationBuild(61L, OTHER_SITE, BuildTrigger.MANUAL, BuildState.RUNNING, NOW, null,
-                        "doc-service-1", null, 0, 0, 0, null)));
+                        "doc-service-1", null, 0, 0, 0, null, null)));
 
         assertThat(status.all()).filteredOn(siteStatus -> siteStatus.site().id().equals(OTHER_SITE))
                 .singleElement()
@@ -150,6 +150,7 @@ class DocumentationSiteStatusTest {
     private static DocumentationBuild build(long id, BuildState state, BuildTrigger trigger) {
         return new DocumentationBuild(id, Site.DEFAULT_SITE, trigger, state, NOW.minusSeconds(120),
                 state == BuildState.RUNNING ? null : NOW.minusSeconds(60), "doc-service-1",
-                state == BuildState.SUCCEEDED ? Site.DEFAULT_SITE + "/" + id : null, 0, 0, 0, null);
+                state == BuildState.SUCCEEDED ? Site.DEFAULT_SITE + "/" + id : null, 0, 0, 0,
+                null, null);
     }
 }

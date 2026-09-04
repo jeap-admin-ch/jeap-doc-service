@@ -15,7 +15,44 @@ import java.time.Duration;
 public interface BuildMetrics {
 
     /**
-     * A build that produced a site and published it.
+     * A generator that measures nothing.
+     * <p>
+     * For tests that need the port satisfied but are not about the meters. It is here because it was written
+     * out at three places, and every method added to this port had to be added to all three.
+     */
+    BuildMetrics NONE = new BuildMetrics() {
+
+        @Override
+        public void succeeded(String site, BuildTrigger trigger, Duration duration, BuiltSite generated) {
+            // measures nothing
+        }
+
+        @Override
+        public void failed(String site, BuildTrigger trigger, Duration duration) {
+            // measures nothing
+        }
+
+        @Override
+        public void aborted(String site, BuildTrigger trigger, Duration duration) {
+            // measures nothing
+        }
+
+        @Override
+        public void abandoned(String site, int count) {
+            // measures nothing
+        }
+
+        @Override
+        public void modelRead(String site, String environment, Duration duration) {
+            // measures nothing
+        }
+
+    };
+
+    /**
+     * A build that produced a site and published it. What it documented - {@link BuiltSite#documentedSystems}
+     * among it - is reported from here and from nowhere earlier, so that a build failing after the model was
+     * read leaves the gauges of the last successful build where they were.
      */
     void succeeded(String site, BuildTrigger trigger, Duration duration, BuiltSite generated);
 
@@ -30,6 +67,16 @@ public interface BuildMetrics {
      * on a build is not a defect, and the build is asked for again on the way down.
      */
     void aborted(String site, BuildTrigger trigger, Duration duration);
+
+    /**
+     * One read of the stored architecture model of an environment: how long it took.
+     * <p>
+     * Against the build timer, it answers how much of a build is spent loading the landscape out of the
+     * database. There is nothing to report about whether it worked: a build makes no call to the architecture
+     * repository, and a read that fails fails the build. How many systems it found is not reported here either
+     * - the build can still fail after it - but with {@link #succeeded}.
+     */
+    void modelRead(String site, String environment, Duration duration);
 
     /**
      * Builds found still marked as running although the instance that started them is gone. One is a container

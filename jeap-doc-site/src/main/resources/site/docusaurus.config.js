@@ -70,6 +70,42 @@ function docsOptions(environment) {
 
 const colorScheme = site.colorScheme || 'jeap';
 
+/**
+ * The footer link groups. `to` links are internal and get the site's base URL prepended, so they resolve into
+ * the main environment served at the site root; the Sites group crosses base URLs and uses absolute `href`s the
+ * generator computed. The Sites group is left out when the generator named no sites (an older fixture).
+ */
+const footerLinks = [
+    {
+        title: 'Documentation',
+        items: [
+            {label: 'Root Page', to: '/'},
+            // Only when the main environment has a systems page - a footer link to one that was not written
+            // fails the whole build, since onBrokenLinks is 'throw'.
+            ...(site.hasSystems ? [{label: 'Systems', to: '/systems/'}] : []),
+            // Unconditional: unlike the systems tree, this page is written into every environment tree of
+            // every site, so the link can never point at a page nobody wrote.
+            {label: 'About This Documentation', to: '/about-this-documentation/'},
+        ],
+    },
+    ...(Array.isArray(site.sites) && site.sites.length > 1
+        // Shown only when this instance serves more than one site; the list includes the current site on
+        // purpose, so a single-site instance would otherwise get a group linking only to itself.
+        ? [{
+            title: 'Sites',
+            items: site.sites.map((each) => ({label: each.title, href: each.url})),
+        }]
+        : []),
+    {
+        // One link per environment, to its own root. Every environment has a root page, so these never break;
+        // and each is an internal `to`, resolved against the environment's route base path.
+        title: 'Environments',
+        items: [...environments]
+            .sort((one, other) => (one.order || 0) - (other.order || 0))
+            .map((environment) => ({label: environment.label, to: `${routePrefixOf(environment)}/`})),
+    },
+];
+
 /** @type {import('@docusaurus/types').Config} */
 const config = {
     title: site.title,
@@ -94,9 +130,47 @@ const config = {
     // between pages are still thrown on, and that is the half that costs a reader a dead end.
     onBrokenAnchors: 'ignore',
 
+    // Docusaurus Faster, flag by flag rather than `faster: true`.
+    //
+    // `v4: true` implies `v4.fasterByDefault`, and Docusaurus then switches on every faster flag that is left
+    // undefined - so the list has to stay complete. **A Docusaurus upgrade has to be checked against
+    // DEFAULT_FASTER_CONFIG in @docusaurus/core/lib/server/configValidation.js**: a flag added in a later
+    // version would arrive switched on, which is how the memory of a build changes without anyone deciding it.
+    //
+    // What Rspack costs: its memory is native and sits outside the Node heap, so
+    // `jeap.doc.build.max-node-memory` (NODE_OPTIONS=--max-old-space-size) bounds the JS side of a build - MDX,
+    // the plugin lifecycle, the static generation when it runs in-process - and not the bundle phase. The
+    // container's limit is the only bound on that, and the `[site generator memory]` lines the doc service logs
+    // while it builds are what a container is sized from.
     future: {
         v4: true,
-        faster: true,
+        faster: {
+            // Native, and the work leaves the Node heap: SWC instead of Babel and Terser, Lightning CSS
+            // instead of cssnano. The HTML minimizer also strips attribute quotes, which is why every
+            // assertion on generated HTML has to tolerate both forms.
+            swcJsLoader: true,
+            swcJsMinimizer: true,
+            swcHtmlMinimizer: true,
+            lightningCssMinimizer: true,
+            // Compiles each page once for both environments instead of twice. It holds the compiled output
+            // for the second consumer, so it is the first flag to turn off if the [PERF] lines show the MDX
+            // phase retaining more heap than the container has room for.
+            mdxCrossCompilerCache: true,
+            // The bundler, and the reason for all of it: several times faster than webpack on a large site.
+            rspackBundler: true,
+            // Off: it needs ./node_modules/.cache kept between builds, and there is nothing to keep. Every
+            // build gets a fresh workspace that is discarded afterwards, and node_modules is a symlink to the
+            // image's read-only toolchain, so the cache could not be written even once.
+            rspackPersistentCache: false,
+            // Off unless an instance asks for it - `jeap.doc.build.ssg-worker-threads`. Each worker thread is
+            // its own V8 isolate with its own heap, and --max-old-space-size bounds an isolate rather than the
+            // process, so a pool of them multiplies what one build may hold. It needs
+            // `v4.removeLegacyPostBuildHeadAttribute`, which `v4: true` above already gives.
+            ssgWorkerThreads: site.ssgWorkerThreads === true,
+            // Off: a build workspace is a plain directory with no repository in it, and the docs are generated
+            // with `showLastUpdateTime: false`. There is no history to read eagerly.
+            gitEagerVcs: false,
+        },
     },
 
     i18n: {
@@ -171,25 +245,6 @@ const config = {
                 searchBarPosition: 'auto',
             },
         ],
-        // llms.txt and llms-full.txt, as in the jEAP documentation. It reads one tree, and that is the main
-        // environment: the file describes the documentation, not one copy of it per environment.
-        [
-            'docusaurus-plugin-llms',
-            {
-                generateLLMsTxt: true,
-                generateLLMsFullTxt: true,
-                generateMarkdownFiles: true,
-                // The array form carries the route base path with the directory; without it the plugin derives
-                // the public URL from the file path and emits links to `/content/<env>/…`.
-                docsDir: [{
-                    path: `content/${mainEnvironment.id}`,
-                    routeBasePath: routePrefixOf(mainEnvironment) || '/',
-                    label: site.title,
-                }],
-                title: site.title,
-                description: site.tagline || site.title,
-            },
-        ],
         // One docs instance per non-main environment; the main one is the preset's instance below.
         ...environments
             .filter((environment) => !environment.main)
@@ -229,6 +284,10 @@ const config = {
         ],
     ],
 
+    // Runs on every page and does something on exactly one: the page describing the documentation, where it
+    // fills in what the run that produced this site cost. The numbers cannot be generated into the page - see
+    // the module - and all the JavaScript of this site lives in the template rather than in generated content.
+    clientModules: [require.resolve('./src/clientModules/publicationNumbers.js')],
     themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
         ({
@@ -256,6 +315,7 @@ const config = {
             },
             footer: {
                 style: 'light',
+                links: footerLinks,
                 // The generator hands the readable form of the timestamp over ready-made, so that the date
                 // format has one definition rather than one here and one on every generated page.
                 copyright: site.generatedAtDisplay

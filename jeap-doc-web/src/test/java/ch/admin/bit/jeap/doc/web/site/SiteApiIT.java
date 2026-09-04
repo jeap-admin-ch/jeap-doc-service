@@ -59,13 +59,13 @@ class SiteApiIT extends DocServiceIntegrationTestBase {
         Files.createDirectories(site.resolve("dev"));
         Files.writeString(site.resolve("dev/index.html"), "<html><body>Development</body></html>",
                 StandardCharsets.UTF_8);
-        Files.createDirectories(site.resolve("systems/wvs/api"));
-        Files.writeString(site.resolve("systems/wvs/api/index.html"), "<html><body>The API of wvs</body></html>",
+        Files.createDirectories(site.resolve("systems/orders/api"));
+        Files.writeString(site.resolve("systems/orders/api/index.html"), "<html><body>The API of orders</body></html>",
                 StandardCharsets.UTF_8);
 
         String prefix = Site.DEFAULT_SITE + "/" + build.id();
         publication.publish(prefix, site);
-        builds.succeeded(build.id(), prefix, 3, 100, 10, Instant.now());
+        builds.succeeded(build.id(), prefix, 3, 100, 10, null, Instant.now());
         publishedBuildId = build.id();
     }
 
@@ -113,7 +113,7 @@ class SiteApiIT extends DocServiceIntegrationTestBase {
      */
     @Test
     void get_whenTheApi_thenStillAuthenticated() throws Exception {
-        mockMvc.perform(get("/api/uploads/docs/8f1c9a2e-6a1a-4a5f-9a5e-2b0f9a3c1d77?system=wvs"))
+        mockMvc.perform(get("/api/uploads/docs/8f1c9a2e-6a1a-4a5f-9a5e-2b0f9a3c1d77?system=orders"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -124,9 +124,9 @@ class SiteApiIT extends DocServiceIntegrationTestBase {
      */
     @Test
     void get_whenAPageLivesUnderAnApiSegment_thenItIsStillOpenDocumentation() throws Exception {
-        mockMvc.perform(get("/systems/wvs/api/"))
+        mockMvc.perform(get("/systems/orders/api/"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("The API of wvs")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("The API of orders")));
     }
 
     /**

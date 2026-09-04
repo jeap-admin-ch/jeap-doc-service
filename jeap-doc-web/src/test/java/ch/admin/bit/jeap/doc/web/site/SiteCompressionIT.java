@@ -51,7 +51,7 @@ class SiteCompressionIT extends DocServiceIntegrationTestBase {
                 StandardCharsets.UTF_8);
         String prefix = Site.DEFAULT_SITE + "/" + build.id();
         publication.publish(prefix, site);
-        builds.succeeded(build.id(), prefix, 1, 8192, 10, Instant.now());
+        builds.succeeded(build.id(), prefix, 1, 8192, 10, null, Instant.now());
     }
 
     @Test

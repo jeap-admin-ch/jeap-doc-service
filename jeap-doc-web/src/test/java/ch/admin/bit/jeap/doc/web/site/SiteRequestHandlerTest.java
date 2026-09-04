@@ -39,8 +39,8 @@ class SiteRequestHandlerTest {
             "/dev/index.html",
             "/assets/js/main.abc123.js",
             "/assets/js/runtime~main.1a2b3c.js",
-            "/llms-full.txt",
-            "/systems/wvs/api/index.html",
+            "/robots.txt",
+            "/systems/orders/api/index.html",
             "/img/logo.svg",
             "/1-intro/index.html",
             "/uebersicht/index.html"})

@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.domain.port;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
 
 /**
  * What happened when an attempt tried to claim an upload id.

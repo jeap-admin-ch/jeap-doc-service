@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-03
+
+### Added
+
+- **The system documentation is generated** as one arc42 tree per system: components, messages, schemas, diagrams.
+- **The architecture repository is imported hourly into the doc service's own database**; a build reads that copy.
+- **arc42 is a module of its own**, `jeap-doc-template-arc42`, and every page goes through `jeap-doc-markdown`.
+- **An "About This Documentation" page** per environment names what the model contributed and what the build cost.
+- **Every site but the default is served below `/site/`**: the URL of every named site changes, with no redirect.
+
 ## [1.1.1] - 2026-09-03
 
 ### Dependencies
@@ -21,6 +31,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.0.0] - 2026-08-28
 
 ### Dependencies
+
 - **ch.admin.bit.jeap:jeap-spring-boot-parent**: 40.4.0 → 40.5.0 (minor)
 - **react-dom**: 19.2.0 → 19.2.8 (patch)
 - **react**: 19.2.0 → 19.2.8 (patch)

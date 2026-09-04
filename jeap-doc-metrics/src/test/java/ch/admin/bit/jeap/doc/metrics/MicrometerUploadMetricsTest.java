@@ -1,7 +1,7 @@
 package ch.admin.bit.jeap.doc.metrics;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationType;
-import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -57,5 +57,18 @@ class MicrometerUploadMetricsTest {
         metrics.failed(null, InvalidUploadException.Code.MISSING_PARAMETER, Duration.ofMillis(1));
 
         assertThat(registry.get(MicrometerUploadMetrics.UPLOAD).tag("type", "unknown").timer().count()).isOne();
+    }
+
+    /**
+     * The upload timer <b>keeps</b> its buckets, unlike the build and import timers: seconds is the scale an
+     * upload takes, which is the range Micrometer's default histogram covers, so its quantiles mean something.
+     */
+    @Test
+    void upload_thenTheTimerPublishesHistogramBuckets() {
+        RecordingHistogramConfig recording = new RecordingHistogramConfig();
+
+        new MicrometerUploadMetrics(recording).stored(DocumentationType.SYSTEM_DOCS, 4096, Duration.ofSeconds(2));
+
+        assertThat(recording.publishesHistogram(MicrometerUploadMetrics.UPLOAD)).isTrue();
     }
 }

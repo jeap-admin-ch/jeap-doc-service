@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  */
 final class DocumentationUploads {
 
-    static final String SYSTEM = "wvs";
+    static final String SYSTEM = "orders";
     static final String COMPONENT = "foo-bar-scs";
 
     private DocumentationUploads() {
@@ -35,11 +35,11 @@ final class DocumentationUploads {
         parameters.put("system", SYSTEM);
         parameters.put("template", "arc42");
         parameters.put("source-format", "markdown");
-        parameters.put("source-repository", "ssh://git@bitbucket.example.ch/wvs/wvs-docs.git");
+        parameters.put("source-repository", "ssh://git@bitbucket.example.ch/orders/orders-docs.git");
         parameters.put("source-revision", "9a1c2f8");
         parameters.put("source-ref", "main");
         parameters.put("source-timestamp", "2026-08-21T09:12:00+02:00");
-        parameters.put("build-url", "https://github.com/wvs/wvs-docs/actions/runs/1234567890");
+        parameters.put("build-url", "https://github.com/orders/orders-docs/actions/runs/1234567890");
         parameters.put("generated-at", "2026-08-21T09:15:00+02:00");
         return parameters;
     }

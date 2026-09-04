@@ -1,6 +1,12 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
+import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
+import ch.admin.bit.jeap.doc.domain.port.DocumentationStatus;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import ch.admin.bit.jeap.doc.domain.port.PublishedSite;
@@ -11,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -22,6 +29,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -32,6 +40,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -42,6 +51,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class DocumentationBuildRunnerTest {
+
+    private static final long GB = 1024L * 1024 * 1024;
 
     private static final Instant NOW = Instant.parse("2026-08-25T09:00:00Z");
     private static final String SITE = Site.DEFAULT_SITE;
@@ -59,6 +70,9 @@ class DocumentationBuildRunnerTest {
     private BuildProperties properties;
     private RecordingExclusiveWork locks;
     private RecordingBuildMetrics metrics;
+    private ArchitectureModelReadiness readiness;
+    /** What the container did while a build ran - set by the tests that are about the line it produces. */
+    private ContainerMemory containerMemory = ContainerMemory.NONE;
     private DocumentationBuildRunner runner;
 
     @BeforeEach
@@ -66,14 +80,136 @@ class DocumentationBuildRunnerTest {
         sites = new DocumentationSites(new SiteProperties());
         properties = new BuildProperties();
         locks = new RecordingExclusiveWork();
+        readiness = new ArchitectureModelReadiness(NoArchitectureRepository.INSTANCE);
         metrics = new RecordingBuildMetrics();
         runner = new DocumentationBuildRunner(requests, builds, sites, siteBuilder, publication,
-                properties, metrics, locks, Clock.fixed(NOW, ZoneOffset.UTC));
+                properties, metrics, locks, readiness, containerMemory, Clock.fixed(NOW, ZoneOffset.UTC));
 
         when(builds.start(anyString(), any(), anyString(), any())).thenReturn(build(7L, BuildState.RUNNING));
-        when(siteBuilder.generate(anyLong(), any(), any())).thenReturn(new BuiltSite(Path.of("build"), 12, 4096, 900));
+        when(siteBuilder.generate(anyLong(), any(), any())).thenReturn(new BuiltSite(Path.of("build"), 12, 4096, 900, Map.of()));
         when(publication.publish(anyString(), any())).thenAnswer(invocation ->
                 new PublishedSite(invocation.getArgument(0), 30, 4096));
+    }
+
+    /**
+     * What a build did to the memory of its container, on the line that says it was published.
+     * <p>
+     * It is the number a container is sized from: the site generator is a child process whose bundler
+     * allocates outside any heap this service can see, so nothing the JVM measures about itself says how close
+     * a build came to the limit it is killed at.
+     */
+    @Test
+    void runOnce_thenThePublishedLineSaysWhatTheContainerHeld() {
+        containerMemory = peakOf(11L * GB, 16L * GB, true);
+        setUp();
+        pending(SITE);
+        ListAppender<ILoggingEvent> logged = captureLog();
+
+        assertThat(runner.runOnce()).isTrue();
+
+        // Rounded, not truncated: 11 of 16 GB is 68.75%, and the page in the browser rounds it too. The two
+        // are read side by side by whoever is asking how close a build came to its limit.
+        assertThat(published(logged)).contains("peak 11264MB of 16384MB (69%) in the container");
+    }
+
+    /**
+     * Where the kernel's high-water mark could not be reset and this build stayed below an earlier one, all
+     * that is known is that it stayed below it - which is what it says, rather than claiming the earlier
+     * build's peak as its own.
+     */
+    @Test
+    void runOnce_whenThePeakIsOnlyAnUpperBound_thenTheLineSaysSo() {
+        containerMemory = peakOf(11L * GB, 16L * GB, false);
+        setUp();
+        pending(SITE);
+        ListAppender<ILoggingEvent> logged = captureLog();
+
+        assertThat(runner.runOnce()).isTrue();
+
+        assertThat(published(logged)).contains("peak at most 11264MB of 16384MB");
+    }
+
+    /**
+     * And on the row, not only in the line: a log line is gone with the log, and comparing a build against the
+     * one before it is what the number is for.
+     */
+    @Test
+    void runOnce_thenThePeakIsRecordedOnTheBuild() {
+        containerMemory = peakOf(11L * GB, 16L * GB, true);
+        setUp();
+        pending(SITE);
+
+        assertThat(runner.runOnce()).isTrue();
+
+        ArgumentCaptor<ContainerMemory.Peak> peak = ArgumentCaptor.forClass(ContainerMemory.Peak.class);
+        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), peak.capture(), any());
+        assertThat(peak.getValue()).isEqualTo(new ContainerMemory.Peak(11L * GB, 16L * GB, true));
+    }
+
+    /** A container that cannot be read leaves the columns empty rather than claiming a build used nothing. */
+    @Test
+    void runOnce_whenTheContainerCannotBeRead_thenNoPeakIsRecorded() {
+        pending(SITE);
+
+        assertThat(runner.runOnce()).isTrue();
+
+        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), isNull(), any());
+    }
+
+    /**
+     * <b>One reading, reported three times.</b> The kernel's mark only rises, and three things report one
+     * build: the file written beside the site, the row, and the line that says it was published. A reading per
+     * place gave three different numbers - and the upload between two of them streams the whole site, so the
+     * difference was not hypothetical. This test fails on that: the container here reports a gigabyte more
+     * every time it is asked.
+     */
+    @Test
+    void runOnce_thenTheFileTheRowAndTheLineAllReportTheSamePeak() {
+        containerMemory = aPeakThatRises(11L * GB, 16L * GB);
+        setUp();
+        pending(SITE);
+        ListAppender<ILoggingEvent> logged = captureLog();
+
+        assertThat(runner.runOnce()).isTrue();
+
+        ArgumentCaptor<DocumentationStatus> beside = ArgumentCaptor.forClass(DocumentationStatus.class);
+        verify(siteBuilder).describeRun(any(), beside.capture());
+        ArgumentCaptor<ContainerMemory.Peak> onTheRow = ArgumentCaptor.forClass(ContainerMemory.Peak.class);
+        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), onTheRow.capture(),
+                any());
+
+        assertThat(beside.getValue().memoryPeakBytes()).isEqualTo(11L * GB);
+        assertThat(onTheRow.getValue().usedBytes()).isEqualTo(11L * GB);
+        assertThat(published(logged)).contains("peak 11264MB of 16384MB");
+    }
+
+    /** Off Linux there is nothing to read, and the line is the line it always was. */
+    @Test
+    void runOnce_whenTheContainerCannotBeRead_thenThePublishedLineIsUnchanged() {
+        pending(SITE);
+        ListAppender<ILoggingEvent> logged = captureLog();
+
+        assertThat(runner.runOnce()).isTrue();
+
+        assertThat(published(logged)).endsWith("of which was the site generator.").doesNotContain("peak");
+    }
+
+    /** A build killed for want of memory exits with a number; how close it came belongs beside that number. */
+    @Test
+    void runOnce_whenTheBuildFails_thenTheReasonCarriesWhatTheContainerHeld() {
+        containerMemory = peakOf(16L * GB, 16L * GB, true);
+        setUp();
+        pending(SITE);
+        when(siteBuilder.generate(anyLong(), any(), any()))
+                .thenThrow(new SiteBuildException("The site generator exited with 137."));
+
+        assertThat(runner.runOnce()).isTrue();
+
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(builds).failed(eq(7L), reason.capture(), any(), any());
+        assertThat(reason.getValue())
+                .startsWith("The site generator exited with 137.")
+                .contains(". peak 16384MB of 16384MB (100%) in the container");
     }
 
     @Test
@@ -99,7 +235,7 @@ class DocumentationBuildRunnerTest {
         order.verify(requests).claim(SITE);
         order.verify(siteBuilder).generate(anyLong(), any(), any());
         order.verify(publication).publish(anyString(), any());
-        order.verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any());
+        order.verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any(), any());
     }
 
     /**
@@ -138,8 +274,7 @@ class DocumentationBuildRunnerTest {
                 "governance", new SiteProperties.Site())));
         sites = new DocumentationSites(configured);
         runner = new DocumentationBuildRunner(requests, builds, sites, siteBuilder, publication,
-                properties, metrics,
-                locks, Clock.fixed(NOW, ZoneOffset.UTC));
+                properties, metrics, locks, readiness, containerMemory, Clock.fixed(NOW, ZoneOffset.UTC));
         when(requests.pending()).thenReturn(List.of(
                 new BuildRequest(Site.DEFAULT_SITE, NOW, BuildTrigger.UPLOAD),
                 new BuildRequest("governance", NOW, BuildTrigger.SCHEDULE)));
@@ -211,9 +346,9 @@ class DocumentationBuildRunnerTest {
 
         assertThat(runner.runOnce()).isTrue();
 
-        verify(builds).failed(eq(7L), eq("exited with 1"), any());
+        verify(builds).failed(eq(7L), eq("exited with 1"), any(), any());
         assertThat(metrics.results).containsExactly("failed:" + SITE + ":UPLOAD");
-        verify(builds, never()).succeeded(anyLong(), anyString(), anyInt(), anyLong(), anyLong(), any());
+        verify(builds, never()).succeeded(anyLong(), anyString(), anyInt(), anyLong(), anyLong(), any(), any());
         verify(publication, never()).publish(anyString(), any());
         verify(siteBuilder).discard(7L);
     }
@@ -225,7 +360,7 @@ class DocumentationBuildRunnerTest {
 
         assertThat(runner.runOnce()).isTrue();
 
-        verify(builds).failed(eq(7L), eq("the bucket said no"), any());
+        verify(builds).failed(eq(7L), eq("the bucket said no"), any(), any());
         verify(siteBuilder).discard(7L);
         assertThat(metrics.results).containsExactly("failed:" + SITE + ":UPLOAD");
     }
@@ -256,7 +391,7 @@ class DocumentationBuildRunnerTest {
         assertThat(runner.runOnce()).isTrue();
 
         verify(builds).start(eq(SITE), eq(BuildTrigger.RECOVERY), anyString(), any());
-        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any());
+        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any(), any());
     }
 
     /**
@@ -350,7 +485,7 @@ class DocumentationBuildRunnerTest {
         runner.runOnce();
 
         InOrder order = inOrder(builds, publication);
-        order.verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any());
+        order.verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any(), any());
         order.verify(publication).delete(SITE + "/3");
         order.verify(publication).delete(SITE + "/4");
     }
@@ -368,8 +503,8 @@ class DocumentationBuildRunnerTest {
 
         assertThat(runner.runOnce()).isTrue();
 
-        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any());
-        verify(builds, never()).failed(anyLong(), anyString(), any());
+        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any(), any());
+        verify(builds, never()).failed(anyLong(), anyString(), any(), any());
         verify(builds, never()).aborted(anyLong(), anyString(), any());
         verify(publication, never()).delete(SITE + "/7");
     }
@@ -389,7 +524,7 @@ class DocumentationBuildRunnerTest {
 
         assertThat(runner.runOnce()).isTrue();
 
-        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any());
+        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any(), any());
         verify(builds, never()).aborted(anyLong(), anyString(), any());
         verify(publication, never()).delete(SITE + "/7");
     }
@@ -402,7 +537,7 @@ class DocumentationBuildRunnerTest {
 
         assertThat(runner.runOnce()).isTrue();
 
-        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any());
+        verify(builds).succeeded(eq(7L), anyString(), anyInt(), anyLong(), anyLong(), any(), any());
     }
 
     @Test
@@ -434,13 +569,43 @@ class DocumentationBuildRunnerTest {
     }
 
     private static DocumentationBuild build(long id, BuildState state, BuildTrigger trigger) {
-        return new DocumentationBuild(id, SITE, trigger, state, NOW, null, "test", null, 0, 0, 0, null);
+        return new DocumentationBuild(id, SITE, trigger, state, NOW, null, "test", null, 0, 0, 0,
+                null, null);
     }
 
     /**
      * What the runner's use of the lock looks like from the domain's side. Refusing is exactly what a site
      * another instance is building looks like.
      */
+    /**
+     * An instance with no architecture repository, so that a site is never held back for want of a model. What
+     * holding one back does is {@link ArchitectureModelReadinessTest}'s business.
+     */
+    private enum NoArchitectureRepository implements ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource {
+
+        INSTANCE;
+
+        @Override
+        public boolean isConfiguredFor(String environment) {
+            return false;
+        }
+
+        @Override
+        public java.util.Optional<String> sourceUrlOf(String environment) {
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Optional<Instant> lastSuccessfulImportAt(String environment) {
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(String environment) {
+            return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot.empty();
+        }
+    }
+
     private static class RecordingExclusiveWork implements ch.admin.bit.jeap.doc.domain.port.ExclusiveWork {
 
         private final List<String> taken = new ArrayList<>();
@@ -460,5 +625,34 @@ class DocumentationBuildRunnerTest {
             taken.add(name);
             return Optional.ofNullable(work.get());
         }
+    }
+
+    /** A container that reports a gigabyte more every time it is asked, as the kernel's rising mark does. */
+    private static ContainerMemory aPeakThatRises(long firstUsed, long limitBytes) {
+        return () -> {
+            java.util.concurrent.atomic.AtomicLong used = new java.util.concurrent.atomic.AtomicLong(firstUsed);
+            return () -> Optional.of(new ContainerMemory.Peak(used.getAndAdd(GB), limitBytes, true));
+        };
+    }
+
+    private static ContainerMemory peakOf(long usedBytes, long limitBytes, boolean exact) {
+        return () -> () -> Optional.of(new ContainerMemory.Peak(usedBytes, limitBytes, exact));
+    }
+
+    private static String published(ListAppender<ILoggingEvent> logged) {
+        return logged.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .filter(line -> line.contains("is published:"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("nothing was published"));
+    }
+
+    private static ListAppender<ILoggingEvent> captureLog() {
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) org.slf4j.LoggerFactory.getLogger(DocumentationBuildRunner.class);
+        logger.setLevel(Level.INFO);
+        logger.addAppender(appender);
+        return appender;
     }
 }

@@ -11,7 +11,6 @@ import java.util.Optional;
 import java.util.Locale;
 import java.util.Set;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 /**
  * The documentation sites of this instance, resolved from the configuration once and checked while the service
@@ -26,15 +25,20 @@ import java.util.stream.Collectors;
 public class DocumentationSites {
 
     /**
-     * Path segments the service itself owns, which a site may therefore not be named after.
+     * Path segments the service itself owns, which an environment of the <b>default</b> site may therefore not
+     * be named after.
      * <p>
-     * A site is served under its id as the first path segment, so a site called {@code api} would be matched by
-     * the security chain of the REST API and answer 401 for every page of it, and one called {@code actuator}
-     * would disappear behind the management endpoints. It is a configuration error, so it fails the startup
-     * rather than being discovered by a reader.
+     * That site owns the context root and its environments take a top-level segment each, so an environment
+     * called {@code api} would be matched by the security chain of the REST API and answer 401 for every page
+     * of it, and one called {@code actuator} would disappear behind the management endpoints. It is a
+     * configuration error, so it fails the startup rather than being discovered by a reader.
+     * <p>
+     * <b>It says nothing about a site id, and nothing about the environments of any other site.</b> Every site
+     * but the default one is served below {@link Site#SITE_SEGMENT}, which is a namespace of its own - see the
+     * constant.
      */
-    static final Set<String> RESERVED_IDS = Set.of("api", "actuator", "swagger-ui", "api-docs", "webjars",
-            "error", "assets", "img");
+    static final Set<String> RESERVED_TOP_LEVEL_SEGMENTS = Set.of("api", "actuator", "swagger-ui", "api-docs",
+            "webjars", "error", "assets", "img");
 
     /**
      * The longest a site id may be. A site's build lock is named after it, and the {@code shedlock} table's
@@ -91,26 +95,10 @@ public class DocumentationSites {
 
         Map<String, Site> resolved = new LinkedHashMap<>();
         configured.forEach((id, site) -> resolved.put(id, toSite(id, site)));
-        requireNoSiteShadowsAnEnvironment(resolved);
         // Not Map.copyOf: that is an immutable map whose iteration order is unspecified and in practice
         // randomised per JVM, and both the startup line and the message listing the configured sites read
         // better in the order someone wrote them.
         return java.util.Collections.unmodifiableMap(resolved);
-    }
-
-    /**
-     * A site may not be named after a path segment the service itself answers on: it would be matched by the
-     * API's security chain or disappear behind the management endpoints, and every page of it would answer 401
-     * or 404 with nothing to say why.
-     * <p>
-     * A name merely <i>ending</i> in {@code -api} is fine. The jEAP web configuration would leave such a
-     * segment without security headers by default, which is why the doc service pins
-     * {@code jeap.web.headers.skip-path-prefixes} and {@code -suffixes} to values that cannot match a site.
-     */
-    private static void requireIdIsNotReserved(String id) {
-        require(!RESERVED_IDS.contains(id),
-                "The site id '%s' is one the doc service answers on itself. Reserved: %s.", id,
-                RESERVED_IDS.stream().sorted().toList());
     }
 
     private static Site toSite(String id, SiteProperties.Site configured) {
@@ -118,7 +106,10 @@ public class DocumentationSites {
         require(id.length() <= MAX_SITE_ID_LENGTH,
                 "The site id '%s' is %d characters long; at most %d fit the name of the lock its builds take.",
                 id, id.length(), MAX_SITE_ID_LENGTH);
-        requireIdIsNotReserved(id);
+        // And that is every rule a site id has to keep. A site is served below Site.SITE_SEGMENT, so it cannot
+        // collide with a path this service answers on, with an environment of the default site, or with the
+        // URLs of another site.
+
         // That the colour scheme is one the template ships is checked while the service starts, by the site
         // generator - it reads the stylesheets rather than a list of their names, which is the only way the
         // check cannot drift away from what is actually shipped.
@@ -135,11 +126,12 @@ public class DocumentationSites {
                 configured.getColorScheme(),
                 environments,
                 configured.getPublicationSchedule(),
-                configured.isPublishOnUpload());
+                configured.isPublishOnUpload(),
+                configured.isArchitectureModelRequired());
     }
 
     /**
-     * What the navbar, the browser tab and llms.txt call this site.
+     * What the navbar and the browser tab call this site.
      * <p>
      * A site that configures no title is called after its id, which reads well for a named site - but the
      * default site would then be titled "default", and that is the site every instance gets without configuring
@@ -174,12 +166,22 @@ public class DocumentationSites {
         String id = configured.getId();
         require(Slugs.isSlug(id), "The site '%s' configures the environment id '%s', which is not a slug (%s).",
                 siteId, id, Slugs.DESCRIPTION);
-        // An environment of the default site occupies a top-level path segment exactly as a site does, so the
-        // same names are unusable - an environment called 'api' would be matched by the API's security chain
-        // and answer 401 for every page of that tree.
-        require(!RESERVED_IDS.contains(id),
-                "The site '%s' configures an environment called '%s', which is a path the doc service answers "
-                + "on itself. Reserved: %s.", siteId, id, RESERVED_IDS.stream().sorted().toList());
+        // The environments of the default site are what takes a top-level path segment each, so it is there -
+        // and only there - that the segments the service answers on itself are unusable: an environment called
+        // 'api' would be matched by the API's security chain and answer 401 for every page of that tree. The
+        // environments of any other site sit below /site/<id>/ and can be called whatever they like.
+        if (Site.DEFAULT_SITE.equals(siteId)) {
+            require(!RESERVED_TOP_LEVEL_SEGMENTS.contains(id),
+                    "The site '%s' configures an environment called '%s', which is a path the doc service "
+                    + "answers on itself. Reserved: %s.", siteId, id,
+                    RESERVED_TOP_LEVEL_SEGMENTS.stream().sorted().toList());
+            // The one reservation the /site/<id> layout costs: this segment is where every other site is
+            // served, so the default site's environment of that name would fight all of them for it.
+            require(!Site.SITE_SEGMENT.equals(id),
+                    "The site '%s' configures an environment called '%s', which is the path every other "
+                    + "documentation site is served below (/%s/<site>/). Rename the environment.",
+                    siteId, id, Site.SITE_SEGMENT);
+        }
         // And two the site generator itself owns: 'default' is the id of its own docs instance, so an
         // environment named after it fails every build on a duplicate plugin id - and 'static' is one of its
         // static directories, so an environment named after it would have its Markdown copied verbatim to the
@@ -196,28 +198,6 @@ public class DocumentationSites {
                 configured.getOrder(),
                 configured.isMain(),
                 configured.isLatest());
-    }
-
-    /**
-     * A site other than the default one is served under its own path segment, and the default site's
-     * environments are served under theirs - at the same level. A site named after one of them would take that
-     * environment's URLs over, and which of the two answered would depend on the order the routes were matched.
-     */
-    private static void requireNoSiteShadowsAnEnvironment(Map<String, Site> sites) {
-        Site defaultSite = sites.get(Site.DEFAULT_SITE);
-        if (defaultSite == null) {
-            return;
-        }
-        Set<String> environmentIds = defaultSite.environments().stream().map(SiteEnvironment::id).collect(Collectors.toSet());
-        sites.keySet().stream()
-                .filter(id -> !Site.DEFAULT_SITE.equals(id))
-                .filter(environmentIds::contains)
-                .findFirst()
-                .ifPresent(id -> {
-                    throw new IllegalStateException(
-                            ("The site '%s' is named after an environment of the default site, so both would be "
-                             + "served under /%s. Rename the site, or the environment.").formatted(id, id));
-                });
     }
 
     private static void requireExactlyOne(String siteId, List<SiteEnvironment> environments,

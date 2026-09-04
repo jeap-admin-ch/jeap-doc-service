@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationUploadDescriptor;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor;
 import lombok.Builder;
 
 import java.time.OffsetDateTime;

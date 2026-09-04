@@ -1,7 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
-import ch.admin.bit.jeap.doc.domain.UploadState;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.upload.UploadState;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;

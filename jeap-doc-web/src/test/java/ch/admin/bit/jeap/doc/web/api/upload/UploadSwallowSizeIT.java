@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.web.api.upload;
 
-import ch.admin.bit.jeap.doc.domain.UploadProperties;
+import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -104,7 +104,7 @@ class PublishedDocumentationTest {
 
     private static DocumentationBuild build(long id) {
         return new DocumentationBuild(id, SITE, BuildTrigger.SCHEDULE, BuildState.SUCCEEDED, NOW, NOW, "test",
-                "default/" + id, 1, 1, 1, null);
+                "default/" + id, 1, 1, 1, null, null);
     }
 
     private static StoredObject object() {

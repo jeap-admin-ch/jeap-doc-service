@@ -78,6 +78,17 @@ public class SiteProperties {
          * Whether an upload for this site asks for a build of it.
          */
         private boolean publishOnUpload = true;
+
+        /**
+         * Whether this site may only be published once the architecture model of its environments has been
+         * imported.
+         * <p>
+         * It has an effect only where an architecture repository is configured for one of the site's
+         * environments. A site documenting from other sources configures none and never meets this flag, which
+         * is what makes requiring the model a safe default: without it the first deployment of an instance
+         * would publish a site whose system documentation is silently missing.
+         */
+        private boolean architectureModelRequired = true;
     }
 
     /**

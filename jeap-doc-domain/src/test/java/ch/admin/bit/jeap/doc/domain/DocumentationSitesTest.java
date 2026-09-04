@@ -19,7 +19,7 @@ class DocumentationSitesTest {
         assertThat(sites.ids()).containsExactly(Site.DEFAULT_SITE);
         Site site = sites.find(Site.DEFAULT_SITE).orElseThrow();
         // Not "default": that is the site every instance gets without configuring anything, and the title ends
-        // up in the navbar, the browser tab and llms.txt.
+        // up in the navbar and the browser tab.
         assertThat(site.title()).isEqualTo("Documentation");
         assertThat(site.environments()).extracting(SiteEnvironment::id).containsExactly("dev", "ref", "abn", "prod");
         assertThat(site.mainEnvironment().id()).isEqualTo("prod");
@@ -42,7 +42,7 @@ class DocumentationSitesTest {
     }
 
     @Test
-    void routePrefix_thenTheDefaultSiteOwnsTheRootAndTheOthersASegment() {
+    void routePrefix_thenTheDefaultSiteOwnsTheRootAndTheOthersLiveBelowTheSiteSegment() {
         DocumentationSites sites = new DocumentationSites(properties(Map.of(
                 Site.DEFAULT_SITE, site(builder -> {
                 }),
@@ -50,7 +50,7 @@ class DocumentationSitesTest {
                 }))));
 
         assertThat(sites.find(Site.DEFAULT_SITE).orElseThrow().routePrefix()).isEmpty();
-        assertThat(sites.find("governance").orElseThrow().routePrefix()).isEqualTo("/governance");
+        assertThat(sites.find("governance").orElseThrow().routePrefix()).isEqualTo("/site/governance");
     }
 
     @Test
@@ -63,18 +63,23 @@ class DocumentationSitesTest {
                 .containsExactly("/dev", "/ref", "/abn");
     }
 
+    /**
+     * A site named after an environment of the default site used to fail the startup, because both were served
+     * under the same top-level segment. Below {@code /site/} they are two namespaces, and the two coexist.
+     */
     @Test
-    void construct_whenSiteNamedAfterAnEnvironmentOfTheDefaultSite_thenFailsTheStartup() {
+    void construct_whenSiteNamedAfterAnEnvironmentOfTheDefaultSite_thenBothAreServed() {
         SiteProperties properties = properties(Map.of(
                 Site.DEFAULT_SITE, site(configured -> {
                 }),
                 "dev", site(configured -> {
                 })));
 
-        assertThatThrownBy(() -> new DocumentationSites(properties))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("named after an environment")
-                .hasMessageContaining("/dev");
+        DocumentationSites sites = new DocumentationSites(properties);
+
+        assertThat(sites.find("dev").orElseThrow().routePrefix()).isEqualTo("/site/dev");
+        assertThat(sites.find(Site.DEFAULT_SITE).orElseThrow().environments())
+                .extracting(SiteEnvironment::routePrefix).contains("/dev");
     }
 
     @Test
@@ -177,34 +182,64 @@ class DocumentationSitesTest {
     }
 
     /**
-     * A site is served under its id as the first path segment, so a site called `api` would be matched by the
-     * API's security chain and answer 401 for every page of it.
+     * A site is served below {@code /site/}, so nothing it is called can be matched by the API's security chain
+     * or disappear behind the management endpoints. These names all used to fail the startup.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"api", "actuator", "swagger-ui", "api-docs", "webjars", "error", "assets", "img"})
-    void construct_whenTheSiteIsNamedAfterAPathTheServiceAnswersOn_thenFailsTheStartup(String id) {
+    @ValueSource(strings = {"api", "actuator", "swagger-ui", "api-docs", "webjars", "error", "assets", "img",
+            "site", "default-site", "dev", "prod"})
+    void construct_whenTheSiteIsNamedAfterAPathTheServiceAnswersOn_thenItIsAccepted(String id) {
         SiteProperties properties = properties(Map.of(id, site(configured -> {
         })));
 
-        assertThatThrownBy(() -> new DocumentationSites(properties))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(id)
-                .hasMessageContaining("Reserved");
+        assertThat(new DocumentationSites(properties).find(id).orElseThrow().routePrefix())
+                .isEqualTo("/site/" + id);
     }
 
     /**
-     * An environment of the default site occupies the same top-level segment as a site does, so the same names
-     * are unusable there - and this is the check that was missing while the site one existed.
+     * The environments of the default site are what still takes a top-level segment each, so it is there that
+     * the paths the service answers on itself are unusable.
      */
     @ParameterizedTest
     @ValueSource(strings = {"api", "actuator", "assets"})
-    void construct_whenAnEnvironmentIsNamedAfterAPathTheServiceAnswersOn_thenFailsTheStartup(String id) {
+    void construct_whenAnEnvironmentOfTheDefaultSiteIsNamedAfterAPathTheServiceAnswersOn_thenFailsTheStartup(
+            String id) {
         SiteProperties properties = properties(Map.of(Site.DEFAULT_SITE, site(configured ->
                 configured.setEnvironments(List.of(environment(id, true, true))))));
 
         assertThatThrownBy(() -> new DocumentationSites(properties))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(id);
+    }
+
+    /**
+     * The one reservation the {@code /site/} layout costs: the default site's environment of that name would
+     * fight every other site for the segment.
+     */
+    @Test
+    void construct_whenAnEnvironmentOfTheDefaultSiteIsCalledSite_thenFailsTheStartup() {
+        SiteProperties properties = properties(Map.of(Site.DEFAULT_SITE, site(configured ->
+                configured.setEnvironments(List.of(environment(Site.SITE_SEGMENT, true, true))))));
+
+        assertThatThrownBy(() -> new DocumentationSites(properties))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("every other")
+                .hasMessageContaining("/site/");
+    }
+
+    /**
+     * And the environments of any other site are below {@code /site/<id>/}, where none of those names means
+     * anything.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"api", "actuator", "site"})
+    void construct_whenAnEnvironmentOfANamedSiteIsNamedAfterAPathTheServiceAnswersOn_thenItIsAccepted(
+            String id) {
+        SiteProperties properties = properties(Map.of("governance", site(configured ->
+                configured.setEnvironments(List.of(environment(id, true, true))))));
+
+        assertThat(new DocumentationSites(properties).find("governance").orElseThrow().environments())
+                .extracting(SiteEnvironment::id).containsExactly(id);
     }
 
     /**
@@ -222,15 +257,15 @@ class DocumentationSitesTest {
     }
 
     /**
-     * A site whose name merely ends in `-api` is fine: the doc service pins the header skip patterns so that
-     * such a segment is not treated as the REST API, and `<system>-api` is a natural name for a docs site.
+     * `<system>-api` is a natural name for a docs site, and the doc service pins the header skip patterns so
+     * that a segment ending in `-api` is not treated as the REST API.
      */
     @Test
     void construct_whenTheSiteNameEndsInApi_thenItIsAccepted() {
-        SiteProperties properties = properties(Map.of("wvs-api", site(configured -> {
+        SiteProperties properties = properties(Map.of("orders-api", site(configured -> {
         })));
 
-        assertThat(new DocumentationSites(properties).ids()).contains("wvs-api");
+        assertThat(new DocumentationSites(properties).ids()).contains("orders-api");
     }
 
     /**

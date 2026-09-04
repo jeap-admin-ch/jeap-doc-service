@@ -7,6 +7,11 @@
   "favicon": "img/favicon.svg",
   "url": "http://localhost:3000",
   "baseUrl": "/",
+  "hasSystems": false,
+  "ssgWorkerThreads": false,
+  "sites": [
+    {"id": "fixture", "title": "Documentation", "url": "http://localhost:3000/"}
+  ],
   "generatedAt": "2026-08-25T06:05:02Z",
   "generatedAtDisplay": "2026-08-25 08:05:02"
 }

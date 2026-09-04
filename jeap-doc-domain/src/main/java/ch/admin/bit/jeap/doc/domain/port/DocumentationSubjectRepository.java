@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.domain.port;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationSubject;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationSubject;
 
 import java.time.Instant;
 

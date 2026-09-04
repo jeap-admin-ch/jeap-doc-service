@@ -10,12 +10,14 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Error;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.model.Tag;
 import software.amazon.awssdk.services.s3.model.Tagging;
@@ -230,11 +232,26 @@ class S3SitePublicationStorage implements SitePublicationStorage {
         return trimmed.substring(start, end);
     }
 
+    /**
+     * One batch delete, and what it refused.
+     * <p>
+     * {@code DeleteObjects} answers {@code 200} with an error <b>per key</b> it would not delete, and throws
+     * only where the whole request failed. Reading the response is therefore the only way to know: without it a
+     * delete that removed almost nothing returns normally, logs the full count as removed, and the caller
+     * records the prefix as forgotten - so the objects are never offered for deletion again.
+     */
     private void deleteBatch(List<ObjectIdentifier> batch) {
-        s3Client.deleteObjects(DeleteObjectsRequest.builder()
+        DeleteObjectsResponse answer = s3Client.deleteObjects(DeleteObjectsRequest.builder()
                 .bucket(properties.getBucket())
                 .delete(Delete.builder().objects(batch).build())
                 .build());
+        if (answer.hasErrors() && !answer.errors().isEmpty()) {
+            S3Error first = answer.errors().getFirst();
+            throw new IllegalStateException(
+                    "The object storage refused to delete %d of %d objects, the first of them '%s': %s (%s)."
+                            .formatted(answer.errors().size(), batch.size(), first.key(), first.message(),
+                                    first.code()));
+        }
     }
 
     private static List<Path> filesOf(Path directory) {

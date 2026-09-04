@@ -1,11 +1,11 @@
 package ch.admin.bit.jeap.doc.persistence;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationType;
-import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
-import ch.admin.bit.jeap.doc.domain.DocumentationUploadDescriptor;
-import ch.admin.bit.jeap.doc.domain.SourceFormat;
-import ch.admin.bit.jeap.doc.domain.SubjectKind;
-import ch.admin.bit.jeap.doc.domain.UploadState;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
+import ch.admin.bit.jeap.doc.domain.upload.UploadState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -27,7 +27,7 @@ class DocumentationUploadMapperTest {
     @CsvSource({
             "SYSTEM,    SYSTEM_DOCS,    ,             ",
             "COMPONENT, COMPONENT_DOCS, foo-bar-scs,  ",
-            "LIBRARY,   LIBRARY_DOCS,   ,            wvs-common-lib"
+            "LIBRARY,   LIBRARY_DOCS,   ,            orders-common-lib"
     })
     void toDomain_thenTheDescriptorNamesWhatTheSubjectHolds(SubjectKind kind, DocumentationType type,
                                                             String component, String library) {
@@ -37,7 +37,7 @@ class DocumentationUploadMapperTest {
         DocumentationUploadDescriptor descriptor = upload.descriptor();
         assertThat(descriptor.type()).isEqualTo(type);
         assertThat(descriptor.site()).isEqualTo("default");
-        assertThat(descriptor.system()).isEqualTo("wvs");
+        assertThat(descriptor.system()).isEqualTo("orders");
         assertThat(descriptor.component()).isEqualTo(component);
         assertThat(descriptor.library()).isEqualTo(library);
         assertThat(upload.subject().kind()).isEqualTo(kind);
@@ -56,11 +56,11 @@ class DocumentationUploadMapperTest {
         assertThat(entity.getTopic()).isEqualTo("spring-rest-docs");
         assertThat(entity.getLabel()).isEqualTo("Spring REST Docs");
         assertThat(entity.getVersion()).isEqualTo("1.4.0");
-        assertThat(entity.getSourceRepository()).isEqualTo("ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git");
+        assertThat(entity.getSourceRepository()).isEqualTo("ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git");
         assertThat(entity.getSourceRevision()).isEqualTo("9a1c2f8");
         assertThat(entity.getSourceRef()).isEqualTo("main");
         assertThat(entity.getSourceTimestamp()).isEqualTo(Instant.parse("2026-08-21T07:12:00Z"));
-        assertThat(entity.getBuildUrl()).isEqualTo("https://github.com/wvs/foo-bar-scs/actions/runs/1234567890");
+        assertThat(entity.getBuildUrl()).isEqualTo("https://github.com/orders/foo-bar-scs/actions/runs/1234567890");
         assertThat(entity.getGeneratedAt()).isEqualTo(Instant.parse("2026-08-21T07:15:00Z"));
     }
 
@@ -78,7 +78,7 @@ class DocumentationUploadMapperTest {
     private static DocumentationUploadDescriptor descriptor() {
         return DocumentationUploadDescriptor.builder()
                 .type(DocumentationType.COMPONENT_DOCS)
-                .system("wvs")
+                .system("orders")
                 .component("foo-bar-scs")
                 .version("1.4.0")
                 .template("arc42")
@@ -86,11 +86,11 @@ class DocumentationUploadMapperTest {
                 .location("6-runtime-view")
                 .topic("spring-rest-docs")
                 .label("Spring REST Docs")
-                .sourceRepository("ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git")
+                .sourceRepository("ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git")
                 .sourceRevision("9a1c2f8")
                 .sourceRef("main")
                 .sourceTimestamp(Instant.parse("2026-08-21T07:12:00Z"))
-                .buildUrl("https://github.com/wvs/foo-bar-scs/actions/runs/1234567890")
+                .buildUrl("https://github.com/orders/foo-bar-scs/actions/runs/1234567890")
                 .generatedAt(Instant.parse("2026-08-21T07:15:00Z"))
                 .build();
     }
@@ -100,7 +100,7 @@ class DocumentationUploadMapperTest {
         subject.setId(1L);
         subject.setSite("default");
         subject.setKind(kind);
-        subject.setSystem("wvs");
+        subject.setSystem("orders");
         subject.setName(name);
         subject.setCreatedAt(RECEIVED_AT);
 
@@ -114,7 +114,7 @@ class DocumentationUploadMapperTest {
         entity.setReceivedAt(RECEIVED_AT);
         entity.setTemplate("arc42");
         entity.setSourceFormat(SourceFormat.MARKDOWN);
-        entity.setSourceRepository("ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git");
+        entity.setSourceRepository("ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git");
         entity.setSourceRevision("9a1c2f8");
         entity.setSourceRef("main");
         entity.setSourceTimestamp(Instant.parse("2026-08-21T07:12:00Z"));

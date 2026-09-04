@@ -2,6 +2,11 @@ package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,6 +24,8 @@ import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * Runs the real Node against small scripts of this test's own - Node is a precondition of this build, in the way
@@ -28,6 +35,12 @@ class NodeProcessTest {
 
     @TempDir
     Path workingDirectory;
+
+    /** What captureLog attached, so that the @AfterEach can take it off again. Null when none did. */
+    private ListAppender<ILoggingEvent> attached;
+
+    /** The level the logger had before a test turned it down - usually null, which means "inherited". */
+    private Level levelBeforeTheTest;
 
     private BuildProperties properties;
     private NodeProcess node;
@@ -109,20 +122,140 @@ class NodeProcessTest {
         node.run(workingDirectory, "environment.mjs");
 
         String seen = Files.readString(workingDirectory.resolve("environment.txt"), StandardCharsets.UTF_8);
-        assertThat(seen.lines()).containsExactlyInAnyOrder("PATH", "HOME", "CI", "NODE_OPTIONS");
+        assertThat(seen.lines()).containsExactlyInAnyOrder("PATH", "HOME", "CI", "NODE_OPTIONS",
+                "DOCUSAURUS_PERF_LOGGER", "MIMALLOC_PURGE_DELAY", "MIMALLOC_ABANDONED_PAGE_PURGE");
+    }
+
+    /**
+     * The bundler is native code, its memory is not the Node heap, and it holds what it has freed unless it is
+     * told otherwise - which is the difference between the peak of a build and the size of a container.
+     */
+    @Test
+    void run_thenTheNativeAllocatorOfTheChildGivesFreedMemoryBack() throws IOException {
+        script("purge.mjs", """
+                import {writeFileSync} from 'node:fs';
+                writeFileSync('delay.txt', process.env.MIMALLOC_PURGE_DELAY ?? 'unset');
+                writeFileSync('abandoned.txt', process.env.MIMALLOC_ABANDONED_PAGE_PURGE ?? 'unset');
+                """);
+
+        node.run(workingDirectory, "purge.mjs");
+
+        assertThat(Files.readString(workingDirectory.resolve("delay.txt"))).isEqualTo("0");
+        assertThat(Files.readString(workingDirectory.resolve("abandoned.txt"))).isEqualTo("1");
     }
 
     @Test
-    void run_thenTheHeapOfTheChildIsCapped() throws IOException {
+    void run_whenTheNativeMemoryPurgeIsOff_thenTheChildKnowsNothingOfIt() throws IOException {
+        properties.setPurgeNativeMemory(false);
+        script("purge.mjs", """
+                import {writeFileSync} from 'node:fs';
+                writeFileSync('delay.txt', process.env.MIMALLOC_PURGE_DELAY ?? 'unset');
+                writeFileSync('abandoned.txt', process.env.MIMALLOC_ABANDONED_PAGE_PURGE ?? 'unset');
+                """);
+
+        node.run(workingDirectory, "purge.mjs");
+
+        assertThat(Files.readString(workingDirectory.resolve("delay.txt"))).isEqualTo("unset");
+        assertThat(Files.readString(workingDirectory.resolve("abandoned.txt"))).isEqualTo("unset");
+    }
+
+    @Test
+    void run_thenTheHeapOfTheChildIsCappedAndTheCollectorExposedForThePerfLog() throws IOException {
         script("options.mjs", """
                 import {writeFileSync} from 'node:fs';
                 writeFileSync('options.txt', process.env.NODE_OPTIONS ?? '');
+                writeFileSync('perf.txt', process.env.DOCUSAURUS_PERF_LOGGER ?? '');
+                writeFileSync('gc.txt', typeof globalThis.gc);
+                """);
+
+        node.run(workingDirectory, "options.mjs");
+
+        assertThat(Files.readString(workingDirectory.resolve("options.txt")))
+                .isEqualTo("--max-old-space-size=1024 --expose-gc");
+        assertThat(Files.readString(workingDirectory.resolve("perf.txt"))).isEqualTo("true");
+        assertThat(Files.readString(workingDirectory.resolve("gc.txt"))).isEqualTo("function");
+    }
+
+    @Test
+    void run_whenThePerfLogIsOff_thenTheChildKnowsNothingOfIt() throws IOException {
+        properties.setPerfLog(false);
+        script("options.mjs", """
+                import {writeFileSync} from 'node:fs';
+                writeFileSync('options.txt', process.env.NODE_OPTIONS ?? '');
+                writeFileSync('perf.txt', process.env.DOCUSAURUS_PERF_LOGGER ?? 'unset');
                 """);
 
         node.run(workingDirectory, "options.mjs");
 
         assertThat(Files.readString(workingDirectory.resolve("options.txt")))
                 .isEqualTo("--max-old-space-size=1024");
+        assertThat(Files.readString(workingDirectory.resolve("perf.txt"))).isEqualTo("unset");
+    }
+
+    /**
+     * The performance log is the one part of the generator's output that is wanted while a build succeeds, so
+     * it is logged at INFO; everything else stays at DEBUG and is kept for the reason of a failed build.
+     */
+    @Test
+    void run_thenThePerfLogLinesAreLoggedAtInfoAndTheRestAtDebug() throws IOException {
+        ListAppender<ILoggingEvent> logged = captureLog();
+        script("perf.mjs", """
+                console.log('[PERF] Load site - 12.00 ms - (Heap 40mb -> 41mb / Total 60mb)');
+                console.log('[INFO] Compiling Client');
+                """);
+
+        node.run(workingDirectory, "perf.mjs");
+
+        assertThat(logged.list)
+                .filteredOn(event -> event.getFormattedMessage().startsWith("[site generator]"))
+                .extracting(ILoggingEvent::getLevel, ILoggingEvent::getFormattedMessage)
+                .containsExactly(
+                        tuple(Level.INFO,
+                                "[site generator] [PERF] Load site - 12.00 ms - (Heap 40mb -> 41mb / Total 60mb)"),
+                        tuple(Level.DEBUG,
+                                "[site generator] [INFO] Compiling Client"));
+    }
+
+    @Test
+    void run_whenThePerfLogIsOff_thenAPerfLineIsOrdinaryOutput() throws IOException {
+        properties.setPerfLog(false);
+        ListAppender<ILoggingEvent> logged = captureLog();
+        script("perf.mjs", "console.log('[PERF] Load site - 12.00 ms')");
+
+        node.run(workingDirectory, "perf.mjs");
+
+        assertThat(logged.list)
+                .filteredOn(event -> event.getFormattedMessage().startsWith("[site generator]"))
+                .extracting(ILoggingEvent::getLevel)
+                .containsExactly(Level.DEBUG);
+    }
+
+    /**
+     * Attaches an appender and turns the logger down to DEBUG, both of which are undone again in
+     * {@link #restoreTheLogger()}. A logger is global: left attached, the appenders accumulate over the class,
+     * and the level stays turned down for every test that runs after these in the same JVM.
+     */
+    private ListAppender<ILoggingEvent> captureLog() {
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) getLogger(NodeProcess.class);
+        levelBeforeTheTest = logger.getLevel();
+        attached = appender;
+        logger.setLevel(Level.DEBUG);
+        logger.addAppender(appender);
+        return appender;
+    }
+
+    @AfterEach
+    void restoreTheLogger() {
+        if (attached == null) {
+            return;
+        }
+        Logger logger = (Logger) getLogger(NodeProcess.class);
+        logger.detachAppender(attached);
+        logger.setLevel(levelBeforeTheTest);
+        attached.stop();
+        attached = null;
     }
 
     /**

@@ -23,7 +23,7 @@ class MediaTypesTest {
             "runtime.mjs,       text/javascript;charset=UTF-8",
             "search-index.json, application/json;charset=UTF-8",
             "sitemap.xml,       application/xml;charset=UTF-8",
-            "llms.txt,          text/plain;charset=UTF-8",
+            "robots.txt,        text/plain;charset=UTF-8",
             // SVG is XML, so it carries the charset like the other text types.
             "logo.svg,          image/svg+xml;charset=UTF-8",
             "favicon.ico,       image/x-icon",

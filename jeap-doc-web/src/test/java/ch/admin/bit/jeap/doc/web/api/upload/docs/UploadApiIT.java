@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class UploadApiIT extends DocServiceIntegrationTestBase {
 
-    private static final String SYSTEM = "wvs";
+    private static final String SYSTEM = "orders";
 
     @Autowired
     private MockMvc mockMvc;
@@ -51,7 +51,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
     void upload_whenLibraryDocumentationInMarkdown_thenAccepted() throws Exception {
         Map<String, String> parameters = systemDocs();
         parameters.put("type", "library-docs");
-        parameters.put("library", "wvs-common-lib");
+        parameters.put("library", "orders-common-lib");
         parameters.put("version", "1.4.0");
 
         mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
@@ -80,18 +80,18 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
     @Test
     void upload_whenSiteIsNotConfigured_thenBadRequestNamingTheSitesThatAre() throws Exception {
         Map<String, String> parameters = systemDocs();
-        parameters.put("site", "dazit");
+        parameters.put("site", "catalog");
 
         mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("dazit")))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("catalog")))
                 .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("governance")));
     }
 
     @Test
     void upload_whenSiteIsNoSlug_thenBadRequest() throws Exception {
         Map<String, String> parameters = systemDocs();
-        parameters.put("site", "DaziT");
+        parameters.put("site", "Catalog");
 
         mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isBadRequest())
@@ -264,11 +264,11 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         parameters.put("system", SYSTEM);
         parameters.put("template", "arc42");
         parameters.put("source-format", "markdown");
-        parameters.put("source-repository", "ssh://git@bitbucket.example.ch/wvs/wvs-docs.git");
+        parameters.put("source-repository", "ssh://git@bitbucket.example.ch/orders/orders-docs.git");
         parameters.put("source-revision", "9a1c2f8");
         parameters.put("source-ref", "main");
         parameters.put("source-timestamp", "2026-08-21T09:12:00+02:00");
-        parameters.put("build-url", "https://github.com/wvs/wvs-docs/actions/runs/1234567890");
+        parameters.put("build-url", "https://github.com/orders/orders-docs/actions/runs/1234567890");
         parameters.put("generated-at", "2026-08-21T09:15:00+02:00");
         return parameters;
     }

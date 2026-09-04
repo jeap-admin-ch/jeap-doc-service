@@ -9,6 +9,7 @@ import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -55,22 +57,93 @@ class MicrometerBuildMetricsTest {
     @BeforeEach
     void setUp() {
         registry = new SimpleMeterRegistry();
-        metrics = new MicrometerBuildMetrics(builds, requests, new DocumentationSites(new SiteProperties()),
-                Clock.fixed(NOW, ZoneOffset.UTC));
         when(builds.published(anyString())).thenReturn(Optional.empty());
         when(builds.lastSuccessAt(anyString())).thenReturn(Optional.empty());
         when(requests.pendingSince(anyString())).thenReturn(Optional.empty());
-        metrics.bindTo(registry);
+        metrics = buildMetrics(registry);
+    }
+
+    private MicrometerBuildMetrics buildMetrics(MeterRegistry into) {
+        MicrometerBuildMetrics bound = new MicrometerBuildMetrics(builds, requests,
+                new DocumentationSites(new SiteProperties()), Clock.fixed(NOW, ZoneOffset.UTC));
+        bound.bindTo(into);
+        return bound;
     }
 
     @Test
     void succeeded_thenTheTimerSaysSoAndTheGeneratorsShareIsItsOwnStep() {
         metrics.succeeded(SITE, BuildTrigger.SCHEDULE, Duration.ofSeconds(90),
-                new BuiltSite(Path.of("build"), 12, 4096, 60_000));
+                new BuiltSite(Path.of("build"), 12, 4096, 60_000, Map.of()));
 
         assertThat(registry.get("jeap.doc.build").tag("result", "succeeded").tag("trigger", "schedule")
                 .timer().count()).isOne();
         assertThat(registry.get("jeap.doc.build.step").tag("step", "docusaurus").timer().count()).isOne();
+    }
+
+    /**
+     * The systems gauge is the drop an empty architecture repository shows up as, and it has to mean a site
+     * that was published with fewer systems - not a build that read an empty model and then failed.
+     */
+    @Test
+    void succeeded_thenTheSystemsGaugeCarriesWhatThePublishedBuildDocumented() {
+        metrics.succeeded(SITE, BuildTrigger.SCHEDULE, Duration.ofSeconds(90),
+                new BuiltSite(Path.of("build"), 12, 4096, 60_000, Map.of("dev", 7, "prod", 5)));
+
+        assertThat(registry.get("jeap.doc.build.model.systems").tag("environment", "dev").gauge().value())
+                .isEqualTo(7.0);
+        assertThat(registry.get("jeap.doc.build.model.systems").tag("environment", "prod").gauge().value())
+                .isEqualTo(5.0);
+    }
+
+    /**
+     * <b>Two sites may each declare a {@code dev}</b> - an environment id is a site's own. Keyed by the
+     * environment alone, the two shared one series and whichever built last won, on the gauge that says an
+     * architecture repository has lost its data. Micrometer matches a tag subset, so an assertion naming only
+     * the environment passes either way; these name both.
+     */
+    @Test
+    void succeeded_whenTwoSitesEachHaveADevEnvironment_thenTheyAreTwoSeries() {
+        metrics.succeeded(SITE, BuildTrigger.SCHEDULE, Duration.ofSeconds(90),
+                new BuiltSite(Path.of("build"), 12, 4096, 60_000, Map.of("dev", 7)));
+
+        metrics.succeeded("governance", BuildTrigger.SCHEDULE, Duration.ofSeconds(90),
+                new BuiltSite(Path.of("build"), 3, 512, 20_000, Map.of("dev", 2)));
+
+        assertThat(registry.get("jeap.doc.build.model.systems").tag("site", SITE).tag("environment", "dev")
+                .gauge().value()).isEqualTo(7.0);
+        assertThat(registry.get("jeap.doc.build.model.systems").tag("site", "governance")
+                .tag("environment", "dev").gauge().value()).isEqualTo(2.0);
+    }
+
+    /**
+     * A build is bounded by a budget of minutes, and Micrometer's default histogram range ends near thirty
+     * seconds - so every real build would land in the overflow bucket, answering nothing while multiplying this
+     * meter's series by sixty-seven per tag combination.
+     */
+    @Test
+    void succeeded_thenTheTimerPublishesNoHistogramBuckets() {
+        RecordingHistogramConfig recording = new RecordingHistogramConfig();
+        MicrometerBuildMetrics boundMetrics = buildMetrics(recording);
+
+        boundMetrics.succeeded(SITE, BuildTrigger.SCHEDULE, Duration.ofMinutes(4),
+                new BuiltSite(Path.of("build"), 12, 4096, 60_000, Map.of()));
+
+        assertThat(recording.publishesHistogram("jeap.doc.build")).isFalse();
+    }
+
+    @Test
+    void modelRead_thenItIsTimedAndTheSystemsGaugeIsLeftAlone() {
+        metrics.succeeded(SITE, BuildTrigger.SCHEDULE, Duration.ofSeconds(90),
+                new BuiltSite(Path.of("build"), 12, 4096, 60_000, Map.of("dev", 7)));
+
+        metrics.modelRead(SITE, "dev", Duration.ofMillis(300));
+        metrics.failed(SITE, BuildTrigger.SCHEDULE, Duration.ofSeconds(5));
+
+        assertThat(registry.get("jeap.doc.build.model.read").tag("environment", "dev")
+                .timer().count()).isOne();
+        assertThat(registry.get("jeap.doc.build.model.systems").tag("environment", "dev").gauge().value())
+                .describedAs("a build that read the model and then failed does not move the gauge")
+                .isEqualTo(7.0);
     }
 
     /**
@@ -136,6 +209,6 @@ class MicrometerBuildMetricsTest {
 
     private static DocumentationBuild published(int pageCount, long sizeInBytes) {
         return new DocumentationBuild(7L, SITE, BuildTrigger.SCHEDULE, BuildState.SUCCEEDED, NOW, NOW,
-                "doc-service-1", SITE + "/7", pageCount, sizeInBytes, 1000, null);
+                "doc-service-1", SITE + "/7", pageCount, sizeInBytes, 1000, null, null);
     }
 }

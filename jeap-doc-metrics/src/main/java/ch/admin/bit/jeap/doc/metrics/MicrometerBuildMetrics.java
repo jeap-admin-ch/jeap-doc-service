@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * What the documentation generator reports about itself.
  * <p>
  * The names follow the platform's convention - {@code jeap.<domain>.<thing>}, dotted, which Prometheus renders
- * with underscores. A timer with a histogram already publishes its count, so one meter per event with a
+ * with underscores. A timer already publishes its count, so one meter per event with a
  * {@code result} tag says how often, how long and how often it failed, and there is no counter beside it.
  * <p>
  * The staleness signals are <b>ages</b> rather than timestamps, and they are read from the database: an age is
@@ -45,6 +45,7 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
     private static final String SITE_TAG = "site";
     private static final String RESULT_TAG = "result";
     private static final String TRIGGER_TAG = "trigger";
+    private static final String ENVIRONMENT_TAG = "environment";
 
     private final DocumentationBuildRepository builds;
     private final DocumentationBuildRequestRepository requests;
@@ -58,6 +59,17 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
      */
     private final Map<BuildTags, Timer> buildTimers = new ConcurrentHashMap<>();
     private final Map<StepTags, Timer> stepTimers = new ConcurrentHashMap<>();
+    private final Map<ModelTags, Timer> modelTimers = new ConcurrentHashMap<>();
+
+    /**
+     * How many systems the last build this instance published documented, per site and environment, which the gauge
+     * below reads. Held here rather than in the database because it is a property of the last <i>generation</i>
+     * rather than of anything recorded - and because a drop in it is the signal an empty architecture
+     * repository gives. Written only from {@link #succeeded}: a build that read an empty model and then failed
+     * must not report the same drop as one that published an empty site.
+     */
+    private final Map<SiteEnvironment, Integer> documentedSystems = new ConcurrentHashMap<>();
+    private final Map<SiteEnvironment, Gauge> registeredSystemGauges = new ConcurrentHashMap<>();
     private final Map<String, Counter> abandonedCounters = new ConcurrentHashMap<>();
 
     private MeterRegistry registry;
@@ -100,6 +112,33 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
     public void succeeded(String site, BuildTrigger trigger, Duration duration, BuiltSite generated) {
         recordBuild(site, trigger, "succeeded", duration);
         step(site, "docusaurus", Duration.ofMillis(generated.docusaurusMillis()));
+        generated.documentedSystems().forEach((environment, systems) ->
+                documentedSystems(site, environment, systems));
+    }
+
+    /**
+     * The systems gauge of one environment of one site, moved by a build that was published.
+     * <p>
+     * Keyed by <b>both</b>: sites declare their own environment ids, so two sites that each have a {@code dev}
+     * would otherwise share one series and the one built last would win - and this is the gauge that says an
+     * architecture repository has lost its data, which no failure counter catches.
+     */
+    private void documentedSystems(String site, String environment, int systems) {
+        if (registry == null) {
+            return;
+        }
+        SiteEnvironment key = new SiteEnvironment(site, environment);
+        documentedSystems.put(key, systems);
+        registeredSystemGauges.computeIfAbsent(key, id -> Gauge.builder(
+                        "jeap.doc.build.model.systems", documentedSystems, gauges -> gauges.getOrDefault(id, 0))
+                .description("Systems documented in the last build of this environment this instance published")
+                .tag(SITE_TAG, id.site())
+                .tag(ENVIRONMENT_TAG, id.environment())
+                .register(registry));
+    }
+
+    /** What a systems gauge belongs to: a site declares its own environment ids, so one alone is not a key. */
+    private record SiteEnvironment(String site, String environment) {
     }
 
     @Override
@@ -132,6 +171,31 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
                 .increment(count);
     }
 
+    /**
+     * How long the stored architecture model of an environment took to read. How much of it there was is
+     * reported by {@link #succeeded}, because the gauge it moves is the one that matters: <b>an architecture
+     * repository that comes back empty succeeds</b>, so no failure counter catches it and only a drop in the
+     * number of systems does - and that drop has to mean a published site, not a build that failed after
+     * reading.
+     * <p>
+     * There is no result to tell apart. A build makes no call to the architecture repository - it reads what
+     * the import stored, which either answers or fails the build outright - so every recording here is a read
+     * that worked.
+     */
+    @Override
+    public void modelRead(String site, String environment, Duration duration) {
+        if (registry == null) {
+            return;
+        }
+        modelTimers.computeIfAbsent(new ModelTags(site, environment),
+                        tags -> Timer.builder("jeap.doc.build.model.read")
+                                .description("Reading the stored architecture model of one environment")
+                                .tag(SITE_TAG, tags.site())
+                                .tag(ENVIRONMENT_TAG, tags.environment())
+                                .register(registry))
+                .record(duration);
+    }
+
     private void step(String site, String step, Duration duration) {
         if (registry == null) {
             return;
@@ -154,13 +218,16 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
                                 .tag(SITE_TAG, tags.site())
                                 .tag(RESULT_TAG, tags.result())
                                 .tag(TRIGGER_TAG, tags.trigger())
-                                .publishPercentileHistogram()
                                 .register(registry))
                 .record(duration);
     }
 
     /** What tells two build timers apart, and therefore what they are cached by. */
     private record BuildTags(String site, String result, String trigger) {
+    }
+
+    /** What tells two model-read timers apart. */
+    private record ModelTags(String site, String environment) {
     }
 
     /** The same, for the timers of the steps within a build. */

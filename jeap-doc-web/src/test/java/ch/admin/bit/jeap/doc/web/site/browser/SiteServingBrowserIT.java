@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
+import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Response;
 import com.microsoft.playwright.assertions.PlaywrightAssertions;
@@ -21,6 +22,53 @@ import static org.assertj.core.api.Assertions.assertThat;
  * rather than against a fixture written to suit the assertion.
  */
 class SiteServingBrowserIT extends SiteBrowserTestBase {
+
+    /**
+     * <b>The numbers of the run, fetched by the page that cannot generate them.</b>
+     * <p>
+     * A page cannot describe the build that writes it, so what the run cost is written beside the site as JSON
+     * and the site template fetches it. Everything about that can go wrong quietly: the fetch is subject to the
+     * site's own Content-Security-Policy, which permits {@code connect-src 'self'} and nothing else, and the
+     * link the module takes the path from is written by the doc service while the JSON is written by it later.
+     * This is the test that would catch either half drifting.
+     */
+    @Test
+    void aboutThisDocumentation_thenTheNumbersOfTheRunAreFetchedAndShown() {
+        Response response = open("/about-this-documentation/");
+
+        assertThat(response.status()).isEqualTo(200);
+        PlaywrightAssertions.assertThat(page.getByRole(AriaRole.HEADING,
+                new Page.GetByRoleOptions().setName("About This Documentation").setLevel(1))).isVisible();
+        // Inserted by the client module after the sentence under the heading, so its presence is the proof
+        // that the file was found, fetched and read.
+        PlaywrightAssertions.assertThat(page.getByText("Generated in")).isVisible();
+        PlaywrightAssertions.assertThat(page.getByText("1 min 32 s")).isVisible();
+        PlaywrightAssertions.assertThat(page.getByText("11264 MB of 16384 MB (69%)")).isVisible();
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>Reached by a click rather than by a URL.</b> Opening the page directly loads a document, and the
+     * client module runs once against a heading that was there before it started - which is the easy half. A
+     * client-side route update is the half the module guards: it runs again, and its fetch may finish after the
+     * reader has moved on, so it checks that the heading it captured is still in the document. That guard
+     * over-firing would leave the table missing exactly here, and nowhere else.
+     */
+    @Test
+    void aboutThisDocumentation_whenItIsReachedByAClick_thenTheNumbersAreStillShown() {
+        open("/");
+
+        // From the footer: the page links itself from the sidebar, the body and the pagination as well, and
+        // any of them would do - the footer is the one every page of every environment carries.
+        page.getByRole(AriaRole.CONTENTINFO)
+                .getByRole(AriaRole.LINK, new Locator.GetByRoleOptions().setName("About This Documentation"))
+                .click();
+
+        PlaywrightAssertions.assertThat(page.getByRole(AriaRole.HEADING,
+                new Page.GetByRoleOptions().setName("About This Documentation").setLevel(1))).isVisible();
+        PlaywrightAssertions.assertThat(page.getByText("1 min 32 s")).isVisible();
+        assertNothingWentWrongInTheBrowser();
+    }
 
     /**
      * Every route of the site is generated with a trailing slash, and a hand-typed or hand-shortened URL has

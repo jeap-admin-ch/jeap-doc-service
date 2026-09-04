@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.persistence;
 import ch.admin.bit.jeap.doc.domain.BuildState;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
+import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Limit;
@@ -56,7 +57,8 @@ class DocumentationBuildRepositoryAdapter implements DocumentationBuildRepositor
     @Override
     @Transactional
     public DocumentationBuild succeeded(long id, String objectPrefix, int pageCount, long sizeInBytes,
-                                        long docusaurusMillis, Instant finishedAt) {
+                                        long docusaurusMillis, ContainerMemory.Peak memoryPeak,
+                                        Instant finishedAt) {
         DocumentationBuildEntity entity = require(id);
         entity.setState(BuildState.SUCCEEDED);
         // A build whose lease was lost may have been marked ABANDONED by another instance while it was still
@@ -66,16 +68,19 @@ class DocumentationBuildRepositoryAdapter implements DocumentationBuildRepositor
         entity.setPageCount(pageCount);
         entity.setSizeInBytes(sizeInBytes);
         entity.setDocusaurusMillis(docusaurusMillis);
+        setMemoryPeak(entity, memoryPeak);
         entity.setFinishedAt(finishedAt);
         return toDomain(builds.saveAndFlush(entity));
     }
 
     @Override
     @Transactional
-    public DocumentationBuild failed(long id, String failureReason, Instant finishedAt) {
+    public DocumentationBuild failed(long id, String failureReason, ContainerMemory.Peak memoryPeak,
+                                     Instant finishedAt) {
         DocumentationBuildEntity entity = require(id);
         entity.setState(BuildState.FAILED);
         entity.setFailureReason(shortened(failureReason));
+        setMemoryPeak(entity, memoryPeak);
         entity.setFinishedAt(finishedAt);
         return toDomain(builds.saveAndFlush(entity));
     }
@@ -210,10 +215,41 @@ class DocumentationBuildRepositoryAdapter implements DocumentationBuildRepositor
                         .formatted(id)));
     }
 
+    /**
+     * Stores what the build did to the memory of its container, or leaves the three columns as they are.
+     * <p>
+     * A container whose memory cannot be read gives no peak, and a row that has none is not the same as a row
+     * that says zero - so nothing is written rather than a zero that would read as a build that used no
+     * memory at all.
+     */
+    private static void setMemoryPeak(DocumentationBuildEntity entity, ContainerMemory.Peak peak) {
+        if (peak == null) {
+            return;
+        }
+        entity.setMemoryPeakBytes(peak.usedBytes());
+        // The port says -1 for a container nothing names a limit for, and the column is nullable: writing the
+        // sentinel would leave rows that skew any average an operator takes over the column.
+        entity.setMemoryLimitBytes(peak.limitBytes() > 0 ? peak.limitBytes() : null);
+        entity.setMemoryPeakExact(peak.exact());
+    }
+
+    /**
+     * The peak as the domain reads it. All three columns are written together, so the used bytes being there is
+     * what says the row has one.
+     */
+    private static ContainerMemory.Peak memoryPeakOf(DocumentationBuildEntity entity) {
+        if (entity.getMemoryPeakBytes() == null) {
+            return null;
+        }
+        return new ContainerMemory.Peak(entity.getMemoryPeakBytes(),
+                entity.getMemoryLimitBytes() == null ? -1 : entity.getMemoryLimitBytes(),
+                Boolean.TRUE.equals(entity.getMemoryPeakExact()));
+    }
+
     private static DocumentationBuild toDomain(DocumentationBuildEntity entity) {
         return new DocumentationBuild(entity.getId(), entity.getSite(), entity.getTrigger(), entity.getState(),
                 entity.getStartedAt(), entity.getFinishedAt(), entity.getInstance(), entity.getObjectPrefix(),
                 entity.getPageCount(), entity.getSizeInBytes(), entity.getDocusaurusMillis(),
-                entity.getFailureReason());
+                memoryPeakOf(entity), entity.getFailureReason());
     }
 }

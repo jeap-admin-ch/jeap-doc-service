@@ -69,6 +69,6 @@ class DocumentationBuildTest {
 
     private static DocumentationBuild build(BuildState state, Instant finishedAt) {
         return new DocumentationBuild(7L, Site.DEFAULT_SITE, BuildTrigger.UPLOAD, state, STARTED, finishedAt,
-                "doc-service-1", null, 0, 0, 0, null);
+                "doc-service-1", null, 0, 0, 0, null, null);
     }
 }

@@ -75,12 +75,55 @@ public class BuildProperties {
 
     /**
      * The heap the Node process may use.
+     * <p>
+     * It bounds the JavaScript side of a build and nothing else. The bundler is native code with an allocator
+     * of its own, and on a large site that side is the larger one by far - see {@link #purgeNativeMemory}, and
+     * the peak the container reached, which every published build reports.
      */
     private DataSize maxNodeMemory = DataSize.ofMegabytes(1024);
 
     /**
+     * Whether the site generator's native allocator hands memory back to the operating system as soon as it is
+     * freed, instead of keeping it mapped for the next allocation.
+     * <p>
+     * It is about the bundler. Rspack is native code built with mimalloc, and mimalloc keeps freed pages for a
+     * while - fast, and exactly wrong here: the bundle phase of a large site is the peak of a build, and
+     * everything after it - the static generation, the plugins that run at the end - then runs with the whole
+     * bundler's memory still resident behind it. The container is sized for the sum, and it is the sum that a
+     * task is killed at.
+     * <p>
+     * On by default, and it costs the syscalls of returning pages rather than reusing them. It bounds what a
+     * build <b>holds</b>, never what it allocates: a build that genuinely needs the memory at once is not made
+     * to fit by this. Turn it off if the {@code [PERF]} lines show the phases after the bundle getting slower
+     * than the memory is worth.
+     */
+    private boolean purgeNativeMemory = true;
+
+    /**
+     * Whether the site generator reports how long each phase of a build took and what it did to the Node heap.
+     * The lines are logged at {@code INFO} with the prefix {@code [PERF]}, and each reading is taken after a
+     * full garbage collection, so that it says what a phase retains rather than what it happened to allocate.
+     * On by default: it is what an operator needs when a build gets slow or large, and the collections cost a
+     * big site seconds, not minutes.
+     */
+    private boolean perfLog = true;
+
+    /**
+     * Whether the site generator writes the pages of a site from a pool of worker threads.
+     * <p>
+     * It makes the static generation about twice as fast and is <b>off by default</b> all the same, because of
+     * what it does to the memory of a build: each worker thread is a V8 isolate with a heap of its own, and
+     * {@code --max-old-space-size} bounds an isolate rather than the process - so a pool of them may hold a
+     * multiple of {@link #maxNodeMemory} in one process, in a container that also holds this JVM. An instance
+     * whose container has the room buys the speed by switching it on; the number to decide it by is the peak
+     * the container reached, which every published build reports.
+     */
+    private boolean ssgWorkerThreads = false;
+
+    /**
      * How many published sites to keep per site. Keeping a few makes a failed generation something to compare
-     * against; keeping many costs storage for builds nobody will serve again.
+     * against; keeping many costs storage for builds nobody will serve again. At least two, which
+     * {@code DocumentationBuildScheduling} refuses fewer of while the service starts.
      */
     private int retention = 3;
 

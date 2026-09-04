@@ -1,8 +1,8 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
-import ch.admin.bit.jeap.doc.domain.SubjectKind;
-import ch.admin.bit.jeap.doc.domain.UploadState;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
+import ch.admin.bit.jeap.doc.domain.upload.UploadState;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import org.junit.jupiter.api.Test;

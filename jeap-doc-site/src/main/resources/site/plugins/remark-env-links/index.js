@@ -3,7 +3,7 @@
  *
  * Pages are generated once per environment and their links are written environment-relative:
  *
- *     [5. Building Block View](/systems/wvs/system-architecture/building-block-view/)
+ *     [5. Building Block View](/systems/orders/system-architecture/building-block-view/)
  *
  * In the DEV tree that link has to resolve to `/dev/systems/…`, or a reader would silently fall out of DEV and
  * into the main environment. The prefix is added at build time, once per docs plugin instance, so nothing that

@@ -10,9 +10,10 @@ import java.util.Optional;
 /**
  * Works out which documentation site a request is for, and which file of it.
  * <p>
- * The default site owns the context root and every other site takes a path segment of its own. A site may not be
- * named after an environment of the default site, which is checked while the service starts - otherwise both
- * would be served under the same segment and which of them answered would depend on the order of the checks.
+ * The default site owns the context root, and every other site is served below {@code /site/<id>/} - see
+ * {@link Site#SITE_SEGMENT}. The two namespaces are therefore separate: whatever a site is called, it cannot
+ * take the URLs of the default site's environments or of anything this service answers on itself, and this
+ * resolver needs no list of names to tell the cases apart.
  */
 @Component
 @RequiredArgsConstructor
@@ -22,25 +23,41 @@ public class SitePathResolver {
 
     /**
      * The site and the file the given path within the service is for, if any site can serve it.
+     * <p>
+     * {@code /site/<id>/…} addresses that site when it is configured. Everything else - including
+     * {@code /site/} itself, an id nobody configured, and a first segment that happens to be the name of a
+     * site - is a path within the default site, which owns the root.
      *
      * @param path the request path with the context path already removed, starting with a slash
      */
     public Optional<SitePath> resolve(String path) {
         String withoutLeadingSlash = path.startsWith("/") ? path.substring(1) : path;
-        int firstSegmentEnd = withoutLeadingSlash.indexOf('/');
-        String firstSegment = firstSegmentEnd < 0 ? withoutLeadingSlash
-                : withoutLeadingSlash.substring(0, firstSegmentEnd);
+        return namedSite(withoutLeadingSlash)
+                .or(() -> sites.find(Site.DEFAULT_SITE)
+                        .map(site -> new SitePath(site, fileOf(withoutLeadingSlash))));
+    }
 
-        // A first segment naming a site other than the default one addresses that site; anything else is a path
-        // within the default site, which owns the root.
-        if (!firstSegment.isEmpty() && !Site.DEFAULT_SITE.equals(firstSegment)) {
-            Optional<Site> named = sites.find(firstSegment);
-            if (named.isPresent()) {
-                String rest = firstSegmentEnd < 0 ? "" : withoutLeadingSlash.substring(firstSegmentEnd + 1);
-                return Optional.of(new SitePath(named.get(), fileOf(rest)));
-            }
+    /**
+     * The site addressed below {@code /site/}, and the file within it, when the path names one that is
+     * configured.
+     * <p>
+     * The default site is <b>not</b> reachable this way. It owns the root, and serving it under two paths as
+     * well would give every one of its pages a second URL - which is a duplicate for a search engine and a
+     * second base URL the generated site knows nothing about.
+     */
+    private Optional<SitePath> namedSite(String path) {
+        String prefix = Site.SITE_SEGMENT + "/";
+        if (!path.startsWith(prefix)) {
+            return Optional.empty();
         }
-        return sites.find(Site.DEFAULT_SITE).map(site -> new SitePath(site, fileOf(withoutLeadingSlash)));
+        String belowSegment = path.substring(prefix.length());
+        int idEnd = belowSegment.indexOf('/');
+        String id = idEnd < 0 ? belowSegment : belowSegment.substring(0, idEnd);
+        if (id.isEmpty() || Site.DEFAULT_SITE.equals(id)) {
+            return Optional.empty();
+        }
+        String rest = idEnd < 0 ? "" : belowSegment.substring(idEnd + 1);
+        return sites.find(id).map(site -> new SitePath(site, fileOf(rest)));
     }
 
     /**

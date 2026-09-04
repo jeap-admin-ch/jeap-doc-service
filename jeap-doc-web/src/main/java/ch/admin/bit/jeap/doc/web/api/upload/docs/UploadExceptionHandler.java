@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;

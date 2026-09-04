@@ -1,9 +1,19 @@
 package ch.admin.bit.jeap.doc.web;
 
+import ch.admin.bit.jeap.doc.domain.port.MessageSchemaUpstream;
+import ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository;
+import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
-import ch.admin.bit.jeap.doc.domain.DocumentationType;
-import ch.admin.bit.jeap.doc.domain.DocumentationUploadService;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadService;
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactRepository;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactUpstream;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelRepository;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
@@ -14,15 +24,24 @@ import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuilder;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
 import ch.admin.bit.jeap.doc.domain.port.UploadMetrics;
+import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
+import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.io.IOException;
+import java.lang.reflect.Modifier;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,21 +64,53 @@ class DocServiceWiringIT extends DocServiceIntegrationTestBase {
      * a bean name; none means the service starts and fails at the first upload or the first build.
      */
     @ParameterizedTest
-    @ValueSource(classes = {
-            DocumentationUploadRepository.class,
-            DocumentationSubjectRepository.class,
-            DocumentationBuildRepository.class,
-            DocumentationBuildRequestRepository.class,
-            DocumentationBundleStorage.class,
-            SitePublicationStorage.class,
-            SiteBuilder.class,
-            ExclusiveWork.class,
-            UploadMetrics.class,
-            BuildMetrics.class})
+    @MethodSource("everyPort")
     void everyPortOfTheDomain_hasExactlyOneAdapter(Class<?> port) {
         assertThat(context.getBeanNamesForType(port))
                 .describedAs("adapters bound to %s", port.getSimpleName())
                 .hasSize(1);
+    }
+
+    /**
+     * <b>Found by scanning the package, not listed by hand.</b> A hand-kept list is exactly as stale as the
+     * last person to remember it, and this branch already shipped one that had forgotten three ports - which
+     * is a service that starts and fails at the first build. Every public interface directly in
+     * {@code ...doc.domain.port} is a driven port; the sealed ones there are the answers a port gives back.
+     */
+    static List<Class<?>> everyPort() throws IOException, ClassNotFoundException {
+        String packageName = ArchitectureModelUpstream.class.getPackageName();
+        List<Class<?>> ports = new ArrayList<>();
+        for (Resource resource : new PathMatchingResourcePatternResolver().getResources(
+                "classpath*:" + packageName.replace('.', '/') + "/*.class")) {
+            String name = resource.getFilename().substring(0,
+                    resource.getFilename().length() - ".class".length());
+            if (name.indexOf('$') >= 0) {
+                // A nested type is part of what a port says, not a port: ContainerMemory.Measurement is the
+                // reading one of them returns, and nothing binds an adapter to it.
+                continue;
+            }
+            Class<?> candidate = Class.forName(packageName + "." + name);
+            if (candidate.isInterface() && Modifier.isPublic(candidate.getModifiers())
+                && !candidate.isSealed()) {
+                ports.add(candidate);
+            }
+        }
+        assertThat(ports).describedAs("the ports of the domain, found on the classpath").isNotEmpty();
+        return ports;
+    }
+
+    /**
+     * A structure template is a <b>plugin point, not a driven port</b>: there are as many implementations as
+     * there are templates, so the rule above does not apply to it. What has to hold is that at least one is
+     * found - an instance with none generates no documentation at all and still starts, which is legitimate
+     * but is not what this service is deployed as.
+     */
+    @Test
+    void structureTemplates_areFoundOnTheClasspathAndRegistered() {
+        assertThat(context.getBeanNamesForType(StructureTemplate.class))
+                .describedAs("structure templates, of which there may be many")
+                .isNotEmpty();
+        assertThat(context.getBean(StructureTemplates.class).ids()).contains("arc42");
     }
 
     /**

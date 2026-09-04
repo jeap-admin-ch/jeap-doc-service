@@ -3,7 +3,9 @@ package ch.admin.bit.jeap.doc.persistence;
 import ch.admin.bit.jeap.doc.domain.BuildState;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
+import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
+import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -20,6 +22,9 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
     @Autowired
     private DocumentationBuildRepository builds;
 
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
+
     @Test
     void start_thenRunningWithAnIdentifierOfItsOwn() {
         DocumentationBuild build = builds.start(site("started"), BuildTrigger.SCHEDULE, INSTANCE, NOW);
@@ -35,7 +40,7 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
     void succeeded_thenTheBuildIsThePublishedOne() {
         String site = site("published");
         DocumentationBuild first = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
-        builds.succeeded(first.id(), "sites/" + site + "/" + first.id(), 12, 4096, 3000, NOW.plusSeconds(30));
+        builds.succeeded(first.id(), "sites/" + site + "/" + first.id(), 12, 4096, 3000, null, NOW.plusSeconds(30));
 
         assertThat(builds.published(site)).get().extracting(DocumentationBuild::id).isEqualTo(first.id());
         assertThat(builds.lastSuccessAt(site)).contains(NOW.plusSeconds(30));
@@ -46,9 +51,9 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
     void published_whenTheNewestBuildFailed_thenTheSitePublishedBeforeItStaysPublished() {
         String site = site("failed-after");
         DocumentationBuild good = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
-        builds.succeeded(good.id(), "sites/" + site + "/" + good.id(), 5, 100, 10, NOW.plusSeconds(10));
+        builds.succeeded(good.id(), "sites/" + site + "/" + good.id(), 5, 100, 10, null, NOW.plusSeconds(10));
         DocumentationBuild bad = builds.start(site, BuildTrigger.UPLOAD, INSTANCE, NOW.plusSeconds(60));
-        builds.failed(bad.id(), "npm exited with 1", NOW.plusSeconds(70));
+        builds.failed(bad.id(), "npm exited with 1", null, NOW.plusSeconds(70));
 
         assertThat(builds.published(site)).get().extracting(DocumentationBuild::id).isEqualTo(good.id());
     }
@@ -56,7 +61,8 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
     @Test
     void published_whenNothingEverSucceeded_thenEmpty() {
         String site = site("never");
-        builds.failed(builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW).id(), "no", NOW.plusSeconds(1));
+        builds.failed(builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW).id(), "no", null,
+                NOW.plusSeconds(1));
 
         assertThat(builds.published(site)).isEmpty();
         assertThat(builds.lastSuccessAt(site)).isEmpty();
@@ -85,7 +91,7 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
     void aborted_thenTheBuildIsNeitherFailedNorPublished() {
         String site = site("aborted");
         DocumentationBuild published = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
-        builds.succeeded(published.id(), "sites/" + site + "/" + published.id(), 3, 30, 300, NOW.plusSeconds(10));
+        builds.succeeded(published.id(), "sites/" + site + "/" + published.id(), 3, 30, 300, null, NOW.plusSeconds(10));
         DocumentationBuild interrupted = builds.start(site, BuildTrigger.UPLOAD, INSTANCE, NOW.plusSeconds(60));
 
         DocumentationBuild recorded = builds.aborted(interrupted.id(), "the instance was stopping",
@@ -105,7 +111,7 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
         String finished = site("finished");
         builds.start(running, BuildTrigger.SCHEDULE, INSTANCE, NOW);
         builds.start(running, BuildTrigger.UPLOAD, INSTANCE, NOW.plusSeconds(1));
-        builds.failed(builds.start(finished, BuildTrigger.SCHEDULE, INSTANCE, NOW).id(), "no", NOW);
+        builds.failed(builds.start(finished, BuildTrigger.SCHEDULE, INSTANCE, NOW).id(), "no", null, NOW);
 
         assertThat(builds.sitesWithRunningBuilds()).contains(running).doesNotContain(finished);
         assertThat(builds.sitesWithRunningBuilds().stream().filter(running::equals)).hasSize(1);
@@ -125,7 +131,7 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
         String site = site("retained");
         for (int run = 0; run < 5; run++) {
             DocumentationBuild build = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW.plusSeconds(run));
-            builds.succeeded(build.id(), "sites/" + site + "/" + build.id(), 1, 1, 1, NOW.plusSeconds(run + 1));
+            builds.succeeded(build.id(), "sites/" + site + "/" + build.id(), 1, 1, 1, null, NOW.plusSeconds(run + 1));
         }
 
         assertThat(builds.prefixesBeyondRetention(site, 3)).hasSize(2);
@@ -139,7 +145,7 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
     void deleteFinishedBefore_thenOnlyFinishedBuildsGo() {
         String site = site("history");
         DocumentationBuild finished = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
-        builds.succeeded(finished.id(), site + "/" + finished.id(), 1, 1, 1, NOW.plusSeconds(1));
+        builds.succeeded(finished.id(), site + "/" + finished.id(), 1, 1, 1, null, NOW.plusSeconds(1));
         DocumentationBuild running = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
 
         assertThat(builds.deleteFinishedBefore(NOW.plusSeconds(600), Set.of())).isPositive();
@@ -157,9 +163,9 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
     void deleteFinishedBefore_thenThePublishedBuildIsKeptWhateverItsAge() {
         String site = site("published-and-old");
         DocumentationBuild superseded = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
-        builds.succeeded(superseded.id(), site + "/" + superseded.id(), 1, 1, 1, NOW.plusSeconds(1));
+        builds.succeeded(superseded.id(), site + "/" + superseded.id(), 1, 1, 1, null, NOW.plusSeconds(1));
         DocumentationBuild published = builds.start(site, BuildTrigger.UPLOAD, INSTANCE, NOW.plusSeconds(2));
-        builds.succeeded(published.id(), site + "/" + published.id(), 1, 1, 1, NOW.plusSeconds(3));
+        builds.succeeded(published.id(), site + "/" + published.id(), 1, 1, 1, null, NOW.plusSeconds(3));
 
         int removed = builds.deleteFinishedBefore(NOW.plusSeconds(600), Set.of(published.id()));
 
@@ -177,7 +183,7 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
         DocumentationBuild build = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
         String reason = "x".repeat(50_000) + "the line that actually says what went wrong";
 
-        DocumentationBuild recorded = builds.failed(build.id(), reason, NOW.plusSeconds(10));
+        DocumentationBuild recorded = builds.failed(build.id(), reason, null, NOW.plusSeconds(10));
 
         assertThat(recorded.failureReason())
                 .hasSizeLessThan(reason.length())
@@ -195,7 +201,7 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
         DocumentationBuild build = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
         String reason = "\uD83D\uDCC4".repeat(20_000);
 
-        DocumentationBuild recorded = builds.failed(build.id(), reason, NOW.plusSeconds(10));
+        DocumentationBuild recorded = builds.failed(build.id(), reason, null, NOW.plusSeconds(10));
 
         assertThat(recorded.failureReason()).isNotBlank();
         assertThat(builds.published(site)).isEmpty();
@@ -213,10 +219,86 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
         builds.abandonRunning(site, NOW.plusSeconds(60));
 
         DocumentationBuild recorded = builds.succeeded(build.id(), site + "/" + build.id(), 5, 500, 50,
-                NOW.plusSeconds(120));
+                null, NOW.plusSeconds(120));
 
         assertThat(recorded.state()).isEqualTo(BuildState.SUCCEEDED);
         assertThat(recorded.failureReason()).isNull();
+    }
+
+    /**
+     * What the build did to the memory of its container, on the row rather than only in a log line: it is the
+     * number a container is sized from, and comparing it across builds is the whole point of keeping it.
+     */
+    @Test
+    void succeeded_whenTheContainerWasMeasured_thenThePeakIsOnTheRow() {
+        String site = site("measured");
+        DocumentationBuild build = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
+
+        DocumentationBuild recorded = builds.succeeded(build.id(), site + "/" + build.id(), 5, 500, 50,
+                new ContainerMemory.Peak(12_154_388_480L, 17_179_869_184L, true), NOW.plusSeconds(120));
+
+        assertThat(recorded.memoryPeak())
+                .isEqualTo(new ContainerMemory.Peak(12_154_388_480L, 17_179_869_184L, true));
+        assertThat(builds.published(site).orElseThrow().memoryPeak().usedBytes()).isEqualTo(12_154_388_480L);
+    }
+
+    /**
+     * A build killed for want of memory is exactly the one whose peak somebody wants, so it is stored for a
+     * failure too - and the reason goes on saying it in prose as well.
+     */
+    @Test
+    void failed_whenTheContainerWasMeasured_thenThePeakIsOnTheRow() {
+        String site = site("measured-failure");
+        DocumentationBuild build = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
+
+        DocumentationBuild recorded = builds.failed(build.id(), "exited with 137",
+                new ContainerMemory.Peak(17_179_869_184L, 17_179_869_184L, false), NOW.plusSeconds(90));
+
+        assertThat(recorded.memoryPeak().usedBytes()).isEqualTo(17_179_869_184L);
+        assertThat(recorded.memoryPeak().exact()).isFalse();
+    }
+
+    /**
+     * A container nothing names a limit for. The port says -1 for that, and the column is nullable: the
+     * sentinel in the column would skew any average an operator takes over it.
+     */
+    @Test
+    void succeeded_whenNothingNamesALimit_thenTheColumnIsEmptyRatherThanMinusOne() {
+        String site = site("no-limit");
+        DocumentationBuild build = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
+
+        DocumentationBuild recorded = builds.succeeded(build.id(), site + "/" + build.id(), 5, 500, 50,
+                new ContainerMemory.Peak(2_147_483_648L, -1, true), NOW.plusSeconds(120));
+
+        assertThat(recorded.memoryPeak().usedBytes()).isEqualTo(2_147_483_648L);
+        assertThat(recorded.memoryPeak().limitBytes()).describedAs("read back as the port's own sentinel")
+                .isEqualTo(-1);
+        assertThat(rawLimitOf(build.id())).describedAs("and empty in the column").isNull();
+    }
+
+    /** What the column actually holds, which is the point of the test above. */
+    private Long rawLimitOf(long buildId) {
+        try (var entityManager = entityManagerFactory.createEntityManager()) {
+            return (Long) entityManager
+                    .createNativeQuery("select memory_limit_bytes from documentation_build where id = :id")
+                    .setParameter("id", buildId)
+                    .getSingleResult();
+        }
+    }
+
+    /**
+     * A container whose memory cannot be read - off Linux, or wherever the cgroup files are not there - has no
+     * peak, and the row must not read as a build that used none.
+     */
+    @Test
+    void succeeded_whenTheContainerCouldNotBeMeasured_thenThereIsNoPeakRatherThanAZero() {
+        String site = site("unmeasured");
+        DocumentationBuild build = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
+
+        DocumentationBuild recorded = builds.succeeded(build.id(), site + "/" + build.id(), 5, 500, 50,
+                null, NOW.plusSeconds(120));
+
+        assertThat(recorded.memoryPeak()).isNull();
     }
 
     /**
@@ -230,7 +312,7 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
         for (int run = 0; run < 4; run++) {
             DocumentationBuild build = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW.plusSeconds(run));
             String prefix = site + "/" + build.id();
-            builds.succeeded(build.id(), prefix, 1, 1, 1, NOW.plusSeconds(run + 1));
+            builds.succeeded(build.id(), prefix, 1, 1, 1, null, NOW.plusSeconds(run + 1));
             if (run == 0) {
                 firstPrefix = prefix;
             }
@@ -248,9 +330,9 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
     void recent_thenTheHistoryOfThatSiteNewestFirst() {
         String site = site("recent-history");
         DocumentationBuild first = builds.start(site, BuildTrigger.SCHEDULE, INSTANCE, NOW);
-        builds.succeeded(first.id(), site + "/" + first.id(), 1, 1, 1, NOW.plusSeconds(10));
+        builds.succeeded(first.id(), site + "/" + first.id(), 1, 1, 1, null, NOW.plusSeconds(10));
         DocumentationBuild second = builds.start(site, BuildTrigger.MANUAL, INSTANCE, NOW.plusSeconds(60));
-        builds.failed(second.id(), "npm exited with 1", NOW.plusSeconds(70));
+        builds.failed(second.id(), "npm exited with 1", null, NOW.plusSeconds(70));
         builds.start(site("recent-other-history"), BuildTrigger.UPLOAD, INSTANCE, NOW.plusSeconds(80));
 
         assertThat(builds.recent(site, 10)).extracting(DocumentationBuild::id)
@@ -303,7 +385,7 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
     void running_thenTheBuildsThatAreRunningWhicheverSiteTheyBelongTo() {
         DocumentationBuild running = builds.start(site("running-now"), BuildTrigger.MANUAL, INSTANCE, NOW);
         DocumentationBuild finished = builds.start(site("done"), BuildTrigger.SCHEDULE, INSTANCE, NOW);
-        builds.succeeded(finished.id(), "done/" + finished.id(), 1, 1, 1, NOW.plusSeconds(5));
+        builds.succeeded(finished.id(), "done/" + finished.id(), 1, 1, 1, null, NOW.plusSeconds(5));
 
         assertThat(builds.running()).extracting(DocumentationBuild::id)
                 .contains(running.id()).doesNotContain(finished.id());

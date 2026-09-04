@@ -1,0 +1,32 @@
+jEAP Doc Service
+Copyright 2026 Federal Office of Information Technology, Systems and Telecommunication FOITT
+
+This product includes software developed at the Federal Office of Information Technology,
+Systems and Telecommunication FOITT (https://www.bit.admin.ch/), licensed under the Apache
+License, Version 2.0. See LICENSE.
+
+The third-party software this product depends on, and the licenses it is under, are listed in
+THIRD-PARTY-LICENSES.md.
+
+--------------------------------------------------------------------------------
+arc42
+--------------------------------------------------------------------------------
+
+The arc42 documentation template is by Gernot Starke and Peter Hruschka
+(https://arc42.org) and is licensed under the Creative Commons Attribution-ShareAlike
+4.0 International License (CC BY-SA 4.0):
+
+    https://creativecommons.org/licenses/by-sa/4.0/
+
+The module jeap-doc-template-arc42 implements the arc42 section structure so that the
+documentation it generates and the documentation teams write follow it. What was changed:
+
+  * the section names are used in English;
+  * the sections are addressed by folder names carrying a number prefix and a shortened
+    slug - 1-intro, 3-context-and-scope, 5-building-block-view, and so on - rather than by
+    the section titles;
+  * the explanatory text arc42 supplies for each section is not used. The descriptions in
+    the generated documentation are written for this service.
+
+The attribution is not an endorsement: the licensors of arc42 do not endorse this service,
+its documentation or the organisations using it.

@@ -55,9 +55,9 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
     void site_whenTheNewestBuildFailed_thenPublishedAndLastBuildDisagree() throws Exception {
         Instant now = Instant.now();
         DocumentationBuild succeeded = builds.start(SITE, BuildTrigger.SCHEDULE, INSTANCE, now);
-        builds.succeeded(succeeded.id(), SITE + "/" + succeeded.id(), 12, 4096, 3000, now.plusSeconds(30));
+        builds.succeeded(succeeded.id(), SITE + "/" + succeeded.id(), 12, 4096, 3000, null, now.plusSeconds(30));
         DocumentationBuild failed = builds.start(SITE, BuildTrigger.MANUAL, INSTANCE, now.plusSeconds(60));
-        builds.failed(failed.id(), "npm exited with 1", now.plusSeconds(70));
+        builds.failed(failed.id(), "npm exited with 1", null, now.plusSeconds(70));
 
         mockMvc.perform(get(SiteApiPaths.SITE, SITE).with(readRole()))
                 .andExpect(status().isOk())
@@ -89,7 +89,7 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
                     .andExpect(jsonPath("$.running[0].state").value("RUNNING"))
                     .andExpect(jsonPath("$.running[0].finishedAt").doesNotExist());
         } finally {
-            builds.failed(running.id(), "ended by the test", now.plusSeconds(1));
+            builds.failed(running.id(), "ended by the test", null, now.plusSeconds(1));
         }
     }
 

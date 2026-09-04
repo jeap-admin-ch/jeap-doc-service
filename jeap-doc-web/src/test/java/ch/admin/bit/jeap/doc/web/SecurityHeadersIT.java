@@ -31,14 +31,15 @@ class SecurityHeadersIT extends DocServiceIntegrationTestBase {
                 .andExpect(header().string("Content-Security-Policy", EXPECTED_CONTENT_SECURITY_POLICY));
     }
     /**
-     * The jEAP web configuration leaves `/api` prefixes and `-api` suffixes without security headers, and a
-     * documentation site is served under a path segment that only has to be a slug. The doc service pins both
-     * skip lists so that a site called `wvs-api` keeps its Content-Security-Policy - a whole site served
-     * without one is not something to discover later.
+     * The jEAP web configuration leaves `/api` prefixes and `-api` suffixes without security headers, matched
+     * against the first path segment - and the default site owns the context root, so its environments and
+     * everything below them take that segment. The doc service pins both skip lists, so a page whose path
+     * merely looks like somebody's API keeps its Content-Security-Policy: a tree served without one is not
+     * something to discover later.
      */
     @Test
     void get_whenThePathLooksLikeAnApiOfSomeSystem_thenTheSecurityHeadersAreStillThere() throws Exception {
-        mockMvc.perform(get("/wvs-api/index.html"))
+        mockMvc.perform(get("/orders-api/index.html"))
                 .andExpect(header().exists("Content-Security-Policy"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"));
     }

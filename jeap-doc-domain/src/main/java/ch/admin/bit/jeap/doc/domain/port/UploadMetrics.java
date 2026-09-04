@@ -1,7 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.port;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationType;
-import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
 
 import java.time.Duration;
 

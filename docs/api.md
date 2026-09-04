@@ -33,26 +33,26 @@ do).
 
 ### Parameters
 
-| Parameter           | Required                             | Value                                                                   | Example                                                      |
-|---------------------|--------------------------------------|-------------------------------------------------------------------------|--------------------------------------------------------------|
-| `{uploadId}` (path) | yes                                  | UUID the client chooses, so an upload can be retried under it           | `8f1c9a2e-6a1a-4a5f-9a5e-2b0f9a3c1d77`                       |
-| `site`              | no                                   | Documentation site the documents belong to, one the instance configures | `governance`                                                 |
-| `type`              | yes                                  | `system-docs`, `component-docs` or `library-docs`                       | `component-docs`                                             |
-| `system`            | yes                                  | System the documents belong to; the write role is checked for it        | `wvs`                                                        |
-| `component`         | for `component-docs`                 | Component the documents belong to                                       | `foo-bar-scs`                                                |
-| `library`           | for `library-docs`                   | Library the documents belong to                                         | `wvs-common-lib`                                             |
-| `template`          | yes                                  | Section catalog the documents follow                                    | `arc42`                                                      |
-| `source-format`     | yes                                  | `markdown` or `html`                                                    | `markdown`                                                   |
-| `location`          | for `source-format=html`             | Section the documents are embedded in                                   | `6-runtime-view`                                             |
-| `topic`             | for `source-format=html`             | Slug identifying the documents within their section                     | `spring-rest-docs`                                           |
-| `label`             | for `source-format=html`             | Menu label of the documents                                             | `Spring REST Docs`                                           |
-| `source-repository` | yes                                  | Repository the documents came from                                      | `ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git`         |
-| `source-revision`   | yes                                  | Commit the documents were built from                                    | `9a1c2f8`                                                    |
-| `source-ref`        | yes                                  | Branch or tag that was built                                            | `main`                                                       |
-| `source-timestamp`  | yes                                  | Timestamp of that commit, ISO-8601                                      | `2026-08-21T09:12:00+02:00`                                  |
-| `version`           | for `component-docs`, `library-docs` | Version of the component or library                                     | `1.4.0`                                                      |
-| `build-url`         | no                                   | Build that uploaded the documents                                       | `https://github.com/wvs/foo-bar-scs/actions/runs/1234567890` |
-| `generated-at`      | no                                   | When the documents were generated, ISO-8601                             | `2026-08-21T09:15:00+02:00`                                  |
+| Parameter           | Required                             | Value                                                                   | Example                                                         |
+|---------------------|--------------------------------------|-------------------------------------------------------------------------|-----------------------------------------------------------------|
+| `{uploadId}` (path) | yes                                  | UUID the client chooses, so an upload can be retried under it           | `8f1c9a2e-6a1a-4a5f-9a5e-2b0f9a3c1d77`                          |
+| `site`              | no                                   | Documentation site the documents belong to, one the instance configures | `governance`                                                    |
+| `type`              | yes                                  | `system-docs`, `component-docs` or `library-docs`                       | `component-docs`                                                |
+| `system`            | yes                                  | System the documents belong to; the write role is checked for it        | `orders`                                                        |
+| `component`         | for `component-docs`                 | Component the documents belong to                                       | `foo-bar-scs`                                                   |
+| `library`           | for `library-docs`                   | Library the documents belong to                                         | `orders-common-lib`                                             |
+| `template`          | yes                                  | Section catalog the documents follow                                    | `arc42`                                                         |
+| `source-format`     | yes                                  | `markdown` or `html`                                                    | `markdown`                                                      |
+| `location`          | for `source-format=html`             | Section the documents are embedded in                                   | `6-runtime-view`                                                |
+| `topic`             | for `source-format=html`             | Slug identifying the documents within their section                     | `spring-rest-docs`                                              |
+| `label`             | for `source-format=html`             | Menu label of the documents                                             | `Spring REST Docs`                                              |
+| `source-repository` | yes                                  | Repository the documents came from                                      | `ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git`         |
+| `source-revision`   | yes                                  | Commit the documents were built from                                    | `9a1c2f8`                                                       |
+| `source-ref`        | yes                                  | Branch or tag that was built                                            | `main`                                                          |
+| `source-timestamp`  | yes                                  | Timestamp of that commit, ISO-8601                                      | `2026-08-21T09:12:00+02:00`                                     |
+| `version`           | for `component-docs`, `library-docs` | Version of the component or library                                     | `1.4.0`                                                         |
+| `build-url`         | no                                   | Build that uploaded the documents                                       | `https://github.com/orders/foo-bar-scs/actions/runs/1234567890` |
+| `generated-at`      | no                                   | When the documents were generated, ISO-8601                             | `2026-08-21T09:15:00+02:00`                                     |
 
 The doc service will host more than one documentation site. An upload without a `site` targets the default site,
 which is what a repository that does not care about sites sends.
@@ -88,7 +88,7 @@ documentation generator; the states are described in [Uploads](uploads.md#the-st
 ## Reading the state of an upload
 
 ```
-GET /api/uploads/docs/{uploadId}?system=wvs
+GET /api/uploads/docs/{uploadId}?system=orders
 Authorization: Bearer ...
 ```
 
@@ -102,7 +102,7 @@ is answered with `404`.
   "id": 42,
   "state": "PENDING",
   "type": "component-docs",
-  "system": "wvs",
+  "system": "orders",
   "component": "foo-bar-scs",
   "template": "arc42",
   "sizeInBytes": 184320,
@@ -117,9 +117,9 @@ is answered with `404`.
 Markdown documentation of a component:
 
 ```bash
-curl -X PUT "https://docs.example.ch/api/uploads/docs/$(uuidgen)?type=component-docs&system=wvs\
+curl -X PUT "https://docs.example.ch/api/uploads/docs/$(uuidgen)?type=component-docs&system=orders\
 &component=foo-bar-scs&template=arc42&source-format=markdown&version=1.4.0\
-&source-repository=ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git&source-revision=9a1c2f8&source-ref=main\
+&source-repository=ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git&source-revision=9a1c2f8&source-ref=main\
 &source-timestamp=2026-08-21T09:12:00%2B02:00" \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/zip" \
@@ -129,10 +129,10 @@ curl -X PUT "https://docs.example.ch/api/uploads/docs/$(uuidgen)?type=component-
 HTML documentation a build generated, embedded into a section of the template:
 
 ```bash
-curl -X PUT "https://docs.example.ch/api/uploads/docs/$(uuidgen)?type=component-docs&system=wvs\
+curl -X PUT "https://docs.example.ch/api/uploads/docs/$(uuidgen)?type=component-docs&system=orders\
 &component=foo-bar-scs&template=arc42&source-format=html&location=6-runtime-view&topic=spring-rest-docs\
 &label=Spring+REST+Docs&version=1.4.0\
-&source-repository=ssh://git@bitbucket.example.ch/wvs/foo-bar-scs.git&source-revision=9a1c2f8&source-ref=main\
+&source-repository=ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git&source-revision=9a1c2f8&source-ref=main\
 &source-timestamp=2026-08-21T09:12:00%2B02:00" \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/zip" \
@@ -252,6 +252,10 @@ It answers *why is this site not updating* without a log search, which is what i
 configured to do is on it next to what has actually happened. A site with no `publicationSchedule` that nothing
 uploads to is behaving exactly as configured, and nothing else would say so.
 
+The three build objects on it - `published`, `running` and `lastBuild` - are the same record
+[the build history](#reading-the-builds) answers with, trimmed above only to keep the example readable: they
+carry the instance that ran the build, its object prefix, the reason it failed and the memory columns as well.
+
 `published` is the newest **successful** build - the one being served - and `lastBuild` is the newest whatever
 became of it. When they disagree, the site's builds are failing while the last good one is still being served.
 `pending` is `null` when nothing is owed, and `running` is empty unless a build is happening right now; it is a
@@ -269,6 +273,18 @@ The runs of the generator for that site, newest first, in every state. `limit` d
 `1..100` rather than refused. Each build carries what it was asked for by, what became of it, when it started and
 finished, how long it took, how much of that was Docusaurus, the instance that ran it, what it published and how
 large that is - and `failureReason` when something went wrong.
+
+It also carries what the run did to the memory of its container, which is the number a container is sized from -
+a build is a child process whose bundler allocates outside any heap this service can see:
+
+| Field              |                                                                                                                                                                                |
+|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `memoryPeakBytes`  | The highest the container went during the run. **Null where the container's memory cannot be read** - off Linux, and wherever the cgroup files are not there. Null is not zero |
+| `memoryLimitBytes` | What the container is killed at, null where nothing names a limit                                                                                                              |
+| `memoryPeakExact`  | Whether that is the run's own peak, or only an upper bound on it: `false` where the kernel's high-water mark could not be reset and this build stayed below an earlier one     |
+
+A build that **failed** carries them too, and that is the case they exist for: a generator killed for want of
+memory exits with 137, and how close it came is then a number to compare rather than a sentence to read.
 
 The build identifier comes from one sequence shared by every site, and a build is read by its site *and* its
 identifier: the URL of one site never answers with a build of another.

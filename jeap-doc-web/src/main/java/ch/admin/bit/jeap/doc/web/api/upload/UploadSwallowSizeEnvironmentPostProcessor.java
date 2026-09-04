@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.web.api.upload;
 
-import ch.admin.bit.jeap.doc.domain.UploadProperties;
+import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.core.env.ConfigurableEnvironment;

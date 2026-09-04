@@ -9,10 +9,13 @@ import net.javacrumbs.shedlock.support.KeepAliveLockProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -116,6 +119,55 @@ class LockProviderIT extends PostgresTestContainerBase {
             LockSupport.parkNanos(Duration.ofMillis(50).toNanos());
         }
         throw new AssertionError("The lock was still held " + atMost + " after its lease ran out.");
+    }
+
+    /**
+     * The case the wiring exists for: work that runs longer than its lease keeps its lock, because the
+     * keep-alive extends it from a thread of its own while the work occupies a scheduler thread. When the
+     * keep-alive executor doubled as the scheduler, the work and the extension shared one thread, and a lock
+     * could not be extended while the work it protected was running.
+     */
+    @Test
+    void lock_whenTheWorkOutlivesTheLease_thenTheKeepAliveHoldsItFromItsOwnThread() throws Exception {
+        String name = "a-job-that-outlives-its-lease";
+        Duration lease = Duration.ofSeconds(30);
+        LockConfiguration configuration = new LockConfiguration(Instant.now(), name, lease, Duration.ZERO);
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setThreadNamePrefix("scheduling-");
+        scheduler.initialize();
+        try {
+            Future<Instant> extendedTo = scheduler.submit(() -> {
+                assertThat(Thread.currentThread().getName()).startsWith("scheduling-");
+                SimpleLock held = lockProvider.lock(configuration).orElseThrow();
+                try {
+                    Instant leasedUntil = lockUntilOf(name);
+                    // The keep-alive extends at half the lease; this thread is busy the whole time, so only
+                    // another thread can be doing it.
+                    Instant moved = awaitLockUntilAfter(name, leasedUntil, lease);
+                    assertThat(extensibleProvider().lock(configuration))
+                            .as("the lock is still held while its work runs")
+                            .isEmpty();
+                    return moved;
+                } finally {
+                    held.unlock();
+                }
+            });
+            assertThat(extendedTo.get(lease.toSeconds() + 10, TimeUnit.SECONDS)).isNotNull();
+        } finally {
+            scheduler.shutdown();
+        }
+    }
+
+    private Instant awaitLockUntilAfter(String name, Instant leasedUntil, Duration atMost) {
+        long deadline = System.nanoTime() + atMost.toNanos();
+        while (System.nanoTime() < deadline) {
+            Instant lockUntil = lockUntilOf(name);
+            if (lockUntil.isAfter(leasedUntil)) {
+                return lockUntil;
+            }
+            LockSupport.parkNanos(Duration.ofMillis(250).toNanos());
+        }
+        throw new AssertionError("The lock was not extended within " + atMost + ".");
     }
 
     /**

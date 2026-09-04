@@ -1,7 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
-import ch.admin.bit.jeap.doc.domain.SourceFormat;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 
 import java.util.Arrays;
 import java.util.stream.Collectors;

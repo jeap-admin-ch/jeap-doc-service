@@ -54,4 +54,16 @@ public interface SiteBuilder {
      * @param runningBuildIds the builds that are still running, whichever instance is running them
      */
     int sweepWorkspaces(Set<Long> runningBuildIds);
+
+    /**
+     * Writes what the run cost into the generated site, before it is published.
+     * <p>
+     * The one thing that happens between the generator and the upload. The page describing the documentation
+     * was written at the start of the run and cannot carry these numbers, so they are published beside it and
+     * fetched - see {@link DocumentationStatus}.
+     * <p>
+     * <b>It must not fail a build that has otherwise succeeded.</b> A site published without its numbers is a
+     * site with one table missing; a build failed over them is no site at all.
+     */
+    void describeRun(BuiltSite generated, DocumentationStatus status);
 }

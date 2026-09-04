@@ -7,7 +7,7 @@
     <parent>
         <groupId>ch.admin.bit.jeap</groupId>
         <artifactId>jeap-doc-service</artifactId>
-        <version>1.1.1-SNAPSHOT</version>
+        <version>1.2.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>jeap-doc-sitegenerator</artifactId>
@@ -21,6 +21,12 @@
         <dependency>
             <groupId>ch.admin.bit.jeap</groupId>
             <artifactId>jeap-doc-domain</artifactId>
+        </dependency>
+        <dependency>
+            <!-- how a page is written. The structure templates write through the same one, so the escaping and
+                 the front matter of a generated page have a single definition -->
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-doc-markdown</artifactId>
         </dependency>
         <dependency>
             <!-- the site template this runs; read from the classpath, never from a directory beside the jar -->
@@ -47,6 +53,26 @@
     </dependencies>
 
     <build>
+        <resources>
+            <!-- jeap-doc-version.properties carries @project.version@, which is what the page describing the
+                 documentation names as the version that generated it. Filtered here rather than read from
+                 Spring Boot's build-info: an instance repackages its own jar, so build-info would report the
+                 instance's version instead of the service's. -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>**/jeap-doc-version.properties</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>**/jeap-doc-version.properties</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <!-- Unpacks the site template's manifest and runs npm ci into target/site-install; configured in
                  the parent, because jeap-doc-web needs exactly the same install for its browser tests. -->

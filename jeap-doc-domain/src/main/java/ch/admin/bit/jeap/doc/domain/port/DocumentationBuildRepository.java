@@ -25,12 +25,14 @@ public interface DocumentationBuildRepository {
      * the two are one fact**: the state and the prefix of the site being served may never disagree.
      */
     DocumentationBuild succeeded(long id, String objectPrefix, int pageCount, long sizeInBytes,
-                                 long docusaurusMillis, Instant finishedAt);
+                                 long docusaurusMillis, ContainerMemory.Peak memoryPeak,
+                                 Instant finishedAt);
 
     /**
      * Records that a build did not finish. What was published before it stays published.
      */
-    DocumentationBuild failed(long id, String failureReason, Instant finishedAt);
+    DocumentationBuild failed(long id, String failureReason, ContainerMemory.Peak memoryPeak,
+                              Instant finishedAt);
 
     /**
      * Records that a build was given up on because the instance running it is stopping. It is not a failure -

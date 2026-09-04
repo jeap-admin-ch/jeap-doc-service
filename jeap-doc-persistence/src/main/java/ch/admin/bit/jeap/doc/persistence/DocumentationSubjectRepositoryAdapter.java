@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.persistence;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationSubject;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationSubject;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationSubjectRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

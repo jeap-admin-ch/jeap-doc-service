@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
+import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
@@ -22,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -74,7 +76,7 @@ class DocumentationBuildShutdownTest {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         metrics = new RecordingBuildMetrics();
         runner = new DocumentationBuildRunner(requests, builds, sites, siteBuilder, publication,
-                properties, metrics, alwaysGranting(), clock);
+                properties, metrics, alwaysGranting(), alwaysReady(), ContainerMemory.NONE, clock);
         shutdown = new DocumentationBuildShutdown(runner, siteBuilder, properties);
         shutdown.start();
         scheduler = Executors.newSingleThreadExecutor();
@@ -84,7 +86,7 @@ class DocumentationBuildShutdownTest {
         when(builds.abandonRunning(anyString(), any())).thenReturn(List.of());
         when(builds.start(anyString(), any(), anyString(), any())).thenReturn(
                 new DocumentationBuild(7L, SITE, BuildTrigger.UPLOAD, BuildState.RUNNING, NOW, null, "test",
-                        null, 0, 0, 0, null));
+                        null, 0, 0, 0, null, null));
     }
 
     @AfterEach
@@ -110,8 +112,8 @@ class DocumentationBuildShutdownTest {
 
         assertThat(tick.get(5, TimeUnit.SECONDS)).isTrue();
         verify(builds).aborted(eq(7L), anyString(), any());
-        verify(builds, never()).failed(anyLong(), anyString(), any());
-        verify(builds, never()).succeeded(anyLong(), anyString(), anyInt(), anyLong(), anyLong(), any());
+        verify(builds, never()).failed(anyLong(), anyString(), any(), any());
+        verify(builds, never()).succeeded(anyLong(), anyString(), anyInt(), anyLong(), anyLong(), any(), any());
         // The distinction the abort path exists for: the alarm counts failures, and a deployment landing on a
         // build must not page anybody.
         assertThat(metrics.results).containsExactly("aborted:" + SITE + ":UPLOAD");
@@ -197,6 +199,12 @@ class DocumentationBuildShutdownTest {
      * An interrupt makes the connection pool refuse to hand out a connection, so the bookkeeping clears it and
      * puts it back afterwards. Without that, a stop that arrived as an interrupt would write none of the three
      * things it exists to write - and the flag has to be restored, or whoever owns the thread loses it.
+     * <p>
+     * <b>The interrupt is delivered by the abort</b>, not raced against it. Interrupting from here and then
+     * calling {@code stop()} leaves the ordering to the scheduler: an interrupt that lands before the stop has
+     * begun unblocks the generator while this instance is <i>not</i> stopping, which is a build that failed and
+     * is recorded as one - correctly, and not what this test is about. Sending it from inside
+     * {@code abortCurrentBuild} puts it exactly where a real stop puts it.
      */
     @Test
     void stop_whenTheBuildThreadIsInterrupted_thenTheBookkeepingStillRunsAndTheInterruptIsPutBack() throws Exception {
@@ -207,7 +215,7 @@ class DocumentationBuildShutdownTest {
         });
         ticking.start();
         assertThat(siteBuilder.started.await(5, TimeUnit.SECONDS)).isTrue();
-        ticking.interrupt();
+        siteBuilder.interruptOnAbort = ticking;
 
         shutdown.stop();
         ticking.join(10_000);
@@ -238,6 +246,12 @@ class DocumentationBuildShutdownTest {
      */
     private static class BlockingSiteBuilder implements SiteBuilder {
 
+        @Override
+        public void describeRun(ch.admin.bit.jeap.doc.domain.port.BuiltSite generated,
+                                ch.admin.bit.jeap.doc.domain.port.DocumentationStatus status) {
+            // What the run cost is not what this test is about.
+        }
+
         private final CountDownLatch started = new CountDownLatch(1);
         private final CountDownLatch aborted = new CountDownLatch(1);
         @SuppressWarnings("unchecked")
@@ -246,12 +260,15 @@ class DocumentationBuildShutdownTest {
         private volatile boolean ignoreAbort;
         private volatile int aborts;
 
+        /** Interrupted when the build is given up on, which is where a real stop delivers an interrupt. */
+        private volatile Thread interruptOnAbort;
+
         @Override
         public BuiltSite generate(long buildId, Site site, java.time.Instant generatedAt) {
             started.countDown();
             try {
                 if (!aborted.await(30, TimeUnit.SECONDS)) {
-                    return new BuiltSite(Path.of("build"), 1, 1, 1);
+                    return new BuiltSite(Path.of("build"), 1, 1, 1, Map.of());
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -262,6 +279,9 @@ class DocumentationBuildShutdownTest {
         @Override
         public void abortCurrentBuild() {
             aborts++;
+            if (interruptOnAbort != null) {
+                interruptOnAbort.interrupt();
+            }
             if (!ignoreAbort) {
                 aborted.countDown();
             }
@@ -282,4 +302,29 @@ class DocumentationBuildShutdownTest {
         }
     }
 
+    /** A readiness that never holds a site back; what does is ArchitectureModelReadinessTest's business. */
+    private static ArchitectureModelReadiness alwaysReady() {
+        return new ArchitectureModelReadiness(new ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource() {
+
+            @Override
+            public boolean isConfiguredFor(String environment) {
+                return false;
+            }
+
+            @Override
+            public java.util.Optional<String> sourceUrlOf(String environment) {
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            public java.util.Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(String environment) {
+                return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot.empty();
+            }
+        });
+    }
 }

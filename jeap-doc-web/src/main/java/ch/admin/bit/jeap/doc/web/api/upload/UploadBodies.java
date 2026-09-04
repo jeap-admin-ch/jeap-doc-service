@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.web.api.upload;
 
-import ch.admin.bit.jeap.doc.domain.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
 import org.apache.commons.io.input.BoundedInputStream;
 
 import java.io.IOException;

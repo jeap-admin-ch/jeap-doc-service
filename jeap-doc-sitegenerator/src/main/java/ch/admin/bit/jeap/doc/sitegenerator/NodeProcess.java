@@ -46,6 +46,12 @@ public class NodeProcess {
      */
     static final int KEPT_LOG_LINES = 1024;
 
+    /**
+     * What Docusaurus prefixes its performance log with. Its logger is switched on by {@code DOCUSAURUS_PERF_LOGGER}
+     * - a variable Docusaurus itself calls private, so the lines are recognised and passed on, never parsed.
+     */
+    static final String PERF_PREFIX = "[PERF]";
+
     private final BuildProperties properties;
 
     /**
@@ -101,7 +107,7 @@ public class NodeProcess {
         // process tree is destroyed, and this thread is only ever waited on for a couple of seconds. A
         // non-daemon one parked in that read would stop the JVM exiting at all.
         Thread reader = Thread.ofPlatform().daemon(true).name("site-generator-output")
-                .start(() -> readOutput(process, tail));
+                .start(() -> readOutput(process, tail, properties.isPerfLog()));
         try {
             if (!process.waitFor(properties.getTimeout().toMillis(), TimeUnit.MILLISECONDS)) {
                 destroy(process);
@@ -177,7 +183,24 @@ public class NodeProcess {
         environment.put("PATH", (nodeDirectory == null ? "" : nodeDirectory + ":") + "/usr/bin:/bin");
         environment.put("HOME", System.getProperty("java.io.tmpdir"));
         environment.put("CI", "true");
-        environment.put("NODE_OPTIONS", "--max-old-space-size=" + properties.getMaxNodeMemory().toMegabytes());
+        String nodeOptions = "--max-old-space-size=" + properties.getMaxNodeMemory().toMegabytes();
+        if (properties.isPerfLog()) {
+            // Docusaurus' performance logger reads the heap before and after each phase of the build, and it
+            // collects garbage first - but only when Node exposes the collector. Without that flag the readings
+            // are whatever the heap happened to hold, and the difference between two of them says nothing.
+            nodeOptions += " --expose-gc";
+            environment.put("DOCUSAURUS_PERF_LOGGER", "true");
+        }
+        environment.put("NODE_OPTIONS", nodeOptions);
+        if (properties.isPurgeNativeMemory()) {
+            // The two mimalloc options that make the allocator of the native bundler give pages back rather
+            // than hold them: purge as soon as they are free instead of after a delay, and purge the pages of
+            // a segment whose thread has ended instead of leaving them for a thread that may reuse them. Read
+            // from the environment by mimalloc itself - the name of an option, upper-cased and prefixed - so
+            // they reach the bundler without the site template knowing anything about them.
+            environment.put("MIMALLOC_PURGE_DELAY", "0");
+            environment.put("MIMALLOC_ABANDONED_PAGE_PURGE", "1");
+        }
     }
 
     /**
@@ -201,12 +224,18 @@ public class NodeProcess {
         }
     }
 
-    private static void readOutput(Process process, OutputTail tail) {
+    private static void readOutput(Process process, OutputTail tail, boolean perfLog) {
         try (BufferedReader output = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = output.readLine()) != null) {
-                log.debug("[site generator] {}", line);
+                if (perfLog && line.startsWith(PERF_PREFIX)) {
+                    // The performance log is what was asked for; the rest of the generator's output is noise
+                    // until a build fails, and is kept for that in the tail.
+                    log.info("[site generator] {}", line);
+                } else {
+                    log.debug("[site generator] {}", line);
+                }
                 tail.add(line);
             }
         } catch (IOException e) {

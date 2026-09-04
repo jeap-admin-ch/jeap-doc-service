@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.persistence;
 
-import ch.admin.bit.jeap.doc.domain.SubjectKind;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

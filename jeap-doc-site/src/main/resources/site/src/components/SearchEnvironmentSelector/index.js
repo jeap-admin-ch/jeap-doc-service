@@ -1,5 +1,5 @@
 import React from 'react';
-import {useHistory, useLocation} from '@docusaurus/router';
+import {useLocation} from '@docusaurus/router';
 import useIsBrowser from '@docusaurus/useIsBrowser';
 import {ENVIRONMENTS} from '@site/src/data/environments';
 import styles from './styles.module.css';
@@ -18,7 +18,6 @@ import styles from './styles.module.css';
  * environment, and it says *environment*, which is what the rest of the site calls them.
  */
 export default function SearchEnvironmentSelector() {
-    const history = useHistory();
     const location = useLocation();
     // The search page is prerendered without a query string, so the scope is read only once there is a browser
     // to read it from - the same guard the plugin puts on the same value.
@@ -38,9 +37,18 @@ export default function SearchEnvironmentSelector() {
         } else {
             parameters.delete('ctx');
         }
+        const query = parameters.toString();
+        // Load the page again rather than rewrite the query string in the browser.
+        //
+        // The search plugin fetches the index of a scope in one effect and searches in another, both keyed on
+        // the scope. React runs the search first, so a scope changed in the browser is searched against the
+        // index of the scope just left, and the reader is shown the results of the environment they moved away
+        // from. Loading the page again starts the plugin on the chosen scope.
+        //
         // Replace rather than push: choosing an environment is refining the search that is on the screen, not
         // a step of its own to walk back through.
-        history.replace({search: parameters.toString()});
+        const search = query ? `?${query}` : '';
+        globalThis.location.replace(`${location.pathname}${search}`);
     }
 
     // A site with one environment has nothing to choose between, and the search index is not split at all -

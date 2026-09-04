@@ -280,8 +280,12 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
         // The main environment is the empty value, which is what the plugin knows the leftover bucket as.
         environmentSelector().selectOption("");
 
-        assertThat(hitsIn(mainEnvironment()).first()).isVisible();
+        // The selector changes the scope by rewriting the query string, and the plugin searches again from it.
+        // Wait for that, then for the previous results to go: only then are the ones on the page the new ones.
+        page.waitForURL(url -> !url.contains("ctx="));
         assertThat(hitsIn(dev)).hasCount(0);
+
+        assertThat(hitsIn(mainEnvironment()).first()).isVisible();
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -295,7 +299,15 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
     void diagrams_whenAPageHoldsAFence_thenItIsRenderedAsAnImage() {
         open("/" + GUIDE_ROUTE + "/");
 
-        assertThat(page.locator("[data-plantuml-diagram] svg").first()).isVisible();
+        // The svg that carries text, not the first one: the container also holds the toolbar's icons, and an
+        // assertion that matched one of those would pass with the diagram itself broken.
+        Locator diagram = page.locator("[data-plantuml-diagram] svg:has(text)").first();
+        assertThat(diagram).isVisible();
+        // The fence carries the constructs the generator emits. PlantUML draws a syntax error as a picture
+        // too, so what proves it parsed is the content: the boxes are there and the complaint is not.
+        assertThat(diagram).containsText("orders-intake");
+        assertThat(diagram).containsText("shipping");
+        assertThat(diagram).not().containsText("Syntax Error");
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -385,8 +397,10 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
     }
 
     private Locator environmentLink(SiteEnvironment environment) {
-        return page.getByRole(AriaRole.LINK,
-                new Page.GetByRoleOptions().setName(environment.label()).setExact(false));
+        // Scoped to the navbar switcher on purpose: the footer's Environments group links to the same
+        // environments by the same names, and an unscoped role-and-name query would match both.
+        return page.locator(".navbar").getByRole(AriaRole.LINK,
+                new Locator.GetByRoleOptions().setName(environment.label()).setExact(false));
     }
 
     private SiteEnvironment environmentNamed(String id) {

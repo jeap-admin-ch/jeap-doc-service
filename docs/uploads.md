@@ -172,3 +172,4 @@ implemented; until it is, a build publishes what the doc service generates itsel
 - [Security](security.md)
 - [jeap-doc-service](../README.md)
 - [Generating the documentation](generation.md)
+- [The scheduled jobs](scheduled-jobs.md) - when the housekeeping of the uploads runs

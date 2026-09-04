@@ -1,7 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationUpload;
-import ch.admin.bit.jeap.doc.domain.UploadState;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
+import ch.admin.bit.jeap.doc.domain.upload.UploadState;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import org.junit.jupiter.api.Test;
@@ -99,7 +99,7 @@ class UploadIdempotencyIT extends DocServiceIntegrationTestBase {
         DocumentationUpload first = uploads.findByUploadId(uploadId).orElseThrow();
 
         Map<String, String> anotherBuild = componentDocs();
-        anotherBuild.put("build-url", "https://github.com/wvs/wvs-docs/actions/runs/1234567891");
+        anotherBuild.put("build-url", "https://github.com/orders/orders-docs/actions/runs/1234567891");
 
         mockMvc.perform(uploadOf(uploadId, anotherBuild, bundle("second")).with(writeRole()))
                 .andExpect(status().isConflict())

@@ -69,6 +69,21 @@ class DocumentationBuildEntity {
     @Column(name = "docusaurus_millis", nullable = false)
     private long docusaurusMillis;
 
+    /**
+     * What the build did to the memory of its container: the highest usage, what the container is killed at,
+     * and whether that usage is this build's own peak or only an upper bound on it. All three are null
+     * together, for a build whose container could not be read - off Linux, and wherever no cgroup files are
+     * there.
+     */
+    @Column(name = "memory_peak_bytes")
+    private Long memoryPeakBytes;
+
+    @Column(name = "memory_limit_bytes")
+    private Long memoryLimitBytes;
+
+    @Column(name = "memory_peak_exact")
+    private Boolean memoryPeakExact;
+
     @Column(name = "failure_reason")
     private String failureReason;
 }

@@ -5,6 +5,10 @@ model and the business logic, it declares the *ports* it needs as interfaces, an
 it implement those ports or drive the domain through them. The domain therefore depends on no framework detail,
 and a technology can be replaced without touching the business logic.
 
+Beside the domain and the adapters there is a third kind of module: a **structure template plugin**. It supplies
+a way of structuring documentation - arc42 is the one that ships - and it is neither the centre of the hexagon nor a
+technology behind a port. [Structure templates](structure-templates.md) describes it.
+
 ```mermaid
 flowchart LR
     Pipeline[Doc pipeline] -->|PUT /api/uploads/docs| Web
@@ -14,28 +18,59 @@ flowchart LR
         Persistence[jeap-doc-persistence<br/>driven adapter]
         Storage[jeap-doc-objectstorage<br/>driven adapter]
         Generator[jeap-doc-sitegenerator<br/>driven adapter]
+        ArchRepo[jeap-doc-archrepo<br/>driven adapter]
     end
-    Web --> Domain[jeap-doc-domain<br/>model, services, ports]
+    subgraph Templates[Structure template plugins]
+        Arc42[jeap-doc-template-arc42]
+    end
+    Web --> Domain[jeap-doc-domain<br/>model, services, ports,<br/>StructureTemplate]
     Domain -.->|port| Persistence
     Domain -.->|port| Storage
     Domain -.->|port| Generator
+    Domain -.->|port| ArchRepo
+    Arc42 -.->|implements StructureTemplate| Domain
+    Generator -.->|injected| Templates
+    Web -.->|injected| Templates
     Persistence --> Db[(PostgreSQL)]
     Storage --> S3[(S3 object storage)]
     Generator --> Node[Site generator<br/>child process]
+    ArchRepo --> Model[(Architecture repository)]
 ```
 
 ## Modules
 
-| Module                      | Role            | Contents                                                                                                              |
-|-----------------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------|
-| `jeap-doc-domain`           | domain          | The model of the documentation, the services acting on it and the ports it needs (package `…doc.domain.port`)         |
-| `jeap-doc-persistence`      | driven adapter  | Spring Data JPA on PostgreSQL (`documentation_upload`, `documentation_subject`), and the Flyway migrations            |
-| `jeap-doc-objectstorage`    | driven adapter  | S3 over the jEAP object storage starter, and the startup check of the bucket                                          |
-| `jeap-doc-sitegenerator`    | driven adapter  | Produces the site: the build workspace, what the site template reads, the site template itself, the generator process |
-| `jeap-doc-metrics`          | driven adapter  | The Micrometer meters behind the `UploadMetrics` and `BuildMetrics` ports                                             |
-| `jeap-doc-site`             | resources       | The site generator's own application - no Java. Read from the classpath, never from a directory beside the jar        |
-| `jeap-doc-web`              | driving adapter | The Spring Boot application: REST API, OpenAPI, security, and the documentation it serves                             |
-| `jeap-doc-service-instance` | packaging       | POM-only module a project depends on to create its own doc service instance                                           |
+| Module                      | Role               | Contents                                                                                                              |
+|-----------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `jeap-doc-domain`           | domain             | The model of the documentation, the services acting on it and the ports it needs - see [its packages](#the-packages-of-the-domain) |
+| `jeap-doc-markdown`         | support            | How a page is written: Markdown, front matter, `_category_.json` - **and the escaping**. No dependencies at all       |
+| `jeap-doc-template-arc42`   | plugin             | arc42: its twelve chapters, its structural rules, and the pages generated into them from the architecture model       |
+| `jeap-doc-persistence`      | driven adapter     | Spring Data JPA on PostgreSQL (the uploads, the builds, the architecture model and what is replicated beside it), and the Flyway migrations |
+| `jeap-doc-objectstorage`    | driven adapter     | S3 over the jEAP object storage starter, and the startup check of the bucket                                          |
+| `jeap-doc-sitegenerator`    | driven adapter     | Produces the site: the build workspace, what the site template reads, the site template itself, the generator process |
+| `jeap-doc-archrepo`         | driven adapter     | The client of the architecture repository's `/docs-api`, behind the three upstream ports of [the import](architecture-import.md) |
+| `jeap-doc-metrics`          | driven adapter     | The Micrometer meters behind the `UploadMetrics`, `BuildMetrics` and `ArchitectureImportMetrics` ports, and the `ContainerMemory` reading |
+| `jeap-doc-site`             | resources          | The site generator's own application - no Java. Read from the classpath, never from a directory beside the jar        |
+| `jeap-doc-web`              | driving adapter    | The Spring Boot application: REST API, OpenAPI, security, and the documentation it serves                             |
+| `jeap-doc-service-instance` | packaging          | POM-only module a project depends on to create its own doc service instance                                           |
+
+### The packages of the domain
+
+The domain is the largest module, so it is divided by what a class is about rather than by what it is:
+
+| Package | What is in it |
+|---------|----------------|
+| `…doc.domain` | The builds and the sites: the runner, the trigger, the schedules, the site configuration and what is published |
+| `…doc.domain.upload` | Everything about an upload - the descriptor, the service, the states, the housekeeping. It asks the rest of the domain for one thing: a build |
+| `…doc.domain.architecture` | The architecture model as a page needs it: the `Documented…` records and the enums they carry |
+| `…doc.domain.architecture.view` | `SystemContext` and `WhiteboxView` - what a diagram of one system shows, computed across the whole landscape |
+| `…doc.domain.architecture.imports` | How that model is replicated: the job, its schedule, the four kinds and the step for each, the deadline and the outcome |
+| `…doc.domain.port` | Every interface the domain needs from the outside, and the records they answer with |
+| `…doc.domain.template` | The `StructureTemplate` plugin point - see [Structure templates](structure-templates.md) |
+
+**`architecture` does not depend on `architecture.imports`, and that is the point of the split.** The records a
+page is written from do not know they were replicated, so how the landscape is fetched can change without
+touching them - and `Deadline`, `ArchitectureImportStep` and `StoredArchitectureModel` are package-private
+because nothing outside the replication has any use for them.
 
 ### Rules the modules follow
 
@@ -59,6 +94,17 @@ flowchart LR
   application class and its configuration and gets the wiring.
 - New business logic goes into the domain; new technology goes into an adapter. A new adapter kind - an event
   publisher, an HTTP client for another service - becomes its own module.
+- **A structure template is a plugin, and a module of its own.** The plugin point `StructureTemplate` is in the
+  domain, because the upload validation in the web layer will read the chapters as much as the generator does,
+  and that path must not reach the site generator. The structure template itself is in the module.
+
+  A plugin point is not a driven port: a port has exactly one adapter, a plugin point has as many
+  implementations as there are templates. **Nothing outside a template module names it** - the site generator
+  injects every `StructureTemplate` it finds, and nothing names a template by class. A second structure template
+  is a dependency and a bean. See [Structure templates](structure-templates.md).
+- **`jeap-doc-markdown` has no dependencies and must keep none.** It is reached from the templates and from the
+  site generator, and through the templates it will be on the path of the upload validation - everything added
+  to it travels all of that way. The moment it needs the domain it has stopped being a syntax helper.
 
 ## Receiving an upload
 
@@ -107,6 +153,7 @@ noticing. What each side does is [Generating the documentation](generation.md).
 
 - [API](api.md)
 - [Uploads](uploads.md)
+- [Structure templates](structure-templates.md)
 - [Generating the documentation](generation.md)
 - [Configuration](configuration.md)
 - [Security](security.md)

@@ -5,12 +5,12 @@
 The doc service authorizes against **semantic roles**, which requires
 `jeap.security.oauth2.resourceserver.system-name` to be set on the instance:
 
-| Role                                      | Grants                                                             |
-|-------------------------------------------|--------------------------------------------------------------------|
-| `<system-name>_%<system>_@uploads_#write` | Uploading documentation for the system named in the tenant part    |
-| `<system-name>_@docs_#read`               | Reading the doc service's API                                      |
-| `<system-name>_@sites_#admin`             | Asking for a documentation site to be published                    |
-| `<system-name>_@sites_#read`              | Reading what the documentation generator has been doing            |
+| Role                                      | Grants                                                               |
+|-------------------------------------------|----------------------------------------------------------------------|
+| `<system-name>_%<system>_@uploads_#write` | Uploading documentation for the system named in the tenant part      |
+| `<system-name>_@docs_#read`               | A name kept free by convention; **nothing in the service checks it** |
+| `<system-name>_@sites_#admin`             | Asking for a documentation site to be published                      |
+| `<system-name>_@sites_#read`              | Reading what the documentation generator has been doing              |
 
 ## A site is nobody's system
 
@@ -31,7 +31,7 @@ role names the resource `uploads` because the upload is the API resource a pipel
 what a pipeline reads the state of its own uploads with (`GET /api/uploads/docs/{uploadId}`), and it covers every
 kind of upload the family will hold.
 
-A pipeline holding `<system-name>_%wvs_@uploads_#write` can upload documentation for the system `wvs` and
+A pipeline holding `<system-name>_%orders_@uploads_#write` can upload documentation for the system `orders` and
 receives `403` for every other system. Granting the role without a tenant part makes it a wildcard over all
 systems, which is what an administrative client would hold.
 
@@ -58,6 +58,26 @@ environment **built from nothing** rather than inherited: the service's own envi
 object storage credentials, and a documentation build has no business seeing them. It also gets a hard timeout
 and a memory cap, and the site template it runs is installed over the generated content rather than beside it, so
 nothing that was generated can become part of the program that runs.
+
+## What the documentation says about the service
+
+The **About This Documentation** page and `about-this-documentation.json` beside it are part of the published
+site, so they are readable by anyone who can reach it. What they may carry is decided in one place -
+`DocumentationProvenance` - and not by whoever writes a page:
+
+| Published                                                             | Not published                                               |
+|-----------------------------------------------------------------------|-------------------------------------------------------------|
+| The site and environment ids and labels, the templates, the retention | The instance that ran a build                               |
+| The schedules and their next occurrence                               | The object prefix a site is published under, and the bucket |
+| How many systems, components and messages a model contributed         | Any database name, host or credential                       |
+| When a model was imported and when the repository was last read       | The URL of the architecture repository                      |
+| What a run produced and cost: pages, bytes, duration, memory peak     | **Why an import or a build failed**                         |
+
+The last row is the one to keep in mind when adding a field. A failure reason is built from what an upstream
+answered: it quotes hosts, paths and occasionally an error body. **That an import failed is publishable; why it
+failed is not** - that stays in the log of the instance and in the API behind a token. `DocumentationFacts`
+says so in its javadoc, and its test asserts it over the whole rendering rather than field by field, so a field
+added later is caught by the test rather than by whoever reads the published page.
 
 ## Content Security Policy
 
@@ -95,3 +115,22 @@ which skips the API and the actuator paths.
 - [Configuration](configuration.md)
 - [Generating the documentation](generation.md)
 - [Observability](observability.md)
+
+## What the doc service is a client of
+
+Everything above is about who may call the doc service. It calls one service itself: the architecture
+repository, to read the model it generates the documentation from.
+
+|               |                                                                                                                                                                   |
+|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| How           | A client-credentials token of this service, obtained through `JeapOAuth2RestClientBuilderFactory` - the jEAP way of calling another service in the system context |
+| Which role    | `<system-name>_@architecture-model_#read`, granted on the **architecture repository's** authorization server, which is not this service's own                     |
+| Configured as | `jeap.doc.archrepo.environments.<environment>.client-registration`, naming a `spring.security.oauth2.client.registration` entry                                   |
+| Secret        | From the secret store of the platform. Never in a repository                                                                                                      |
+
+The doc service reads; the architecture repository never calls back. There is no inbound surface for this.
+
+A refused token fails the **import**, not a build: a build makes no call to the architecture repository at all,
+and what it generates from is what the last successful import stored. So the documentation of an environment goes
+on being published from the model as of that import - or, where there has never been one, the build is postponed.
+The message names the client registration and the role, because those are what somebody will have to fix.

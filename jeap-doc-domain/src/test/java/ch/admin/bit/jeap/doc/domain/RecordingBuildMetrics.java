@@ -38,4 +38,9 @@ public class RecordingBuildMetrics implements BuildMetrics {
     public void abandoned(String site, int count) {
         abandoned.add(site + ":" + count);
     }
+
+    @Override
+    public void modelRead(String site, String environment, Duration duration) {
+        results.add("model-read:" + environment);
+    }
 }

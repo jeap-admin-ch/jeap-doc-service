@@ -5,6 +5,7 @@ import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
 import net.javacrumbs.shedlock.support.KeepAliveLockProvider;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -41,11 +42,11 @@ public class DocPersistenceConfiguration {
      * after the longest a build could possibly have taken.
      */
     @Bean
-    LockProvider lockProvider(DataSource dataSource, ScheduledExecutorService lockKeepAliveExecutor) {
+    LockProvider lockProvider(DataSource dataSource, LockKeepAliveThread keepAlive) {
         return new KeepAliveLockProvider(new JdbcTemplateLockProvider(JdbcTemplateLockProvider.Configuration.builder()
                 .withJdbcTemplate(new JdbcTemplate(dataSource))
                 .usingDbTime()
-                .build()), lockKeepAliveExecutor);
+                .build()), keepAlive.executor());
     }
 
     /**
@@ -59,16 +60,40 @@ public class DocPersistenceConfiguration {
     }
 
     /**
-     * The one thread that extends the held locks. It is destroyed with {@code shutdownNow} rather than closed:
-     * by the time the beans are destroyed there is nothing left worth extending, and waiting for a periodic
-     * task to come round would only make the shutdown longer.
+     * The one thread that extends the held locks, and nothing else.
+     * <p>
+     * It is a bean of its own type and <b>not</b> a {@code ScheduledExecutorService} bean, on purpose. Spring
+     * Boot declares its task scheduler only while the context holds no {@code ScheduledExecutorService}, so
+     * exposing this one as such silently replaced the scheduler: every scheduled task of the doc service - the
+     * imports, the build poll, the builds - ran on this single thread, {@code spring.task.scheduling.pool.size}
+     * had no effect, and a lock could not be extended while the work it protected occupied the thread that
+     * would extend it.
      */
-    @Bean(destroyMethod = "shutdownNow")
-    ScheduledExecutorService lockKeepAliveExecutor() {
-        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+    @Bean
+    LockKeepAliveThread lockKeepAliveThread() {
+        return new LockKeepAliveThread();
+    }
+
+    /**
+     * Holds the keep-alive thread and shuts it down with the context - with {@code shutdownNow} rather than
+     * closed: by the time the beans are destroyed there is nothing left worth extending, and waiting for a
+     * periodic task to come round would only make the shutdown longer.
+     */
+    static final class LockKeepAliveThread implements DisposableBean {
+
+        private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "shedlock-keep-alive");
             thread.setDaemon(true);
             return thread;
         });
+
+        ScheduledExecutorService executor() {
+            return executor;
+        }
+
+        @Override
+        public void destroy() {
+            executor.shutdownNow();
+        }
     }
 }
