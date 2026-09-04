@@ -21,8 +21,10 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -124,6 +126,32 @@ public class ArchRepoClients {
         /** The entity tag verbatim, as it arrived. */
         String etag() {
             return headers.getFirst(HttpHeaders.ETAG);
+        }
+
+        /**
+         * Value equality over the body too, which the generated one would not give for an array.
+         */
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Answer answer
+                   && Objects.equals(status, answer.status)
+                   && Objects.equals(headers, answer.headers)
+                   && Arrays.equals(body, answer.body)
+                   && tooLarge == answer.tooLarge;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(status, headers, Arrays.hashCode(body), tooLarge);
+        }
+
+        /**
+         * Without the body, so that a log line or a test failure does not print megabytes of it.
+         */
+        @Override
+        public String toString() {
+            return "Answer[status=%s %d bytes%s]"
+                    .formatted(status, body == null ? 0 : body.length, tooLarge ? " tooLarge" : "");
         }
     }
 

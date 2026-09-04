@@ -14,6 +14,7 @@ import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import ch.admin.bit.jeap.security.test.client.configuration.JeapOAuth2IntegrationTestClientConfiguration;
 import com.github.tomakehurst.wiremock.WireMockServer;
+import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +34,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,8 +66,8 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
      */
     private static final int ROUNDS_UNTIL_SERVED = 5;
 
-    /** How often the model is asked for, and how long between two attempts - see the method below. */
-    private static final int IMPORT_ATTEMPTS = 20;
+    /** How long the model is asked for, and how long between two attempts - see the method below. */
+    private static final java.time.Duration IMPORT_BUDGET = java.time.Duration.ofSeconds(60);
 
     private static final java.time.Duration IMPORT_RETRY_DELAY = java.time.Duration.ofMillis(500);
 
@@ -437,21 +439,28 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
      * which then leaves the site unpublishable because it waits for a model that was never imported. The
      * import is idempotent, so the answer is simply to ask again until it has run.
      */
-    private void importUntilTheModelIsStored() throws InterruptedException {
-        for (int attempt = 0; attempt < IMPORT_ATTEMPTS; attempt++) {
-            if (imports.state("prod", ArchitectureImportKind.MODEL).hasEverSucceeded()) {
-                return;
-            }
-            importJob.importEnvironment("prod");
-            if (imports.state("prod", ArchitectureImportKind.MODEL).hasEverSucceeded()) {
-                return;
-            }
-            // Held by another context, or by this one's own catch-up. It is released when that run ends.
-            Thread.sleep(IMPORT_RETRY_DELAY.toMillis());
+    private void importUntilTheModelIsStored() {
+        try {
+            // Between two attempts the lock is held by another context, or by this one's own catch-up; it is
+            // released when that run ends.
+            await().atMost(IMPORT_BUDGET)
+                    .pollDelay(java.time.Duration.ZERO)
+                    .pollInterval(IMPORT_RETRY_DELAY)
+                    .until(this::importOnceMore);
+        } catch (ConditionTimeoutException e) {
+            throw new AssertionError(("The architecture model of prod was not imported within %s, so no "
+                                      + "site that requires it can be published.%n  the import of prod: %s")
+                    .formatted(IMPORT_BUDGET, imports.state("prod", ArchitectureImportKind.MODEL)));
         }
-        throw new AssertionError(("The architecture model of prod was not imported after %d attempts, so no "
-                                  + "site that requires it can be published.%n  the import of prod: %s")
-                .formatted(IMPORT_ATTEMPTS, imports.state("prod", ArchitectureImportKind.MODEL)));
+    }
+
+    /** One attempt of the above: has it already succeeded, and if not, does asking once more make it. */
+    private boolean importOnceMore() {
+        if (imports.state("prod", ArchitectureImportKind.MODEL).hasEverSucceeded()) {
+            return true;
+        }
+        importJob.importEnvironment("prod");
+        return imports.state("prod", ArchitectureImportKind.MODEL).hasEverSucceeded();
     }
 
     /**
