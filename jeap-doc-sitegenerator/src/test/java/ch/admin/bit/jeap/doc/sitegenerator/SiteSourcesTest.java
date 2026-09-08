@@ -11,7 +11,10 @@ import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
@@ -28,6 +31,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.stream.StreamSupport;
 import java.time.LocalDateTime;
@@ -58,6 +62,9 @@ class SiteSourcesTest {
     private static final String GENERATED_AT_DISPLAY = DisplayTime.of(GENERATED_AT);
 
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    /** Any version does: what matters is that both hashes are taken with the same one. */
+    private static final String VERSION = "1.0.0";
 
     @TempDir
     Path content;
@@ -101,29 +108,40 @@ class SiteSourcesTest {
     }
 
     /**
-     * <b>The page describing the documentation says when the import fires next, in minutes from now.</b> That
-     * moves with the clock rather than with the documentation, so a digest over the content as written would
-     * differ on every run and the part carrying that page could never be skipped. It is handed to the digest
-     * as a volatile value, exactly as the page printed it.
+     * <b>The point of taking the status off the page: a part that has not changed is skipped.</b>
+     * <p>
+     * The architecture repository having been read again is not a change to the documentation, and it used to
+     * be one to the content: the page printed <i>last read 09:45</i> and the next occurrence of the import in
+     * minutes from now, so the part carrying whole environments hashed differently every hour and was built
+     * every hour. Both statements are answered live now, so two runs an hour apart over a landscape nobody
+     * touched hash to the same value and the second publishes nothing.
      */
     @Test
-    void write_thenWhenTheImportFiresNextIsHandedToTheDigestAsVolatile() throws IOException {
-        SiteSources documented = sourcesReadingAModel();
+    void write_whenOnlyTheLastReadMoved_thenTheContentHashesToWhatItDidAndThePartIsSkipped() throws IOException {
+        TestProvenance.InMemoryImports imports = new TestProvenance.InMemoryImports();
+        SiteSources documented = sourcesReadingAModel(imports);
+        Site site = siteOf("default");
 
-        WrittenContent written =
-                documented.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
+        imports.save(readAt(GENERATED_AT.minus(Duration.ofMinutes(50))));
+        WrittenContent first = documented.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
+        String published = ContentDigest.of(content, first.volatileTimestamps(), VERSION);
 
-        String page = Files.readString(content.resolve("prod").resolve("about-this-documentation.md"),
-                StandardCharsets.UTF_8);
-        assertThat(written.volatileTimestamps())
-                .filteredOn(volatileText -> volatileText.contains("(in "))
-                .describedAs("as the schedule row prints it, so that replacing it leaves nothing behind")
-                .singleElement()
-                .satisfies(printed -> assertThat(page).contains(printed));
+        // An hour later: another build, another moment, and the repository read once more in between.
+        Instant anHourLater = GENERATED_AT.plus(Duration.ofHours(1));
+        imports.save(readAt(anHourLater.minus(Duration.ofMinutes(15))));
+        WrittenContent second = documented.write(2L, site, wholeSiteOf(site), content, anHourLater);
+
+        assertThat(ContentDigest.of(content, second.volatileTimestamps(), VERSION)).isEqualTo(published);
+    }
+
+    /** A model import of the environment prod that succeeded at the given moment. */
+    private static ArchitectureImportState readAt(Instant lastSuccessAt) {
+        return new ArchitectureImportState("prod", ArchitectureImportKind.MODEL, "hash", null, true, 1,
+                lastSuccessAt, lastSuccessAt, ImportOutcome.UNCHANGED, null);
     }
 
     /** The same sources over an environment whose architecture model is configured, which is what has a schedule. */
-    private SiteSources sourcesReadingAModel() {
+    private SiteSources sourcesReadingAModel(TestProvenance.InMemoryImports imports) {
         PublicationProperties publication = new PublicationProperties();
         publication.setUrl("https://doc.example.ch");
         SiteProperties siteProperties = new SiteProperties();
@@ -138,7 +156,7 @@ class SiteSourcesTest {
                 NoArchitectureModel.systemPages(new SiteUrls(publication, "")),
                 new DocumentationSites(siteProperties),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), buildProperties,
-                TestProvenance.of(siteProperties, configured, new StructureTemplates(List.of())),
+                TestProvenance.of(siteProperties, configured, new StructureTemplates(List.of()), imports),
                 new AboutThisDocumentation());
     }
 

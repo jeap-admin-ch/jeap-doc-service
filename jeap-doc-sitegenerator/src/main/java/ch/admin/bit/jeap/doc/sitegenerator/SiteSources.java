@@ -4,6 +4,7 @@ import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationFacts;
+import ch.admin.bit.jeap.doc.domain.DocumentationLiveStatus;
 import ch.admin.bit.jeap.doc.domain.DocumentationProvenance;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.Site;
@@ -119,7 +120,6 @@ public class SiteSources {
                                 Instant generatedAt) throws IOException {
         Files.createDirectories(contentDirectory);
         writeBranding(site, contentDirectory);
-        String volatileSchedule = null;
         Map<String, EnvironmentModel> models = new LinkedHashMap<>();
         for (SiteEnvironment environment : site.environments()) {
             if (!part.carries(environment.id())) {
@@ -137,8 +137,7 @@ public class SiteSources {
         if (part.carriesWholeEnvironments()) {
             // After the loop, because the page prints what every environment's model contributed and the loop
             // is what counted it. One page per tree - see AboutThisDocumentation.
-            volatileSchedule = writeAboutThisDocumentation(buildId, site, part, contentDirectory, generatedAt,
-                    models);
+            writeAboutThisDocumentation(buildId, site, part, contentDirectory, generatedAt, models);
         }
         // Last, both of them, because they record which environments have a systems page: the footer links to
         // the main one's and a part's sidebar links to its own, and a link to a page that was not written
@@ -149,7 +148,7 @@ public class SiteSources {
                         .anyMatch(environment -> environment.main() && hasSystems(models, environment.id()))));
         CrossPartLinks.rewrite(contentDirectory, part, otherPartsOf(site, part), linkPrefixesOf(site));
         log.debug("Wrote the content of {} - {} - into {}.", part.key(), part.documents(), contentDirectory);
-        return new WrittenContent(models, volatileTextOf(buildId, generatedAt, models, volatileSchedule));
+        return new WrittenContent(models, volatileTextOf(buildId, generatedAt, models));
     }
 
     /**
@@ -158,20 +157,17 @@ public class SiteSources {
      * was imported, and which build it was.
      * <p>
      * Each in the form it was written in - an instant in the front matter, a readable time in the provenance of
-     * every page, the build's identifier as the page about the documentation prints it, and when the import
-     * fires next as that page's schedule row prints it. Two runs over documentation nobody changed differ in
-     * exactly these, and in nothing else.
+     * every page, and the build's identifier as the page about the documentation prints it. Two runs over
+     * documentation nobody changed differ in exactly these, and in nothing else.
      * <p>
-     * The last of them moves with the clock rather than with the schedule - it is printed as <i>in 15
-     * minutes</i> - so without it the part carrying that page could never be skipped.
+     * <b>These three are provenance, and they are all that is left here.</b> Anything that moves with the
+     * clock rather than with the documentation is not written into a page at all - it is answered live and
+     * fetched by the site template, which is why nothing about the last read or the next occurrence of a
+     * schedule has to be replaced before hashing. See {@code DocumentationLiveStatus}.
      */
     private static java.util.Set<String> volatileTextOf(long buildId, Instant generatedAt,
-                                                        Map<String, EnvironmentModel> models,
-                                                        String volatileSchedule) {
+                                                        Map<String, EnvironmentModel> models) {
         java.util.Set<String> written = new java.util.LinkedHashSet<>();
-        if (volatileSchedule != null) {
-            written.add(volatileSchedule);
-        }
         written.add(generatedAt.toString());
         written.add(DisplayTime.of(generatedAt));
         // As the page prints it, in code quotes: the bare number would match a count somewhere on a page.
@@ -393,12 +389,9 @@ public class SiteSources {
      * that is not configured, and only a configured site is ever built, so this says what went wrong instead of
      * pretending to carry on.
      */
-    /**
-     * Writes the page describing the documentation into every environment this part carries, and answers the
-     * one thing on it that moves with the clock: when the import fires next, as the page prints it.
-     */
-    private String writeAboutThisDocumentation(long buildId, Site site, SitePart part, Path contentDirectory,
-                                               Instant generatedAt, Map<String, EnvironmentModel> models)
+    /** Writes the page describing the documentation into every environment this part carries. */
+    private void writeAboutThisDocumentation(long buildId, Site site, SitePart part, Path contentDirectory,
+                                             Instant generatedAt, Map<String, EnvironmentModel> models)
             throws IOException {
         DocumentationFacts facts = provenance.of(site.id(), DocServiceVersion.get(), generatedAt)
                 .orElseThrow(() -> new SiteBuildException(
@@ -408,14 +401,15 @@ public class SiteSources {
         // Where the numbers of this build are published: the origin, the base URL of this site, and the file
         // the run writes beside the site once it knows them.
         String statusUrl = urls.url() + urls.baseUrl(site) + AboutThisDocumentation.STATUS_FILE;
+        // The live status is not a file anything writes: the service answers it under the same base URL, so
+        // that a page of this site can fetch it same-origin.
+        String liveStatusUrl = urls.url() + urls.baseUrl(site) + DocumentationLiveStatus.FILE_NAME;
         for (SiteEnvironment environment : site.environments()) {
             if (part.carries(environment.id())) {
-                aboutThisDocumentation.write(facts, environment, models, buildId, statusUrl,
+                aboutThisDocumentation.write(facts, environment, models, buildId, statusUrl, liveStatusUrl,
                         contentDirectory.resolve(environment.id()));
             }
         }
-        return facts.schedules().importAt() == null ? null
-                : AboutThisDocumentation.whenItFiresNext(facts.schedules().importAt(), generatedAt);
     }
 
     /**

@@ -200,6 +200,13 @@ public class DocumentationBuildRunner {
                 // Nothing is owed, which is what most passes find. No pool, no line, no lock.
                 return false;
             }
+            // The leftovers of builds that are no longer running, once for the pass and before a slot is
+            // filled. It used to be a step of every build, and once the slots of a pass overlapped that meant
+            // every slot walking the same directory at the same time: each of them removed trees the others
+            // were walking, and each of them reported the vanished tree as a workspace it had failed to
+            // remove. A sweep is housekeeping over a directory this instance owns alone, and the pass is what
+            // knows when none of its builds has started yet.
+            siteBuilder.sweepWorkspaces(builds.runningIds());
             if (slots() > 1) {
                 drainOnAPool();
             } else {
@@ -368,7 +375,13 @@ public class DocumentationBuildRunner {
         private PartOutcome buildOrReport(Buildable next) {
             long startedAt = System.nanoTime();
             try {
-                return buildPart(next.site(), next.part());
+                // Everything this build logs - the workspace, the generator's own output, the line that says
+                // it failed - carries the site, the part and the build. The scope is opened here because this
+                // is where one build's work begins and ends on one thread; the slots share a pool, so a
+                // context left behind would label the next build's lines with this part. See BuildLogContext.
+                try (BuildLogContext logged = BuildLogContext.of(next.part().key())) {
+                    return buildPart(next.site(), next.part());
+                }
             } catch (Throwable e) {
                 log.error("The build of {} ended in a way its own error handling did not cover.",
                         next.part().key(), e);
@@ -661,6 +674,8 @@ public class DocumentationBuildRunner {
         BuildTrigger trigger = request.trigger();
         DocumentationBuild build = builds.start(part.key(), trigger, instanceName(), clock.instant(),
                 request.publication());
+        // As soon as there is a row to name. Undone by the scope buildOrReport opened around this.
+        BuildLogContext.buildIs(build.id());
         log.info("Publishing {} - {} - ({}), asked for by {}.", part.key(), part.documents(), build.id(),
                 trigger);
         long startedAt = System.nanoTime();
@@ -682,7 +697,6 @@ public class DocumentationBuildRunner {
                               long startedAt) {
         BuildTrigger trigger = request.trigger();
         try {
-            siteBuilder.sweepWorkspaces(builds.runningIds());
             Instant generatedAt = clock.instant();
             // The cheap half first: the content, and what it hashes to.
             PreparedPart prepared = siteBuilder.prepare(build.id(), site, part, generatedAt);

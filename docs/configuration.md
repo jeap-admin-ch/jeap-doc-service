@@ -72,6 +72,9 @@ jeap:
         enabled: true
         retention: P14D
         cron: "0 30 2 * * *"
+      validation:
+        max-paths: 10000
+        max-findings: 50
 ```
 
 | Property                                 | Default        | Description                                           |
@@ -79,6 +82,8 @@ jeap:
 | `jeap.doc.upload.housekeeping.enabled`   | `true`         | Whether old uploads are removed at all                |
 | `jeap.doc.upload.housekeeping.retention` | `P14D`         | How long an upload is kept after it was last received |
 | `jeap.doc.upload.housekeeping.cron`      | `0 30 2 * * *` | When to look, in the time zone of the service         |
+| `jeap.doc.upload.validation.max-paths`   | `10000`        | The most paths one structure validation may carry. Past it the request is refused with `413` rather than answered: a tree of that size is a `path` pointing at more than the documentation. **It also bounds the request body**: a body announcing more than this many paths of 1024 characters could ever need is refused on its `Content-Length`, before it is read, because counting paths means having parsed them all into the heap first. Below 1 stops the startup |
+| `jeap.doc.upload.validation.max-findings` | `50`          | The most findings one report carries. A report of forty problems is already unreadable; what is left out is counted in `findingsOmitted` rather than dropped in silence. Below 1 stops the startup - a report that may carry no finding could not say what is wrong |
 
 The job removes the uploads **from the database only**, whatever state they are in; the bundles are expired by a
 lifecycle rule of the bucket, which has to be set a little longer than the retention - see

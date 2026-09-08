@@ -356,7 +356,10 @@ const config = {
     // Runs on every page and does something on exactly one: the page describing the documentation, where it
     // fills in what the run that produced this site cost. The numbers cannot be generated into the page - see
     // the module - and all the JavaScript of this site lives in the template rather than in generated content.
-    clientModules: [require.resolve('./src/clientModules/publicationNumbers.js')],
+    clientModules: [
+        require.resolve('./src/clientModules/publicationNumbers.js'),
+        require.resolve('./src/clientModules/liveStatus.js'),
+    ],
     themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
         ({

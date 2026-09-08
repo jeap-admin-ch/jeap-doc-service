@@ -199,6 +199,13 @@ port has exactly one adapter in the real application context. **Add the new port
   in `jeap-doc-web` on `DocServiceIntegrationTestBase`, which starts both containers once per JVM and disables the
   permit-all chain of the jEAP security test starter, so they see production security.
 
+- **The upload rules have two callers, and only one of them exists.** `StructureValidation`, `IgnoredPaths`
+  and `MicrositeRules` are in `jeap-doc-domain` because the *publication* has to apply the same rules while a
+  build runs - the validation endpoint is advisory, and a hand-made ZIP would otherwise publish `.DS_Store`
+  into a site or a page over a generated one. Today the endpoint is the only caller, so nothing enforces
+  that: when the publication writes uploads into the tree, it calls these and does not re-derive them, and the test
+  that says so is the one to write with it. `docs/upload-validation.md` already promises it.
+
 - **`-pl <module>` builds against the jars in `~/.m2`, not against your working tree.** A test in
   `jeap-doc-web` sees the last *installed* `jeap-doc-domain` or `jeap-doc-site`, so a change there is invisible
   until it is installed - and installing the one module alone has been seen to leave the old jar in place. The
@@ -238,10 +245,10 @@ port has exactly one adapter in the real application context. **Add the new port
   and PostgreSQL allows 65535. A landscape past that would not get slower, it would fail every build.
   `ChildQueriesBindArraysTest` enumerates the package and holds the rule.
 - **What the service publishes about itself is decided in one place.** `DocumentationProvenance` assembles
-  `DocumentationFacts`, and the About page and the status JSON print only what it hands them - never an instance
-  name, an object prefix, a bucket, an upstream URL or the reason a run failed. A field added to those records
-  changes `DocumentationProvenanceTest`'s expected rendering, which is deliberate: adding one is a decision about
-  disclosure, not a refactor.
+  `DocumentationFacts` and `DocumentationLiveStatus`, and the About page, the status JSON and the live status
+  print only what it hands them - never an instance name, an object prefix, a bucket, an upstream URL or the
+  reason a run failed. A field added to those records changes `DocumentationProvenanceTest`'s expected
+  rendering, which is deliberate: adding one is a decision about disclosure, not a refactor.
 - **An absence assertion over a value the code under test cannot reach is not an assertion.** `doesNotContain` on
   something the class has no access to passes on every broken state; assert the whole rendering, or the shape,
   against what it should be.
@@ -295,6 +302,13 @@ are what keep that working. The plan behind it is the enabler's `MODULARIZATION.
   runs over the same documentation has to be in the volatile set of `SiteSources` - the build's timestamps and
   its identifier are there already. Add a new one and forget this, and every part rebuilds every hour; hash
   something that is not volatile, and a change never gets published. `ContentDigest` explains both directions.
+- **Provenance goes in the page; status is served beside the site.** The volatile set is for values that say
+  *this content is as of then* and stay true in a page nobody rebuilds. A value that says what is true *now* -
+  when the architecture repository was last read, whether the import is behind, when a schedule fires next -
+  does not belong in a page at all, and hiding it from the digest instead would freeze the page that has to
+  report a broken import. Those are answered live as `DocumentationLiveStatus` under
+  `<base URL of the site>live-status.json`, served by `SiteRequestHandler` so that the site's own filter chain
+  covers them, and filled into the page's cells by `liveStatus.js`.
 - **A link that leaves a part cannot be checked by the build that writes it.** `CrossPartLinks` rewrites those
   links once, over the written content, rather than at the thirty places that write one - so a new page cannot
   forget the rule. Inside a part, `onBrokenLinks: 'throw'` still catches a generator bug, and that is the half
@@ -395,6 +409,15 @@ Stored the upload 8f1c9a2e-… (42) of the system orders as uploads/docs/42/1/bu
   the domain only records the state. Do not log the same event twice on its way out.
 - Name the upload id first, then the identifier of the upload, then the system. An upload that has no identifier
   yet - rejected before it was recorded - is logged with what the request carried.
+
+**Every line one build logs names it.** `docSite`, `docPart` and `docBuildId` are in the diagnostic context for
+the whole of one build's work - see `BuildLogContext`. Without them the generator's output is thousands of lines
+under one thread name for every build of an instance, and a `[PERF]` trace could only be attributed by adding it
+up and matching the total against a build row. Two rules keep it working: **the scope is closed in a
+try-with-resources**, because the slots share a thread pool and a value left behind labels the next build with
+this part; and **a thread started inside the scope is handed the context**, because the MDC is thread-local and
+inherits nothing - `NodeProcess` does that for the pump that drains the child's output. The deployed log format
+renders every context field as a field of the JSON line; the local console pattern renders none of them.
 
 **The level says who has to act, not how bad it feels:**
 

@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.BuildLogContext;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildTimeoutException;
@@ -104,8 +105,12 @@ public class NodeProcess {
         // A daemon thread: a helper the generator spawned can inherit the pipe and keep it open after the
         // process tree is destroyed, and this thread is only ever waited on for a couple of seconds. A
         // non-daemon one parked in that read would stop the JVM exiting at all.
+        // Which build these lines belong to, handed over rather than inherited: the MDC is thread-local and a
+        // thread started now gets none of it. Without it every build's generator output arrives under one
+        // thread name with nothing to tell the lines of one publication's dozens of builds apart.
+        Map<String, String> logContext = BuildLogContext.current();
         Thread reader = Thread.ofPlatform().daemon(true).name("site-generator-output")
-                .start(() -> readOutput(process, tail));
+                .start(() -> readOutput(process, tail, logContext));
         try {
             if (!process.waitFor(properties.getTimeout().toMillis(), TimeUnit.MILLISECONDS)) {
                 destroy(process);
@@ -231,8 +236,14 @@ public class NodeProcess {
      * is dozens of builds, so at info the generator's own output is most of what an instance logs - and none
      * of it is what an operator reads to answer a question. What a run cost is on the build record and in
      * {@code jeap.doc.build.step}; what a failure was is in the tail, which is kept regardless of the level.
+     * <p>
+     * Every line carries the build it came from, because the thread name cannot: it is the same for every
+     * build of an instance, and an instance builds several at once.
      */
-    private static void readOutput(Process process, OutputTail tail) {
+    private static void readOutput(Process process, OutputTail tail, Map<String, String> logContext) {
+        // Set and never cleared: this thread is created for one run and ends with it, so there is nothing for
+        // a stale value to leak into.
+        BuildLogContext.adopt(logContext);
         try (BufferedReader output = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;

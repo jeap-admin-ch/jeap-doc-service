@@ -22,15 +22,20 @@ import static org.assertj.core.api.Assertions.assertThat;
  * What the page describing the documentation says.
  * <p>
  * Two of these matter more than the rest: that the page names <b>its own</b> build rather than a number from
- * some other run, and that it reads correctly for somebody whose browser runs no scripts - the five metrics
- * arrive by fetch, and a page with a hole in it where they belong would be worse than one that says where they
- * are.
+ * some other run, and that it reads correctly for somebody whose browser runs no scripts - the numbers of the
+ * run and the live status both arrive by fetch, and a page with a hole in it where they belong would be worse
+ * than one that says where they are.
+ * <p>
+ * The third is what the page does <b>not</b> say. Everything that moves with the clock is gone from it, so
+ * that a tree whose documentation has not moved can be left as it is; what those statements read as is
+ * asserted in {@code DocumentationProvenanceTest}.
  */
 class AboutThisDocumentationTest {
 
     private static final Instant GENERATED_AT = Instant.parse("2026-09-03T07:30:00Z");
     private static final Instant IMPORTED_AT = Instant.parse("2026-09-03T05:45:00Z");
     private static final String STATUS_URL = "https://doc.example.ch/docs/about-this-documentation.json";
+    private static final String LIVE_STATUS_URL = "https://doc.example.ch/docs/live-status.json";
 
     @TempDir
     Path directory;
@@ -72,81 +77,75 @@ class AboutThisDocumentationTest {
         assertThat(written)
                 .contains("2 systems, 5 components, 9 messages")
                 .contains("*no architecture model*")
-                // The outcome of a successful run is not named: the content timestamp beside it already says
-                // whether the landscape changed, and naming it invited the reading that a failed run's word
-                // belonged to the timestamp of the successful one.
-                .contains(DisplayTime.of(IMPORTED_AT) + ", last read "
-                          + DisplayTime.of(Instant.parse("2026-09-03T07:15:00Z")))
+                .contains(DisplayTime.of(IMPORTED_AT))
                 .doesNotContain("(unchanged)");
     }
 
     /**
-     * A stage whose architecture repository reports no system at all is imported successfully, hour after
-     * hour, and stores no row - so there is no content timestamp. Calling that <i>never</i> reported a working
-     * import as a missing one.
+     * <b>The page carries provenance and no status.</b> When the content was imported stays true while the
+     * page is not rebuilt; when the repository was last read, whether the import is behind, and when the
+     * schedule fires next do not - so none of them is written into the page at all. The row of the environment
+     * whose repository was read a quarter of an hour ago is the one that would carry them.
      */
     @Test
-    void write_whenTheLandscapeIsEmptyButImported_thenItSaysWhenItWasReadRatherThanNever() throws IOException {
+    void write_thenWhatWouldGoStaleIsNotOnThePage() throws IOException {
+        String written = write(facts(), 1L);
+
+        assertThat(written)
+                .doesNotContain("last read")
+                .doesNotContain("not read since")
+                .doesNotContain("the last run did not read it")
+                .doesNotContain(DisplayTime.of(Instant.parse("2026-09-03T07:15:00Z")))
+                .describedAs("the moment the import fires next, as the row used to print it")
+                .doesNotContain("in 15 minutes");
+    }
+
+    /**
+     * And it names where they are, so that the page reads correctly for a reader whose browser runs no
+     * scripts - and so that the client module and the reader follow the same URL.
+     */
+    @Test
+    void write_thenItNamesWhereTheLiveStateIs() throws IOException {
+        String written = write(facts(), 1L);
+
+        assertThat(written)
+                .contains("[live-status.json](" + LIVE_STATUS_URL + ")")
+                .contains("**Last read**")
+                .contains("**Next**")
+                .contains("the state right now rather than part of this publication");
+    }
+
+    /**
+     * A stage whose architecture repository reports no system at all is imported successfully, hour after
+     * hour, and stores no row - so there is no content timestamp. Saying <i>never</i> reported a working
+     * import as a missing one, so the cell is left for the live status to speak for.
+     */
+    @Test
+    void write_whenTheLandscapeIsEmptyButImported_thenItDoesNotCallTheImportNever() throws IOException {
         DocumentationFacts facts = new DocumentationFacts(
                 new DocumentationFacts.Service("1.2.3", GENERATED_AT), site(),
                 List.of(environmentFacts()),
                 new DocumentationFacts.Schedules(null, null));
 
         page.write(facts, new SiteEnvironment("prod", "PROD", "Production", 1, true, false),
-                Map.of("prod", EnvironmentModel.empty(null)), 1L, STATUS_URL, directory);
+                Map.of("prod", EnvironmentModel.empty(null)), 1L, STATUS_URL, LIVE_STATUS_URL, directory);
 
         String written = Files.readString(directory.resolve(AboutThisDocumentation.FILE_NAME),
                 StandardCharsets.UTF_8);
         assertThat(written).doesNotContain("*never*");
-        assertThat(written).contains("last read " + DisplayTime.of(Instant.parse("2026-09-03T07:15:00Z")));
     }
 
     /**
-     * The outcome belongs to the latest run and the timestamp to the last successful one, so joining them said
-     * that the read which worked did not.
+     * One schedule, because there is one: the import reads the landscape and asks for every part of the site.
+     * The expression is configuration and is printed; the cell beside it is left for the live status.
      */
     @Test
-    void write_whenTheLastRunFailed_thenTheTimestampIsNotBlamedForIt() throws IOException {
-        DocumentationFacts facts = new DocumentationFacts(
-                new DocumentationFacts.Service("1.2.3", GENERATED_AT), site(),
-                List.of(new DocumentationFacts.EnvironmentFacts("prod", "Production", true, false, true,
-                        Instant.parse("2026-09-03T04:00:00Z"), ImportOutcome.FAILED, Duration.ofHours(2))),
-                new DocumentationFacts.Schedules(null, null));
-
-        String written = write(facts, 1L);
-
-        assertThat(written)
-                .doesNotContain("(failed)")
-                .contains("last read " + DisplayTime.of(Instant.parse("2026-09-03T04:00:00Z")))
-                .describedAs("three and a half hours, against a two-hour staleness measure")
-                .contains("; not read since");
-    }
-
-    /** A run that failed while the import is still within its measure is not yet 'not read since'. */
-    @Test
-    void write_whenTheLastRunFailedButTheImportIsNotBehind_thenItSaysOnlyThat() throws IOException {
-        DocumentationFacts facts = new DocumentationFacts(
-                new DocumentationFacts.Service("1.2.3", GENERATED_AT), site(),
-                List.of(new DocumentationFacts.EnvironmentFacts("prod", "Production", true, false, true,
-                        GENERATED_AT.minus(Duration.ofMinutes(20)), ImportOutcome.FAILED, Duration.ofHours(2))),
-                new DocumentationFacts.Schedules(null, null));
-
-        String written = write(facts, 1L);
-
-        assertThat(written).contains("; the last run did not read it").doesNotContain("not read since");
-    }
-
-    /**
-     * One schedule, because there is one: the import reads the landscape and asks for every part of the site,
-     * so what a reader wants to know about is when that runs next.
-     */
-    @Test
-    void write_thenTheScheduleSaysWhenTheDocumentationChangesNext() throws IOException {
+    void write_thenTheScheduleIsPrintedAndItsNextOccurrenceIsLeftToTheLiveStatus() throws IOException {
         String written = write(facts(), 1L);
 
         assertThat(written)
-                .contains("`0 45 5-19 * * *`")
-                .contains("in 15 minutes")
+                .contains("| The architecture model is imported, and the site published | "
+                          + "`0 45 5-19 * * *` | - |")
                 .doesNotContain("`0 5 6-20 * * *`");
     }
 
@@ -178,16 +177,6 @@ class AboutThisDocumentationTest {
         assertThat(written).contains("generated by the jEAP Doc Service.").doesNotContain("null");
     }
 
-    @Test
-    void spellOut_thenADurationAsAReaderSaysIt() {
-        assertThat(AboutThisDocumentation.spellOut(Duration.ofSeconds(20))).isEqualTo("in a moment");
-        assertThat(AboutThisDocumentation.spellOut(Duration.ofMinutes(1))).isEqualTo("in 1 minute");
-        assertThat(AboutThisDocumentation.spellOut(Duration.ofMinutes(35))).isEqualTo("in 35 minutes");
-        assertThat(AboutThisDocumentation.spellOut(Duration.ofMinutes(60))).isEqualTo("in 1 hour");
-        assertThat(AboutThisDocumentation.spellOut(Duration.ofMinutes(125))).isEqualTo("in 2 hours 5 minutes");
-        assertThat(AboutThisDocumentation.spellOut(Duration.ofMinutes(-5))).isEqualTo("in a moment");
-    }
-
     /** Two systems, because what this page says about them is their number. */
     private static java.util.List<EnvironmentModel.DocumentedSystemEntry> twoSystems() {
         return java.util.List.of(
@@ -197,7 +186,8 @@ class AboutThisDocumentationTest {
 
     private String write(DocumentationFacts facts, long buildId) throws IOException {
         page.write(facts, new SiteEnvironment("prod", "PROD", "Production", 1, true, false),
-                Map.of("prod", new EnvironmentModel(twoSystems(), 5, 9, IMPORTED_AT)), buildId, STATUS_URL, directory);
+                Map.of("prod", new EnvironmentModel(twoSystems(), 5, 9, IMPORTED_AT)), buildId, STATUS_URL,
+                LIVE_STATUS_URL, directory);
         return Files.readString(directory.resolve(AboutThisDocumentation.FILE_NAME), StandardCharsets.UTF_8);
     }
 

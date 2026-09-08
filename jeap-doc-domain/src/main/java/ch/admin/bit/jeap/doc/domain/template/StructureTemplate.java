@@ -1,11 +1,13 @@
 package ch.admin.bit.jeap.doc.domain.template;
 
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * A structure template: the chapters a documentation set is organised into, the rules an upload has to follow,
@@ -97,4 +99,31 @@ public interface StructureTemplate {
      * @param systemDirectory {@code content/<environment>/systems/<slug>}
      */
     void writeSystem(DocumentedSystem system, GenerationContext context, Path systemDirectory) throws IOException;
+
+    /**
+     * The file extensions an upload to this template may carry, lower case and without the dot.
+     * <p>
+     * <b>An answer, not a check.</b> A template never sees a path - what walks a tree, decides and words a
+     * finding is the validation in the domain, so that the finding codes are one set whatever methodology is
+     * named. See {@code docs/upload-validation.md}.
+     * <p>
+     * No default: an empty set would silently forbid everything and a generous one would silently allow it,
+     * and either is a template that got validation wrong by saying nothing.
+     */
+    Set<String> allowedFileExtensions();
+
+    /**
+     * The page and group names this template generates into a chapter, for that kind of subject - without the
+     * extension, because what collides is a document and not a file.
+     * <p>
+     * An upload carrying one of them would produce two documents at one URL, and Docusaurus is configured
+     * with {@code onDuplicateRoutes: 'throw'} - so the build of that subject's part fails, twenty minutes
+     * later, naming a route rather than an upload.
+     * <p>
+     * Defaults to nothing: a template that generates no page occupies no name beyond the two the domain
+     * reserves everywhere, {@code index} and {@code _category_.json}.
+     */
+    default Set<String> generatedNames(StructureChapter chapter, SubjectKind subject) {
+        return Set.of();
+    }
 }

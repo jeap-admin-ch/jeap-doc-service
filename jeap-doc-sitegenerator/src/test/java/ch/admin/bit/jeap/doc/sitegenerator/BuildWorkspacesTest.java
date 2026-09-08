@@ -9,8 +9,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class BuildWorkspacesTest {
 
@@ -108,6 +114,69 @@ class BuildWorkspacesTest {
         properties.setWorkspaceDirectory(root.resolve("not-created-yet"));
 
         assertThat(new BuildWorkspaces(properties).sweep(Set.of())).isZero();
+    }
+
+    @Test
+    void deleteTree_whenTheTreeIsAlreadyGone_thenItIsNotAFailure() {
+        assertThatCode(() -> BuildWorkspaces.deleteTree(root.resolve("never-there")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void deleteTree_thenTheWholeTreeIsGone() throws IOException {
+        Path tree = deepTree(root.resolve("42"));
+
+        BuildWorkspaces.deleteTree(tree);
+
+        assertThat(tree).doesNotExist();
+    }
+
+    /**
+     * The failure this method exists for: two things removing one workspace at the same time - a build
+     * discarding its own while a sweep walks it. A recursive delete that reports what another walk has
+     * already removed logged a stack trace for every workspace it swept; this one reports what it cannot
+     * remove and nothing else.
+     */
+    @Test
+    void deleteTree_whenTwoOfThemWalkTheSameTree_thenNeitherOfThemFails() throws Exception {
+        Path tree = deepTree(root.resolve("42"));
+        ExecutorService both = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> one = both.submit(deleting(tree));
+            Future<?> another = both.submit(deleting(tree));
+
+            assertThatCode(() -> one.get(30, TimeUnit.SECONDS)).doesNotThrowAnyException();
+            assertThatCode(() -> another.get(30, TimeUnit.SECONDS)).doesNotThrowAnyException();
+        } finally {
+            both.shutdownNow();
+        }
+
+        assertThat(tree).doesNotExist();
+    }
+
+    private static Callable<Void> deleting(Path tree) {
+        return () -> {
+            BuildWorkspaces.deleteTree(tree);
+            return null;
+        };
+    }
+
+    /**
+     * A tree of the shape a workspace has - the content of one part is a directory per environment, chapter
+     * and component - so that two walks over it really overlap rather than finishing on the first entry.
+     */
+    private static Path deepTree(Path tree) throws IOException {
+        for (int environment = 0; environment < 4; environment++) {
+            for (int chapter = 0; chapter < 12; chapter++) {
+                for (int component = 0; component < 6; component++) {
+                    Path directory = tree.resolve("content/env-" + environment + "/chapter-" + chapter
+                                                  + "/component-" + component);
+                    Files.createDirectories(directory);
+                    Files.writeString(directory.resolve("index.md"), "# a page");
+                }
+            }
+        }
+        return tree;
     }
 
     @Test

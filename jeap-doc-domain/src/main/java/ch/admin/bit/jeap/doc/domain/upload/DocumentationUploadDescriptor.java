@@ -1,7 +1,6 @@
 package ch.admin.bit.jeap.doc.domain.upload;
 
 import ch.admin.bit.jeap.doc.domain.Site;
-import ch.admin.bit.jeap.doc.domain.Slugs;
 import lombok.Builder;
 import org.springframework.util.StringUtils;
 
@@ -59,8 +58,6 @@ public record DocumentationUploadDescriptor(
         Instant generatedAt) {
 
 
-    private static final String COMPONENT_PARAMETER = "component";
-    private static final String LIBRARY_PARAMETER = "library";
     private static final String PROVENANCE_REQUIRED = "to record where the documents came from";
     private static final String MARKDOWN_DOCUMENTATION = "markdown documentation";
 
@@ -74,35 +71,22 @@ public record DocumentationUploadDescriptor(
         sourceTimestamp = toStoredPrecision(sourceTimestamp);
         generatedAt = toStoredPrecision(generatedAt);
         requireSlug(site, "site");
-        requirePresent(type, "type", "to know what the documents document");
-        requireSlug(system, "system");
-        requireSlug(template, "template");
-        requirePresent(sourceFormat, "source-format", "to know how the documents are written");
+        // Where the documents belong, and the rules over it - shared with the structure validation, which is
+        // a placement and nothing else. See DocumentationPlacement.
+        DocumentationPlacement.check(type, system, component, library, template, sourceFormat, location, topic);
 
+        // And what only an upload needs: a version for anything that has one, and a label for a page that
+        // appears in a menu. The validation endpoint accepts neither - a path tree does not depend on them.
         switch (type) {
             case SYSTEM_DOCS -> {
-                requireAbsent(component, COMPONENT_PARAMETER, "system documentation");
-                requireAbsent(library, LIBRARY_PARAMETER, "system documentation");
+                // A system documents itself; there is no version of a system to name.
             }
-            case COMPONENT_DOCS -> {
-                requireSlug(component, COMPONENT_PARAMETER);
-                requireAbsent(library, LIBRARY_PARAMETER, "component documentation");
-                requireText(version, "version", "for component documentation");
-            }
-            case LIBRARY_DOCS -> {
-                requireSlug(library, LIBRARY_PARAMETER);
-                requireAbsent(component, COMPONENT_PARAMETER, "library documentation");
-                requireText(version, "version", "for library documentation");
-            }
+            case COMPONENT_DOCS -> requireText(version, "version", "for component documentation");
+            case LIBRARY_DOCS -> requireText(version, "version", "for library documentation");
         }
-
         if (sourceFormat == SourceFormat.HTML) {
-            requireSlug(location, "location");
-            requireSlug(topic, "topic");
             requireText(label, "label", "for HTML documents");
         } else {
-            requireAbsent(location, "location", MARKDOWN_DOCUMENTATION);
-            requireAbsent(topic, "topic", MARKDOWN_DOCUMENTATION);
             requireAbsent(label, "label", MARKDOWN_DOCUMENTATION);
         }
 
@@ -112,15 +96,17 @@ public record DocumentationUploadDescriptor(
         requirePresent(sourceTimestamp, "source-timestamp", PROVENANCE_REQUIRED);
     }
 
+    /** Where these documents belong, without the provenance of the files. */
+    public DocumentationPlacement placement() {
+        return new DocumentationPlacement(type, system, component, library, template, sourceFormat, location,
+                topic);
+    }
+
     /**
      * The component or library the documents belong to, or null for system documentation.
      */
     public String subjectName() {
-        return switch (type) {
-            case SYSTEM_DOCS -> null;
-            case COMPONENT_DOCS -> component;
-            case LIBRARY_DOCS -> library;
-        };
+        return placement().subjectName();
     }
 
     /**
@@ -130,29 +116,22 @@ public record DocumentationUploadDescriptor(
         return instant == null ? null : instant.truncatedTo(ChronoUnit.MICROS);
     }
 
-    private static void requirePresent(Object value, String parameter, String requiredBecause) {
-        if (value == null) {
-            throw InvalidUploadException.missing(parameter, requiredBecause);
-        }
-    }
+    // The rules over the placement, and their helpers, are DocumentationPlacement's - these three are what
+    // this record still checks itself.
 
     private static void requireText(String value, String parameter, String requiredBecause) {
-        if (!StringUtils.hasText(value)) {
-            throw InvalidUploadException.missing(parameter, requiredBecause);
-        }
+        DocumentationPlacement.requireText(value, parameter, requiredBecause);
     }
 
     private static void requireSlug(String value, String parameter) {
-        requireText(value, parameter, "to identify the documentation set");
-        if (!Slugs.isSlug(value)) {
-            throw InvalidUploadException.invalidValue(parameter, value, Slugs.DESCRIPTION);
-        }
+        DocumentationPlacement.requireSlug(value, parameter);
     }
 
     private static void requireAbsent(String value, String parameter, String documentationKind) {
-        if (StringUtils.hasText(value)) {
-            throw InvalidUploadException.invalidValue(parameter, value,
-                    "no value, as %s names no %s".formatted(documentationKind, parameter));
-        }
+        DocumentationPlacement.requireAbsent(value, parameter, documentationKind);
+    }
+
+    private static void requirePresent(Object value, String parameter, String requiredBecause) {
+        DocumentationPlacement.requirePresent(value, parameter, requiredBecause);
     }
 }

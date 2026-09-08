@@ -25,6 +25,15 @@ public final class DocumentationPaths {
      */
     public static final String INDEX_SEGMENT = "index";
 
+    /**
+     * The extension of a file that becomes a document.
+     * <p>
+     * The site is built with {@code format: 'md'} and the site generator routes nothing else, so this is the
+     * domain's fact rather than a template's preference - it is what decides whether a name can collide with
+     * a generated page at all.
+     */
+    public static final String MARKDOWN_EXTENSION = "md";
+
     private DocumentationPaths() {
     }
 

@@ -6,6 +6,28 @@ The API is described with OpenAPI. The jEAP Swagger starter serves the descripti
 UI at `/swagger-ui.html`; both are switched off unless the instance sets `jeap.swagger.status` (see
 [Configuration](configuration.md)).
 
+## Overview
+
+| Method | Path                                                  | Role                                     | Answers      | What it does                                                                                                |
+|--------|-------------------------------------------------------|------------------------------------------|--------------|-------------------------------------------------------------------------------------------------------------|
+| `PUT`  | `/api/uploads/docs/{uploadId}`                        | `<system-name>_%<system>_@uploads_#write` | `201`, `200` | Stores a documentation set - [Uploading a documentation set](#uploading-a-documentation-set)                |
+| `GET`  | `/api/uploads/docs/{uploadId}?system=`                | `<system-name>_%<system>_@uploads_#write` | `200`        | The state of one upload - [Reading the state of an upload](#reading-the-state-of-an-upload)                 |
+| `POST` | `/api/uploads/docs/validation`                        | `<system-name>_%<system>_@uploads_#write` | `200`, `422` | Whether a path tree would be accepted - [Validating a documentation set](#validating-a-documentation-set)   |
+| `POST` | `/api/sites/{site}/builds`                            | `<system-name>_@sites_#admin`             | `202`        | Asks for the site to be published - [Asking for a site to be published](#asking-for-a-site-to-be-published) |
+| `POST` | `/api/sites/{site}/parts/{part}/builds`               | `<system-name>_@sites_#admin`             | `202`        | Asks for one part to be published - [Asking for one part to be published](#asking-for-one-part-to-be-published) |
+| `GET`  | `/api/sites`                                          | `<system-name>_@sites_#read`              | `200`        | The state of every configured site - [Reading the state of the sites](#reading-the-state-of-the-sites)     |
+| `GET`  | `/api/sites/{site}`                                   | `<system-name>_@sites_#read`              | `200`        | The state of one site - [Reading the state of the sites](#reading-the-state-of-the-sites)                   |
+| `GET`  | `/api/sites/{site}/parts`                             | `<system-name>_@sites_#read`              | `200`        | The parts of a site and their state - [Reading the parts](#reading-the-parts)                               |
+| `GET`  | `/api/sites/{site}/parts/{part}/builds`               | `<system-name>_@sites_#read`              | `200`        | The builds of one part - [Reading the parts](#reading-the-parts)                                            |
+| `GET`  | `/api/sites/{site}/builds`                            | `<system-name>_@sites_#read`              | `200`        | The builds of a site, newest first - [Reading the builds](#reading-the-builds)                              |
+| `GET`  | `/api/sites/{site}/builds/{buildId}`                  | `<system-name>_@sites_#read`              | `200`        | One build - [Reading the builds](#reading-the-builds)                                                       |
+| `POST` | `/api/architecture/imports`                           | `<system-name>_@sites_#admin`             | `202`        | Asks for every architecture repository to be imported - [Asking for the architecture repository to be imported](#asking-for-the-architecture-repository-to-be-imported) |
+| `POST` | `/api/architecture/environments/{environment}/imports` | `<system-name>_@sites_#admin`             | `202`        | Asks for one environment's import - [Asking for the architecture repository to be imported](#asking-for-the-architecture-repository-to-be-imported) |
+| `GET`  | `/api/architecture/environments`                      | `<system-name>_@sites_#read`              | `200`        | What the imports have been doing - [Reading what the imports have been doing](#reading-what-the-imports-have-been-doing) |
+
+Every endpoint answers `401` without a valid token and `403` with a token that lacks the role; the upload role is
+checked for the system named in the request. Everything outside `/api` is the documentation site itself.
+
 Everything below `/api/uploads` is an upload, and the segment after it says **what kind of thing is uploaded**.
 Documentation is the first kind; another kind - assets a documentation site needs next to its Markdown - would get
 its own segment rather than a parameter on this endpoint.
@@ -189,6 +211,104 @@ before the `413` can be answered, and the service reads only so much of a body n
 
 An unknown parameter is rejected rather than ignored: a typo in a workflow configuration must fail loudly instead
 of silently publishing something else than the repository intended.
+
+## Validating a documentation set
+
+**Before a pipeline builds a ZIP**, it can ask whether the path tree would be accepted. Nothing is uploaded,
+stored or read: the tree arrives as a list of paths, the endpoint has no side effect, and it never sees a
+file's bytes.
+
+```
+POST /api/uploads/docs/validation?type=component-docs&system=wvs&component=wvs-foo-bar-service
+                                 &template=arc42&source-format=markdown
+Content-Type: application/json
+Authorization: Bearer ...
+
+{ "paths": ["1-intro/goals.md", "5-building-block-view/design-notes.md"] }
+```
+
+Below `/api/uploads/docs`, because what is validated is a documentation upload - and the parameter check of
+that path guards it, so a typo in a workflow configuration fails as loudly here as on the upload. The role is
+the upload one, `<system-name>_%<system>_@uploads_#write`: the caller is the pipeline that is about to upload.
+
+**The parameters are the ones the structure depends on, and no others**: `type`, `system`,
+`component`/`library`, `template`, `source-format`, and `location`/`topic` for HTML. `site`, `version`,
+`label`, the four `source-*` parameters, `build-url` and `generated-at` are **refused** - a path tree does not
+depend on a commit hash, and an endpoint that demanded one to answer a structural question would be answering
+a different one.
+
+### The answer
+
+**The verdict is the status line.** There is no `valid` field beside it.
+
+`200 OK` - nothing to report:
+
+```json
+{
+  "template": "arc42",
+  "pathsChecked": 42,
+  "pathsIgnored": 2,
+  "allowedFolders": ["1-intro", "2-constraints", "…", "12-glossary"],
+  "allowedExtensions": ["avif", "gif", "jpeg", "jpg", "md", "png", "svg", "webp"]
+}
+```
+
+`422 Unprocessable Content` - the request was understood and its content cannot be processed. The body is the
+same RFC 9457 problem document a rejected upload is answered with, carrying the report as extension members:
+
+```json
+{
+  "type": "https://jeap.admin.ch/problems/docs/structure-invalid",
+  "title": "The documentation structure is invalid",
+  "status": 422,
+  "detail": "2 problems in 42 paths.",
+  "template": "arc42",
+  "pathsChecked": 42,
+  "pathsIgnored": 2,
+  "allowedFolders": ["1-intro", "…"],
+  "allowedExtensions": ["md", "…"],
+  "findings": [
+    {
+      "code": "UNKNOWN_CHAPTER",
+      "path": "4-runtime-view/reactions.md",
+      "message": "'4-runtime-view' is not a chapter of arc42. Did you mean '6-runtime-view'?"
+    },
+    {
+      "code": "RESERVED_NAME",
+      "path": "5-building-block-view/whitebox-view.md",
+      "message": "'whitebox-view' is generated into 5-building-block-view by the doc service. Two documents at one URL fail the build of this part, so rename the page."
+    }
+  ],
+  "findingsOmitted": 0
+}
+```
+
+So a pipeline branches three ways: `200` publish, `422` print the findings and stop, anything else fail loudly
+because the endpoint or the token is wrong.
+
+| | |
+| --- | --- |
+| **Every finding, up to a cap** | Ordered so that two runs of one tree print the same list. At most [`max-findings`](configuration.md#uploads) (default 50); `findingsOmitted` says how many were left out, because a truncated list that does not say so is a lie |
+| **What is allowed is said once** | `allowedFolders` and `allowedExtensions` come from the template, so a workflow prints them at the end instead of the service repeating twelve folders in every message |
+| **`pathsIgnored`** | The files a ZIP carries that nobody wrote - `.DS_Store` and its kind - are dropped before any rule runs, and counted rather than hidden |
+| **`path` is absent for a set-level finding** | An unknown template, an empty tree, a missing entry point. A workflow prints those first |
+
+**The rules themselves, per template, are on
+[What an upload is validated against](upload-validation.md)** - and the finding codes with them.
+
+### When the request itself is wrong
+
+| Situation | Status | `code` |
+| --------- | ------ | ------ |
+| A required parameter is missing | 400 | `MISSING_PARAMETER` |
+| A parameter this endpoint does not accept | 400 | `UNKNOWN_PARAMETER` |
+| A value that is not a slug, or a `type`/`source-format` that is not a known one | 400 | `INVALID_PARAMETER_VALUE` |
+| A body larger than a list of `max-paths` paths could be | 413 | `SIZE_LIMIT_EXCEEDED` - refused on its announced length, **before the body is read** |
+| More paths than [`max-paths`](configuration.md#uploads) | 413 | `TOO_MANY_PATHS` - counted after the body was parsed |
+| No token, or the role for another system | 401 / 403 | the security chain's own answer |
+
+A rejection here is **not** counted as a rejected upload: `jeap.doc.upload.rejected` is about uploads, and a
+validation never uploaded anything.
 
 ## Administering the documentation sites
 
@@ -446,6 +566,13 @@ failure. `complete` is why the next run does or does not trust the index tag it 
 The doc service is a web server as well as an API: every path that is not the API, the actuator, the OpenAPI
 description or the Swagger UI serves the generated documentation site, to anyone who can reach the service. See
 [Generating the documentation](generation.md).
+
+One of those paths is not published output but an answer of the service: `live-status.json`, under the base URL
+of each site, says when each of the site's environments last read its architecture repository, whether the
+import is behind, and when the import fires next. It belongs to the site and is open exactly as the site is -
+the page describing the documentation fetches it, because those statements would freeze into a page that is not
+rebuilt. What it may carry is the same decision as for that page; the administration API above is where a
+failure reason and the upstream URL stay.
 
 ## Related
 

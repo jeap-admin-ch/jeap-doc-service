@@ -30,6 +30,13 @@ public class InvalidUploadException extends RuntimeException {
         CONTENT_LENGTH_MISMATCH,
         UPLOAD_IN_PROGRESS,
         UPLOAD_ID_CONFLICT,
+
+        /**
+         * A structure validation carrying more paths than {@code jeap.doc.upload.validation.max-paths}. A
+         * tree of that size is a mistake in the workflow configuration rather than a documentation set, so
+         * the request is refused instead of answered.
+         */
+        TOO_MANY_PATHS,
         STORAGE_FAILED
     }
 
@@ -80,8 +87,32 @@ public class InvalidUploadException extends RuntimeException {
                 "The parameter '%s' has the invalid value '%s', expected: %s.".formatted(parameter, value, expected));
     }
 
+    /**
+     * More paths than one validation request may carry. Refused rather than answered: the answer would be a
+     * report about a tree that is a mistake in the workflow configuration.
+     */
+    public static InvalidUploadException tooManyPaths(int paths, int limit) {
+        return new InvalidUploadException(Code.TOO_MANY_PATHS,
+                ("The documentation set carries %d paths, and at most %d may be validated in one request. A "
+                 + "set of that size is a path pointing at more than the documentation.")
+                        .formatted(paths, limit));
+    }
+
     public static InvalidUploadException tooLarge(long limit) {
         return new InvalidUploadException(Code.SIZE_LIMIT_EXCEEDED,
                 "The uploaded bundle is larger than the accepted %d bytes.".formatted(limit));
+    }
+
+    /**
+     * A validation request whose body is larger than the paths it may carry could ever be.
+     * <p>
+     * Refused <b>before the body is read</b>, which is what makes it different from
+     * {@link #tooManyPaths}: that one counts the paths, and counting them means having parsed them all into
+     * the heap first.
+     */
+    public static InvalidUploadException bodyTooLarge(long announced, long limit) {
+        return new InvalidUploadException(Code.SIZE_LIMIT_EXCEEDED,
+                ("The request body announces %d bytes, and at most %d can be a list of paths this endpoint "
+                 + "would accept.").formatted(announced, limit));
     }
 }

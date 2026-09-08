@@ -25,6 +25,9 @@ import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.DocumentedApiPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
+import ch.admin.bit.jeap.doc.markdown.CategoryFile;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
+import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,6 +36,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -915,5 +919,51 @@ class Arc42ComponentTreeTest {
                 List.of(new SystemRelation(RelationKind.EVENT, "orders", "orders-intake", "shipping",
                         "shipping-gateway", "ShippingArrangedEvent", null, null, null)),
                 List.of());
+    }
+
+    /**
+     * <b>The anti-drift test, for a component.</b> The same rule as
+     * {@code Arc42SystemTreeTest.everyFileWrittenIntoAChapterIsAReservedName}: everything the template writes
+     * into a chapter is a name an upload may not reuse, and {@code generatedNames} is where that is declared.
+     * A page added here without being declared fails in this module rather than as a duplicate route in a
+     * site build.
+     */
+    @Test
+    void everyFileWrittenIntoAChapterIsAReservedName() throws IOException {
+        generate();
+
+        Path structure = componentDirectory.resolve("component-architecture");
+        assertThat(structure).isDirectory();
+        int chaptersChecked = 0;
+        try (Stream<Path> chapters = Files.list(structure)) {
+            for (Path chapter : chapters.filter(Files::isDirectory).toList()) {
+                chaptersChecked++;
+                assertChapterHoldsOnlyReservedNames(chapter);
+            }
+        }
+        assertThat(chaptersChecked).describedAs("the chapters this template generates into for a component")
+                .isEqualTo(4);
+    }
+
+    private void assertChapterHoldsOnlyReservedNames(Path chapter) throws IOException {
+        StructureChapter declared = template.chapterOfFolder(chapter.getFileName().toString()).orElseThrow(
+                () -> new AssertionError("The generator wrote a folder that is no chapter of the template: "
+                                         + chapter.getFileName()));
+        Set<String> generated = template.generatedNames(declared, SubjectKind.COMPONENT);
+        try (Stream<Path> entries = Files.list(chapter)) {
+            for (Path entry : entries.toList()) {
+                String name = entry.getFileName().toString();
+                if (CategoryFile.NAME.equals(name) || "index.md".equals(name)) {
+                    continue;
+                }
+                String withoutExtension = name.endsWith(".md") ? name.substring(0, name.length() - 3) : name;
+                assertThat(generated)
+                        .describedAs("%s/%s is written by the generator and has to be declared in "
+                                     + "Arc42Template.generatedNames(%s, COMPONENT), or an upload carrying a "
+                                     + "page of that name would be accepted and then fail this part's build",
+                                chapter.getFileName(), name, declared.folder())
+                        .contains(withoutExtension);
+            }
+        }
     }
 }

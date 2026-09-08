@@ -45,6 +45,14 @@ architecture model, a replicated artifact, an uploaded document, a generator tha
 a new version of the doc service. What is taken out of the hash first is the run's own timestamps and its build
 identifier, or two runs over documentation nobody changed would differ.
 
+Those three are **provenance**: they say *this content is as of then*, which stays true for a part that is not
+built again. Nothing else about a run is written into a page. Anything that would go stale in a page nobody
+rebuilds - when the architecture repository was last read, whether the import is behind, when the schedule
+fires next - is not generated at all but answered live, and fetched by the page that shows it. That is the rule
+to follow when adding something a page says about the service: **provenance goes in the page and into the
+volatile set; status is served beside the site.** Hiding a status value from the hash instead would freeze the
+page that is meant to report a broken import, which is the one page that has to keep working when one breaks.
+
 The order of steps 3 and 4 is not a detail either. **The content is written first and the site template is
 copied over it**, and everything at the top level of the workspace that is neither the content nor the
 template's own is removed. The application that runs is therefore the template's, byte for byte and at every
@@ -348,12 +356,12 @@ Every environment tree carries an **About This Documentation** page, at `/about-
 from the root page and from the footer. It answers what a reader of a published site cannot otherwise find out:
 what they are looking at, where it came from, and when it changes next.
 
-| Section                         | What it says                                                                                                                                                                          | Where it comes from                                          |
-|---------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------|
-| What this is                    | The site, the tree, the documentation structures this instance generates, whether an upload publishes the site, whether it waits for the architecture model                           | The configuration, through `DocumentationProvenance`         |
-| The publication you are reading | Which build produced this site and when - and the numbers of that run, fetched                                                                                                        | The build itself, and `about-this-documentation.json`        |
-| The environments of this site   | Per environment: which tree it is, how many systems, components and messages its model contributed, when that content was imported and when the architecture repository was last read | The run, which has just read the landscape it generates from |
-| When this changes               | The import schedule, with its next occurrence spelled out - it is what publishes the site, so there is only one                                                                       | `NextOccurrence` over the configured cron expression         |
+| Section                         | What it says                                                                                                                                                | Where it comes from                                   |
+|---------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+| What this is                    | The site, the tree, the documentation structures this instance generates, whether an upload publishes the site, whether it waits for the architecture model | The configuration, through `DocumentationProvenance`  |
+| The publication you are reading | Which build produced this site and when - and the numbers of that run, fetched                                                                              | The build itself, and `about-this-documentation.json` |
+| The environments of this site   | Per environment: which tree it is, what its model contributed, when that content was imported - and, fetched, when the repository was last read             | The run, and `live-status.json`                       |
+| When this changes               | The import schedule - it is what publishes the site, so there is only one - and, fetched, when it fires next                                                | The configuration, and `live-status.json`             |
 
 **One page per tree rather than one per site**, which is forced rather than chosen: the site template switches
 Docusaurus' pages plugin off, so a page outside the environment trees cannot be served - and a single page in
@@ -381,6 +389,35 @@ path** so the request is same-origin whatever `jeap.doc.publication.url` says, a
 heading. Everything about it degrades quietly: a reader with no scripts, an older publication without the file
 and a fetch that fails all get the page as written, which is why the sentence under that heading names the file
 rather than relying on the table appearing.
+
+#### What is true only now, and why it is fetched too
+
+The same problem one step further along. A part whose documentation has not moved is not generated again - that
+is what the content hash is for - so its pages keep the words the last build wrote. For provenance that is the
+truthful reading. For **status** it is a lie that nobody can correct, and the sharpest case is the one that
+matters most: an import that stops running would leave the page claiming *last read 09:45* for as long as
+nobody changed a document, because the page that would report the failure is the page that stopped being
+rebuilt.
+
+So three statements are not written into the page at all:
+
+| Not on the page                                        | Where it comes from |
+|--------------------------------------------------------|---------------------|
+| `Last read`, per environment, and whether it is behind | `live-status.json`  |
+| The judgement beside it - *not read since*             | `live-status.json`  |
+| The `Next` cell of the schedule table                  | `live-status.json`  |
+
+`GET <base URL of the site>live-status.json` answers them for the whole site in one request - every
+environment, and every schedule the page tabulates - so one fetch fills both tables. It is a path of the site
+and is therefore served to anyone who can read the site, exactly as the page is; the administration API below
+`/api` is a different resource with a different rule, and what may be published is decided in
+`DocumentationProvenance` for both. It is answered `no-store`: a cached copy would be the frozen page again
+with an extra step.
+
+The page keeps its cells and names the resource in a sentence beside them, so a reader whose browser runs no
+scripts is told where the state is rather than shown a timestamp nobody keeps true. The client module finds the
+resource through that link, uses only its path, and inserts nothing when the fetch fails - the same three
+choices as the numbers of the run above.
 
 ### There is no search on the site
 
@@ -563,7 +600,7 @@ writable layer of a task on ECS, an `emptyDir` on Kubernetes.
 A process that is killed leaves its workspace behind, so the directory is also swept: **a workspace may be
 removed when its build is not running**, whichever instance created it. That one rule is what makes the sweep
 safe while other instances are building, and it is why the leftovers of an instance that never comes back are
-removed by whichever instance builds next. It runs before every build.
+removed by whichever instance builds next. **It runs once per build pass**, before the first slot of it is filled: it is housekeeping over a directory this instance owns alone, and the pass is the one thing that knows when none of its builds has started yet. Running it per build meant the slots of a pass all walked the root at the same time, each removing trees the others were walking.
 
 ## What a stop does, and what happens when it cannot
 
@@ -626,12 +663,31 @@ instance, two in a row is a build that kills whatever runs it, and repeating it 
 
 ## When something is wrong
 
+**Every line one build logs names it.** An instance builds up to `jeap.doc.build.max-concurrent-parts` parts at
+once and the generator's output is pumped into the log under one thread name for all of them, so the thread name
+says nothing about which build a line came from. Three fields do:
+
+| Field        | What it is                                        |
+|--------------|---------------------------------------------------|
+| `docSite`    | The site being published                          |
+| `docPart`    | The part of it: one system, or the shell          |
+| `docBuildId` | The build, which is also `documentation_build.id` |
+
+They are on everything the build does - the workspace, the site generator's own output including its `[PERF]`
+lines, and the line that says it failed - so a performance trace is a filter on `docBuildId` rather than a sum
+matched against a build row. They are set for the duration of one build and cleared with it: the slots share a
+thread pool, and a value left behind would attribute the next build's lines to this part.
+
+The deployed log format renders every field of the diagnostic context as a field of the JSON line. The
+human-readable console format that a local run uses does **not** - its pattern prints the trace and span only -
+so these are read in CloudWatch rather than in a terminal.
+
 |                                               |                                                                                                                                                                                                                                                                                                                                                                                                        |
 |-----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **The site is not updating**                  | `GET /api/sites` answers it: whether it is published on upload, what is pending, what is running and what was last built. What publishes a site hourly is the architecture import, so an import that is failing is a site that stops changing - `GET /api/architecture` says when each environment was last read                                                                                    |
 | **Builds are failing**                        | `documentation_build.failure_reason` carries the last lines of the generator's output. `jeap_doc_build_seconds_count{result="failed"}` is the counter                                                                                                                                                                                                                                                  |
 | **A build hangs**                             | It is given up on after `jeap.doc.build.timeout` and the process tree is killed. The build is failed, and counted as `jeap_doc_build_seconds_count{result="timed_out"}` rather than among the failures. If that happens repeatedly, look at the memory the container has - see [The site image](site-image.md) - and at how close the builds that still finish are running to the budget, which `jeap_doc_build_timeout_seconds` is published for                                                                                                                                                                                                                |
-| **A build is slow, or grows**                 | The `[PERF]` lines say how long each phase of the generator took and what the Node heap held before and after it, nested by phase - so the phase responsible has a name. They are logged at `DEBUG` with the rest of the generator's output: turn `ch.admin.bit.jeap.doc.sitegenerator.NodeProcess` down to `DEBUG` to read them. `jeap.doc.build.perf-log` decides whether they are produced at all |
+| **A build is slow, or grows**                 | The `[PERF]` lines say how long each phase of the generator took and what the Node heap held before and after it, nested by phase - so the phase responsible has a name. They are logged at `DEBUG` with the rest of the generator's output: turn `ch.admin.bit.jeap.doc.sitegenerator.NodeProcess` down to `DEBUG` to read them, and filter on `docBuildId` or `docPart` for the trace of one build. `jeap.doc.build.perf-log` decides whether they are produced at all |
 | **The generator exits with 137**              | The container's memory limit killed it. The failure reason carries what the container held while that build ran, `jeap_doc_container_memory_used_bytes` shows when it climbed and how far, and `jeap_doc_container_memory_oom_kills_total` counts the kills - see [Observability](observability.md#the-memory-of-the-container) and [The site image](site-image.md) for what to size                   |
 | **`GET /` answers 503**                       | Nothing has been published for that site yet. It is not a wrong URL: the first successful build answers it                                                                                                                                                                                                                                                                                             |
 | **Nothing is picked up at all**               | `jeap_doc_build_request_age_seconds` grows. Either no instance is running the schedule, or a lock is held by an instance that has gone - which resolves itself within `jeap.doc.build.lock-lease`. A running architecture import is not a cause: the imports have a thread of their own and never hold a scheduler thread (they did once, when every scheduled task ran on the lock keep-alive thread) |

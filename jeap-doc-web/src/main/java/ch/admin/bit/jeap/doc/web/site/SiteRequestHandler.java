@@ -28,6 +28,10 @@ import java.util.Optional;
  * share a bucket and a row, and nothing else. How a file is written to the reader is
  * {@link SiteContentResponse}'s question, and what a site that is not there yet answers is
  * {@link NotGeneratedYetResponse}'s.
+ * <p>
+ * One path of a site is not published output but an answer of the service: its live status - see
+ * {@link SiteLiveStatusResponse}. It is answered here so that the site it belongs to is resolved once, and so
+ * that it is covered by the filter chain of the site rather than by that of the API.
  */
 @Slf4j
 @Component
@@ -36,6 +40,9 @@ public class SiteRequestHandler implements HttpRequestHandler {
 
     private final SitePathResolver resolver;
     private final PublishedDocumentation documentation;
+
+    /** The one path of a site the service answers itself rather than out of what a build published. */
+    private final SiteLiveStatusResponse liveStatus;
 
     /**
      * Only GET and HEAD. Everything else that reaches here is a method nothing serves - answering a misdirected
@@ -70,6 +77,13 @@ public class SiteRequestHandler implements HttpRequestHandler {
     private void serve(SitePath sitePath, String path, HttpServletRequest request, HttpServletResponse response)
             throws IOException {
         String siteId = sitePath.site().id();
+        // Before anything is asked of the storage, and before the site has to be published: the live status
+        // says what the imports and the schedules are doing, which is worth reading for a site that has not
+        // been generated yet as much as for one that has.
+        if (SiteLiveStatusResponse.isAddressedBy(sitePath)) {
+            liveStatus.writeTo(siteId, response);
+            return;
+        }
         if (!documentation.isPublished(siteId)) {
             NotGeneratedYetResponse.writeTo(siteId, response);
             return;

@@ -7,8 +7,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.FileSystemUtils;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -18,8 +22,9 @@ import java.util.stream.Stream;
  * <p>
  * A workspace is named after its build, and the database says which builds are running - so <b>a directory may be
  * removed when its build is not running</b>, whichever instance created it. That one rule is what makes the
- * clean-up safe while other instances are building, what lets it run at startup as well as before every build,
- * and what gets the leftovers of an instance that never comes back removed by whichever instance builds next.
+ * clean-up safe while other instances are building, what lets it run at startup as well as before every build
+ * pass, and what gets the leftovers of an instance that never comes back removed by whichever instance builds
+ * next.
  * <p>
  * The workspace holds one build's scratch files and outlives nothing, so it belongs on storage that belongs to
  * this container alone: the writable layer of a task on ECS, an {@code emptyDir} on Kubernetes.
@@ -36,7 +41,7 @@ public class BuildWorkspaces {
      */
     public Path create(long buildId) throws IOException {
         Path workspace = of(buildId);
-        FileSystemUtils.deleteRecursively(workspace);
+        deleteTree(workspace);
         Files.createDirectories(workspace);
         return workspace;
     }
@@ -54,7 +59,7 @@ public class BuildWorkspaces {
             return;
         }
         try {
-            FileSystemUtils.deleteRecursively(workspace);
+            deleteTree(workspace);
         } catch (IOException e) {
             log.warn("The workspace {} of the build {} could not be removed; the next sweep will get it.",
                     workspace, buildId, e);
@@ -89,7 +94,7 @@ public class BuildWorkspaces {
         for (Path entry : stale) {
             log.info("Removing the workspace {}, left by a build that is no longer running.", entry.getFileName());
             try {
-                FileSystemUtils.deleteRecursively(entry);
+                deleteTree(entry);
                 removed++;
             } catch (IOException e) {
                 log.warn("The workspace {} could not be removed; the next sweep will get it.",
@@ -97,6 +102,51 @@ public class BuildWorkspaces {
             }
         }
         return removed;
+    }
+
+    /**
+     * Deletes a tree, and treats what has already gone as gone.
+     * <p>
+     * A recursive delete walks the tree and removes what the walk finds, so anything that removes the same
+     * files while it walks makes it fail with {@link NoSuchFileException} - and a file that is no longer there
+     * is the outcome a delete wanted rather than a reason to report one. Both things that remove a workspace
+     * can meet over one directory: a build discarding its own while a sweep walks it, and a sweep meeting a
+     * build that is created over the leftovers of an earlier attempt. So the walk deletes with
+     * {@link Files#deleteIfExists} and steps over what it can no longer find, and a real failure - a
+     * directory that will not go, a file that may not be touched - still comes out as one.
+     * <p>
+     * This is what {@link FileSystemUtils#deleteRecursively} does not do, and the reason for not using it.
+     */
+    static void deleteTree(Path tree) throws IOException {
+        try {
+            Files.walkFileTree(tree, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                    Files.deleteIfExists(file);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException {
+                    if (failure instanceof NoSuchFileException) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    throw failure;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path directory, IOException failure)
+                        throws IOException {
+                    if (failure != null && !(failure instanceof NoSuchFileException)) {
+                        throw failure;
+                    }
+                    Files.deleteIfExists(directory);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (NoSuchFileException e) {
+            // The tree itself is not there, which is where this method was going.
+        }
     }
 
     /**

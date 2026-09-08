@@ -189,6 +189,11 @@ class StructureTemplatesTest {
             }
 
             @Override
+            public java.util.Set<String> allowedFileExtensions() {
+                return java.util.Set.of("md");
+            }
+
+            @Override
             public void writeSystem(DocumentedSystem system, GenerationContext context, Path directory) {
                 // nothing: the registry is what is under test
             }

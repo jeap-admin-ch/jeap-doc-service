@@ -249,6 +249,13 @@ build says so with a `WARN` naming the age and generates from it all the same. A
 yesterday is worth more than no site. With an hourly schedule the threshold tolerates one failed import and
 warns on the second.
 
+**A reader of the site is told as well.** The page describing the documentation shows, per environment, when
+the architecture repository was last read successfully and says *not read since* once it is behind by that same
+measure. It is **fetched** rather than generated into the page: a part whose documentation has not moved is not
+built again, so a page carrying the last read would keep claiming one - and the import that stopped is exactly
+the case that would go unreported. See
+[Generating the documentation](generation.md#what-is-true-only-now-and-why-it-is-fetched-too).
+
 ## When it runs
 
 |                      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |

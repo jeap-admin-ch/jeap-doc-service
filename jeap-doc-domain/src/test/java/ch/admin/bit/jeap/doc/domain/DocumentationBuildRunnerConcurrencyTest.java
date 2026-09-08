@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -92,6 +93,50 @@ class DocumentationBuildRunnerConcurrencyTest {
         assertThat(everything).describedAs("every part exactly once, and all of them").hasSize(PARTS);
         assertThat(everything).doesNotHaveDuplicates();
         assertThat(requests.pending()).describedAs("nothing should still be owed").isEmpty();
+    }
+
+    /**
+     * <b>Two builds at once, and neither is logged as the other.</b>
+     * <p>
+     * The fields naming a build are in the MDC, which is thread-local, and the slots of a pass share a thread
+     * pool - so a scope that is not closed labels the next build on that thread with the part before it, and a
+     * trace looked up by part would answer with somebody else's. The latch holds both instances' first build
+     * open at the same time, so the two contexts really do overlap in time; the assertion is that every build
+     * saw its own part and its own build id and nothing of its neighbour's.
+     */
+    @Test
+    void whenTwoInstancesBuildAtOnce_thenNeitherBuildIsLoggedAsTheOther() throws Exception {
+        Publication publication = Publication.askedAt(NOW);
+        for (int part = 0; part < PARTS; part++) {
+            requests.request(PartKey.of(SITE, "system-" + part), BuildTrigger.IMPORT, NOW, publication, false);
+        }
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        RecordingSiteBuilder onOne = new RecordingSiteBuilder(bothStarted);
+        RecordingSiteBuilder onAnother = new RecordingSiteBuilder(bothStarted);
+        DocumentationBuildRunner one = runnerWith(onOne);
+        DocumentationBuildRunner another = runnerWith(onAnother);
+
+        ExecutorService instances = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> first = instances.submit(one::runOnce);
+            Future<Boolean> second = instances.submit(another::runOnce);
+            assertThat(first.get(30, TimeUnit.SECONDS)).isTrue();
+            assertThat(second.get(30, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            instances.shutdownNow();
+        }
+
+        Map<String, Map<String, String>> contexts = new LinkedHashMap<>(onOne.logContexts);
+        contexts.putAll(onAnother.logContexts);
+        assertThat(contexts).describedAs("one context per part, and all of them").hasSize(PARTS);
+        assertThat(contexts).allSatisfy((part, context) -> assertThat(context)
+                .containsEntry(BuildLogContext.SITE, SITE)
+                .describedAs("the part it was building, and not the one before it on this thread")
+                .containsEntry(BuildLogContext.PART, part)
+                .containsKey(BuildLogContext.BUILD_ID));
+        assertThat(contexts.values()).extracting(context -> context.get(BuildLogContext.BUILD_ID))
+                .describedAs("a build of its own for every part")
+                .doesNotHaveDuplicates();
     }
 
     /**
@@ -203,9 +248,35 @@ class DocumentationBuildRunnerConcurrencyTest {
     }
 
     /** Counts the builds it ran, and does whatever the test wants done while one of them runs. */
+    /**
+     * The workspaces are swept once for the pass, and not once for every build in it.
+     * <p>
+     * The sweep was a step of {@code publish}, so once a pass kept several slots busy they all walked the
+     * workspace root at the same time: each of them removed trees the others were walking, and each reported
+     * what another had just removed as a workspace it had failed to remove. On ApplicationPlatform dev that
+     * was every removal of a day - 37 attempts, 37 stack traces - on a service that logs no other warning of
+     * its own. Housekeeping over a directory this instance owns belongs to the pass.
+     */
+    @Test
+    void whenAPassBuildsSeveralParts_thenTheWorkspacesAreSweptOnceForThePass() {
+        Publication publication = Publication.askedAt(NOW);
+        for (int part = 0; part < PARTS; part++) {
+            requests.request(PartKey.of(SITE, "system-" + part), BuildTrigger.IMPORT, NOW, publication, false);
+        }
+        CountingSiteBuilder builder = new CountingSiteBuilder(prepared -> {
+            // Nothing to do while it builds: this test is about how often the sweep runs.
+        });
+
+        assertThat(runnerWith(builder).runOnce()).isTrue();
+
+        assertThat(builder.generated).describedAs("every part should have been built").hasSize(PARTS);
+        assertThat(builder.sweeps.get()).describedAs("one sweep for the pass, not one per build").isEqualTo(1);
+    }
+
     private static final class CountingSiteBuilder implements SiteBuilder {
 
         private final List<String> generated = Collections.synchronizedList(new ArrayList<>());
+        private final AtomicInteger sweeps = new AtomicInteger();
         private final java.util.function.Consumer<PreparedPart> whileBuilding;
 
         private CountingSiteBuilder(java.util.function.Consumer<PreparedPart> whileBuilding) {
@@ -243,6 +314,7 @@ class DocumentationBuildRunnerConcurrencyTest {
 
         @Override
         public int sweepWorkspaces(Set<Long> runningBuildIds) {
+            sweeps.incrementAndGet();
             return 0;
         }
     }
@@ -369,6 +441,11 @@ class DocumentationBuildRunnerConcurrencyTest {
     private static final class RecordingSiteBuilder implements SiteBuilder {
 
         private final List<String> built = Collections.synchronizedList(new ArrayList<>());
+
+        /** The log context each build saw, by the part it was building - see the MDC case above. */
+        private final Map<String, Map<String, String>> logContexts =
+                Collections.synchronizedMap(new LinkedHashMap<>());
+
         private final CountDownLatch bothStarted;
         private boolean counted;
 
@@ -386,6 +463,8 @@ class DocumentationBuildRunnerConcurrencyTest {
         public BuiltSite generate(PreparedPart prepared) {
             firstBuildWaitsForTheOtherInstance();
             built.add(prepared.part().id());
+            Map<String, String> context = org.slf4j.MDC.getCopyOfContextMap();
+            logContexts.put(prepared.part().id(), context == null ? Map.of() : context);
             return new BuiltSite(Path.of("build"), 1, 1, 1, Map.of());
         }
 

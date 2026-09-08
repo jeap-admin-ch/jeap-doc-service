@@ -36,7 +36,7 @@ import java.util.regex.Pattern;
 @RestControllerAdvice(assignableTypes = DocumentationUploadController.class)
 class UploadExceptionHandler {
 
-    static final String PROBLEM_TYPE = "https://jeap.admin.ch/problems/docs/invalid-upload";
+    static final String PROBLEM_TYPE = UploadProblems.PROBLEM_TYPE;
 
     private static final Pattern LINE_BREAK = Pattern.compile("[\\r\\n]");
 
@@ -144,22 +144,8 @@ class UploadExceptionHandler {
         return requiredType == null ? "the expected type" : requiredType.getSimpleName();
     }
 
+    /** One document for both advices below this path - see {@link UploadProblems}. */
     private static ProblemDetail problem(InvalidUploadException.Code code, String detail) {
-        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(statusOf(code), detail);
-        problemDetail.setType(URI.create(PROBLEM_TYPE));
-        problemDetail.setTitle("The upload does not describe a documentation set");
-        problemDetail.setProperty("code", code.name());
-        return problemDetail;
-    }
-
-    private static HttpStatus statusOf(InvalidUploadException.Code code) {
-        return switch (code) {
-            case MISSING_PARAMETER, UNKNOWN_PARAMETER, INVALID_PARAMETER_VALUE, UNKNOWN_SITE,
-                 CONTENT_LENGTH_MISMATCH -> HttpStatus.BAD_REQUEST;
-            case UPLOAD_IN_PROGRESS, UPLOAD_ID_CONFLICT -> HttpStatus.CONFLICT;
-            case LENGTH_REQUIRED -> HttpStatus.LENGTH_REQUIRED;
-            case SIZE_LIMIT_EXCEEDED -> HttpStatus.PAYLOAD_TOO_LARGE;
-            case STORAGE_FAILED -> HttpStatus.INTERNAL_SERVER_ERROR;
-        };
+        return UploadProblems.of(code, detail);
     }
 }

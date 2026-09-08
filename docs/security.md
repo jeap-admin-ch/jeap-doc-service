@@ -61,17 +61,20 @@ nothing that was generated can become part of the program that runs.
 
 ## What the documentation says about the service
 
-The **About This Documentation** page and `about-this-documentation.json` beside it are part of the published
-site, so they are readable by anyone who can reach it. What they may carry is decided in one place -
-`DocumentationProvenance` - and not by whoever writes a page:
+The **About This Documentation** page, `about-this-documentation.json` beside it and `live-status.json` - which
+the service answers live under the base URL of each site - are part of the published site, so they are readable
+by anyone who can reach it. `live-status.json` is deliberately **not** below `/api`: it carries the statements
+the page cannot keep true on its own, and a bearer token in front of a table on a public page would be a token
+no browser has. What all three may carry is decided in one place - `DocumentationProvenance` - and not by
+whoever writes a page:
 
-| Published                                                             | Not published                                               |
-|-----------------------------------------------------------------------|-------------------------------------------------------------|
-| The site and environment ids and labels, the templates, the retention | The instance that ran a build                               |
-| The schedules and their next occurrence                               | The object prefix a site is published under, and the bucket |
-| How many systems, components and messages a model contributed         | Any database name, host or credential                       |
-| When a model was imported and when the repository was last read       | The URL of the architecture repository                      |
-| What a run produced and cost: pages, bytes, duration                  | **Why an import or a build failed**                         |
+| Published                                                                                      | Not published                                               |
+|------------------------------------------------------------------------------------------------|-------------------------------------------------------------|
+| The site and environment ids and labels, the templates, the retention                          | The instance that ran a build                               |
+| The schedules and their next occurrence                                                        | The object prefix a site is published under, and the bucket |
+| How many systems, components and messages a model contributed                                  | Any database name, host or credential                       |
+| When a model was imported, when the repository was last read, and whether the import is behind | The URL of the architecture repository                      |
+| What a run produced and cost: pages, bytes, duration                                           | **Why an import or a build failed**                         |
 
 The last row is the one to keep in mind when adding a field. A failure reason is built from what an upstream
 answered: it quotes hosts, paths and occasionally an error body. **That an import failed is publishable; why it

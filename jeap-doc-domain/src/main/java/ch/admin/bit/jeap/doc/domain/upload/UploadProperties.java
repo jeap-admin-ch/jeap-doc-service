@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.domain.upload;
 
+import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.unit.DataSize;
@@ -37,6 +38,9 @@ public class UploadProperties {
      */
     private Housekeeping housekeeping = new Housekeeping();
 
+    /** What the structure validation endpoint accepts - see {@link Validation}. */
+    private Validation validation = new Validation();
+
     /**
      * The nightly clean-up of what the doc service received.
      * <p>
@@ -62,5 +66,44 @@ public class UploadProperties {
          * When to look, in the time zone of the service - at night, when nothing is uploading.
          */
         private String cron = "0 30 2 * * *";
+    }
+
+    /**
+     * The two bounds of the structure validation endpoint.
+     * <p>
+     * A nested class rather than a record, which is what {@link Housekeeping} beside it already is: following
+     * the neighbour beats importing the shape the site generator passes into a template.
+     */
+    @Data
+    public static class Validation {
+
+        /**
+         * The most paths one request may carry. Past it the request is refused rather than answered, because
+         * a tree of that size is a mistake in the workflow configuration and not a documentation set.
+         */
+        private int maxPaths = 10_000;
+
+        /**
+         * The most findings one report carries. A report of forty problems is already unreadable, and what is
+         * left out is counted rather than dropped in silence.
+         */
+        private int maxFindings = 50;
+    }
+
+    /**
+     * A configuration error stops the deployment rather than the first validation.
+     */
+    @PostConstruct
+    void check() {
+        if (validation.getMaxPaths() < 1) {
+            throw new IllegalStateException(
+                    "jeap.doc.upload.validation.max-paths is " + validation.getMaxPaths()
+                    + ". A documentation set has at least one file.");
+        }
+        if (validation.getMaxFindings() < 1) {
+            throw new IllegalStateException(
+                    "jeap.doc.upload.validation.max-findings is " + validation.getMaxFindings()
+                    + ". A report that may carry no finding could not say what is wrong.");
+        }
     }
 }

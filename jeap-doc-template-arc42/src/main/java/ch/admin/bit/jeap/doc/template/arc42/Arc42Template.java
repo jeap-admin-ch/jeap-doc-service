@@ -3,12 +3,15 @@ package ch.admin.bit.jeap.doc.template.arc42;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
+import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 import static ch.admin.bit.jeap.doc.template.arc42.Arc42Chapters.BUILDING_BLOCK_VIEW;
 import static ch.admin.bit.jeap.doc.template.arc42.Arc42Chapters.CONTEXT_AND_SCOPE;
@@ -77,6 +80,20 @@ public class Arc42Template implements StructureTemplate {
     static final List<StructureChapter> GENERATED_CHAPTERS =
             List.of(INTRODUCTION, CONTEXT_AND_SCOPE, BUILDING_BLOCK_VIEW, RUNTIME_VIEW);
 
+    /**
+     * Markdown, and the pictures that have no source.
+     * <p>
+     * A page that cannot show a screenshot is a page a team keeps in Confluence, which is what this enabler
+     * is against. {@code mdx} is not here and must not be: MDX is a programming language, and documentation
+     * the doc service did not write itself is not trusted with one - decision 10.
+     * <p>
+     * <b>A diagram is still better as a fenced block</b>: PlantUML, Mermaid and GraphViz are rendered from
+     * their source in the reader's browser, so they stay diffable, searchable and legible in both themes. An
+     * uploaded picture of a diagram is none of those. This list is for the screenshots and the scans.
+     */
+    static final Set<String> ALLOWED_FILE_EXTENSIONS =
+            Set.of("md", "png", "jpg", "jpeg", "gif", "webp", "avif", "svg");
+
     @Override
     public String id() {
         return ID;
@@ -115,6 +132,64 @@ public class Arc42Template implements StructureTemplate {
      * class says, and it is what the site generator and an upload are validated against. Turning a system into
      * pages is a different job, and it is the larger of the two by an order of magnitude.
      */
+    @Override
+    public Set<String> allowedFileExtensions() {
+        return ALLOWED_FILE_EXTENSIONS;
+    }
+
+    /**
+     * What this template writes into a chapter for a system, a component or a library.
+     * <p>
+     * <b>Every name is the constant the writer uses</b>, so this is a declaration rather than a second list:
+     * a page renamed in {@code Arc42SystemPages} or {@code Arc42ComponentPages} is renamed here with it. That
+     * the two agree is not left to discipline - {@code Arc42SystemTreeTest} and
+     * {@code Arc42ComponentTreeTest} walk the generated tree and fail if a file appears that nothing here
+     * reserves.
+     * <p>
+     * <b>Nothing is generated for a library.</b> The upload API accepts library documentation and no template
+     * writes a page for one, so a library upload is bounded by what the domain reserves everywhere and
+     * nothing else.
+     */
+    @Override
+    public Set<String> generatedNames(StructureChapter chapter, SubjectKind subject) {
+        if (chapter == null || subject == null) {
+            return Set.of();
+        }
+        return switch (subject) {
+            case SYSTEM -> generatedForSystem(chapter);
+            case COMPONENT -> generatedForComponent(chapter);
+            case LIBRARY -> Set.of();
+        };
+    }
+
+    private static Set<String> generatedForSystem(StructureChapter chapter) {
+        if (CONTEXT_AND_SCOPE.equals(chapter)) {
+            return Set.of(CONTEXT_VIEW_PAGE);
+        }
+        if (BUILDING_BLOCK_VIEW.equals(chapter)) {
+            // The pages, and the three folders beside them: a group and a page of the same name are one URL.
+            return Set.of(WHITEBOX_PAGE, DocumentationPaths.COMPONENTS_SEGMENT, Arc42MessagePages.EVENTS,
+                    Arc42MessagePages.COMMANDS);
+        }
+        if (RUNTIME_VIEW.equals(chapter)) {
+            return Set.of(SYSTEM_REACTIONS_PAGE);
+        }
+        return Set.of();
+    }
+
+    private static Set<String> generatedForComponent(StructureChapter chapter) {
+        if (CONTEXT_AND_SCOPE.equals(chapter)) {
+            return Set.of(COMPONENT_CONTEXT_VIEW_PAGE);
+        }
+        if (BUILDING_BLOCK_VIEW.equals(chapter)) {
+            return Set.of(DATABASE_SCHEMA_PAGE, REST_API_PAGE, MESSAGES_PAGE);
+        }
+        if (RUNTIME_VIEW.equals(chapter)) {
+            return Set.of(COMPONENT_REACTIONS_PAGE);
+        }
+        return Set.of();
+    }
+
     @Override
     public void writeSystem(DocumentedSystem system, GenerationContext context, Path systemDirectory)
             throws IOException {

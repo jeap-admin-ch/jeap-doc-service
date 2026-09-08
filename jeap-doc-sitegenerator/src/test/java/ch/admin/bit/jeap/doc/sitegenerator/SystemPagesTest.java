@@ -332,6 +332,11 @@ class SystemPagesTest {
 
     /** A template with nothing to say about this system, which is a legitimate template. */
     private static class SilentTemplate implements StructureTemplate {
+        @Override
+        public java.util.Set<String> allowedFileExtensions() {
+            return java.util.Set.of("md");
+        }
+
 
         @Override
         public String id() {

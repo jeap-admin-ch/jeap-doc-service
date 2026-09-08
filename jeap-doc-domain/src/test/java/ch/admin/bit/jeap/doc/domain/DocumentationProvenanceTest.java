@@ -204,6 +204,152 @@ class DocumentationProvenanceTest {
                 .contains("lastImportOutcome=FAILED");
     }
 
+    // The live status: the statements a generated page cannot carry, because they would freeze with it.
+
+    @Test
+    void liveStatusOf_whenNoSuchSiteIsConfigured_thenNothing() {
+        assertThat(provenance.liveStatusOf("governance")).isEmpty();
+    }
+
+    /**
+     * One entry per environment of the site, keyed by the id the page's row names - one fetch fills the whole
+     * table, rather than one per environment.
+     */
+    @Test
+    void liveStatusOf_thenEveryEnvironmentOfTheSiteAndTheSchedulesThePageTabulates() {
+        imports.save(readAt(NOW.minus(Duration.ofMinutes(15)), ImportOutcome.UNCHANGED));
+
+        DocumentationLiveStatus status = provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow();
+
+        assertThat(status.site()).isEqualTo(Site.DEFAULT_SITE);
+        assertThat(status.at()).isEqualTo(NOW);
+        assertThat(status.environments()).extracting(DocumentationLiveStatus.EnvironmentStatus::id)
+                .containsExactly("dev", "ref", "abn", "prod");
+        assertThat(status.schedules()).singleElement().satisfies(schedule -> {
+            assertThat(schedule.cron()).isEqualTo("0 45 5-19 * * *");
+            assertThat(schedule.nextAt()).isEqualTo(Instant.parse("2026-09-03T07:45:00Z"));
+            assertThat(schedule.next()).endsWith("(in 15 minutes)");
+        });
+    }
+
+    /** An environment with no architecture repository has nothing to report, and says nothing. */
+    @Test
+    void liveStatusOf_whenAnEnvironmentReadsNoModel_thenItsCellStaysEmpty() {
+        assertThat(prodAndDevOf(provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow()).get("dev"))
+                .satisfies(dev -> {
+                    assertThat(dev.modelConfigured()).isFalse();
+                    assertThat(dev.lastRead()).isEmpty();
+                    assertThat(dev.behind()).isFalse();
+                });
+    }
+
+    @Test
+    void liveStatusOf_whenTheRepositoryHasNeverBeenReadSuccessfully_thenItSaysSo() {
+        assertThat(prodAndDevOf(provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow()).get("prod"))
+                .satisfies(prod -> {
+                    assertThat(prod.lastReadAt()).isNull();
+                    assertThat(prod.lastRead()).isEqualTo("not read successfully yet");
+                });
+    }
+
+    /**
+     * The outcome belongs to the <b>latest</b> run and the timestamp to the last <b>successful</b> one, so the
+     * two are not joined into one phrase: a repository that has been down since eleven would otherwise read
+     * "last read 10:00 (failed)", which says the read that worked did not.
+     */
+    @Test
+    void liveStatusOf_whenTheLastRunFailed_thenTheTimestampIsNotBlamedForIt() {
+        imports.save(readAt(NOW.minus(Duration.ofMinutes(20)), ImportOutcome.FAILED));
+
+        DocumentationLiveStatus.EnvironmentStatus prod =
+                prodAndDevOf(provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow()).get("prod");
+
+        assertThat(prod.lastRead())
+                .isEqualTo(DisplayTime.of(NOW.minus(Duration.ofMinutes(20)))
+                           + "; the last run did not read it");
+        assertThat(prod.behind()).describedAs("twenty minutes, against a two-hour measure").isFalse();
+    }
+
+    /**
+     * <b>Being behind is named whatever the latest outcome was.</b> An import that simply stopped running
+     * leaves a successful outcome behind it, and that is the case a reader has no other way of noticing - it
+     * is also the case the page could never report, because the page that would say so is the one that
+     * stopped being rebuilt.
+     */
+    @Test
+    void liveStatusOf_whenTheImportStoppedRunningAfterASuccess_thenItStillSaysNotReadSince() {
+        imports.save(readAt(NOW.minus(Duration.ofHours(3)), ImportOutcome.REPLACED));
+
+        DocumentationLiveStatus.EnvironmentStatus prod =
+                prodAndDevOf(provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow()).get("prod");
+
+        assertThat(prod.behind()).isTrue();
+        assertThat(prod.lastRead())
+                .isEqualTo(DisplayTime.of(NOW.minus(Duration.ofHours(3))) + "; not read since");
+    }
+
+    /** A site no import feeds has no schedule to tabulate, and the page's cell stays as it was written. */
+    @Test
+    void liveStatusOf_whenNoEnvironmentReadsAModel_thenThereIsNoScheduleToFillIn() {
+        architectureModel = new StubModel(Set.of());
+        provenance = provenance(new SiteProperties());
+
+        assertThat(provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow().schedules()).isEmpty();
+    }
+
+    /**
+     * <b>The disclosure contract again</b>, for the resource the page fetches. It is served under the site's
+     * own filter chain, which is open to every reader, so the same rule applies and for the same reason - and
+     * asserted the same way: the whole rendering against an expected one, so that a field added later is a
+     * difference somebody has to decide about rather than a leak nobody predicted.
+     */
+    @Test
+    void liveStatusOf_thenTheRenderingIsExactlyTheseFieldsAndNoOthers() {
+        imports.save(new ArchitectureImportState("prod", ArchitectureImportKind.MODEL, "a-content-hash", null,
+                false, 12, NOW, NOW.minus(Duration.ofHours(1)), ImportOutcome.FAILED, FAILURE_REASON));
+
+        DocumentationLiveStatus status = provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow();
+
+        assertThat(status.toString()).isEqualTo("DocumentationLiveStatus["
+                + "site=default, at=2026-09-03T07:30:00Z, environments=["
+                + "EnvironmentStatus[id=dev, modelConfigured=false, lastReadAt=null, lastOutcome=null, "
+                + "behind=false, lastRead=], "
+                + "EnvironmentStatus[id=ref, modelConfigured=false, lastReadAt=null, lastOutcome=null, "
+                + "behind=false, lastRead=], "
+                + "EnvironmentStatus[id=abn, modelConfigured=false, lastReadAt=null, lastOutcome=null, "
+                + "behind=false, lastRead=], "
+                + "EnvironmentStatus[id=prod, modelConfigured=true, lastReadAt=2026-09-03T06:30:00Z, "
+                + "lastOutcome=FAILED, behind=false, lastRead=" + DisplayTime.of(NOW.minus(Duration.ofHours(1)))
+                + "; the last run did not read it]"
+                + "], schedules=[ScheduleStatus[cron=0 45 5-19 * * *, nextAt=2026-09-03T07:45:00Z, "
+                + "next=" + DisplayTime.of(Instant.parse("2026-09-03T07:45:00Z")) + " (in 15 minutes)]]]");
+        assertThat(status.toString()).describedAs("that it failed is publishable; why it failed is not")
+                .doesNotContain(FAILURE_REASON, "archrepo.internal.admin.ch", "a-content-hash");
+    }
+
+    @Test
+    void spellOut_thenADurationAsAReaderSaysIt() {
+        assertThat(DocumentationProvenance.spellOut(Duration.ofSeconds(20))).isEqualTo("in a moment");
+        assertThat(DocumentationProvenance.spellOut(Duration.ofMinutes(1))).isEqualTo("in 1 minute");
+        assertThat(DocumentationProvenance.spellOut(Duration.ofMinutes(35))).isEqualTo("in 35 minutes");
+        assertThat(DocumentationProvenance.spellOut(Duration.ofMinutes(60))).isEqualTo("in 1 hour");
+        assertThat(DocumentationProvenance.spellOut(Duration.ofMinutes(125))).isEqualTo("in 2 hours 5 minutes");
+        assertThat(DocumentationProvenance.spellOut(Duration.ofMinutes(-5))).isEqualTo("in a moment");
+    }
+
+    private static Map<String, DocumentationLiveStatus.EnvironmentStatus> prodAndDevOf(
+            DocumentationLiveStatus status) {
+        Map<String, DocumentationLiveStatus.EnvironmentStatus> byId = new LinkedHashMap<>();
+        status.environments().forEach(environment -> byId.put(environment.id(), environment));
+        return byId;
+    }
+
+    /** A model import of the environment prod, attempted and last successful at the given moment. */
+    private static ArchitectureImportState readAt(Instant lastSuccessAt, ImportOutcome outcome) {
+        return new ArchitectureImportState("prod", ArchitectureImportKind.MODEL, "hash", null, true, 12,
+                lastSuccessAt, lastSuccessAt, outcome, null);
+    }
+
     /** An architecture repository configured for some environments and not for others. */
     private record StubModel(Set<String> configured) implements ArchitectureModelSource {
 
@@ -256,6 +402,11 @@ class DocumentationProvenanceTest {
 
     /** A template with nothing to write, which is a legitimate template. */
     private static final class SilentTemplate implements StructureTemplate {
+        @Override
+        public java.util.Set<String> allowedFileExtensions() {
+            return java.util.Set.of("md");
+        }
+
 
         @Override
         public String id() {

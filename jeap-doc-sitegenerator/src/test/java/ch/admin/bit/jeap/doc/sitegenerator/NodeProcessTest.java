@@ -1,6 +1,8 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.BuildLogContext;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
+import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildTimeoutException;
 import ch.qos.logback.classic.Level;
@@ -221,6 +223,37 @@ class NodeProcessTest {
                                 "[site generator] [PERF] Load site - 12.00 ms - (Heap 40mb -> 41mb / Total 60mb)"),
                         tuple(Level.DEBUG,
                                 "[site generator] [INFO] Compiling Client"));
+    }
+
+    /**
+     * <b>Every line of the generator's output names the build it came from.</b>
+     * <p>
+     * The pump runs on a thread of its own, and the MDC is thread-local: a thread started while a build runs
+     * inherits none of it. So an instance building a dozen parts at once wrote thousands of lines under one
+     * thread name with nothing to tell them apart, and attributing a performance trace to a build meant adding
+     * the trace up and matching the total against a build row. Asserted on the logging event rather than on
+     * the MDC of this thread, because what has to carry the fields is the line.
+     */
+    @Test
+    void run_thenEveryLineOfTheOutputCarriesTheSiteThePartAndTheBuild() throws IOException {
+        ListAppender<ILoggingEvent> logged = captureLog();
+        script("chatter.mjs", """
+                console.log('[PERF] Load site - 12.00 ms');
+                console.log('[INFO] Compiling Client');
+                """);
+
+        try (BuildLogContext ignored = BuildLogContext.of(PartKey.of("default", "system-orders"))) {
+            BuildLogContext.buildIs(4711L);
+            node.run(workingDirectory, "chatter.mjs");
+        }
+
+        assertThat(logged.list)
+                .filteredOn(event -> event.getFormattedMessage().startsWith("[site generator]"))
+                .isNotEmpty()
+                .allSatisfy(event -> assertThat(event.getMDCPropertyMap())
+                        .containsEntry(BuildLogContext.SITE, "default")
+                        .containsEntry(BuildLogContext.PART, "system-orders")
+                        .containsEntry(BuildLogContext.BUILD_ID, "4711"));
     }
 
     /**

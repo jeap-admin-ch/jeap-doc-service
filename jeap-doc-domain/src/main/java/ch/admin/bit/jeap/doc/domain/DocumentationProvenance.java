@@ -6,10 +6,12 @@ import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +24,11 @@ import java.util.Optional;
  * show - most sharply the reason an import run failed, which is built from what the upstream answered and quotes
  * its host and its paths. None of them reaches {@link DocumentationFacts}, so nothing downstream has to remember
  * to leave them out: the page writer prints what it is handed, and this is what hands it to it.
+ * <p>
+ * It answers two questions from the same rows. {@link DocumentationFacts} is what a build writes into a page,
+ * and it has to keep reading correctly while that page is not rebuilt. {@link DocumentationLiveStatus} is what
+ * the service answers now, for the statements that would go stale in a page - and it is published under the
+ * same rule.
  * <p>
  * It reads and computes; it stores nothing. Two builds asking for the facts get two answers, and neither
  * changes anything.
@@ -47,6 +54,86 @@ public class DocumentationProvenance {
      */
     public Optional<DocumentationFacts> of(String siteId, String version, Instant generatedAt) {
         return sites.find(siteId).map(site -> factsOf(site, version, generatedAt));
+    }
+
+    /**
+     * The live state of one site's imports and schedules, or empty where no such site is configured.
+     * <p>
+     * The same rows as {@link #of}, read at the moment of the request rather than at the start of a build -
+     * which is the whole point of it. See {@link DocumentationLiveStatus} for why the page cannot carry this.
+     */
+    public Optional<DocumentationLiveStatus> liveStatusOf(String siteId) {
+        return sites.find(siteId).map(this::liveStatusOf);
+    }
+
+    private DocumentationLiveStatus liveStatusOf(Site site) {
+        Instant now = clock.instant();
+        List<DocumentationLiveStatus.EnvironmentStatus> environments = environmentsOf(site).stream()
+                .map(environment -> new DocumentationLiveStatus.EnvironmentStatus(
+                        environment.id(), environment.modelConfigured(), environment.lastImportAt(),
+                        environment.lastImportOutcome(), environment.importIsBehind(now),
+                        lastReadOf(environment, now)))
+                .toList();
+        DocumentationFacts.Schedules schedules = schedulesOf(site);
+        List<DocumentationLiveStatus.ScheduleStatus> tabulated = schedules.import_() == null
+                || schedules.importAt() == null
+                ? List.of()
+                : List.of(new DocumentationLiveStatus.ScheduleStatus(schedules.import_(), schedules.importAt(),
+                        whenItFiresNext(schedules.importAt(), now)));
+        return new DocumentationLiveStatus(site.id(), now, environments, tabulated);
+    }
+
+    /**
+     * When the architecture repository was last read successfully, and what has happened since.
+     * <p>
+     * The outcome belongs to the <b>latest</b> run and the timestamp to the last <b>successful</b> one, so the
+     * two are not joined into one phrase: a repository that has been down since eleven would otherwise read
+     * "last read 10:00 (failed)", which says the read that worked did not.
+     * <p>
+     * <b>Being behind is named whatever the latest outcome was.</b> An import that simply stopped running
+     * leaves a successful outcome behind it, and that is the case worth reporting: nothing else on a published
+     * site would say the documentation has stopped moving.
+     */
+    private static String lastReadOf(DocumentationFacts.EnvironmentFacts environment, Instant now) {
+        if (!environment.modelConfigured()) {
+            return "";
+        }
+        if (environment.lastImportAt() == null) {
+            return "not read successfully yet";
+        }
+        String read = DisplayTime.of(environment.lastImportAt());
+        if (environment.importIsBehind(now)) {
+            return read + "; not read since";
+        }
+        return succeeded(environment.lastImportOutcome()) ? read : read + "; the last run did not read it";
+    }
+
+    /** Whether an outcome is one that read the repository through - the two the staleness measure counts. */
+    private static boolean succeeded(ImportOutcome outcome) {
+        return outcome == null || outcome == ImportOutcome.REPLACED || outcome == ImportOutcome.UNCHANGED;
+    }
+
+    /** When a schedule fires next, as the cell reads it. */
+    static String whenItFiresNext(Instant next, Instant now) {
+        return DisplayTime.of(next) + " (" + spellOut(Duration.between(now, next)) + ")";
+    }
+
+    /** A duration as a reader says it. Minutes and hours only: nothing here is worth a second. */
+    static String spellOut(Duration duration) {
+        long minutes = Math.max(duration.toMinutes(), 0);
+        if (minutes < 1) {
+            return "in a moment";
+        }
+        if (minutes < 60) {
+            return "in %d minute%s".formatted(minutes, minutes == 1 ? "" : "s");
+        }
+        long hours = minutes / 60;
+        long rest = minutes % 60;
+        String spelled = "in %d hour%s".formatted(hours, hours == 1 ? "" : "s");
+        if (rest == 0) {
+            return spelled;
+        }
+        return spelled + " %d minute%s".formatted(rest, rest == 1 ? "" : "s");
     }
 
     private DocumentationFacts factsOf(Site site, String version, Instant generatedAt) {

@@ -423,6 +423,42 @@ class LandscapeChangeBrowserIT extends BrowserTestBase {
         assertThat(rebuiltSince(before)).isEmpty();
     }
 
+    /**
+     * <b>What the page cannot carry, fetched and filled in.</b>
+     * <p>
+     * When the architecture repository was last read and when the import fires next move with the clock, so
+     * they are not written into the page at all - a part whose documentation has not moved is not generated
+     * again, and the case above is what proves that happens. The page leaves a cell for each of them, names
+     * where they are, and a client module of the template fills them in.
+     * <p>
+     * <b>This is the only thing checking that the two sides agree.</b> The column headings are constants in
+     * {@code AboutThisDocumentation} and in {@code liveStatus.js}, and nothing compares them at compile time:
+     * a rename on one side leaves the cells as the generator wrote them, which is what this would catch.
+     */
+    @Test
+    @Order(8)
+    void theAboutPageFillsInWhatIsTrueRightNow() {
+        Response served = open(ROOT + "/about-this-documentation/");
+
+        assertThat(served.status()).isEqualTo(200);
+        // The sentence the page carries whether or not anything is fetched, so that a reader with no scripts
+        // is told where the state is rather than shown a timestamp nobody keeps true.
+        PlaywrightAssertions.assertThat(page.getByText("live-status.json")).isVisible();
+
+        // One cell per environment of this site and one per schedule it tabulates - so two, and both filled
+        // from a single fetch.
+        Locator filled = page.locator("span[data-jeap-doc-live]");
+        PlaywrightAssertions.assertThat(filled).hasCount(2);
+        assertThat(filled.nth(0).textContent())
+                .describedAs("when the architecture repository was last read, as this page shows it")
+                .matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} .+")
+                .doesNotContain("not read since");
+        assertThat(filled.nth(1).textContent())
+                .describedAs("when the import fires next, spelled out from now")
+                .contains("(in ");
+        assertNothingWentWrongInTheBrowser();
+    }
+
     // ------------------------------------------------------------------------------------------------------
     // Driving the service.
     // ------------------------------------------------------------------------------------------------------

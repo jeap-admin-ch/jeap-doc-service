@@ -36,13 +36,19 @@ final class TestProvenance {
 
     static DocumentationProvenance of(SiteProperties siteProperties, ArchitectureModelSource architectureModel,
                                       StructureTemplates templates) {
-        return new DocumentationProvenance(new DocumentationSites(siteProperties), new InMemoryImports(),
+        return of(siteProperties, architectureModel, templates, new InMemoryImports());
+    }
+
+    /** The same, over import state a test can move - which is what the live status is read from. */
+    static DocumentationProvenance of(SiteProperties siteProperties, ArchitectureModelSource architectureModel,
+                                      StructureTemplates templates, ArchitectureImportRepository imports) {
+        return new DocumentationProvenance(new DocumentationSites(siteProperties), imports,
                 architectureModel, templates, new BuildProperties(), new ArchitectureImportProperties(),
                 Clock.systemDefaultZone().withZone(ZoneOffset.UTC));
     }
 
     /** An instance whose imports have never run, which is what a fresh one looks like. */
-    private static final class InMemoryImports implements ArchitectureImportRepository {
+    static final class InMemoryImports implements ArchitectureImportRepository {
 
         private final Map<String, ArchitectureImportState> states = new LinkedHashMap<>();
 

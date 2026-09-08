@@ -17,8 +17,11 @@ adapters. It is not the centre of the hexagon, and it is not a technology behind
 because two places read it that must not know about each other:
 
 - `jeap-doc-sitegenerator` asks every template for the subtree of a system;
-- `jeap-doc-web` will validate an upload against the chapters of the template it names. That validation is not
-  written yet: an upload's `template` parameter is checked for being a slug and nothing more.
+- the structure validation asks a template what it declares, and checks an upload's path tree against it -
+  see [What an upload is validated against](upload-validation.md). **A template never sees a path**: it
+  answers which folders are chapters, which extensions it takes and what it generates, and the deciding, the
+  wording and the ordering of the findings are the domain's, so the codes are one set whatever methodology is
+  named.
 
 The upload path must not reach the site generator, so the type cannot live there. What lives in a template
 module is the template itself.
@@ -58,7 +61,9 @@ call site.
 | `systemPathSegment()` / `systemLabel()`       | The segment and the navigation label below a system                                                         |
 | `componentPathSegment()` / `componentLabel()` | The same below a component                                                                                  |
 | `chapters()`                                  | The chapters. Nothing else writes a chapter folder name, and the order they are declared in does not matter |
-| `chapterOfFolder(folder)`                     | The chapter a folder belongs to, for validating an upload                                                   |
+| `chapterOfFolder(folder)`                     | The chapter a folder belongs to, which is how an upload's first path segment is checked                     |
+| `allowedFileExtensions()`                     | What an upload to this template may carry, lower case and without the dot. No default: an empty set would silently forbid everything |
+| `generatedNames(chapter, subject)`            | The page and group names it writes into a chapter, for a system, a component or a library - the names an upload may not reuse. Defaults to nothing |
 | `orderedChapters()`                           | The chapters in the order the navigation shows them - by number, or alphabetically. A default method        |
 | `positionOf(chapter)`                         | Where a chapter goes among its siblings, which is the `position` of its `_category_.json`. A default method |
 | `writeSystem(system, context, directory)`     | Writes the pages of one system. A template with nothing to say writes nothing                               |
@@ -216,9 +221,15 @@ schema, which carries all of them.
 
 Nothing else changes. The site generator picks it up, and uploads may name its id.
 
+**And it writes no validation code.** Declaring `chapters()`, `allowedFileExtensions()` and
+`generatedNames(chapter, subject)` is the whole of it: the path rules, the finding codes, the messages, the
+order and the cap are the doc service's, so the workflow that prints arc42's report prints the new template's
+unchanged - see [What an upload is validated against](upload-validation.md#adding-a-template).
+
 ## Related
 
 - [Architecture](architecture.md) - where a plugin sits among the modules
 - [Generating the documentation](generation.md) - what a build does with a template
 - [API](api.md) - the `template` parameter of an upload
 - [Uploads](uploads.md) - what an upload has to look like
+- [What an upload is validated against](upload-validation.md) - the rules a template's declarations become

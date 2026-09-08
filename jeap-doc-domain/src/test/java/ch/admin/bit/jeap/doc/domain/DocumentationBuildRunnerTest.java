@@ -18,6 +18,7 @@ import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.MDC;
 import org.mockito.InOrder;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -31,6 +32,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.Optional;
@@ -119,6 +121,41 @@ class DocumentationBuildRunnerTest {
         ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
         verify(builds).failed(eq(7L), reason.capture(), any());
         assertThat(reason.getValue()).isEqualTo("The site generator exited with 137.");
+    }
+
+    /**
+     * <b>Every line one build logs names the site, the part and the build.</b>
+     * <p>
+     * It is what makes a performance trace a lookup rather than a match: the generator's output arrives under
+     * one thread name for every build of an instance, and an instance builds several at once.
+     * <p>
+     * <b>And the context is gone when the build is.</b> The slots share a thread pool, so a value left behind
+     * is inherited by the next build on that thread and labels its lines with this part - a wrong answer,
+     * which is worse than none. One slot here, so the build runs on this thread and the second assertion is
+     * about the thread the first one was made on.
+     */
+    @Test
+    void runOnce_thenWhatABuildLogsNamesItAndTheContextIsGoneAfterwards() {
+        properties.setMaxConcurrentParts(1);
+        pending(SITE);
+        Map<String, String> whileBuilding = new HashMap<>();
+        when(siteBuilder.generate(any())).thenAnswer(invocation -> {
+            Map<String, String> context = MDC.getCopyOfContextMap();
+            if (context != null) {
+                whileBuilding.putAll(context);
+            }
+            return new BuiltSite(Path.of("build"), 12, 4096, 900, Map.of());
+        });
+
+        assertThat(runner.runOnce()).isTrue();
+
+        assertThat(whileBuilding)
+                .containsEntry(BuildLogContext.SITE, SITE)
+                .containsEntry(BuildLogContext.PART, SHELL.part())
+                .containsEntry(BuildLogContext.BUILD_ID, "7");
+        assertThat(MDC.getCopyOfContextMap())
+                .describedAs("cleared, or the next build on this thread is logged as this one")
+                .isNullOrEmpty();
     }
 
     @Test

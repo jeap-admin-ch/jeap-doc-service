@@ -15,6 +15,9 @@ import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
+import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
+import ch.admin.bit.jeap.doc.markdown.CategoryFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -26,6 +29,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -867,5 +871,59 @@ class Arc42SystemTreeTest {
                 List.of(new SystemRelation(RelationKind.EVENT, "orders", "orders-intake", "shipping",
                         "shipping-gateway", "ShippingArrangedEvent", null, null, null)),
                 List.of());
+    }
+
+    /**
+     * <b>The anti-drift test.</b> Everything a template writes into a chapter is a name an upload may not
+     * reuse, and {@code generatedNames} is where that is declared. This walks the tree the generator actually
+     * wrote and fails if a file appears in a chapter that nothing reserves.
+     * <p>
+     * It is the only thing that keeps the reserved names true a year from now: a page added to a chapter
+     * without being declared fails here, in the module that added it, rather than as a duplicate route in a
+     * site build twenty minutes after somebody uploaded a page of the same name.
+     * <p>
+     * The chapter's own level and no deeper - that is the level an upload can write to, because a chapter has
+     * no subfolders.
+     */
+    @Test
+    void everyFileWrittenIntoAChapterIsAReservedName() throws IOException {
+        generate();
+
+        Path structure = systemDirectory.resolve("system-architecture");
+        assertThat(structure).isDirectory();
+        int chaptersChecked = 0;
+        try (Stream<Path> chapters = Files.list(structure)) {
+            for (Path chapter : chapters.filter(Files::isDirectory).toList()) {
+                chaptersChecked++;
+                assertChapterHoldsOnlyReservedNames(chapter, SubjectKind.SYSTEM);
+            }
+        }
+        assertThat(chaptersChecked).describedAs("the chapters this template generates into").isEqualTo(4);
+    }
+
+    /**
+     * Every entry at a chapter's own level is either what the domain reserves for every template, or a name
+     * the template declares it generates for this kind of subject.
+     */
+    private void assertChapterHoldsOnlyReservedNames(Path chapter, SubjectKind subject) throws IOException {
+        StructureChapter declared = template.chapterOfFolder(chapter.getFileName().toString()).orElseThrow(
+                () -> new AssertionError("The generator wrote a folder that is no chapter of the template: "
+                                         + chapter.getFileName()));
+        Set<String> generated = template.generatedNames(declared, subject);
+        try (Stream<Path> entries = Files.list(chapter)) {
+            for (Path entry : entries.toList()) {
+                String name = entry.getFileName().toString();
+                if (CategoryFile.NAME.equals(name) || "index.md".equals(name)) {
+                    continue;
+                }
+                String withoutExtension = name.endsWith(".md") ? name.substring(0, name.length() - 3) : name;
+                assertThat(generated)
+                        .describedAs("%s/%s is written by the generator and has to be declared in "
+                                     + "Arc42Template.generatedNames(%s, %s), or an upload carrying a page of "
+                                     + "that name would be accepted and then fail the build of this part",
+                                chapter.getFileName(), name, declared.folder(), subject)
+                        .contains(withoutExtension);
+            }
+        }
     }
 }

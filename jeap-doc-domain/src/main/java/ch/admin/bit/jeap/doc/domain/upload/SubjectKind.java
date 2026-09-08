@@ -9,7 +9,11 @@ public enum SubjectKind {
     COMPONENT,
     LIBRARY;
 
-    static SubjectKind of(DocumentationType type) {
+    /**
+     * What an upload of this type documents. <b>Public</b> because a structure template is asked what it
+     * generates for a kind of subject, and the validation that asks lives in a sub-package.
+     */
+    public static SubjectKind of(DocumentationType type) {
         return switch (type) {
             case SYSTEM_DOCS -> SYSTEM;
             case COMPONENT_DOCS -> COMPONENT;

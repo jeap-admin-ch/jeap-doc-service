@@ -152,8 +152,15 @@ An upload is checked for what it says about itself: the parameters have to descr
 [`jeap.doc.upload.max-size`](configuration.md#uploads), and it has to be as long as its `Content-Length`
 announced.
 
-The **content** of the bundle is not inspected yet - neither the folder structure against the template nor the
-Markdown itself - and it is not scanned for malware. Those checks belong to later stories.
+**The structure of the bundle is checked on request, not on upload.** A pipeline asks
+`POST /api/uploads/docs/validation` before it builds the ZIP, and gets a finding per misfiled path - the rules
+are on [What an upload is validated against](upload-validation.md). The upload endpoint itself does not apply
+them: what keeps a misfiled page out of a site is that validation and the publication that writes an upload
+into the tree.
+
+The **Markdown itself** - CommonMark, dead links, the front-matter allowlist - is the doc workflow's half of
+the validation, before anything is sent; the doc service never sees a file's bytes. And nothing is scanned for
+malware: that is descoped from this enabler.
 
 ## What happens next
 
@@ -165,6 +172,8 @@ The upload itself stays `PENDING`. Taking the uploaded documentation over into t
 implemented; until it is, a build publishes what the doc service generates itself.
 
 ## Related
+
+- [What an upload is validated against](upload-validation.md) - the structural rules, per template
 
 - [API](api.md)
 - [Configuration](configuration.md)
