@@ -62,7 +62,6 @@ public class SiteProperties {
          */
         private List<Environment> environments = List.of();
 
-
         /**
          * Whether an upload for this site asks for a build of it.
          */

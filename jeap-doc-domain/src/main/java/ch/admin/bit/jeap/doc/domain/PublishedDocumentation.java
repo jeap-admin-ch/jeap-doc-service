@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -114,7 +115,7 @@ public class PublishedDocumentation {
 
     private CachedParts read(String site, Instant now) {
         Map<String, String> prefixByPart = new HashMap<>();
-        List<SitePart> owners = new java.util.ArrayList<>();
+        List<SitePart> owners = new ArrayList<>();
         Optional<Site> configured = sites.find(site);
         for (PublishedPart part : builds.publishedPartsOf(site)) {
             if (part.objectPrefix() == null) {

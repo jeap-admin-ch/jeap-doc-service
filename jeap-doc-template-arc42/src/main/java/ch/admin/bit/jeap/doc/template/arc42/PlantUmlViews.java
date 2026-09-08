@@ -23,19 +23,21 @@ import java.util.Set;
 /**
  * Turns a view into PlantUML.
  * <p>
- * The shape of a diagram - which boxes and which arrows - is decided in the domain by {@code SystemContext}
- * and {@code WhiteboxView}. Only the syntax is here, and it belongs to arc42.
+ * The shape of a diagram - which boxes and which arrows - is decided in the domain by {@code SystemContext},
+ * {@code WhiteboxView}, {@code ComponentContext} and {@code DocumentedSchema}. Only the syntax is here, and it
+ * belongs to arc42.
  * <p>
  * Nothing is rendered to an image. The output is the diagram source, put on the page inside a fence, and the
  * site's plugin renders it in the reader's browser. The diagram therefore stays searchable and readable as
  * text.
  * <p>
- * <b>The direction is a property of the view, not of its size.</b> The context view is a star - one system
- * with its neighbours around it, always two ranks - and {@code left to right direction} turns that into a
- * narrow column. A whitebox view is a deep graph of components calling components, and is narrower top to
- * bottom, which is the direction PlantUML lays out by default. Measured over six real systems, the number of
- * boxes does not predict which is better; the shape of the view does, and each view's shape is fixed by what
- * it is.
+ * <b>The direction is a property of the view, not of its size.</b> A context view is a star - one system, or
+ * one component, with its neighbours around it, always two ranks - and {@code left to right direction} turns
+ * that into a narrow column. A whitebox view is a deep graph of components calling components, and is narrower
+ * top to bottom, which is the direction PlantUML lays out by default. An entity relationship diagram keeps
+ * that default too: its boxes are tall, one row per column of the table, so laying them out side by side is
+ * what would not fit. Measured over six real systems, the number of boxes does not predict which is better;
+ * the shape of the view does, and each view's shape is fixed by what it is.
  * <p>
  * <b>A label is capped.</b> The engine lays a label out by recursion and overflows the browser's stack at
  * about sixty lines, so an arrow carrying every message type of a busy system is not a large diagram but no
@@ -63,6 +65,29 @@ final class PlantUmlViews {
      * {@code skinparam} is checked the same way, by looking at the rendered elements, before it ships.
      */
     private static final String SPACING = "skinparam nodesep 8\nskinparam ranksep 20\n";
+
+    /**
+     * What the box of the subject carries: the current system on a system context view, the current component
+     * on a component context view. Gold fill and a bold outline, so the middle of a star is found without
+     * reading a label.
+     * <p>
+     * <b>Element syntax rather than a {@code skinparam}</b>, which is what keeps it out of the two the class
+     * may emit - and out of the warning one of those would print into the picture.
+     * <p>
+     * <b>The same colour in dark mode.</b> The site's plugin re-renders a diagram with the engine's dark flag
+     * when the reader switches, which changes PlantUML's <i>own</i> palette - but never a colour written into
+     * the source. This one is written into the source deliberately: the subject is the subject in either mode.
+     */
+    private static final String SUBJECT_STYLE = " #Gold;line.bold";
+
+    /**
+     * What every arrow of a component diagram carries, so that the relations read apart from the boxes. It
+     * goes inside the arrow - {@code -[#blue]->} - which is why {@link #arrowOf} builds the whole token.
+     * <p>
+     * The entity relationship diagram is not one of these: it builds its own <code>&#125;o--||</code> crow's
+     * feet, which are data-model notation rather than relations and stay as they are.
+     */
+    private static final String RELATION_COLOUR = "#blue";
 
     private PlantUmlViews() {
     }
@@ -148,37 +173,73 @@ final class PlantUmlViews {
     }
 
     /**
-     * One component in the middle, the siblings it exchanges something with inside the system's package, and
-     * every other system as a single box outside it.
+     * One component in the middle, and the components it exchanges something with - the siblings inside its
+     * own system's package, the counterparts of other systems inside a package for the system that owns each.
+     * <p>
+     * <b>A neighbour whose counterpart component the model does not name is one box</b>, and so is one the
+     * bound on the boxes left no room to open. Which of the two a neighbour is, is
+     * {@link ComponentContext}'s decision; this draws it.
+     * <p>
+     * <b>The boxes are aliased by identity, not by name.</b> Two systems may each have a component called
+     * {@code gateway}, and two boxes sharing an alias would be one box carrying the arrows of both.
      * <p>
      * Laid out left to right, like the system context view: the shape is the same star of one box with its
      * counterparts around it.
      */
-    static Diagram componentContextView(ComponentContext context, String systemSlug,
-                                        GenerationContext generation) {
+    static Diagram componentContextView(ComponentContext context, GenerationContext generation) {
         StringBuilder uml = new StringBuilder(START_UML).append(LEFT_TO_RIGHT).append(SPACING);
         Aliases aliases = new Aliases();
-        uml.append("package ").append(quoted(context.system().name())).append(" {\n");
-        uml.append("  ");
-        component(uml, aliases, context.component().name(),
-                componentLinkOf(systemSlug, context.component().slug(), generation), true);
-        for (String sibling : context.drawnSiblings()) {
-            uml.append("  ");
-            component(uml, aliases, sibling, siblingLinkOf(context, sibling, systemSlug, generation), false);
+        for (ComponentContext.DrawnSystem drawn : context.drawnSystemsWithComponents()) {
+            // The package carries the link to the system's page, which the box for a whole system used to.
+            // Opening a neighbour must not cost the reader the way into its own documentation.
+            //
+            // And it carries an alias, because an arrow may land on it: a relation that names a neighbour and
+            // none of its components points at the system, and the system is this package. Without the alias
+            // PlantUML would read that arrow's end as a new box of its own.
+            uml.append("package ").append(quoted(drawn.name()))
+                    .append(" as ").append(aliases.of(drawn.asNode()));
+            String systemLink = drawn.slug() == null ? null
+                    : generation.diagramLink(DocumentationPaths.system(drawn.slug()));
+            if (isSafeLinkTarget(systemLink)) {
+                uml.append(" [[").append(systemLink).append("]]");
+            }
+            uml.append(" {\n");
+            for (ComponentContext.Node node : drawn.components()) {
+                uml.append("  ");
+                component(uml, aliases.of(node), node.label(), linkOf(node, generation),
+                        node.kind() == ComponentContext.NodeKind.SELF);
+            }
+            uml.append("}\n");
         }
-        uml.append("}\n");
-        for (String system : context.drawnSystems()) {
-            component(uml, aliases, system, systemLinkOf(system, generation), false);
+        for (ComponentContext.Node whole : context.drawnWholeSystems()) {
+            component(uml, aliases.of(whole), whole.label(), linkOf(whole, generation), false);
         }
         boolean summarized = false;
-        for (ComponentContext.Edge edge : context.edges()) {
-            // Only the edges between boxes the diagram has; the page's table carries all of them.
-            if (context.isDrawn(edge.from()) && context.isDrawn(edge.to())) {
-                summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
-                        generation.limits().maxEdgeLabels());
-            }
+        // Every arrow the view kept: it has already dropped the ones with no box to point at, and merged the
+        // ones that land on the same pair of boxes.
+        for (ComponentContext.Edge arrow : context.arrows()) {
+            summarized |= arrow(uml, aliases.of(arrow.from()), aliases.of(arrow.to()), arrow.kind(),
+                    arrow.labels(), generation.limits().maxEdgeLabels());
         }
         return new Diagram(uml.append(END_UML).toString(), summarized);
+    }
+
+    /**
+     * Where the page of one box is, or null where this run does not document it.
+     * <p>
+     * The slugs are the view's, resolved from the model while it was computed - a template reads a slug and
+     * never derives a path segment. A box the model documents no page for carries no link at all, which is
+     * the same answer a neighbour whose name is not in the model has always got.
+     */
+    private static String linkOf(ComponentContext.Node node, GenerationContext generation) {
+        if (node.systemSlug() == null) {
+            return null;
+        }
+        if (node.isSystem()) {
+            return generation.diagramLink(DocumentationPaths.system(node.systemSlug()));
+        }
+        return node.componentSlug() == null ? null
+                : componentLinkOf(node.systemSlug(), node.componentSlug(), generation);
     }
 
     /**
@@ -248,15 +309,16 @@ final class PlantUmlViews {
      * <b>A nullable column's name stands at the start of its line</b>, where PlantUML reads several
      * characters as something else entirely: {@code '} is a comment, so the column would silently vanish from
      * the diagram; {@code --} is a separator; {@code }} ends the entity and takes every column after it with
-     * it. So a name that begins with one of them is introduced by the {@code {field}} marker, which says
-     * <i>what follows is a field</i> and moves the name off the start of the line. Only then - the marker is
-     * not otherwise needed, see above.
+     * it. So a nullable name that begins with one of them is introduced by the {@code {field}} marker, which
+     * says <i>what follows is a field</i> and moves the name off the start of the line. A non-nullable column
+     * needs none: the {@code *} in front of it has moved the name already, and the marker is not otherwise
+     * needed - see above.
      */
     private static void columnLine(StringBuilder uml, SchemaTable table, SchemaColumn column,
                                    boolean primaryKey) {
         String name = escaped(column.name());
         uml.append(column.nullable() ? "    " : "  * ");
-        if (!name.isEmpty() && LINE_START_HAZARDS.indexOf(name.charAt(0)) >= 0) {
+        if (column.nullable() && startsWithALineStartHazard(name)) {
             uml.append("{field} ");
         }
         uml.append(name);
@@ -304,7 +366,13 @@ final class PlantUmlViews {
 
     private static void component(StringBuilder uml, Aliases aliases, String name, String linkTarget,
                                   boolean focused) {
-        uml.append("component ").append(quoted(name)).append(" as ").append(aliases.of(name));
+        component(uml, aliases.of(name), name, linkTarget, focused);
+    }
+
+    /** The same, for a view whose boxes are told apart by more than their name - see {@link Aliases}. */
+    private static void component(StringBuilder uml, String alias, String name, String linkTarget,
+                                  boolean focused) {
+        uml.append("component ").append(quoted(name)).append(" as ").append(alias);
         if (isSafeLinkTarget(linkTarget)) {
             // The box is a link to the page of what it draws, which the Confluence version could not do.
             uml.append(" [[").append(linkTarget).append("]]");
@@ -312,7 +380,7 @@ final class PlantUmlViews {
         // After the link, not before it: PlantUML reads a colour as the end of the declaration, and a link
         // following one is a syntax error - which renders as an error box and fails no build.
         if (focused) {
-            uml.append(" #line.bold");
+            uml.append(SUBJECT_STYLE);
         }
         uml.append('\n');
     }
@@ -342,7 +410,13 @@ final class PlantUmlViews {
      */
     private static boolean arrow(StringBuilder uml, Aliases aliases, String from, String to, RelationKind kind,
                                  List<String> labels, int maxLabels) {
-        uml.append(aliases.of(from)).append(' ').append(arrowOf(kind)).append(' ').append(aliases.of(to));
+        return arrow(uml, aliases.of(from), aliases.of(to), kind, labels, maxLabels);
+    }
+
+    /** The same, for a view whose boxes are told apart by more than their name - see {@link Aliases}. */
+    private static boolean arrow(StringBuilder uml, String fromAlias, String toAlias, RelationKind kind,
+                                 List<String> labels, int maxLabels) {
+        uml.append(fromAlias).append(' ').append(arrowOf(kind)).append(' ').append(toAlias);
         boolean summarized = labels.size() > Math.max(maxLabels, 0);
         if (!labels.isEmpty()) {
             // A count is digits and a word, so it cannot break out of the label the way a name could.
@@ -354,9 +428,17 @@ final class PlantUmlViews {
         return summarized;
     }
 
-    /** A REST call is dotted and a message is solid, so the two are told apart without reading the labels. */
+    /**
+     * A REST call is dotted and a message is solid, so the two are told apart without reading the labels -
+     * and both are blue, so a relation reads apart from the boxes.
+     * <p>
+     * The colour goes <b>inside</b> the arrow, which is where PlantUML takes it: the dotted form is
+     * {@code .[#blue].>} and the solid one {@code -[#blue]->}. Both were rendered before they shipped, along
+     * with a deliberately broken diagram to prove the check could fail.
+     */
     private static String arrowOf(RelationKind kind) {
-        return kind == RelationKind.REST_API ? "..>" : "-->";
+        String colour = "[" + RELATION_COLOUR + "]";
+        return kind == RelationKind.REST_API ? "." + colour + ".>" : "-" + colour + "->";
     }
 
     /**
@@ -374,11 +456,24 @@ final class PlantUmlViews {
      */
     private static final class Aliases {
 
-        private final Map<String, String> byName = new HashMap<>();
+        private final Map<Object, String> byIdentity = new HashMap<>();
         private final Set<String> taken = new HashSet<>();
 
+        /** A view whose boxes are told apart by their name: a system context view, a whitebox view. */
         String of(String name) {
-            return byName.computeIfAbsent(name.toLowerCase(Locale.ROOT), ignored -> unique(baseOf(name)));
+            return byIdentity.computeIfAbsent(name.toLowerCase(Locale.ROOT), ignored -> unique(baseOf(name)));
+        }
+
+        /**
+         * A view where two boxes may share a name, so the node's own identity is what tells them apart - two
+         * systems may each have a component called {@code gateway}.
+         * <p>
+         * The two keyspaces cannot be confused: a key record is never equal to a string, so a view keying on
+         * names and one keying on nodes cannot hand out the same alias for different things. The collision
+         * suffix below is what makes the second {@code gateway} a second box.
+         */
+        String of(ComponentContext.Node node) {
+            return byIdentity.computeIfAbsent(node.key(), ignored -> unique(baseOf(node.label())));
         }
 
         private String unique(String base) {
@@ -434,6 +529,24 @@ final class PlantUmlViews {
      * modifiers. A name is not allowed to mean any of them.
      */
     private static final String LINE_START_HAZARDS = "'/-.=_}*+#~";
+
+    /**
+     * Whether a name would mean one of those at the start of its line.
+     * <p>
+     * <b>Read past leading whitespace.</b> What PlantUML reads is the first character of the line that is not
+     * blank, and {@link #escaped} deliberately leaves whitespace where it is - so a quoted identifier called
+     * {@code " 'total"} reads as a comment and the column vanishes from the diagram, with nothing failing:
+     * nothing inside a fence is checked by anything.
+     */
+    private static boolean startsWithALineStartHazard(String name) {
+        for (int index = 0; index < name.length(); index++) {
+            char character = name.charAt(index);
+            if (!Character.isWhitespace(character)) {
+                return LINE_START_HAZARDS.indexOf(character) >= 0;
+            }
+        }
+        return false;
+    }
 
 
     /**

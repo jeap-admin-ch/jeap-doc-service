@@ -82,7 +82,7 @@ class BuildHistoryApiIT extends DocServiceIntegrationTestBase {
         DocumentationBuild build = builds.start(PartKey.shellOf(SITE), BuildTrigger.MANUAL, INSTANCE, now, null);
         builds.failed(build.id(), "Docusaurus exited with 1", now.plusSeconds(11));
 
-        mockMvc.perform(get(SiteApiPaths.BUILDS + "/{buildId}", SITE, build.id()).with(readRole()))
+        mockMvc.perform(get(SiteApiPaths.BUILD, SITE, build.id()).with(readRole()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(build.id()))
                 .andExpect(jsonPath("$.state").value("FAILED"))
@@ -99,7 +99,7 @@ class BuildHistoryApiIT extends DocServiceIntegrationTestBase {
     void build_whenTheBuildBelongsToAnotherSite_thenNotFound() throws Exception {
         DocumentationBuild build = finished(BuildTrigger.MANUAL);
 
-        mockMvc.perform(get(SiteApiPaths.BUILDS + "/{buildId}", Site.DEFAULT_SITE, build.id()).with(readRole()))
+        mockMvc.perform(get(SiteApiPaths.BUILD, Site.DEFAULT_SITE, build.id()).with(readRole()))
                 .andExpect(status().isNotFound());
     }
 
@@ -156,6 +156,20 @@ class BuildHistoryApiIT extends DocServiceIntegrationTestBase {
         mockMvc.perform(get(SiteApiPaths.BUILDS, SITE).with(readRole()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[*].id").value(hasItem(ofAnotherPart.id().intValue())));
+    }
+
+    /**
+     * A site is published as several builds, so the rows of a site-wide history cannot be told apart without
+     * the part - and the digest is what says whether two of them wrote the same pages.
+     */
+    @Test
+    void builds_thenEachRowNamesItsPartAndWhatItsContentHashedTo() throws Exception {
+        finishedPart("system-orders", BuildTrigger.UPLOAD);
+
+        mockMvc.perform(get(SiteApiPaths.BUILDS, SITE).with(readRole()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].part").value("system-orders"))
+                .andExpect(jsonPath("$[0].contentDigest").value("digest"));
     }
 
     /**

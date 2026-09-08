@@ -27,34 +27,39 @@ class DocumentationBuildRequestRepositoryAdapter implements DocumentationBuildRe
 
     /**
      * One statement, so that two triggers arriving at the same moment are one request rather than one request
-     * and one failed transaction - see {@link DocumentationBuildRequestJpaRepository#requestIfAbsent}.
+     * and one failed transaction, and so that what an ask adds cannot be lost to another instance claiming the
+     * row in between - see {@link DocumentationBuildRequestJpaRepository#requestOrJoin}.
      */
     @Override
     @Transactional
     public boolean request(PartKey part, BuildTrigger trigger, Instant now, Publication publication,
                            boolean forced) {
-        boolean started = requests.requestIfAbsent(part.site(), part.part(), now, trigger.name(),
+        boolean created = requests.requestOrJoin(part.site(), part.part(), now, trigger.name(),
                 publication == null ? null : publication.id(),
-                publication == null ? null : publication.requestedAt(), forced) == 1;
-        if (started) {
+                publication == null ? null : publication.requestedAt(), forced);
+        if (created) {
             log.debug("A build of {} was asked for by {}.", part, trigger);
-            return true;
+        } else {
+            // Everything about the request it joined describes who asked first - except the two things the
+            // statement merges, which are about what the build it leads to has to achieve: that it may not be
+            // skipped, and which publication it belongs to.
+            log.debug("A build of {} was already pending; the {} trigger joins it{}.", part, trigger,
+                    forced ? " and it may no longer be skipped" : "");
         }
-        // The ask joined a request that was already pending. Everything about that request describes who
-        // asked first - except these two, which are about what the build it leads to has to achieve.
-        if (forced && requests.force(part.site(), part.part()) == 1) {
-            // The flag is raised on that row rather than a second one written, which the primary key forbids
-            // anyway - and it is why forcing a publication reaches the parts an import already asked for.
-            log.debug("A build of {} was already pending and may no longer be skipped.", part);
+        return created;
+    }
+
+    @Override
+    @Transactional
+    public int requestAll(List<PartKey> parts, BuildTrigger trigger, Instant now, Publication publication,
+                          boolean forced) {
+        int created = 0;
+        for (PartKey part : parts) {
+            if (request(part, trigger, now, publication, forced)) {
+                created++;
+            }
         }
-        if (publication != null && requests.adoptIntoPublication(part.site(), part.part(), publication.id(),
-                publication.requestedAt()) == 1) {
-            // The part is built by this publication's pass, so it is one of its parts. Left out of it, the
-            // publication reads as finished while this part is still owed a build.
-            log.debug("A build of {} was already pending and joins the publication {}.", part,
-                    publication.id());
-        }
-        return false;
+        return created;
     }
 
     @Override

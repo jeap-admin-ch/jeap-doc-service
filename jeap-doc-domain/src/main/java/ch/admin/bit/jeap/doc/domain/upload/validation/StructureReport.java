@@ -12,9 +12,10 @@ import java.util.List;
  *
  * @param template          the template the tree was checked against
  * @param pathsChecked      how many paths were checked - the ignored ones are not among them
- * @param pathsIgnored      how many paths were dropped before any rule ran, see {@link IgnoredPaths}. Reported
- *                          because a count that silently omits what it skipped is the same lie as a truncated
- *                          list of findings
+ * @param pathsIgnored      how many paths were dropped before any rule ran - the files nobody wrote (see
+ *                          {@link IgnoredPaths}) and anything that is not a path at all. Reported because a
+ *                          count that silently omits what it skipped is the same lie as a truncated list of
+ *                          findings
  * @param allowedFolders    the chapter folders of the template, so a workflow can print them once instead of
  *                          the service repeating them in every message. Empty where the template is unknown
  * @param allowedExtensions what an upload to this template may carry

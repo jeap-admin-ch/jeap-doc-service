@@ -52,9 +52,9 @@ class DocumentationUploadConfiguration implements WebMvcConfigurer {
                 InvalidUploadException::unknown);
     }
 
-    /** Refuses an oversized body before it is read - see {@link ValidationBodySizeInterceptor}. */
+    /** Refuses a body that announces too much before it is read - see {@link ValidationBodySizeInterceptor}. */
     @Bean
-    ValidationBodySizeInterceptor validationBodySizeInterceptor(UploadProperties uploadProperties) {
+    ValidationBodySizeInterceptor validationBodySizeInterceptor() {
         return new ValidationBodySizeInterceptor(uploadProperties);
     }
 
@@ -65,7 +65,7 @@ class DocumentationUploadConfiguration implements WebMvcConfigurer {
                 .excludePathPatterns(VALIDATION_PATH);
         registry.addInterceptor(documentationValidationParameterInterceptor())
                 .addPathPatterns(VALIDATION_PATH);
-        registry.addInterceptor(validationBodySizeInterceptor(uploadProperties))
+        registry.addInterceptor(validationBodySizeInterceptor())
                 .addPathPatterns(VALIDATION_PATH);
     }
 }

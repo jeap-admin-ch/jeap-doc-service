@@ -80,24 +80,6 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
     }
 
     /**
-     * The tables the diagram draws.
-     * <p>
-     * Which ones are kept is decided by priority; the order they are drawn in is always the alphabet, so two
-     * runs over one schema produce the same bytes. A table something has a foreign key into is kept first, so
-     * that the arrows of the tables that are drawn still point at a box.
-     *
-     * @param maxTables how many tables the diagram may draw. Above it the page says how many were left out
-     */
-    public List<SchemaTable> drawnTables(int maxTables) {
-        return drawnFrom(documentedTables(), maxTables);
-    }
-
-    /** How many documented entries the diagram leaves out. The table list carries them anyway. */
-    public int notDrawn(int maxTables) {
-        return documentedTables().size() - drawnTables(maxTables).size();
-    }
-
-    /**
      * The entries the page writes with their columns: the first {@code maxEntries} by name.
      * <p>
      * <b>This is the bound that makes the page's cost finite.</b> The diagram was always bounded and the list
@@ -105,37 +87,41 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
      * 46 minutes of build time on an idle container and 1 h 31 m under load.
      * <p>
      * By name and not by priority, unlike the diagram: a reader looks a table up here, so the entries have to
-     * be where the alphabet says. Above the bound the page says how many it did not write and links the
-     * published schema, which carries all of them.
+     * be where the alphabet says. Above the bound the page says how many it did not write, and links nothing:
+     * the only thing that carries all of them is the architecture repository's own API, which is not a page a
+     * reader of a published site can open.
+     * <p>
+     * Package-private for {@link DocumentedSchema}, which is what a page is written from.
      *
      * @param maxEntries how many entries the page may write
      */
-    public List<SchemaTable> listedTables(int maxEntries) {
-        return listedFrom(documentedTables(), maxEntries);
-    }
-
-    /** How many documented entries the page does not write. Only the published schema carries those. */
-    public int notListed(int maxEntries) {
-        return documentedTables().size() - listedTables(maxEntries).size();
-    }
-
-    /** As {@link #drawnFrom}: the same rule over a list a page has already collapsed and sorted. */
     static List<SchemaTable> listedFrom(List<SchemaTable> documented, int maxEntries) {
         int room = Math.min(Math.max(maxEntries, 0), documented.size());
         return room == documented.size() ? documented : List.copyOf(documented.subList(0, room));
     }
 
     /**
-     * The same rule over a list already collapsed and sorted, so that a page pays for the collapse once.
-     * Package-private for {@link DocumentedSchema}, which is the only caller that has such a list.
+     * The tables the diagram draws, out of the entries the page lists.
+     * <p>
+     * Which ones are kept is decided by priority; the order they are drawn in is always the alphabet, so two
+     * runs over one schema produce the same bytes. A table something has a foreign key into is kept first, so
+     * that the arrows of the tables that are drawn still point at a box.
+     * <p>
+     * <b>Out of the listed entries and not out of all of them</b>, because a box a reader cannot look up is
+     * worse than a box that is missing: the diagram promises that the list carries what it left out, and the
+     * list is bounded too. Package-private for {@link DocumentedSchema}, which is what a page is written
+     * from.
+     *
+     * @param listed    the entries the page writes, already collapsed and sorted
+     * @param maxTables how many tables the diagram may draw. Above it the page says how many were left out
      */
-    static List<SchemaTable> drawnFrom(List<SchemaTable> documented, int maxTables) {
-        int room = Math.min(Math.max(maxTables, 0), documented.size());
-        if (room == documented.size()) {
-            return documented;
+    static List<SchemaTable> drawnFrom(List<SchemaTable> listed, int maxTables) {
+        int room = Math.min(Math.max(maxTables, 0), listed.size());
+        if (room == listed.size()) {
+            return listed;
         }
-        Set<String> referenced = referencedNamesOf(documented);
-        List<SchemaTable> byPriority = new ArrayList<>(documented);
+        Set<String> referenced = referencedNamesOf(listed);
+        List<SchemaTable> byPriority = new ArrayList<>(listed);
         byPriority.sort(Comparator
                 .comparingInt((SchemaTable table) -> referenced.contains(folded(table.name())) ? 0 : 1)
                 .thenComparing(SchemaTable::name, String.CASE_INSENSITIVE_ORDER));
@@ -149,9 +135,9 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
      * shard, the family that shard was collapsed into. Without that, keeping a referenced table on the
      * diagram would keep the wrong ones.
      */
-    private static Set<String> referencedNamesOf(List<SchemaTable> documented) {
+    private static Set<String> referencedNamesOf(List<SchemaTable> tables) {
         Set<String> referenced = new HashSet<>();
-        for (SchemaTable table : documented) {
+        for (SchemaTable table : tables) {
             for (SchemaForeignKey key : table.foreignKeys()) {
                 if (key.referencedTableName() != null) {
                     referenced.add(folded(key.referencedTableName()));
@@ -163,10 +149,6 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
             }
         }
         return referenced;
-    }
-
-    public boolean isEmpty() {
-        return documentedTables().isEmpty();
     }
 
     private static boolean isInfrastructure(String tableName) {

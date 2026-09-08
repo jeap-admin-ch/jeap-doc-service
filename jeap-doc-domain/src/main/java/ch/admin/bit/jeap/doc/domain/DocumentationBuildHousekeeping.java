@@ -9,8 +9,6 @@ import org.springframework.stereotype.Service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 /**
  * Forgets the builds the doc service has no use for any more.
@@ -18,9 +16,11 @@ import java.util.Set;
  * A build is kept for {@code jeap.doc.build.history-retention} after it finished and is then removed: it is the
  * evidence of what was generated and when, and that is worth a quarter rather than for ever.
  * <p>
- * <b>Except the one that is published.</b> The newest successful build of a site is not only a record, it *is*
- * the publication - so a site that is published rarely, or one that stopped being published at all, would
- * otherwise lose the row that says what is being served and start answering that it has never been generated.
+ * <b>Except what each part has published.</b> The newest successful build of a part is not only a record, it
+ * <i>is</i> the publication - and a part whose content does not move is not rebuilt at all, so its publication
+ * is routinely older than the retention. The delete spares it, rather than this job naming the rows to spare:
+ * a keep-set assembled from the configured parts loses the publication of a part the model no longer has, and
+ * the pages it serves then 404 with nothing left to name their objects.
  * <p>
  * Of several instances of the doc service, only one runs the clean-up.
  */
@@ -30,8 +30,6 @@ import java.util.Set;
 public class DocumentationBuildHousekeeping {
 
     private final DocumentationBuildRepository builds;
-    private final DocumentationSites sites;
-    private final SitePartition partition;
     private final BuildProperties properties;
     /** How long the lock of this nightly job survives an instance that dies holding it. */
     private static final Duration HOUSEKEEPING_LEASE = Duration.ofMinutes(30);
@@ -51,19 +49,10 @@ public class DocumentationBuildHousekeeping {
 
     private void removeOldBuildsNow() {
         Instant finishedBefore = clock.instant().minus(properties.getHistoryRetention());
-        Set<Long> published = new LinkedHashSet<>();
-        for (Site site : sites.all()) {
-            // Every part's own publication, and not just the newest of the site: the newest successful build
-            // of a part *is* what is served for it, so a part that is rarely rebuilt would otherwise lose the
-            // row that says what is being served and start answering that it has never been generated.
-            for (PartKey part : partition.partsOf(site).stream().map(SitePart::key).toList()) {
-                builds.published(part).map(DocumentationBuild::id).ifPresent(published::add);
-            }
-        }
-        int removed = builds.deleteFinishedBefore(finishedBefore, published);
+        int removed = builds.deleteFinishedBefore(finishedBefore);
         if (removed > 0) {
-            log.info("Removed the record of {} build(s) that finished before {}; the {} published build(s) are "
-                     + "kept whatever their age.", removed, finishedBefore, published.size());
+            log.info("Removed the record of {} build(s) that finished before {}; what each part has published "
+                     + "is kept whatever its age.", removed, finishedBefore);
         } else {
             log.debug("No build record older than {} to remove.", finishedBefore);
         }

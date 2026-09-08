@@ -37,11 +37,14 @@ public class GeneratorProperties {
     private int maxEdgeLabels = 4;
 
     /**
-     * How many <b>sibling components</b> a component's context view may draw.
+     * How many <b>component boxes</b> a component's context view may draw: its siblings and the counterpart
+     * components of other systems together.
      * <p>
-     * Only the siblings the component exchanges something with count, so this is reached less often than the
-     * size of a system suggests. Above it the diagram is cut and says so, and the page's table of relations
-     * lists every one.
+     * Only the counterparts the component exchanges something with count, so this is reached less often than
+     * the size of a landscape suggests. The siblings are drawn first and then one component of each other
+     * system in turn, so one large neighbour cannot push a component's own siblings off its own page. Above
+     * the bound a system whose components got no box is drawn as a single box instead, the diagram says how
+     * many counterparts it left out, and the page's table of relations lists every one.
      */
     private int maxContextComponents = 40;
 
@@ -88,7 +91,10 @@ public class GeneratorProperties {
      */
     private List<String> restApiExcludedPaths = new ArrayList<>(List.of("/actuator(/.*)?"));
 
-    /** Which paths a page describes, compiled once - see {@link DocumentedApiPaths}. */
+    /**
+     * Which paths a page describes - see {@link DocumentedApiPaths}. The patterns are compiled on every call:
+     * this bean is mutable, so a value kept in a field would outlive the setter that changed the list.
+     */
     public DocumentedApiPaths apiPaths() {
         return DocumentedApiPaths.excluding(restApiExcludedPaths);
     }
@@ -115,7 +121,7 @@ public class GeneratorProperties {
         if (maxContextComponents < 1) {
             throw new IllegalStateException(
                     "jeap.doc.generator.max-context-components is " + maxContextComponents + ". A context "
-                    + "view needs room for at least one neighbour.");
+                    + "view needs room for at least one counterpart.");
         }
         if (maxSchemaTableDiagram < 1) {
             throw new IllegalStateException(

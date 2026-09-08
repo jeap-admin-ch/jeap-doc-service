@@ -14,7 +14,6 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -62,7 +61,7 @@ class DocumentationBuildTriggerTest {
     void requestBecauseOfUpload_thenThePartOfThatSystemIsAskedFor() {
         trigger.requestBecauseOfUpload(Site.DEFAULT_SITE, "ORDERS");
 
-        verify(requests).request(eq(ORDERS), eq(BuildTrigger.UPLOAD), eq(NOW), any(), eq(false));
+        verify(requests).requestAll(eq(List.of(ORDERS)), eq(BuildTrigger.UPLOAD), eq(NOW), any(), eq(false));
     }
 
     /** The name is slugged the way the generator slugs it, so an upload reaches the part that holds its pages. */
@@ -70,7 +69,7 @@ class DocumentationBuildTriggerTest {
     void requestBecauseOfUpload_thenTheSystemNameIsSluggedTheWayThePathIs() {
         trigger.requestBecauseOfUpload(Site.DEFAULT_SITE, "Orders Intake");
 
-        verify(requests).request(eq(PartKey.of(Site.DEFAULT_SITE, "system-orders-intake")),
+        verify(requests).requestAll(eq(List.of(PartKey.of(Site.DEFAULT_SITE, "system-orders-intake"))),
                 eq(BuildTrigger.UPLOAD), eq(NOW), isNull(), eq(false));
     }
 
@@ -86,10 +85,11 @@ class DocumentationBuildTriggerTest {
         int parts = documented.requestBecauseTheModelWasImported("dev");
 
         assertThat(parts).isEqualTo(3);
-        verify(requests).request(eq(SHELL), eq(BuildTrigger.IMPORT), eq(NOW), any(), eq(false));
-        verify(requests).request(eq(ORDERS), eq(BuildTrigger.IMPORT), eq(NOW), any(), eq(false));
-        verify(requests).request(eq(PartKey.of(Site.DEFAULT_SITE, "system-tariffs")), eq(BuildTrigger.IMPORT),
-                eq(NOW), any(), eq(false));
+        // One ask for the lot: the parts of a publication have to become owed in one transaction.
+        ArgumentCaptor<List<PartKey>> asked = ArgumentCaptor.captor();
+        verify(requests).requestAll(asked.capture(), eq(BuildTrigger.IMPORT), eq(NOW), any(), eq(false));
+        assertThat(asked.getValue()).containsExactlyInAnyOrder(SHELL, ORDERS,
+                PartKey.of(Site.DEFAULT_SITE, "system-tariffs"));
         // The gauge that answers "how many builds did that import set off".
         assertThat(metrics.triggered).containsExactly(Site.DEFAULT_SITE + ":IMPORT:3");
     }
@@ -107,9 +107,12 @@ class DocumentationBuildTriggerTest {
         assertThat(both.requestBecauseTheModelWasImported("dev"))
                 .describedAs("every part of both sites")
                 .isEqualTo(6);
-        verify(requests).request(eq(ORDERS), eq(BuildTrigger.IMPORT), eq(NOW), any(), eq(false));
-        verify(requests).request(eq(PartKey.of("governance", "system-orders")), eq(BuildTrigger.IMPORT),
-                eq(NOW), any(), eq(false));
+        // One ask per site, each carrying that site's parts.
+        ArgumentCaptor<List<PartKey>> asked = ArgumentCaptor.captor();
+        verify(requests, times(2)).requestAll(asked.capture(), eq(BuildTrigger.IMPORT), eq(NOW), any(),
+                eq(false));
+        assertThat(asked.getAllValues().stream().flatMap(List::stream))
+                .contains(ORDERS, PartKey.of("governance", "system-orders"));
     }
 
     /** A landscape of an environment no site has is imported all the same, and asks for nothing. */
@@ -117,7 +120,7 @@ class DocumentationBuildTriggerTest {
     void requestBecauseTheModelWasImported_whenNoSiteHasThatEnvironment_thenNothingIsAskedFor() {
         assertThat(trigger.requestBecauseTheModelWasImported("an-environment-nobody-documents")).isZero();
 
-        verify(requests, never()).request(any(), any(), any(), any(), anyBoolean());
+        verify(requests, never()).requestAll(any(), any(), any(), any(), anyBoolean());
     }
 
     /**
@@ -132,7 +135,7 @@ class DocumentationBuildTriggerTest {
 
         quiet.requestBecauseOfUpload(Site.DEFAULT_SITE, "orders");
 
-        verify(requests, never()).request(any(), any(), any(), any(), anyBoolean());
+        verify(requests, never()).requestAll(any(), any(), any(), any(), anyBoolean());
     }
 
     /**
@@ -143,7 +146,7 @@ class DocumentationBuildTriggerTest {
     void requestBecauseOfUpload_whenTheSiteIsNotConfigured_thenNothingIsAskedFor() {
         trigger.requestBecauseOfUpload("a-site-nobody-configured", "orders");
 
-        verify(requests, never()).request(any(), any(), any(), any(), anyBoolean());
+        verify(requests, never()).requestAll(any(), any(), any(), any(), anyBoolean());
     }
 
     /** A system whose name yields no slug documents nothing, so nothing is asked for. */
@@ -151,7 +154,7 @@ class DocumentationBuildTriggerTest {
     void requestBecauseOfUpload_whenTheSystemNameYieldsNoSlug_thenNothingIsAskedFor() {
         trigger.requestBecauseOfUpload(Site.DEFAULT_SITE, "***");
 
-        verify(requests, never()).request(any(), any(), any(), any(), anyBoolean());
+        verify(requests, never()).requestAll(any(), any(), any(), any(), anyBoolean());
     }
 
     @Test
@@ -257,10 +260,10 @@ class DocumentationBuildTriggerTest {
         ofALandscape.requestEveryPart(Site.DEFAULT_SITE);
 
         ArgumentCaptor<Publication> publication = ArgumentCaptor.forClass(Publication.class);
-        verify(requests, times(3)).request(any(), any(), any(), publication.capture(), anyBoolean());
-        assertThat(publication.getAllValues()).extracting(Publication::id).containsOnly(
-                publication.getAllValues().getFirst().id());
-        assertThat(publication.getAllValues()).extracting(Publication::requestedAt).containsOnly(NOW);
+        ArgumentCaptor<List<PartKey>> asked = ArgumentCaptor.captor();
+        verify(requests).requestAll(asked.capture(), any(), any(), publication.capture(), anyBoolean());
+        assertThat(asked.getValue()).describedAs("every part of the site").hasSize(3);
+        assertThat(publication.getValue().requestedAt()).isEqualTo(NOW);
     }
 
     /** Two asks are two publications, or the wall clock of one would be the elapsed time of both. */
@@ -270,7 +273,7 @@ class DocumentationBuildTriggerTest {
         trigger.requestEveryPart(Site.DEFAULT_SITE);
 
         ArgumentCaptor<Publication> publication = ArgumentCaptor.forClass(Publication.class);
-        verify(requests, times(2)).request(any(), any(), any(), publication.capture(), anyBoolean());
+        verify(requests, times(2)).requestAll(any(), any(), any(), publication.capture(), anyBoolean());
         assertThat(publication.getAllValues().get(0).id())
                 .isNotEqualTo(publication.getAllValues().get(1).id());
     }
@@ -280,7 +283,8 @@ class DocumentationBuildTriggerTest {
     void requestBecauseOfUpload_thenTheRequestIsPartOfNoPublication() {
         trigger.requestBecauseOfUpload(Site.DEFAULT_SITE, "ORDERS");
 
-        verify(requests).request(eq(ORDERS), eq(BuildTrigger.UPLOAD), eq(NOW), isNull(), eq(false));
+        verify(requests).requestAll(eq(List.of(ORDERS)), eq(BuildTrigger.UPLOAD), eq(NOW), isNull(),
+                eq(false));
     }
 
     /** The import publishes the whole site, so it is a publication like a forced build. */
@@ -292,10 +296,40 @@ class DocumentationBuildTriggerTest {
         ofALandscape.requestBecauseTheModelWasImported("dev");
 
         ArgumentCaptor<Publication> publication = ArgumentCaptor.forClass(Publication.class);
-        verify(requests, times(3)).request(any(), any(), any(), publication.capture(), anyBoolean());
-        assertThat(publication.getAllValues()).extracting(Publication::id).doesNotContainNull();
-        assertThat(publication.getAllValues()).extracting(Publication::id)
-                .containsOnly(publication.getAllValues().getFirst().id());
+        verify(requests).requestAll(any(), any(), any(), publication.capture(), anyBoolean());
+        assertThat(publication.getValue().id()).isNotNull();
+    }
+
+    /**
+     * The site an import publishes is left to the import: asking for it here would ask for one landscape
+     * twice, an hour apart from itself.
+     */
+    @Test
+    void requestBecauseNothingElsePublishesTheSite_whenAnImportPublishesIt_thenNothingIsAskedFor() {
+        DocumentationBuildTrigger ofAnImportedSite = triggerFor(new SiteProperties(),
+                landscapeOf("orders", "shipping"));
+
+        assertThat(ofAnImportedSite.requestBecauseNothingElsePublishesTheSite()).isZero();
+
+        verify(requests, never()).requestAll(any(), any(), any(), any(), anyBoolean());
+        verify(pickup, never()).whenAskedFor();
+    }
+
+    /**
+     * A site with no architecture repository has no import to publish it, so the reconcile asks for every part
+     * of it. Not forced: what this exists for is a content change nobody asks about - the service version is
+     * in the digest - and a part whose content really has not moved is still skipped.
+     */
+    @Test
+    void requestBecauseNothingElsePublishesTheSite_whenNoImportPublishesIt_thenEveryPartIsAskedFor() {
+        DocumentationBuildTrigger ofASiteNobodyImportsFor = triggerFor(new SiteProperties());
+
+        assertThat(ofASiteNobodyImportsFor.requestBecauseNothingElsePublishesTheSite()).isEqualTo(1);
+
+        verify(requests).requestAll(eq(List.of(PartKey.shellOf(Site.DEFAULT_SITE))),
+                eq(BuildTrigger.SCHEDULE), any(), any(Publication.class), eq(false));
+        verify(pickup).whenAskedFor();
+        assertThat(metrics.triggered).containsExactly(Site.DEFAULT_SITE + ":SCHEDULE:1");
     }
 
     /** Fifty parts asked for, and one wake-up: a pass reads what is owed for itself. */
@@ -317,8 +351,8 @@ class DocumentationBuildTriggerTest {
     private DocumentationBuildTrigger triggerFor(SiteProperties properties,
                                                  ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource model) {
         DocumentationSites configured = new DocumentationSites(properties);
-        return new DocumentationBuildTrigger(requests, configured, new SystemSitePartition(model), metrics,
-                pickup, Clock.fixed(NOW, ZoneOffset.UTC));
+        return new DocumentationBuildTrigger(requests, configured, new SystemSitePartition(model), model,
+                metrics, pickup, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     /**

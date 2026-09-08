@@ -420,25 +420,41 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * <p>
      * The generator's own tests assert that it emits these constructs; nothing there says PlantUML accepts
      * them. A diagram that does not parse renders as an error box in the reader's browser and the site build
-     * does not notice, so the constructs are rendered here for real: the package block of a whitebox view, a
-     * box that is bolded and linked at once, the dotted arrow of a REST call, and a label carrying the escaped
-     * line break that several messages on one arrow produce.
+     * does not notice, so the constructs are rendered here for real: the package block of a whitebox view,
+     * <b>a second package holding a component of another system</b>, a box that is gold and bolded and linked
+     * at once, <b>both blue arrows</b>, and a label carrying the escaped line break that several messages on
+     * one arrow produce.
+     * <p>
+     * <b>Two boxes share a label and differ only in their alias.</b> That is what a component context view
+     * emits where two systems each have a component of one name, and it is the construct that would silently
+     * merge them into one box carrying the arrows of both.
+     * <p>
+     * <b>A package carries a link.</b> The neighbour of a component context view is a package rather than a
+     * box, so that is where the way into the neighbour's own documentation now lives.
      * <p>
      * <b>One box links somewhere else than the page it is on.</b> A link inside a fence is the one kind the
      * generator does not rewrite - it is written absolute already - so nothing but a browser says whether it
-     * is followed at all, or followed into a new tab. {@code c_shipping} points at the site root so that
-     * following it is observable; the other two point at the page itself.
+     * is followed at all, or followed into a new tab. {@code c_gateway_2} points at the site root so that
+     * following it is observable; the others point at the page itself.
      */
     private static final String GENERATED_DIAGRAM = """
             @startuml
             left to right direction
-            package "orders" {
-              component "orders-intake" as c_orders_intake [[/guide/]]
+            skinparam nodesep 8
+            skinparam ranksep 20
+            package "orders" [[/guide/]] {
+              component "orders-intake" as c_orders_intake [[/guide/]] #Gold;line.bold
               component "orders-risk" as c_orders_risk [[/guide/]]
             }
-            component "shipping" as c_shipping [[/]] #line.bold
-            c_orders_intake --> c_orders_risk : OrdersPaymentAcceptedEvent\\nOrdersPaymentRejectedEvent
-            c_orders_intake ..> c_shipping : GET /api/shipments
+            package "shipping" [[/guide/]] {
+              component "gateway" as c_gateway [[/guide/]]
+            }
+            package "catalog" [[/guide/]] {
+              component "gateway" as c_gateway_2 [[/]]
+            }
+            c_orders_intake -[#blue]-> c_orders_risk : OrdersPaymentAcceptedEvent\\nOrdersPaymentRejectedEvent
+            c_orders_intake -[#blue]-> c_gateway : ShippingArrangedEvent
+            c_orders_intake .[#blue].> c_gateway_2 : GET /api/tariffs
             @enduml""";
 
     /**

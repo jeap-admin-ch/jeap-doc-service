@@ -143,6 +143,38 @@ class BuildPickUpOrderTest {
                 .isNotEqualTo(partsOf(BuildPickUpOrder.of(pending, pages(pages), new Random(2))));
     }
 
+    /**
+     * The shell links into the system parts and answers whatever they do not, so it is taken after them - a
+     * shell published first hands a reader links to parts that have not been built yet.
+     */
+    @Test
+    void of_whenTheShellIsAskedForWithTheSystems_thenItIsTakenLast() {
+        List<BuildRequest> pending = new ArrayList<>();
+        pending.add(request(SitePart.SHELL, NOW));
+        for (int system = 0; system < 5; system++) {
+            pending.add(request("system-" + system, NOW));
+        }
+
+        // Whatever the shuffle does, and whether or not the shell is the largest part of the site.
+        for (int seed = 1; seed <= 5; seed++) {
+            List<PartKey> order = partsOf(BuildPickUpOrder.of(pending,
+                    pages(Map.of(SitePart.SHELL, 5000)), new Random(seed)));
+            assertThat(order).last().isEqualTo(part(SitePart.SHELL));
+        }
+    }
+
+    /** The age of a request beats its size, and it beats the shell's place at the end. */
+    @Test
+    void of_whenTheShellWasAskedForEarlier_thenItIsStillTakenFirst() {
+        List<BuildRequest> pending = List.of(
+                request("system-orders", NOW),
+                request(SitePart.SHELL, NOW.minusSeconds(3600)));
+
+        List<PartKey> order = partsOf(BuildPickUpOrder.of(pending, allTheSameSize(), new Random(1)));
+
+        assertThat(order).containsExactly(part(SitePart.SHELL), part("system-orders"));
+    }
+
     /** The age of a request beats its size: nothing may be overtaken for ever for being small. */
     @Test
     void of_whenAnOlderRequestIsForASmallPart_thenItIsStillTakenFirst() {

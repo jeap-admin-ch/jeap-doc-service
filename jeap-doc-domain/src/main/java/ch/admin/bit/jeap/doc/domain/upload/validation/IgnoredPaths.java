@@ -14,9 +14,8 @@ import java.util.Set;
  * not on this list was written by somebody, and telling them about it beats dropping it in silence - see
  * {@link FindingCode#HIDDEN_NAME}.
  * <p>
- * <b>Not configurable.</b> One list, in the domain, and the publication has to ignore the same one: this
- * endpoint is advisory, so if only the validation dropped them a hand-made ZIP would publish Finder junk into
- * a site.
+ * <b>Not configurable.</b> One list, in the domain, so that the publication can drop the same files once it
+ * writes an upload into a site.
  */
 public final class IgnoredPaths {
 
@@ -39,7 +38,7 @@ public final class IgnoredPaths {
     }
 
     /**
-     * Whether this path is one nobody wrote, and which the validation and the publication both leave alone.
+     * Whether this path is one nobody wrote.
      *
      * @param path a path as it arrived, relative and separated by {@code /}
      */

@@ -51,9 +51,13 @@ final class CrossPartLinks {
      * An image carries the same {@code ](} and is matched here too - {@link #isImage} is what tells the two
      * apart, because the {@code !} of {@code ![alt](/img/logo.png)} sits in front of the label and no
      * lookbehind reaches over a label of no fixed length.
+     * <p>
+     * A destination starting with {@code //} is not one of these: it is a protocol-relative URL of another
+     * host, so it is outside the check already and rewriting it would break it. The template's own link pass
+     * leaves those alone too - see {@code plugins/remark-env-links}.
      */
     private static final Pattern INLINE_LINK =
-            Pattern.compile("(]\\()\\s*(?:<(/[^>\\s]*)>|(/[^)\\s]*))([^)]*\\))");
+            Pattern.compile("(]\\()\\s*(?:<(/(?!/)[^>\\s]*)>|(/(?!/)[^)\\s]*))([^)]*\\))");
 
     /**
      * A link reference definition: {@code [orders]: /systems/orders/ "Orders"}. It carries a destination like
@@ -61,7 +65,7 @@ final class CrossPartLinks {
      * the diagram pass visits these too. Grouped like {@link #INLINE_LINK}.
      */
     private static final Pattern REFERENCE_DEFINITION =
-            Pattern.compile("^( {0,3}\\[[^]]+]:[ \\t]*)(?:<(/[^>\\s]*)>|(/\\S*))(.*)$");
+            Pattern.compile("^( {0,3}\\[[^]]+]:[ \\t]*)(?:<(/(?!/)[^>\\s]*)>|(/(?!/)\\S*))(.*)$");
 
     /** Where a fenced block starts and ends. Three or more backticks or tildes, indented at most three. */
     private static final Pattern FENCE = Pattern.compile("^ {0,3}(`{3,}|~{3,})");

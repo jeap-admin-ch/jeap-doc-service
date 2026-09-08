@@ -58,14 +58,15 @@ still being rebuilt* are questions of their own.
 
 | Meter                        | Type                  | Tags                              |                                                                                                                                                                                                                        |
 |------------------------------|-----------------------|-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `jeap.doc.build.triggered`   | Gauge                 | `site`, `trigger`                 | **Parts the last run of that trigger asked to be built.** An import asks for every part of the site, an upload for the one carrying its system. It holds one run's number, so a graph of it reads as one step per run - `0` on the hours where the landscape did not move at all and the import asked for nothing. What actually ran is `jeap.doc.build`, where the parts that had nothing to publish are `result="skipped"` |
+| `jeap.doc.build.triggered`   | Gauge                 | `site`, `trigger`                 | **Parts the last run of that trigger asked to be built.** An import asks for every part of the site, an upload for the one carrying its system. It holds one run's number, so a graph of it reads as one step per run - `0` on the hours where the landscape did not move at all and the import asked for nothing. What actually ran is `jeap.doc.build`, where the parts that had nothing to publish are counted by `jeap.doc.build.skipped` instead |
 | `jeap.doc.parts`             | Gauge                 | `site`                            | Parts this site is published as                                                                                                                                                                                        |
 | `jeap.doc.parts.pending`     | Gauge                 | `site`                            | Parts owed a build right now                                                                                                                                                                                           |
 | `jeap.doc.part.age`          | Gauge (seconds)       | `site`                            | How long ago the **oldest** published part of this site was built, `0` when none is. It is what says a part has quietly stopped being rebuilt, which the newest publication cannot                                       |
 
 What one publication of a whole site costs is `jeap.doc.build` over the hour the import ran in: every part is
-asked for, and the ones whose content has not moved are `result="skipped"` - so the split between skipped and
-succeeded is how much of the documentation actually changed.
+asked for, and the ones whose content has not moved are not timed at all - they count on
+`jeap.doc.build.skipped`. So how much of the documentation actually changed is
+`jeap_doc_build_skipped_total` against `jeap_doc_build_seconds_count{result="succeeded"}`.
 
 ### The slots, and whether they were used
 
@@ -134,11 +135,14 @@ An upload is not a publication - it asks for one part - so it moves neither gaug
 recovers a part whose instance died: what that part belonged to is not on the row it left behind, and a
 recovery is a new ask.
 
-These gauges are read from the database - all but the systems gauge, see its row - and the two ages are
-**ages rather than timestamps**: an age is measured entirely by the service's own clock, where
-`time() - <timestamp>` subtracts the service's clock from the scraper's and shows the difference as a false
-alert. Reading them from the database is what makes them survive a restart and read the same on every
-instance.
+### Why the gauges are ages, and read from the database
+
+The build, part and publication gauges are read from the database - all but the systems gauge, see its row; the
+slot gauges are the running instance's own. The ages among them - `jeap.doc.build.last.success.age`,
+`jeap.doc.build.last.check.age`, `jeap.doc.build.request.age` and `jeap.doc.part.age` - are **ages rather than
+timestamps**: an age is measured entirely by the service's own clock, where `time() - <timestamp>` subtracts the
+service's clock from the scraper's and shows the difference as a false alert. Reading them from the database is
+what makes them survive a restart and read the same on every instance.
 
 ## The memory of the container
 

@@ -7,13 +7,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.s3.model.Tag;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -92,6 +98,45 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
         assertThat(read("default/43", "systems/orders/index.html")).isEqualTo("<h1>orders</h1>");
         assertThat(read(SHARED_PREFIX, "assets/js/main.a1b2c3.js")).isEqualTo("console.log('hi')");
         assertThat(read(SHARED_PREFIX, "img/logo.svg")).isEqualTo("<svg/>");
+    }
+
+    /**
+     * <b>A shared file already stored with the same bytes is not written again</b>, and one whose bytes have
+     * changed is. The shared prefix belongs to the site rather than to a build, so every part of a publication
+     * would otherwise write the same ninety-odd names into it - and a template change has to land there all
+     * the same, which is why the entity tag decides rather than the key existing.
+     */
+    @Test
+    void publish_whenASharedFileIsAlreadyStored_thenOnlyAChangedOneIsWrittenAgain() throws IOException {
+        // Already in the bucket with the bytes the build is about to publish, and stored as something else -
+        // so the content type says whether the publication wrote the object or left it alone.
+        String key = properties.getSitePrefix() + "/" + SHARED_PREFIX + "/assets/theme.js";
+        S3_CLIENT.putObject(request -> request.bucket(TEST_BUCKET_NAME).key(key).contentType("text/plain"),
+                RequestBody.fromString("console.log('one')", StandardCharsets.UTF_8));
+        write(site.resolve("index.html"), "<h1>home</h1>");
+        write(site.resolve("assets").resolve("theme.js"), "console.log('one')");
+        write(site.resolve("branding").resolve("logo.svg"), "<svg/>");
+
+        storage.publish(under("default/50"), site);
+
+        assertThat(tagsOf(key))
+                .describedAs("the same bytes were already stored under that name, so nothing was written - "
+                             + "and an object this publication wrote would carry its content tag")
+                .isEmpty();
+        assertThat(read(SHARED_PREFIX, "branding/logo.svg"))
+                .describedAs("and a site's branding is shared, so it is written to the site's prefix rather "
+                             + "than to each part's - where a request for it would never look")
+                .isEqualTo("<svg/>");
+
+        // A new version of the template writes a fixed-name file differently, and that has to land: what
+        // decides is the entity tag, not that the key exists.
+        write(site.resolve("assets").resolve("theme.js"), "console.log('two')");
+        storage.publish(under("default/51"), site);
+
+        assertThat(read(SHARED_PREFIX, "assets/theme.js")).isEqualTo("console.log('two')");
+        assertThat(tagsOf(key)).describedAs("written this time, so it is tagged as published content")
+                .containsEntry(S3DocumentationBundleStorage.CONTENT_TAG_KEY,
+                        S3SitePublicationStorage.CONTENT_TAG_VALUE);
     }
 
     @Test
@@ -210,10 +255,17 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
         return object.orElseThrow();
     }
 
+    /** The tags of one object by its raw key, which is how "was this written" is asked without a timestamp. */
+    private static Map<String, String> tagsOf(String key) {
+        return S3_CLIENT.getObjectTagging(request -> request.bucket(TEST_BUCKET_NAME).key(key))
+                .tagSet().stream()
+                .collect(Collectors.toMap(Tag::key, Tag::value));
+    }
+
     private List<String> keysUnder(String prefix) {
         return S3_CLIENT.listObjectsV2Paginator(builder -> builder.bucket(TEST_BUCKET_NAME).prefix(prefix))
                 .contents().stream()
-                .map(software.amazon.awssdk.services.s3.model.S3Object::key)
+                .map(S3Object::key)
                 .toList();
     }
 

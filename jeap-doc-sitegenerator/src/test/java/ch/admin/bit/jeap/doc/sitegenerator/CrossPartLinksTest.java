@@ -74,6 +74,40 @@ class CrossPartLinksTest {
     }
 
     /**
+     * <b>A destination carries its fragment, and the fragment is not part of the route.</b> Both directions
+     * hurt: a link to a page of the part's own would be rewritten and reload the whole page instead of
+     * navigating, and in the shell a link into another part would stay inside {@code onBrokenLinks: 'throw'}
+     * for a route the shell does not have - a failed build. No generated page writes one yet; an uploaded
+     * document will.
+     */
+    @Test
+    void aDestinationWithAFragment_thenItIsJudgedByItsRouteAlone() throws IOException {
+        write("prod/systems/orders/index.md", "See [the context](/systems/orders#context) and "
+                                              + "[billing](/systems/billing#context).");
+
+        int rewritten = CrossPartLinks.rewrite(content, ORDERS, List.of(BILLING, shell()), MAIN);
+
+        assertThat(rewritten).describedAs("only the one that really leaves the part").isOne();
+        assertThat(read("prod/systems/orders/index.md"))
+                .contains("](/systems/orders#context)")
+                .contains("](pathname://https://example.ch/docs/systems/billing#context)");
+    }
+
+    /** The same for the shell, where reading a fragment as part of the route fails the build. */
+    @Test
+    void aDestinationWithAFragmentInTheShell_thenAnotherPartsLinkStillLeavesTheCheck() throws IOException {
+        write("prod/index.md", "See [orders](/systems/orders/#context) and [the site](/about/#why).");
+
+        int rewritten = CrossPartLinks.rewrite(content, shell(), List.of(ORDERS, BILLING), MAIN);
+
+        assertThat(rewritten).isOne();
+        assertThat(read("prod/index.md"))
+                .contains("](pathname://https://example.ch/docs/systems/orders/#context)")
+                .describedAs("the shell's own page stays inside the check that catches a generator bug")
+                .contains("](/about/#why)");
+    }
+
+    /**
      * The case the pass got wrong while every part happened to carry every environment: a page writes its
      * links relative to its own environment, and a part owns paths of the <b>site</b>. Compared without the
      * environment's prefix, a part's own subtree reads as somebody else's.
@@ -207,6 +241,26 @@ class CrossPartLinksTest {
         assertThat(read("prod/index.md"))
                 .contains("The [systems](/systems/) of it")
                 .contains("[orders](pathname://https://example.ch/docs/systems/orders/)");
+    }
+
+    /**
+     * A protocol-relative URL names another host, so it is outside the check already - rewriting it would
+     * turn it into a path of this site that nothing serves. An uploaded page is what writes one.
+     */
+    @Test
+    void aProtocolRelativeUrl_thenItIsLeftAlone() throws IOException {
+        write("prod/systems/orders/index.md", """
+                A [script](//cdn.example.ch/a.js) of another host.
+
+                [cdn]: //cdn.example.ch/a.js
+                """);
+
+        int rewritten = CrossPartLinks.rewrite(content, ORDERS, List.of(BILLING, shell()), MAIN);
+
+        assertThat(rewritten).isZero();
+        assertThat(read("prod/systems/orders/index.md"))
+                .contains("[script](//cdn.example.ch/a.js)")
+                .contains("[cdn]: //cdn.example.ch/a.js");
     }
 
     /** A page that is in no environment's tree belongs to no environment, so nothing resolves its links. */

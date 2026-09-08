@@ -26,6 +26,14 @@ public enum BuildTrigger {
     MANUAL,
 
     /**
+     * The reconcile schedule found a site nothing else publishes. A site with no architecture repository
+     * behind it is never asked for by an import, so without this it would keep serving what the release
+     * before last generated until somebody uploaded to it - the content digest covers the service version, so
+     * a template or a generator change is a content change nobody asks about.
+     */
+    SCHEDULE,
+
+    /**
      * A build of the site was found still marked as running while its lock was free, so the instance running it
      * is gone and the run it was performing never finished. **The row is the request**: whatever asked for that
      * build was claimed when it started and cannot be asked again, so the abandoned run is what says a build is

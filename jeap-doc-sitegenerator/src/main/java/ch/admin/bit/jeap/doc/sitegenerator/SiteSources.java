@@ -7,9 +7,11 @@ import ch.admin.bit.jeap.doc.domain.DocumentationFacts;
 import ch.admin.bit.jeap.doc.domain.DocumentationLiveStatus;
 import ch.admin.bit.jeap.doc.domain.DocumentationProvenance;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
+import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SitePart;
+import ch.admin.bit.jeap.doc.domain.SitePartition;
 
 import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -28,9 +30,11 @@ import java.util.Optional;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.SequencedSet;
 
 /**
  * Writes what a documentation site contains, into the content directory of a build workspace.
@@ -88,10 +92,11 @@ public class SiteSources {
     private final DocumentationSites sites;
 
     /**
-     * Which parts a site has - asked for one reason only: a link into another part cannot be checked by this
-     * part's build, and telling the two apart needs the other parts' prefixes. See {@link CrossPartLinks}.
+     * Which part carries which system - asked for one reason only: a link into another part cannot be checked
+     * by this part's build, and telling the two apart needs the other parts' prefixes. See
+     * {@link CrossPartLinks}.
      */
-    private final ch.admin.bit.jeap.doc.domain.SitePartition partition;
+    private final SitePartition partition;
 
     /**
      * What the build is configured to do, for the settings the site template has to know about - the worker
@@ -142,11 +147,11 @@ public class SiteSources {
         // Last, both of them, because they record which environments have a systems page: the footer links to
         // the main one's and a part's sidebar links to its own, and a link to a page that was not written
         // fails the whole build - or, being a `pathname://` one, quietly answers 404.
-        writeJson(contentDirectory, "environments.json", environmentsOf(site, models));
+        writeJson(contentDirectory, "environments.json", environmentsOf(site, part, models));
         writeJson(contentDirectory, "site.json", descriptionOf(site, part, generatedAt,
                 site.environments().stream()
                         .anyMatch(environment -> environment.main() && hasSystems(models, environment.id()))));
-        CrossPartLinks.rewrite(contentDirectory, part, otherPartsOf(site, part), linkPrefixesOf(site));
+        CrossPartLinks.rewrite(contentDirectory, part, otherPartsOf(site, part, models), linkPrefixesOf(site));
         log.debug("Wrote the content of {} - {} - into {}.", part.key(), part.documents(), contentDirectory);
         return new WrittenContent(models, volatileTextOf(buildId, generatedAt, models));
     }
@@ -165,13 +170,16 @@ public class SiteSources {
      * fetched by the site template, which is why nothing about the last read or the next occurrence of a
      * schedule has to be replaced before hashing. See {@code DocumentationLiveStatus}.
      */
-    private static java.util.Set<String> volatileTextOf(long buildId, Instant generatedAt,
-                                                        Map<String, EnvironmentModel> models) {
-        java.util.Set<String> written = new java.util.LinkedHashSet<>();
+    private static SequencedSet<String> volatileTextOf(long buildId, Instant generatedAt,
+                                                       Map<String, EnvironmentModel> models) {
+        SequencedSet<String> written = new LinkedHashSet<>();
         written.add(generatedAt.toString());
         written.add(DisplayTime.of(generatedAt));
-        // As the page prints it, in code quotes: the bare number would match a count somewhere on a page.
-        written.add("`" + buildId + "`");
+        // The whole phrase the About page prints, and not the number in code quotes on its own: build ids start
+        // at 1, and a generated page carries code-quoted small integers all over it - a message version, a
+        // column default, a count. Replacing `7` everywhere would hide a real change to one of those, and the
+        // part would never be published. AboutThisDocumentationTest asserts the sentence this has to match.
+        written.add("build `" + buildId + "`");
         for (EnvironmentModel model : models.values()) {
             if (model.importedAt() != null) {
                 written.add(model.importedAt().toString());
@@ -183,12 +191,27 @@ public class SiteSources {
 
     /**
      * The other parts of this site, so that a link into one of them can be told from a link to a page of this
-     * part's own. It is asked once per build, and the partition answers it from the slugs of the landscape.
+     * part's own.
+     * <p>
+     * <b>Built from the landscape this run read</b>, not from the model as it stands now. An import landing
+     * mid-build would otherwise drop a system the systems index has just linked: no part would claim its
+     * path, the link would stay inside the broken-link check, and the build would fail on a route that never
+     * existed. One build sees one landscape.
      */
-    private List<SitePart> otherPartsOf(Site site, SitePart part) {
-        return partition.partsOf(site).stream()
-                .filter(other -> !other.key().equals(part.key()))
-                .toList();
+    private List<SitePart> otherPartsOf(Site site, SitePart part, Map<String, EnvironmentModel> models) {
+        if (!part.carriesWholeEnvironments() || part.carriesSystems()) {
+            // Nobody else's paths to tell apart: a part carrying one subtree owns that subtree and nothing
+            // else, and a part carrying whole trees with their systems in them owns every path of those trees.
+            return List.of();
+        }
+        Map<PartKey, SitePart> others = new LinkedHashMap<>();
+        // By name: the partition slugs it the way the import did, so it answers with the part whose paths the
+        // pages of this run link to.
+        models.forEach((environment, model) -> model.systems().forEach(system ->
+                partition.partsDocumenting(site, environment, system.label()).stream()
+                        .filter(other -> !other.key().equals(part.key()))
+                        .forEach(other -> others.putIfAbsent(other.key(), other))));
+        return List.copyOf(others.values());
     }
 
     /** What a path of each environment has to carry in front of it to be an absolute URL of this site. */
@@ -212,7 +235,8 @@ public class SiteSources {
      * The environments, as the site generator reads them: what the switcher shows and which tree is served at
      * the root.
      */
-    private static Map<String, Object> environmentsOf(Site site, Map<String, EnvironmentModel> models) {
+    private static Map<String, Object> environmentsOf(Site site, SitePart part,
+                                                      Map<String, EnvironmentModel> models) {
         List<Map<String, Object>> environments = site.environments().stream()
                 .map(environment -> {
                     Map<String, Object> values = new LinkedHashMap<>();
@@ -226,23 +250,20 @@ public class SiteSources {
                     // part's way out of itself links to. The whole landscape's count and not this part's: the
                     // index is the shell's page and lists every system, whichever part is being built.
                     values.put("hasSystems", hasSystems(models, environment.id()));
-                    // The systems of this environment, so that the shell's sidebar can list them.
-                    // They are built as other parts, so their pages are in no tree the shell's build
-                    // can see - the run that read the landscape is the only thing that can name them.
-                    values.put("systems", systemsOf(models, environment.id()));
+                    // The systems of this environment, so that the shell's sidebar can list them: they are
+                    // built as parts of their own, so their pages are in no tree the shell's build can see.
+                    // Only for a part that carries whole trees, because only its sidebar reads the list -
+                    // and this file is hashed, so writing the whole landscape into every part would rebuild
+                    // all of them whenever any system is added or renamed.
+                    if (part.carriesWholeEnvironments()) {
+                        values.put("systems", systemsOf(models, environment.id()));
+                    }
                     return values;
                 })
                 .toList();
         return Map.of("environments", environments);
     }
 
-    /**
-     * Whether an environment's tree has a systems index.
-     * <p>
-     * Both halves matter: an environment that reads no architecture model contributes no model at all, and one
-     * whose landscape reports no system writes no index either - an empty index would say the landscape is
-     * empty rather than that it was not read.
-     */
     /** One entry per system of an environment: what it is called, and where its tree is served. */
     private static List<Map<String, Object>> systemsOf(Map<String, EnvironmentModel> models,
                                                       String environment) {
@@ -260,6 +281,13 @@ public class SiteSources {
                 .toList();
     }
 
+    /**
+     * Whether an environment's tree has a systems index.
+     * <p>
+     * Both halves matter: an environment that reads no architecture model contributes no model at all, and one
+     * whose landscape reports no system writes no index either - an empty index would say the landscape is
+     * empty rather than that it was not read.
+     */
     private static boolean hasSystems(Map<String, EnvironmentModel> models, String environment) {
         EnvironmentModel model = models.get(environment);
         return model != null && !model.systems().isEmpty();
@@ -267,7 +295,7 @@ public class SiteSources {
 
     /**
      * What the site is, as the site generator reads it - including where it is published, which the generated
-     * site needs for its sitemap and its metadata.
+     * site needs for its page metadata.
      */
     private Map<String, Object> descriptionOf(Site site, SitePart part, Instant generatedAt,
                                               boolean mainHasSystems) {
@@ -302,11 +330,17 @@ public class SiteSources {
      * The part being written, as the site template reads it: where its content is mounted, which environments
      * it carries, and whether it owns the site's own pages - which decides whether the navbar and the footer
      * may link to them as routes of this build or have to leave the check.
+     * <p>
+     * <b>Both {@code shell} and {@code carriesWholeEnvironments} are written, and they answer different
+     * questions.</b> Whether the site's own pages are this build's is the second one - it is what decides here
+     * whether they are written at all - and the two coincide only for a partition whose parts are systems.
+     * {@code shell} says which part this is, which is what a log line and a page's own provenance want.
      */
     private static Map<String, Object> partOf(SitePart part) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", part.id());
         values.put("shell", part.isShell());
+        values.put("carriesWholeEnvironments", part.carriesWholeEnvironments());
         values.put("tree", part.tree());
         values.put("environments", part.environments());
         return values;
@@ -381,7 +415,7 @@ public class SiteSources {
     }
 
     /**
-     * The page describing the documentation, into every environment tree of the site.
+     * Writes the page describing the documentation into every environment this part carries.
      * <p>
      * <b>There is no graceful path here.</b> The root page and the footer of the template both link the page,
      * and the site is built with {@code onBrokenLinks: 'throw'} - so a run that left it out would fail anyway,
@@ -389,7 +423,6 @@ public class SiteSources {
      * that is not configured, and only a configured site is ever built, so this says what went wrong instead of
      * pretending to carry on.
      */
-    /** Writes the page describing the documentation into every environment this part carries. */
     private void writeAboutThisDocumentation(long buildId, Site site, SitePart part, Path contentDirectory,
                                              Instant generatedAt, Map<String, EnvironmentModel> models)
             throws IOException {

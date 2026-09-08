@@ -135,6 +135,42 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
         assertThat(diagram).containsText("orders-intake");
         assertThat(diagram).containsText("shipping");
         assertThat(diagram).not().containsText("Syntax Error");
+        // The gold of the subject and the blue of the relations. A colour written into the source is never
+        // re-themed - the plugin re-renders with the engine's dark flag, which moves PlantUML's own palette
+        // and leaves these two where they are - and the browser here prefers dark, so this is the mode in
+        // which they have to be legible.
+        Assertions.assertThat(diagram.locator("[fill='#FFD700']").count())
+                .describedAs("the box of the subject is gold")
+                .isPositive();
+        Assertions.assertThat(diagram.locator("[stroke='#0000FF']").count())
+                .describedAs("and every relation is blue")
+                .isPositive();
+        // Two systems each have a component called gateway. Two boxes sharing a label and differing only in
+        // their alias is what the view emits for that, and one box carrying both sets of arrows is what it
+        // would be if PlantUML read the label as the identity.
+        Assertions.assertThat(diagram.getByText("gateway", new Locator.GetByTextOptions().setExact(true))
+                        .count())
+                .describedAs("two boxes, not one merged")
+                .isEqualTo(2);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>A package carries a link too.</b> A neighbouring system on a component context view is a package
+     * rather than a box, so that is where the way into its own documentation lives - and a link inside a
+     * fence is checked by nothing but a browser.
+     */
+    @Test
+    void diagrams_whenAPackageIsLinked_thenItIsAnAnchorAsWell() {
+        open("/" + GUIDE_ROUTE + "/");
+        Locator diagram = page.locator("[data-plantuml-diagram] svg:has(text)").first();
+        assertThat(diagram).isVisible();
+
+        // Every anchor of the picture. The packages and the boxes of the fixture all link to the guide page
+        // except one, so an anchor count below the number of packages would mean a package lost its link.
+        Assertions.assertThat(diagram.locator("a[*|href='/guide/']").count())
+                .describedAs("three packages and two boxes link to the page itself")
+                .isGreaterThanOrEqualTo(3);
         assertNothingWentWrongInTheBrowser();
     }
 

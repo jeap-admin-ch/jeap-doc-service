@@ -36,7 +36,7 @@ when there is none, and a gap in the numbering tells a reader it has not been wr
 Diagrams are fenced PlantUML source, never images. The site's plugin renders them in the reader's browser, so a
 diagram stays searchable and readable as text.
 
-Three facts about the diagrams belong to this template, because they are how it draws rather than what the
+Five facts about the diagrams belong to this template, because they are how it draws rather than what the
 model says:
 
 - **The whitebox page carries two of them.** *Inside the system* draws the components and what flows between
@@ -49,6 +49,15 @@ model says:
 - **An arrow shows at most `jeap.doc.generator.max-edge-labels` names**, and the count for its kind above that -
   `5 Events`. The engine lays a label out by recursion and overflows the browser's stack at about sixty lines,
   so this is what makes a busy system's diagram render at all. Every name is in the page's table.
+- **A component context view names components, wherever they live.** A counterpart of another system is drawn
+  inside a package for the system that owns it, not collapsed into one box for that system - the model knows
+  which component it is. A package holds the counterparts and never the neighbour's whole decomposition, and a
+  system is a single box only where the model names no component of it, or where the bound left no room to
+  open it.
+- **Two colours, both written into the source.** The box of the subject is `#Gold` and outlined bold; every
+  relation of a component diagram is `#blue`. The diagram plugin re-renders with PlantUML's dark palette when
+  a reader switches colour mode, and it never touches a colour the source names - so these two are the same in
+  either mode, deliberately.
 
 ## Licence
 

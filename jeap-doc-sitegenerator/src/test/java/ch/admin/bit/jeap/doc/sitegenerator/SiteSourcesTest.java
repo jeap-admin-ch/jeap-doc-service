@@ -160,6 +160,47 @@ class SiteSourcesTest {
                 new AboutThisDocumentation());
     }
 
+    /**
+     * <b>A part's content must not change when a system it does not document appears.</b>
+     * {@code environments.json} is inside the hashed content, and the whole landscape's system list used to
+     * be written into every part - so one system arriving rebuilt all of them, which is the one thing the
+     * digest exists to prevent.
+     */
+    @Test
+    void write_whenAnotherSystemAppears_thenAPartThatDoesNotDocumentItHashesToWhatItDid() throws IOException {
+        Site site = siteOf("default");
+        Path before = Files.createDirectories(content.resolve("before"));
+        Path after = Files.createDirectories(content.resolve("after"));
+
+        WrittenContent first = sourcesReading(new LandscapeIn("dev", List.of("orders")))
+                .write(1L, site, systemPartOf(site, "orders"), before, GENERATED_AT);
+        WrittenContent second = sourcesReading(new LandscapeIn("dev", List.of("orders", "shipping")))
+                .write(1L, site, systemPartOf(site, "orders"), after, GENERATED_AT);
+
+        assertThat(ContentDigest.of(after, second.volatileTimestamps(), VERSION))
+                .describedAs("the content of the part carrying orders")
+                .isEqualTo(ContentDigest.of(before, first.volatileTimestamps(), VERSION));
+    }
+
+    /**
+     * <b>One build sees one landscape.</b> The systems index names the systems this run read, and the parts
+     * a link is compared against used to be asked of the model again - so a system removed in between was
+     * claimed by no part, its link stayed inside the broken-link check, and the build failed on a route that
+     * never existed.
+     */
+    @Test
+    void write_whenTheModelNoLongerKnowsASystemTheRunRead_thenItsLinkStillLeavesTheCheck() throws IOException {
+        Site site = siteOf("default");
+        // The landscape this run reads has orders in it; the partition, which asks the model, no longer does.
+        SiteSources withOneModel = sourcesReadingOneModelIn("dev");
+
+        withOneModel.write(1L, site, shellOf(site), content, GENERATED_AT);
+
+        assertThat(Files.readString(content.resolve("dev/systems/index.md"), StandardCharsets.UTF_8))
+                .describedAs("the index's link to the part that carries orders")
+                .contains("](pathname:///dev/systems/orders/)");
+    }
+
     /** A generator whose landscape is one system, read by the one environment named. */
     private static SiteSources sourcesReadingOneModelIn(String modelled) {
         PublicationProperties publication = new PublicationProperties();
@@ -173,6 +214,20 @@ class SiteSourcesTest {
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), new BuildProperties(),
                 TestProvenance.of(new OneSystemIn(modelled)), new AboutThisDocumentation());
+    }
+
+    /** A generator over the given landscape, with the partition reading the same one. */
+    private static SiteSources sourcesReading(ArchitectureModelSource landscape) {
+        PublicationProperties publication = new PublicationProperties();
+        publication.setUrl("https://doc.example.ch");
+        SiteUrls urls = new SiteUrls(publication, "");
+        return new SiteSources(urls, new DefaultResourceLoader(),
+                new SystemPages(landscape, NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                        NoArchitectureArtifacts.INSTANCE, new StructureTemplates(List.of()),
+                        new GeneratorProperties(), new ArchitectureImportProperties(), BuildMetrics.NONE, urls),
+                new DocumentationSites(new SiteProperties()),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(landscape), new BuildProperties(),
+                TestProvenance.of(landscape), new AboutThisDocumentation());
     }
 
     private JsonNode siteJson() throws IOException {
@@ -280,6 +335,14 @@ class SiteSourcesTest {
         assertThat(site.get("hasSystems").asBoolean()).isFalse();
         assertThat(site.get("sites")).isNotEmpty();
         assertThat(site.get("sites").get(0).get("url").asText()).startsWith("https://doc.example.ch");
+        // What the template branches on, and it is not the part's identity: whether this build wrote the
+        // site's own pages is what says whether the navbar and the footer may link to them as routes of its
+        // own. The two coincide only for a partition whose parts are systems.
+        JsonNode part = site.get("part");
+        assertThat(part.get("id").asText()).isEqualTo("shell");
+        assertThat(part.get("carriesWholeEnvironments").asBoolean()).isTrue();
+        assertThat(part.get("shell").asBoolean()).isTrue();
+        assertThat(part.get("environments")).isNotEmpty();
     }
 
     /**
@@ -523,6 +586,52 @@ class SiteSourcesTest {
         public Optional<Instant> lastSuccessfulImportAt(String environment) {
             return Optional.of(GENERATED_AT);
         }
+    }
+
+    /** A landscape of the named systems, read by exactly one environment. */
+    private record LandscapeIn(String environment, List<String> systems) implements ArchitectureModelSource {
+
+        @Override
+        public boolean isConfiguredFor(String environment) {
+            return this.environment.equals(environment);
+        }
+
+        @Override
+        public Optional<String> sourceUrlOf(String environment) {
+            return Optional.of("https://archrepo");
+        }
+
+        @Override
+        public List<String> systemSlugsOf(String environment) {
+            return systems.stream().sorted().toList();
+        }
+
+        @Override
+        public ArchitectureSnapshot read(String environment) {
+            return new ArchitectureSnapshot(ArchitectureModel.of(systems.stream()
+                    .map(system -> new DocumentedSystem(system, system, null, List.of(), null, List.of(),
+                            List.of(), List.of()))
+                    .toList()), GENERATED_AT);
+        }
+
+        @Override
+        public Optional<Instant> lastSuccessfulImportAt(String environment) {
+            return Optional.of(GENERATED_AT);
+        }
+    }
+
+    /** The shell: it carries every environment's tree and writes the site's own pages, but no system. */
+    private static SitePart shellOf(Site site) {
+        return new SitePart(PartKey.shellOf(site.id()), "the site itself", "", false,
+                site.environments().stream().map(SiteEnvironment::id).toList(), List.of());
+    }
+
+    /** The part carrying one system, in every environment of the site - what the partition produces. */
+    private static SitePart systemPartOf(Site site, String slug) {
+        return new SitePart(PartKey.of(site.id(), "system-" + slug), "the system " + slug, "systems/" + slug,
+                true, site.environments().stream().map(SiteEnvironment::id).toList(),
+                site.environments().stream()
+                        .map(environment -> environment.routePrefix() + "/systems/" + slug + "/").toList());
     }
 
     /**

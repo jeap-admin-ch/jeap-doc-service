@@ -4,6 +4,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Where the imported architecture model of an environment is kept.
@@ -34,7 +35,7 @@ public interface ArchitectureModelRepository {
      * What the parts of a site are made of - see {@link ch.admin.bit.jeap.doc.domain.SitePartition}. It is a
      * projection and not a landscape: a part per system is asked for far more often than a model is read.
      */
-    java.util.List<String> systemSlugsOf(String environment);
+    List<String> systemSlugsOf(String environment);
 
     /**
      * Replaces everything stored for one environment with the given landscape, in one transaction.

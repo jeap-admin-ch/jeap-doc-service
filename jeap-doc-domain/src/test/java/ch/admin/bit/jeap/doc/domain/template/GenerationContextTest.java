@@ -51,46 +51,6 @@ class GenerationContextTest {
                 .matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\S+");
     }
 
-    /**
-     * The architecture repository's content URLs carry its context path, and so does the configured upstream:
-     * appending one to the other puts the context path in twice and the link answers 404. Resolved against
-     * the origin instead - the same rule the replication fetches an artifact by.
-     */
-    @Test
-    void archRepoLink_resolvesAgainstTheOriginRatherThanAppendingToTheUrl() {
-        GenerationContext context = contextWithArchRepoUrl("https://archrepo.example.com/archrepo");
-
-        assertThat(context.archRepoLink("/archrepo/docs-api/systems/orders"))
-                .isEqualTo("https://archrepo.example.com/archrepo/docs-api/systems/orders");
-    }
-
-    /** A swaggerUrl is served absolute, because a browser follows it directly. It is left as it is. */
-    @Test
-    void archRepoLink_whenTheAddressIsAlreadyAbsolute_thenItIsUnchanged() {
-        GenerationContext context = contextWithArchRepoUrl("https://archrepo.example.com/archrepo");
-
-        assertThat(context.archRepoLink("https://elsewhere.example.com/x"))
-                .isEqualTo("https://elsewhere.example.com/x");
-    }
-
-    /**
-     * Nothing to resolve against, or nothing to resolve: the address comes back as it went in, and a relative
-     * one is then shown as code rather than as a link - which is what a reader can act on.
-     */
-    @Test
-    void archRepoLink_whenThereIsNothingToResolveWith_thenTheAddressIsUnchanged() {
-        assertThat(contextWithArchRepoUrl(null).archRepoLink("/docs-api/x")).isEqualTo("/docs-api/x");
-        assertThat(contextWithArchRepoUrl("").archRepoLink("/docs-api/x")).isEqualTo("/docs-api/x");
-        assertThat(contextWithArchRepoUrl("https://archrepo").archRepoLink(null)).isNull();
-        assertThat(contextWithArchRepoUrl("https://archrepo").archRepoLink("  ")).isEqualTo("  ");
-    }
-
-    private static GenerationContext contextWithArchRepoUrl(String archRepoUrl) {
-        return new GenerationContext(ArchitectureModel.of(List.of()), "dev", archRepoUrl,
-                Instant.parse("2026-08-28T05:50:00Z"), Instant.parse("2026-08-28T06:05:02Z"),
-                new DiagramLimits(100, 4, 40, 100, 200), "/");
-    }
-
     private static GenerationContext contextWithLinkPrefix(String linkPrefix) {
         return new GenerationContext(ArchitectureModel.of(List.of()), "dev", "https://archrepo",
                 Instant.parse("2026-08-28T05:50:00Z"), Instant.parse("2026-08-28T06:05:02Z"),

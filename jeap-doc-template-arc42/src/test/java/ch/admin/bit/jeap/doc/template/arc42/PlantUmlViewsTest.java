@@ -61,7 +61,8 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.contextView(SystemContext.of(model, orders(), 60),
                 generation(model)).source();
 
-        assertThat(uml).contains("component \"orders\" as c_orders [[/docs/prod/systems/orders/]] #line.bold");
+        assertThat(uml).contains("component \"orders\" as c_orders [[/docs/prod/systems/orders/]] "
+                                 + "#Gold;line.bold");
     }
 
     /**
@@ -81,7 +82,7 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.contextView(SystemContext.of(model, orders, 60),
                 generation(model)).source();
 
-        assertThat(uml).contains("-->").contains("..>");
+        assertThat(uml).contains("-[#blue]->").contains(".[#blue].>");
     }
 
     /**
@@ -423,21 +424,21 @@ class PlantUmlViewsTest {
     void componentContextView_drawsTheComponentInItsSystemAndTheOthersOutside() {
         ArchitectureModel model = componentLandscape();
 
-        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders",
+        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60),
                 generation(model)).source();
 
         assertThat(uml).startsWith("@startuml").endsWith("@enduml");
         assertThat(uml).contains("left to right direction");
         assertThat(uml).describedAs("the component and its sibling inside the system's package")
-                .contains("package \"orders\" {")
+                .contains("package \"orders\" as c_orders [[/docs/prod/systems/orders/]] {")
                 .contains("component \"orders-intake\"")
                 .contains("component \"orders-risk\"");
-        assertThat(uml).describedAs("and the other system outside it, as one box")
-                .contains("component \"shipping\"")
-                .doesNotContain("shipping-gateway");
-        assertThat(uml).describedAs("a message is a solid arrow and a REST call a dotted one")
-                .contains("-->")
-                .contains("..>");
+        assertThat(uml).describedAs("and the counterpart of the other system, inside a package for it")
+                .contains("package \"shipping\"")
+                .contains("component \"shipping-gateway\"");
+        assertThat(uml).describedAs("a message is a solid arrow and a REST call a dotted one, both blue")
+                .contains("-[#blue]->")
+                .contains(".[#blue].>");
     }
 
     /**
@@ -448,12 +449,12 @@ class PlantUmlViewsTest {
     void componentContextView_theComponentInTheMiddleCarriesItsLinkBeforeItsColour() {
         ArchitectureModel model = componentLandscape();
 
-        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders",
+        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60),
                 generation(model)).source();
 
         assertThat(uml).contains("component \"orders-intake\" as c_orders_intake "
                                  + "[[/docs/prod/systems/orders/system-architecture/building-block-view/"
-                                 + "components/orders-intake/]] #line.bold");
+                                 + "components/orders-intake/]] #Gold;line.bold");
     }
 
     /** Every box is a link, and a fenced one carries the base URL and the environment prefix already. */
@@ -461,12 +462,17 @@ class PlantUmlViewsTest {
     void componentContextView_everyBoxLinksToThePageOfWhatItDraws() {
         ArchitectureModel model = componentLandscape();
 
-        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders",
+        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60),
                 generation(model)).source();
 
         assertThat(uml).contains("[[/docs/prod/systems/orders/system-architecture/building-block-view/"
                                  + "components/orders-risk/]]");
-        assertThat(uml).contains("[[/docs/prod/systems/shipping/]]");
+        assertThat(uml).describedAs("a counterpart of another system links to its own page, under that "
+                                    + "system's slug")
+                .contains("[[/docs/prod/systems/shipping/system-architecture/building-block-view/"
+                          + "components/shipping-gateway/]]");
+        assertThat(uml).describedAs("and the package carries the way into that system's own documentation")
+                .contains("package \"shipping\" as c_shipping [[/docs/prod/systems/shipping/]] {");
     }
 
     /** An arrow to a box the diagram left out would point at nothing; the page's table still lists it. */
@@ -474,12 +480,12 @@ class PlantUmlViewsTest {
     void componentContextView_drawsNoArrowToACounterpartItLeftOut() {
         ArchitectureModel model = componentLandscape();
 
-        String uml = PlantUmlViews.componentContextView(componentContext(model, 0, 0), "orders",
+        String uml = PlantUmlViews.componentContextView(componentContext(model, 0, 0),
                 generation(model)).source();
 
         assertThat(uml).doesNotContain("orders-risk").doesNotContain("shipping");
         assertThat(uml).describedAs("and no arrow at all, because both ends of every edge are gone")
-                .doesNotContain("-->").doesNotContain("..>");
+                .doesNotContain("-[#blue]->").doesNotContain(".[#blue].>");
     }
 
     /** The cap on an arrow's names applies here too: it is the one method every arrow goes through. */
@@ -491,7 +497,7 @@ class PlantUmlViewsTest {
                 "/docs/prod/");
 
         PlantUmlViews.Diagram diagram =
-                PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders", capped);
+                PlantUmlViews.componentContextView(componentContext(model, 60, 60), capped);
 
         assertThat(diagram.labelsSummarized()).isTrue();
         assertThat(diagram.source()).contains(" : 1 Event");
@@ -508,9 +514,11 @@ class PlantUmlViewsTest {
         ArchitectureModel model = ArchitectureModel.of(List.of(system));
 
         String uml = PlantUmlViews.componentContextView(
-                ComponentContext.of(model, system, hostile, 60, 60), "orders", generation(model)).source();
+                ComponentContext.of(model, system, hostile, 60, 60), generation(model)).source();
 
-        assertThat(uml).contains("package \"orders\u2019\" {")
+        assertThat(uml).describedAs("the label is escaped and the alias is sanitized: a quote becomes a typographic "
+                             + "one in the name and an underscore in the identifier")
+                .contains("package \"orders\u2019\" as c_orders_ [[/docs/prod/systems/orders/]] {")
                 .contains("component \"orders((https://evil.example/x))\"")
                 .doesNotContain("[[https://evil.example/x]]");
     }
@@ -681,7 +689,14 @@ class PlantUmlViewsTest {
     void databaseSchema_whenAColumnNameStartsWithSomethingPlantUmlReads_thenItIsStillAField() {
         DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(new SchemaTable("orders_order",
                 List.of(new SchemaColumn("'foo", "text", true), new SchemaColumn("--bar", "text", true),
-                        new SchemaColumn("}baz", "text", true), new SchemaColumn("plain", "text", true)),
+                        new SchemaColumn("}baz", "text", true),
+                        // A quoted identifier may begin with a space, and what PlantUML reads is the first
+                        // character of the line that is not blank - so this one is a comment without the
+                        // marker, and the column is gone from the picture with nothing failing.
+                        new SchemaColumn(" 'spaced", "text", true),
+                        new SchemaColumn("\t--tabbed", "text", true),
+                        new SchemaColumn(" plainly spaced", "text", true),
+                        new SchemaColumn("plain", "text", true)),
                 List.of(), List.of())));
 
         String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
@@ -689,7 +704,28 @@ class PlantUmlViewsTest {
         assertThat(uml).contains("    {field} 'foo : text")
                 .contains("    {field} --bar : text")
                 .contains("    {field} }baz : text")
-                .describedAs("and only where it is needed").contains("    plain : text");
+                .contains("    {field}  'spaced : text")
+                .contains("    {field} \t--tabbed : text")
+                .describedAs("and only where it is needed")
+                .contains("     plainly spaced : text")
+                .contains("    plain : text");
+    }
+
+    /**
+     * A non-nullable column needs no marker: the {@code *} in front of its name has already moved the name
+     * off the start of the line, which is the whole reason the marker is there.
+     */
+    @Test
+    void databaseSchema_whenAHazardousColumnIsNotNullable_thenTheStarIsEnough() {
+        DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(new SchemaTable("orders_order",
+                List.of(new SchemaColumn("'foo", "text", false), new SchemaColumn("}bar", "text", false)),
+                List.of(), List.of())));
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).contains("  * 'foo : text").contains("  * }bar : text");
+        assertThat(uml).describedAs("no marker where the name does not start the line")
+                .doesNotContain("{field}");
     }
 
     /**
@@ -745,10 +781,9 @@ class PlantUmlViewsTest {
         ArchitectureModel model = componentLandscape();
         GenerationContext generation = generation(model);
 
-        assertThat(PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders", generation)
-                .source())
-                .isEqualTo(PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders",
-                        generation).source());
+        assertThat(PlantUmlViews.componentContextView(componentContext(model, 60, 60), generation).source())
+                .isEqualTo(PlantUmlViews.componentContextView(componentContext(model, 60, 60), generation)
+                        .source());
         assertThat(PlantUmlViews.databaseSchema(documented(schema(), generation)).source())
                 .isEqualTo(PlantUmlViews.databaseSchema(documented(schema(), generation)).source());
     }
@@ -780,7 +815,9 @@ class PlantUmlViewsTest {
                         new SystemRelation(RelationKind.REST_API, "orders", "orders-intake", "shipping",
                                 "shipping-gateway", null, "GET", "/api/shipments", null)),
                 List.of());
-        return ArchitectureModel.of(List.of(orders, other("shipping")));
+        DocumentedSystem shipping = new DocumentedSystem("shipping", "shipping", null, List.of(), null,
+                List.of(component("shipping-gateway")), List.of(), List.of());
+        return ArchitectureModel.of(List.of(orders, shipping));
     }
 
     /** A schema of two tables, one referencing the other, and the machinery beside them. */

@@ -3,7 +3,6 @@ package ch.admin.bit.jeap.doc.domain.template;
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 
-import java.net.URI;
 import java.time.Instant;
 
 /**
@@ -65,34 +64,6 @@ public record GenerationContext(
 
     public boolean hasModelImportedAt() {
         return modelImportedAt != null;
-    }
-
-    /**
-     * An address the architecture repository served as its own path, made absolute so that a browser can
-     * follow it - which is what a link on a page needs. A {@code contentUrl} is that shape, unlike a
-     * {@code swaggerUrl}, which the upstream serves absolute because a browser follows it directly.
-     * <p>
-     * <b>Resolved against the origin, not appended to the URL.</b> The architecture repository's content
-     * URLs already carry its context path, and so does the configured upstream - appending one to the other
-     * would put the context path in twice and the link would answer {@code 404}. It is the same rule the
-     * replication resolves an artifact by.
-     * <p>
-     * Answers the address unchanged where it is absolute already, where this run does not know the
-     * architecture repository's URL, or where either is not a URI: a relative address is then still shown as
-     * code, which is what {@code Md.linkOrCode} does with a target it cannot link.
-     */
-    public String archRepoLink(String addressRelativeToTheArchRepo) {
-        String address = addressRelativeToTheArchRepo;
-        if (address == null || address.isBlank() || address.contains("://")
-            || archRepoUrl == null || archRepoUrl.isBlank()) {
-            return address;
-        }
-        try {
-            return URI.create(archRepoUrl).resolve(address).toString();
-        } catch (IllegalArgumentException e) {
-            // Not a URI, on either side. One unusable address must not end the generation of every system.
-            return address;
-        }
     }
 
     /**

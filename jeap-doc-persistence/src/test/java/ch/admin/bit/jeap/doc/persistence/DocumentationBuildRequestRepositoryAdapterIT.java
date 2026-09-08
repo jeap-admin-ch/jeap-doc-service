@@ -33,6 +33,35 @@ class DocumentationBuildRequestRepositoryAdapterIT extends PostgresTestContainer
         assertThat(requests.pendingSince(site)).contains(NOW);
     }
 
+    /**
+     * The parts of a publication are asked for in one transaction, so that another instance sees all of them
+     * or none. Seeing the first of fifty and none of the rest, it builds that one, finds nothing else owed,
+     * and reports a publication that took seconds.
+     */
+    @Test
+    void requestAll_thenEveryPartIsPendingAndTheNewOnesAreCounted() {
+        String site = site("one-transaction");
+        PartKey shell = shell(site);
+        PartKey orders = PartKey.of(site, "system-orders");
+        PartKey shipping = PartKey.of(site, "system-shipping");
+        requests.request(orders, BuildTrigger.UPLOAD, NOW, null, false);
+        Publication publication = Publication.askedAt(NOW.plusSeconds(60));
+
+        int created = requests.requestAll(List.of(shell, orders, shipping), BuildTrigger.IMPORT,
+                NOW.plusSeconds(60), publication, false);
+
+        assertThat(created).describedAs("the two that were not already pending").isEqualTo(2);
+        assertThat(requests.pending()).extracting(BuildRequest::part)
+                .contains(shell, orders, shipping);
+        // The part that was already pending keeps who asked first, and joins the publication all the same.
+        assertThat(requests.pending()).filteredOn(request -> request.part().equals(orders)).singleElement()
+                .satisfies(request -> {
+                    assertThat(request.trigger()).isEqualTo(BuildTrigger.UPLOAD);
+                    assertThat(request.requestedAt()).isEqualTo(NOW);
+                    assertThat(request.publication().id()).isEqualTo(publication.id());
+                });
+    }
+
     @Test
     void request_whenAlreadyPending_thenItIsTheSameRequest() {
         String site = site("collapsing");

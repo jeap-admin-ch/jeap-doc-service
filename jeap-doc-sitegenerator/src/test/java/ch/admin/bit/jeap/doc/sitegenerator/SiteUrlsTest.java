@@ -49,7 +49,7 @@ class SiteUrlsTest {
     }
 
     /**
-     * The generated site carries this origin in its sitemap and its metadata, and the site generator refuses an
+     * The generated site carries this origin in the metadata of every page, and the site generator refuses an
      * empty one - which without this check would surface minutes into a build instead of in the deployment.
      */
     @Test
@@ -60,8 +60,8 @@ class SiteUrlsTest {
     }
 
     /**
-     * The value is an origin, not a URL with a path: a path given here is doubled in the sitemap and in every
-     * canonical URL, or fails the Docusaurus build minutes into a run.
+     * The value is an origin, not a URL with a path: a path given here is doubled in every canonical URL, or
+     * fails the Docusaurus build minutes into a run.
      */
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {

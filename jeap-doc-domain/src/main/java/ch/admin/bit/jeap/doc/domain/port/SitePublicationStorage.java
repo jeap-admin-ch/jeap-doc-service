@@ -17,7 +17,11 @@ public interface SitePublicationStorage {
 
     /**
      * Writes a generated part, its own files under its own prefix and its shared files under the site's, and
-     * reports how much was written altogether.
+     * reports how many of <b>this part's own</b> files it wrote and how many bytes they are.
+     * <p>
+     * The shared files are left out of both numbers on purpose: every part writes the same ones, so counting
+     * them per part would make a fifty-two-part site fifty-one copies of that bundle too large - and the
+     * numbers belong to the row of one part.
      */
     PublishedSite publish(PartPublication where, Path directory);
 

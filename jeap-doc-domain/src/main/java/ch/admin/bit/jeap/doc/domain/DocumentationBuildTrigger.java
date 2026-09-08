@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.domain;
 
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,7 @@ import java.util.List;
  * every one of those requests, so that the wall clock of a full publication is a thing the service can measure
  * across its instances. An upload does not: one part is not a publication.
  * <p>
- * <b>There are three of them, and only the upload names one part.</b> An import asks for the whole site: which
+ * <b>Only the upload names one part.</b> An import asks for the whole site: which
  * systems its landscape changed is a question this variant does not ask, because a part is a system and a
  * system is quick to generate - so asking is more machinery than rebuilding.
  * <p>
@@ -45,6 +46,7 @@ public class DocumentationBuildTrigger {
     private final DocumentationBuildRequestRepository requests;
     private final DocumentationSites sites;
     private final SitePartition partition;
+    private final ArchitectureModelSource architectureModel;
     private final BuildMetrics metrics;
     private final DocumentationBuildPickup pickup;
     private final Clock clock;
@@ -92,6 +94,36 @@ public class DocumentationBuildTrigger {
             requested += parts.size();
         }
         return requested;
+    }
+
+    /**
+     * Asks for every part of every site that no import publishes, and reports how many parts that was.
+     * <p>
+     * A site whose environments have no architecture repository behind them is asked for by no import, so its
+     * only other triggers are an upload and an operator. The content digest covers the service version, so
+     * such a site would keep serving what an earlier release generated - a template change would reach it only
+     * when somebody uploaded something. Nearly free all the same: a part whose content has not moved is not
+     * generated.
+     * <p>
+     * Sites an import does publish are left alone here, so that a landscape is not asked for twice.
+     */
+    public int requestBecauseNothingElsePublishesTheSite() {
+        int requested = 0;
+        for (Site site : sites.all()) {
+            if (isPublishedByAnImport(site)) {
+                continue;
+            }
+            List<SitePart> parts = partition.partsOf(site);
+            requestParts(parts, BuildTrigger.SCHEDULE, Publication.askedAt(clock.instant()), false);
+            metrics.triggered(site.id(), BuildTrigger.SCHEDULE, parts.size());
+            requested += parts.size();
+        }
+        return requested;
+    }
+
+    private boolean isPublishedByAnImport(Site site) {
+        return site.environments().stream()
+                .anyMatch(environment -> architectureModel.isConfiguredFor(environment.id()));
     }
 
     /**
@@ -144,15 +176,21 @@ public class DocumentationBuildTrigger {
     /**
      * One wake-up for the lot, and after the requests are written: an import asks for fifty parts, and fifty
      * wake-ups would be forty-nine passes that find what the first one is already building.
+     * <p>
+     * <b>One transaction for the lot too.</b> The parts of a publication have to become owed together, or an
+     * instance that sees the first of them and none of the rest builds it, finds nothing else owed, and
+     * reports a publication that took seconds - see {@code DocumentationBuildRequestRepository.requestAll}.
      */
     private void requestParts(List<SitePart> parts, BuildTrigger trigger, Publication publication,
                               boolean forced) {
-        for (SitePart part : parts) {
-            request(part.key(), trigger, publication, forced);
+        if (parts.isEmpty()) {
+            return;
         }
-        if (!parts.isEmpty()) {
-            pickup.whenAskedFor();
-        }
+        int created = requests.requestAll(parts.stream().map(SitePart::key).toList(), trigger,
+                clock.instant(), publication, forced);
+        log.info("A build of {} part(s) of {} was asked for by {}; {} of them were already pending.",
+                parts.size(), parts.getFirst().site(), trigger, parts.size() - created);
+        pickup.whenAskedFor();
     }
 
     private boolean request(PartKey part, BuildTrigger trigger, Publication publication, boolean forced) {

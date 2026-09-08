@@ -18,7 +18,23 @@ alter table documentation_build
     add column publication_id varchar,
     add column publication_requested_at timestamptz;
 
--- What the publication gauges read: the builds of one publication, per site. Partial, because most rows of a
--- large site are single-part builds an upload asked for and those carry no publication at all.
-create index documentation_build_publication on documentation_build (site, publication_id)
+-- The three indexes the publication gauges are read through. All partial: most rows of a large site are
+-- single-part builds an upload asked for, and those carry no publication at all.
+
+-- The anti-joins that decide whether a publication is over filter on publication_id alone - they ask whether
+-- *any* row of that publication is still running or still owed - so an index led by the site cannot serve
+-- them.
+create index documentation_build_publication on documentation_build (publication_id, site)
+    where publication_id is not null;
+
+-- The same anti-join over the pending requests. The table is small, but a sequential scan of it per
+-- publication row of the group is not.
+create index documentation_build_request_publication on documentation_build_request (publication_id)
+    where publication_id is not null;
+
+-- The outer half of the publication query, which the two above cannot serve: it reads the publications *of one
+-- site* since an instant. Without this it falls back to (site, id desc) and walks the site's whole history
+-- inside the ninety day retention - twice per scrape, for a one row answer.
+create index documentation_build_site_publication
+    on documentation_build (site, publication_requested_at desc)
     where publication_id is not null;

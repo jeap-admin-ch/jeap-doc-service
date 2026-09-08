@@ -1,13 +1,10 @@
 package ch.admin.bit.jeap.doc.domain.architecture.imports;
 
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
-import ch.admin.bit.jeap.doc.domain.DocDomainConfiguration;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.EventListener;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.SchedulingConfigurer;
 import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 
@@ -39,25 +36,14 @@ class ArchitectureImportScheduling implements SchedulingConfigurer {
 
     private final ArchitectureImportJob job;
     private final ArchitectureImportProperties properties;
-    /**
-     * The executor every import runs on: the one the doc service declares for it, named rather than "whatever
-     * {@code TaskExecutor} this context happens to have". An instance may add starters that contribute
-     * executors of their own, and asking for the single one of a context then fails an instance that had
-     * already started - see {@link DocDomainConfiguration#ARCHITECTURE_IMPORT_TASK_EXECUTOR}.
-     */
-    private final TaskExecutor taskExecutor;
+    /** Where an import is put: it collapses a second ask for one environment and reports a full queue. */
+    private final ArchitectureImportQueue queue;
 
-    /**
-     * Written out rather than generated: the qualifier has to reach the constructor <b>parameter</b> for
-     * Spring to resolve it, and Lombok does not carry an annotation from the field onto the parameter it
-     * generates. A generated constructor leaves the executor ambiguous again, which is the whole defect.
-     */
     ArchitectureImportScheduling(ArchitectureImportJob job, ArchitectureImportProperties properties,
-                                 @Qualifier(DocDomainConfiguration.ARCHITECTURE_IMPORT_TASK_EXECUTOR)
-                                 TaskExecutor taskExecutor) {
+                                 ArchitectureImportQueue queue) {
         this.job = job;
         this.properties = properties;
-        this.taskExecutor = taskExecutor;
+        this.queue = queue;
     }
 
     @Override
@@ -77,7 +63,7 @@ class ArchitectureImportScheduling implements SchedulingConfigurer {
         for (String environment : job.environments()) {
             // Handed off, never run here: the scheduler thread is back within a millisecond, and the imports
             // queue on the one import thread and run one after the other.
-            registrar.addCronTask(() -> taskExecutor.execute(() -> job.importEnvironment(environment)), cron);
+            registrar.addCronTask(() -> queue.submit(environment), cron);
             log.info("The architecture repository of the environment {} is imported on the schedule '{}'.",
                     environment, cron);
         }
@@ -100,7 +86,7 @@ class ArchitectureImportScheduling implements SchedulingConfigurer {
         if (!properties.isOnStartup() || job.environments().isEmpty()) {
             return;
         }
-        taskExecutor.execute(job::importWhatIsMissing);
+        queue.submitWhatIsMissing();
     }
 
     private void check() {

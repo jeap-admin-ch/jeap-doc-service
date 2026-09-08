@@ -156,9 +156,22 @@ Four pages carry one:
   the ranks of a graph of components calling components belong.
 
 - **The component context view**, in a component's own *3. Context and Scope*, draws that component in the
-  middle of its system's package, the siblings it actually exchanges something with beside it, and every other
-  system as a single box outside it. Only the siblings it exchanges something with: drawing all of them would
-  make it the whitebox view again. It is laid out **left to right**, because its shape is the context view's.
+  middle of its system's package and, beside it, **every counterpart it exchanges something with as its own
+  box** - the siblings inside its own system's package, the components of other systems inside a package for
+  the system that owns each. Only the counterparts it exchanges something with: drawing all of a system's
+  components would make the page that system's whitebox view. **A package is not a decomposition**, and the
+  page says so: it holds the counterparts, never everything the neighbour has.
+
+  A neighbouring system is **one box** in two cases - the architecture model names no counterpart component
+  for it, or the bound on the boxes left no room to open it. An arrow then lands on that box, and two
+  relations to different components of that system are one arrow carrying both sets of labels. Where the model
+  names a component but not the system that owns it, the diagram has no box for it at all - a box outside
+  every system would read as a component of no system - and the page names those separately, because their
+  relations are on its table with nothing in the picture.
+
+  Every box links to its own page, and so does every package: opening a neighbour must not cost the reader the
+  way into that neighbour's own documentation. It is laid out **left to right**, because its shape is the
+  context view's.
 - **The entity relationship diagram**, in a component's *5. Building Block View*, draws an entity per table of
   the database schema its build published - the primary key columns above a separator, `*` for a column that
   cannot be null, `<<PK>>` and `<<FK>>` markers, and one arrow per foreign key.
@@ -179,13 +192,28 @@ The cap is not a matter of taste. The diagram engine lays a label out by recursi
 stack at about sixty lines, and a diagram that fails to render is an error box on the page that fails no build -
 so an arrow of a busy system has to be summarized for the diagram to exist at all.
 
+### What the colours mean
+
+Two, and no more: the box of the **subject** - the current system on a system context view, the current
+component on a component context view - is **gold** and outlined bold, and every **relation** of a component
+diagram is **blue**. The entity relationship diagram keeps its black crow's feet, which are data-model
+notation rather than relations.
+
+**The colours are the same in either colour mode**, and that is a decision rather than an oversight. The site's
+diagram plugin re-renders a diagram with the engine's dark palette when a reader switches, which moves
+PlantUML's *own* fills and strokes - but never a colour written into the diagram's source. These two are
+written into the source, because the subject is the subject and a relation is a relation in either mode.
+
 The same holds for the boxes: above [`max-diagram-nodes`](configuration.md#the-architecture-model) other
 systems, a diagram leaves the rest out and says how many. A system's own components are never left out of the
 whitebox view - every one of them has a page, and one missing from it would be a page no diagram points at.
 
 A component's context view is bounded the same way, by
-[`max-context-components`](configuration.md#the-architecture-model) siblings and `max-diagram-nodes` other
-systems. And an entity relationship diagram is bounded by
+[`max-context-components`](configuration.md#the-architecture-model) component boxes - its siblings and the
+counterpart components of other systems together - and `max-diagram-nodes` other systems. The siblings are
+drawn first and then one component of each other system in turn, so one large neighbour cannot push a
+component's own siblings off its own page; a system whose components got no box is drawn as a single box, which
+is what the whole view was before it named foreign components. And an entity relationship diagram is bounded by
 [`max-schema-table-diagram`](configuration.md#the-architecture-model) tables: the tables something has a
 foreign key into are kept first, so the arrows of the tables that are drawn still point at a box. A schema of
 three hundred tables gives a reader a page that is useful rather than one that fails to render.
@@ -193,7 +221,7 @@ three hundred tables gives a reader a page that is useful rather than one that f
 These bounds are on the picture and not on the facts. A diagram that had to leave something out says how much,
 and the list of tables below it carries what it left out - up to
 [`max-schema-table-list`](configuration.md#the-architecture-model) entries. That is the one bound on the facts
-themselves, and [Partitions are grouped, and the list is bounded](#partitions-are-grouped-and-the-list-is-bounded)
+themselves, and [Tables of one name pattern are grouped, and the list is bounded](#tables-of-one-name-pattern-are-grouped-and-the-list-is-bounded)
 is what it is for.
 
 ### Where the generated content comes from
@@ -282,8 +310,8 @@ specification has been replicated yet.
 **The Database Schema page is written as soon as the model says the component has one**, replicated or not, for
 the reason the REST API page is: between an architecture import and the replication of the schema there would
 otherwise be no entry in the chapter at all, and no way to tell a schema that has not arrived yet from a
-component that keeps no data. Until it arrives the page carries the schema version the model knows and the link
-to the published schema in the architecture repository, and says that there is no diagram yet.
+component that keeps no data. Until it arrives the page carries the schema version the model knows and says
+that there is no diagram yet and that the next import brings one.
 
 Two tables of a database schema are on neither the diagram nor the list: **`flyway_schema_history` and
 `shedlock`**, matched ignoring case, are the machinery of a schema rather than the data of the component. The
@@ -298,37 +326,53 @@ nothing else. The reason is logged with the component's name, and the page falls
 There is no `try` around the generation of a site, so a malformed specification that threw would end the
 documentation of every system of the environment.
 
-#### Partitions are grouped, and the list is bounded
+#### Tables of one name pattern are grouped, and the list is bounded
 
 **A partitioned table is documented once.** A component that partitions by day or by tenant publishes a table
 per partition: one schema in the estate holds 6583 tables, of which 6321 are partitions of 260. Those are
-grouped into one entry per table, named after the table with a **`_*` postfix** - `doc_meta_*` - and each such
-entry says how many partitions it stands for and what their range is. Nothing is dropped: the facts row keeps
-both numbers, as `6583 (260 after grouping partitions)`, and a note on the page explains the postfix.
+grouped into one entry per table, named after the shared part of the name with a **`_*` postfix** -
+`doc_meta_*` - and each such entry says how many tables it stands for and what their range is. Nothing is
+dropped: the facts row keeps both numbers, as `6583 (260 documented entries)`, and a note on the page explains
+the postfix.
+
+**The page says what was observed rather than what it means.** The grouping reads a name pattern and compares
+columns and primary keys, and a published schema says nothing about what a table is for - so the entry reads
+*these tables share this name pattern and this shape*, not *these are partitions of one table*. Tables kept
+deliberately apart, one per year or per version, look exactly alike to it, and the count and the range are what
+let a reader check.
 
 A family is recognised by two signals, and the second is what makes the first safe:
 
 | signal | what it is |
 | ------ | ----------- |
 | the stem | the name without its last segment, where that segment looks like a partition key - `_202609`, `_20260904`, `_54`, `_ym110` |
-| the column signature | the ordered columns with their types and nullability. Shards of one table are identical, because the database generated them from one definition |
+| the column signature | the ordered columns with their types and nullability, and the primary key. Shards of one table are identical, because the database generated them from one definition. The **foreign keys are deliberately not compared**: a hand-sharded child table often carries a reference per shard, and the entry that stands for the family shows the arrows of one shard |
 
-**Five tables of one stem make a family**, and a stem whose tables do not all share their columns is left
-alone entirely. That is deliberate: an `order_v1` beside an `order_v2` whose columns differ are two tables,
+**Five tables of one stem make a family**, and a stem whose tables do not all share their columns and their
+primary key is left alone entirely. That is deliberate: an `order_v1` beside an `order_v2` whose columns differ are two tables,
 and a reader shown one row would never learn it. Nothing here infers what a table is *for* - PostgreSQL knows
 the answer properly in `pg_inherits`, and the day the schema publisher passes it on this heuristic goes away.
 
 **Grouping happens before either bound applies**, which is what turns both bounds into a formality for all but
 two schemas in the estate. Then:
 
-- the **diagram** draws the first `max-schema-table-diagram` entries (**100**) by priority,
-- the **list** writes the first `max-schema-table-list` entries (**200**) by name, with their columns.
+- the **list** writes the first `max-schema-table-list` entries (**200**) by name, with their columns,
+- the **diagram** draws `max-schema-table-diagram` of *those* (**100**) by priority - out of the listed
+  entries, so a box on the diagram always has a list entry to look it up in, and the diagram is bounded by
+  the smaller of the two limits.
+
+Each bound says so on the page, and each says only what it did: the diagram's note counts against the entries
+the page **lists**, because the diagram draws out of those - a page whose list is bounded shows fewer boxes
+without the diagram's own bound being anywhere near, and the note that named the renderer for that would name
+the wrong cause. Where the diagram drew every listed entry there is no diagram note at all, and the list note
+carries the rest.
 
 `max-schema-table-list` is the one bound on the facts rather than on a picture, and it is what makes a schema
 page's cost finite: unbounded, one component's page carried 33 527 rows of columns and cost an hour and a half
-to build. Where it applies the page says so and links the published schema, which carries every entry. In the
-measured estate two components' pages are shortened, by about 60 and 54 entries - and after grouping those
-entries are partitions of tables that are already on the page.
+to build. Where it applies the page says how many entries it did not write, and it **links nothing**: the only
+other place that carries every entry is the architecture repository's own API, which is not a page a reader of
+a published site can open. In the measured estate two components' pages are shortened, by about 60 and 54
+entries - and after grouping, those entries share a name pattern with tables that are already on the page.
 
 ### What the navigation shows
 
@@ -447,7 +491,7 @@ Everything that wants documentation rebuilt asks for a **part** of a site, and n
 |                       | Which part |
 |-----------------------|------------|
 | **An upload**         | The part that carries the system the documents are for. An upload names a system and no environment at all, and with a part per system it does not have to |
-| **The architecture import** | **Every part** of every site documenting the environment it read - see below. `jeap.doc.build.triggered` is how many parts that was |
+| **The architecture import** | **Every part** of every site documenting the environment it read, when it stored a *changed* landscape - see below. `jeap.doc.build.triggered` is how many parts that was |
 | **An operator**       | The part they named, or every part of the site - `POST /api/sites/{site}/builds`, see [API](api.md). It ignores `publish-on-upload`: a site published only when something is uploaded to it is exactly the site somebody has to be able to publish by hand |
 
 All of them leave the same thing behind: a **request** for that part, at most one at a time. Everything else
@@ -477,6 +521,18 @@ measured - and never a site rebuilt.
 A run that finds the landscape it already had asks for nothing at all: the whole landscape is compared by one
 hash before anything is written, and an unchanged one is not even stored. So an hour in which nothing changed
 costs one HTTP conversation with the architecture repository and no build.
+
+**A site no import publishes is reconciled on a schedule of its own.** A site whose environments have no
+architecture repository behind them is asked for by no import, so its only other triggers are an upload and an
+operator - and because the content digest covers the service version, it would keep serving what an earlier
+release generated. `jeap.doc.build.reconcile-cron` asks for every part of exactly those sites, every four
+hours through the working day by default, and `-` switches it off. It is nearly free: a part whose content has
+not moved is not generated. Those builds carry the trigger `SCHEDULE`.
+
+**Only the model step asks for a publication.** The OpenAPI specifications, the database schemas and the
+message schemas are replicated by steps of their own, and none of them asks for a build. A component that
+publishes a new specification while its architecture model stays the same therefore gets the rewritten page
+with the next import that changes the model, or when an operator asks for the part by hand.
 
 The landscape is stored either way: asking for the documentation happens after the import has written it, so a
 trigger that fails costs an hour - the next import publishes it - and never the landscape.
@@ -558,7 +614,7 @@ Every run is a row in `documentation_build`, and it is what to read first:
 |-------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
 | `part`                        | Which part of the site this build produced - `shell`, or `system-<slug>`                                                          |
 | `state`                       | `RUNNING`, `SUCCEEDED`, `FAILED`, `ABANDONED`, `ABORTED` or `SKIPPED` - the last of these being a build that had nothing to publish |
-| `trigger_kind`                | `UPLOAD`, `IMPORT`, `SCHEDULE`, `MANUAL` or `RECOVERY` - why this run happened                                                    |
+| `trigger_kind`                | `UPLOAD`, `IMPORT`, `SCHEDULE`, `MANUAL` or `RECOVERY` - why this run happened                                                               |
 | `started_at`, `finished_at`   | when, and for how long                                                                                                            |
 | `instance`                    | which instance ran it, for a log search                                                                                           |
 | `object_prefix`               | where its output lies                                                                                                             |
@@ -579,8 +635,12 @@ otherwise lose the row that says it is published at all, and start answering tha
 
 The object storage has no transaction to borrow, so the design does not ask it for one:
 
-1. the generated files are written under `<site>/<build>/`, a prefix nothing points at yet - except the shared
-   files, which go to `<site>/shared/` and are the same bytes under the same name whichever part wrote them;
+1. the generated files are written under `sites/<site>/<build>/`, a prefix nothing points at yet - except the
+   shared files, which go to `sites/<site>/shared/` and are the same bytes under the same name whichever part
+   wrote them. A shared file already stored with those bytes is **not written again**: every part of a
+   publication emits the same ninety-odd names, and the stored entity tag is what decides - not that the key
+   exists, because a new version of the template does change the fixed-name files there. `sites` is
+   `jeap.doc.storage.site-prefix`, and an instance may set it to something else;
 2. **one row** moves the build to `SUCCEEDED` - and that is the publication of that part;
 3. only then are the publications of that part past `jeap.doc.build.retention` deleted.
 
@@ -684,11 +744,11 @@ so these are read in CloudWatch rather than in a terminal.
 
 |                                               |                                                                                                                                                                                                                                                                                                                                                                                                        |
 |-----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **The site is not updating**                  | `GET /api/sites` answers it: whether it is published on upload, what is pending, what is running and what was last built. What publishes a site hourly is the architecture import, so an import that is failing is a site that stops changing - `GET /api/architecture` says when each environment was last read                                                                                    |
+| **The site is not updating**                  | `GET /api/sites` answers it: whether it is published on upload, what is pending, what is running and what was last built. What publishes a site hourly is the architecture import, so an import that is failing is a site that stops changing - `GET /api/architecture/environments` says when each environment was last read - see [the imports](api.md#reading-what-the-imports-have-been-doing)                                                                                    |
 | **Builds are failing**                        | `documentation_build.failure_reason` carries the last lines of the generator's output. `jeap_doc_build_seconds_count{result="failed"}` is the counter                                                                                                                                                                                                                                                  |
 | **A build hangs**                             | It is given up on after `jeap.doc.build.timeout` and the process tree is killed. The build is failed, and counted as `jeap_doc_build_seconds_count{result="timed_out"}` rather than among the failures. If that happens repeatedly, look at the memory the container has - see [The site image](site-image.md) - and at how close the builds that still finish are running to the budget, which `jeap_doc_build_timeout_seconds` is published for                                                                                                                                                                                                                |
-| **A build is slow, or grows**                 | The `[PERF]` lines say how long each phase of the generator took and what the Node heap held before and after it, nested by phase - so the phase responsible has a name. They are logged at `DEBUG` with the rest of the generator's output: turn `ch.admin.bit.jeap.doc.sitegenerator.NodeProcess` down to `DEBUG` to read them, and filter on `docBuildId` or `docPart` for the trace of one build. `jeap.doc.build.perf-log` decides whether they are produced at all |
-| **The generator exits with 137**              | The container's memory limit killed it. The failure reason carries what the container held while that build ran, `jeap_doc_container_memory_used_bytes` shows when it climbed and how far, and `jeap_doc_container_memory_oom_kills_total` counts the kills - see [Observability](observability.md#the-memory-of-the-container) and [The site image](site-image.md) for what to size                   |
+| **A build is slow, or grows**                 | The first knob is `jeap.doc.build.ssg-task-size` where the pool is on: the static generation is where a large part's time goes, and a task of a hundred pages is less than half the time a task of ten takes. Then: the `[PERF]` lines say how long each phase of the generator took and what the Node heap held before and after it, nested by phase - so the phase responsible has a name. They are logged at `DEBUG` with the rest of the generator's output: turn `ch.admin.bit.jeap.doc.sitegenerator.NodeProcess` down to `DEBUG` to read them, and filter on `docBuildId` or `docPart` for the trace of one build. `jeap.doc.build.perf-log` decides whether they are produced at all |
+| **The generator exits with 137**              | The container's memory limit killed it. `max_over_time(jeap_doc_container_memory_used_bytes[15m])` shows how far it climbed, and `jeap_doc_container_memory_oom_kills_total` counts the kills - see [Observability](observability.md#the-memory-of-the-container) and [The site image](site-image.md) for what to size                   |
 | **`GET /` answers 503**                       | Nothing has been published for that site yet. It is not a wrong URL: the first successful build answers it                                                                                                                                                                                                                                                                                             |
 | **Nothing is picked up at all**               | `jeap_doc_build_request_age_seconds` grows. Either no instance is running the schedule, or a lock is held by an instance that has gone - which resolves itself within `jeap.doc.build.lock-lease`. A running architecture import is not a cause: the imports have a thread of their own and never hold a scheduler thread (they did once, when every scheduled task ran on the lock keep-alive thread) |
 | **`jeap.doc.build.abandoned` keeps counting** | Containers are being killed rather than stopped. Check the platform's stop timeout against the budget above, and the memory the container has                                                                                                                                                                                                                                                          |

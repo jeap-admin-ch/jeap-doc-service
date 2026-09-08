@@ -1,8 +1,8 @@
 package ch.admin.bit.jeap.doc.web.api.architecture;
 
-import ch.admin.bit.jeap.doc.domain.DocDomainConfiguration;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportJob;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportQueue;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.web.api.Roles;
@@ -10,8 +10,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -55,21 +54,15 @@ class ArchitectureAdminController {
     private final ArchitectureImportRepository imports;
     private final ArchitectureModelSource architectureModel;
 
-    /**
-     * The executor every import runs on, named rather than "whatever {@code TaskExecutor} this context has" -
-     * an instance may add starters that contribute executors of their own. Written out rather than generated,
-     * because the qualifier has to reach the constructor <b>parameter</b> and Lombok does not carry it there.
-     */
-    private final TaskExecutor taskExecutor;
+    /** Where an ask is put: it collapses a second ask for one environment and reports a full queue. */
+    private final ArchitectureImportQueue queue;
 
     ArchitectureAdminController(ArchitectureImportJob job, ArchitectureImportRepository imports,
-                                ArchitectureModelSource architectureModel,
-                                @Qualifier(DocDomainConfiguration.ARCHITECTURE_IMPORT_TASK_EXECUTOR)
-                                TaskExecutor taskExecutor) {
+                                ArchitectureModelSource architectureModel, ArchitectureImportQueue queue) {
         this.job = job;
         this.imports = imports;
         this.architectureModel = architectureModel;
-        this.taskExecutor = taskExecutor;
+        this.queue = queue;
     }
 
     @Operation(summary = "Ask for every environment to be imported",
@@ -78,16 +71,21 @@ class ArchitectureAdminController {
                           + "after the other on one thread. Use it after correcting something in an "
                           + "architecture repository - a documentation build reads what was imported and "
                           + "calls the architecture repository not at all, so forcing a publication alone "
-                          + "would publish the old model again. The ask is not durable: it is lost if this "
-                          + "instance stops before it runs, and the schedule imports the environment anyway.")
+                          + "would publish the old model again. An environment already on the queue is not "
+                          + "queued twice, and the answer says so per environment; an environment being "
+                          + "imported right now is imported once more afterwards, because this ask may be "
+                          + "about something that run has already read. The ask is not durable: it is lost "
+                          + "if this instance stops before it runs, and the schedule imports the environment "
+                          + "anyway. 429 if nothing could be put on the queue at all.")
     @PostMapping(path = ArchitectureApiPaths.IMPORTS, produces = "application/json")
     @PreAuthorize(Roles.HAS_SITES_ADMIN_ROLE)
     public ResponseEntity<ImportRequestedDto> requestEveryImport(Authentication caller) {
         List<String> environments = requireConfigured();
-        environments.forEach(this::enqueue);
-        log.info("An import of every architecture repository was asked for over the API by {}: {}.",
-                nameOf(caller), environments);
-        return ResponseEntity.accepted().body(ImportRequestedDto.of(environments));
+        ImportRequestedDto asked = enqueue(environments);
+        log.info("An import of every architecture repository was asked for over the API by {}: {} queued, {} "
+                 + "already asked for, {} refused.", nameOf(caller), asked.environments(),
+                asked.alreadyAskedFor(), asked.refused());
+        return answer(asked);
     }
 
     @Operation(summary = "Ask for one environment to be imported",
@@ -99,10 +97,10 @@ class ArchitectureAdminController {
             @Parameter(description = "Identifier of the environment") @PathVariable String environment,
             Authentication caller) {
         String configured = requireConfigured(environment);
-        enqueue(configured);
+        ImportRequestedDto asked = enqueue(List.of(configured));
         log.info("An import of the architecture repository of the environment {} was asked for over the API "
-                 + "by {}.", configured, nameOf(caller));
-        return ResponseEntity.accepted().body(ImportRequestedDto.of(List.of(configured)));
+                 + "by {}: {}.", configured, nameOf(caller), outcomeOf(asked));
+        return answer(asked);
     }
 
     @Operation(summary = "Read the state of the architecture imports",
@@ -123,12 +121,44 @@ class ArchitectureAdminController {
     }
 
     /**
-     * Hands the import to the executor. <b>The rejection of a full queue is the executor's own business</b>:
-     * it logs and drops, because the next schedule imports what this ask did not - so there is nothing here to
-     * answer differently, and a queue check before the call would be a race either way.
+     * Hands the imports to the queue and sorts the environments by what became of each.
+     * <p>
+     * An environment <b>already on the queue</b> is not queued again: the same fetch behind itself is a minute
+     * of the one import thread for nothing, and it is how repeated asks push the scheduled imports off a
+     * bounded queue. An environment <b>being imported</b> is a different case and runs once more - see
+     * {@code ArchitectureImportQueue}.
      */
-    private void enqueue(String environment) {
-        taskExecutor.execute(() -> job.importEnvironment(environment));
+    private ImportRequestedDto enqueue(List<String> environments) {
+        List<String> queued = new ArrayList<>();
+        List<String> alreadyAskedFor = new ArrayList<>();
+        List<String> refused = new ArrayList<>();
+        for (String environment : environments) {
+            switch (queue.submit(environment)) {
+                case QUEUED -> queued.add(environment);
+                case ALREADY_ASKED_FOR -> alreadyAskedFor.add(environment);
+                case REFUSED -> refused.add(environment);
+            }
+        }
+        return ImportRequestedDto.of(queued, alreadyAskedFor, refused);
+    }
+
+    /**
+     * <b>202 while an import of everything asked for is coming</b> - queued now, or already on its way. Only
+     * where nothing is is the answer 429: the queue is full, the operator's ask did nothing, and telling them
+     * 202 would be a lie about the one thing they are waiting for.
+     */
+    private static ResponseEntity<ImportRequestedDto> answer(ImportRequestedDto asked) {
+        if (asked.environments().isEmpty() && asked.alreadyAskedFor().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(asked);
+        }
+        return ResponseEntity.accepted().body(asked);
+    }
+
+    private static String outcomeOf(ImportRequestedDto asked) {
+        if (!asked.environments().isEmpty()) {
+            return "queued";
+        }
+        return asked.refused().isEmpty() ? "already asked for" : "refused, the queue is full";
     }
 
     private List<String> requireConfigured() {

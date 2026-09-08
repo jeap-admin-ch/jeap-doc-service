@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The one import thread and its bounded queue: a cron that finds the queue full is dropped with a warning, and
@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 class ArchitectureImportExecutorTest {
 
     @Test
-    void execute_whenTheQueueIsFull_thenTheImportIsDroppedRatherThanThrown() throws InterruptedException {
+    void execute_whenTheQueueIsFull_thenTheImportIsRefused() throws InterruptedException {
         ThreadPoolTaskExecutor executor = ArchitectureImportExecutor.create();
         executor.initialize();
         CountDownLatch release = new CountDownLatch(1);
@@ -34,9 +34,11 @@ class ArchitectureImportExecutorTest {
             for (int i = 0; i < ArchitectureImportExecutor.QUEUE_CAPACITY; i++) {
                 executor.execute(ran::incrementAndGet);
             }
-            assertThatCode(() -> executor.execute(ran::incrementAndGet))
-                    .as("the one beyond the queue is dropped, not thrown")
-                    .doesNotThrowAnyException();
+            // Refused rather than dropped: the caller reports it - the schedule as a warning, the
+            // administration API as a 429 - and a dropped one would leave both believing it is coming.
+            assertThatThrownBy(() -> executor.execute(ran::incrementAndGet))
+                    .as("the one beyond the queue is refused")
+                    .isInstanceOf(org.springframework.core.task.TaskRejectedException.class);
 
             release.countDown();
             executor.getThreadPoolExecutor().shutdown();

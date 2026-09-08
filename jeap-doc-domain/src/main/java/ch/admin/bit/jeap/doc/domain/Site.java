@@ -1,7 +1,6 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * One documentation site: what is generated, published and served as a whole.

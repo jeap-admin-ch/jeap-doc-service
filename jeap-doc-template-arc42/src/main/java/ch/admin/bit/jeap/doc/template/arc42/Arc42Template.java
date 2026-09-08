@@ -124,14 +124,6 @@ public class Arc42Template implements StructureTemplate {
         return Arc42Chapters.ALL;
     }
 
-    /**
-     * Writes the arc42 subtree of one system, by handing it to {@link Arc42SystemPages}.
-     * <p>
-     * <b>The structure is this class, the Markdown is that one.</b> What arc42 is - the twelve chapters, the
-     * segments a page is served under, which chapters this template generates into - is what the rest of this
-     * class says, and it is what the site generator and an upload are validated against. Turning a system into
-     * pages is a different job, and it is the larger of the two by an order of magnitude.
-     */
     @Override
     public Set<String> allowedFileExtensions() {
         return ALLOWED_FILE_EXTENSIONS;
@@ -190,6 +182,14 @@ public class Arc42Template implements StructureTemplate {
         return Set.of();
     }
 
+    /**
+     * Writes the arc42 subtree of one system, by handing it to {@link Arc42SystemPages}.
+     * <p>
+     * <b>The structure is this class, the Markdown is that one.</b> What arc42 is - the twelve chapters, the
+     * segments a page is served under, which chapters this template generates into - is what the rest of this
+     * class says, and it is what the site generator and an upload are validated against. Turning a system into
+     * pages is a different job, and it is the larger of the two by an order of magnitude.
+     */
     @Override
     public void writeSystem(DocumentedSystem system, GenerationContext context, Path systemDirectory)
             throws IOException {

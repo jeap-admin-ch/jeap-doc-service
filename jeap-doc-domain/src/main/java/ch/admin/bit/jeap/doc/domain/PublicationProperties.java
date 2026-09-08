@@ -14,8 +14,9 @@ import java.time.Duration;
 public class PublicationProperties {
 
     /**
-     * The origin the documentation is published under, without a path - it is what the sitemap and the page
-     * metadata name. The path below it is the context path of the service plus the site.
+     * The origin the documentation is published under, without a path - it is what the page metadata names, as
+     * the canonical URL of a page and its Open Graph tags. The path below it is the context path of the service
+     * plus the site.
      */
     private String url;
 

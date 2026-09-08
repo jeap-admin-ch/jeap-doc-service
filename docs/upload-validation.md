@@ -11,8 +11,12 @@ bytes. The structure is checked here, against the template the upload names.
 **Ask before you build the ZIP.** `POST /api/uploads/docs/validation` answers whether a path tree would be
 accepted: `200` when there is nothing to report, `422` with a finding per problem when there is. Nothing is
 uploaded, stored or read by it, and it has no side effect at all - see
-[the API](api.md#validating-a-documentation-set). The upload endpoint does not apply these rules; what does,
-apart from this endpoint, is the publication that writes an upload into the site.
+[the API](api.md#validating-a-documentation-set).
+
+**The endpoint is advisory, and today it is the only thing that applies these rules.** The upload endpoint does
+not apply them, and neither does anything else: taking an uploaded documentation set over into the generated
+site is not written yet, and when it is, it will apply the same rules from the same code rather than deriving
+them again. Until then a hand-made ZIP that skips this endpoint is not stopped by anything.
 
 ## What is ignored, and never reported
 
@@ -45,7 +49,7 @@ These rules are the doc service's, whatever template an upload names.
 | 3 | The path has at least two segments - a file at the root of the set belongs to no chapter, so nothing publishes it | `FILE_OUTSIDE_CHAPTER` |
 | 4 | No folder inside a chapter: the pages of a chapter lie directly in it | `NESTED_FOLDER` |
 | 5 | No file name begins with `.` or `_` - see below | `HIDDEN_NAME`, `UNPUBLISHABLE_NAME` |
-| 6 | `index` is the chapter's own landing page, and the doc service writes it | `RESERVED_NAME` |
+| 6 | No file name is one the site generator reads as the chapter's landing page - `index`, `readme` or the chapter folder's own name, in any case - because the doc service writes that page | `RESERVED_NAME` |
 | 7 | The set holds at least one path that was not ignored | `EMPTY_TREE` |
 
 Rules 3 to 6 are about a *chapter*, so they apply to a Markdown upload and not to an HTML one, which follows
@@ -71,7 +75,7 @@ carrying it. `HIDDEN_NAME`.
 | Whether a chapter is missing | Not an error: a repository documents what it documents, and no report mentions the chapters nobody wrote |
 | Anything about a file's content | The workflow's half, and this endpoint never receives a byte of it |
 | Whether the same tree was already uploaded | The endpoint has no memory and writes nothing |
-| Case | A path is compared as it arrives and only its extension is folded, so `1-Intro/` is an unknown chapter. Saying so is more useful than accepting it into a case-sensitive object store |
+| Case | A path is compared as it arrives, so `1-Intro/` is an unknown chapter. Saying so is more useful than accepting it into a case-sensitive object store. The exceptions are the extension and the landing page names of rule 6, which the site generator folds itself |
 
 ## arc42
 
@@ -92,7 +96,10 @@ A Markdown upload's first path segment is one of these twelve, and nothing else:
 ```
 
 Anything else is `UNKNOWN_CHAPTER`, and where the folder is recognisably one of them written the wrong way -
-`runtime-view`, `4-runtime-view`, `introduction` - the message names the one it means.
+`runtime-view`, `4-runtime-view`, `introduction` - the message names the one it means. **The name decides
+before the number does**: `4-runtime-view` is answered with `6-runtime-view`, the chapter it names, and not
+with chapter 4. A number is what the guess falls back on when the name matches nothing, which is the case of a
+folder written in another language.
 
 ### The files it takes
 
@@ -124,10 +131,12 @@ prevents.
 | `5-building-block-view` | `whitebox-view`, `components`, `events`, `commands` | `database-schema`, `rest-api`, `messages` | - |
 | `6-runtime-view` | `system-reactions` | `component-reactions` | - |
 
-Plus `index` in every chapter, for every template.
-
 Three of those are folders rather than pages - `components`, `events`, `commands` - and they are reserved for
 the same reason: a folder with a landing page and a file of that name are one URL.
+
+Plus, in every chapter of every template, the names the site generator reads as that chapter's landing page:
+`index`, `readme` and the chapter folder's own name - `1-intro/1-intro.md`. Those three are folded, because the
+generator folds them: `README.md` and `INDEX.MD` are the same page to it.
 
 **Nothing is generated for a library**, so a library upload is bounded by the rules that hold for every
 template and by the extensions above, and by nothing else.
@@ -173,7 +182,7 @@ as a whole.
 | `HIDDEN_NAME` | A file name beginning with a dot |
 | `UNPUBLISHABLE_NAME` | A file name beginning with an underscore |
 | `FORBIDDEN_EXTENSION` | An extension the template, or a microsite, does not take |
-| `RESERVED_NAME` | A document of a name the doc service generates into that chapter |
+| `RESERVED_NAME` | A document of a name the doc service generates into that chapter, or one the site generator reads as the chapter's landing page |
 | `UNKNOWN_TEMPLATE` | *Set-level.* No template of that name exists; the message names the ones that do |
 | `EMPTY_TREE` | *Set-level.* Nothing in the set would be published |
 | `MISSING_ENTRY_POINT` | *Set-level.* An HTML upload with no `index.html` at its root |

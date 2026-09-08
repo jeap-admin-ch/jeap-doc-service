@@ -21,8 +21,8 @@ UI at `/swagger-ui.html`; both are switched off unless the instance sets `jeap.s
 | `GET`  | `/api/sites/{site}/parts/{part}/builds`               | `<system-name>_@sites_#read`              | `200`        | The builds of one part - [Reading the parts](#reading-the-parts)                                            |
 | `GET`  | `/api/sites/{site}/builds`                            | `<system-name>_@sites_#read`              | `200`        | The builds of a site, newest first - [Reading the builds](#reading-the-builds)                              |
 | `GET`  | `/api/sites/{site}/builds/{buildId}`                  | `<system-name>_@sites_#read`              | `200`        | One build - [Reading the builds](#reading-the-builds)                                                       |
-| `POST` | `/api/architecture/imports`                           | `<system-name>_@sites_#admin`             | `202`        | Asks for every architecture repository to be imported - [Asking for the architecture repository to be imported](#asking-for-the-architecture-repository-to-be-imported) |
-| `POST` | `/api/architecture/environments/{environment}/imports` | `<system-name>_@sites_#admin`             | `202`        | Asks for one environment's import - [Asking for the architecture repository to be imported](#asking-for-the-architecture-repository-to-be-imported) |
+| `POST` | `/api/architecture/imports`                           | `<system-name>_@sites_#admin`             | `202`, `429` | Asks for every architecture repository to be imported - [Asking for the architecture repository to be imported](#asking-for-the-architecture-repository-to-be-imported) |
+| `POST` | `/api/architecture/environments/{environment}/imports` | `<system-name>_@sites_#admin`             | `202`, `429` | Asks for one environment's import - [Asking for the architecture repository to be imported](#asking-for-the-architecture-repository-to-be-imported) |
 | `GET`  | `/api/architecture/environments`                      | `<system-name>_@sites_#read`              | `200`        | What the imports have been doing - [Reading what the imports have been doing](#reading-what-the-imports-have-been-doing) |
 
 Every endpoint answers `401` without a valid token and `403` with a token that lacks the role; the upload role is
@@ -219,7 +219,7 @@ stored or read: the tree arrives as a list of paths, the endpoint has no side ef
 file's bytes.
 
 ```
-POST /api/uploads/docs/validation?type=component-docs&system=wvs&component=wvs-foo-bar-service
+POST /api/uploads/docs/validation?type=component-docs&system=orders&component=orders-intake
                                  &template=arc42&source-format=markdown
 Content-Type: application/json
 Authorization: Bearer ...
@@ -249,12 +249,18 @@ a different one.
   "pathsChecked": 42,
   "pathsIgnored": 2,
   "allowedFolders": ["1-intro", "2-constraints", "…", "12-glossary"],
-  "allowedExtensions": ["avif", "gif", "jpeg", "jpg", "md", "png", "svg", "webp"]
+  "allowedExtensions": ["avif", "gif", "jpeg", "jpg", "md", "png", "svg", "webp"],
+  "findings": [],
+  "findingsOmitted": 0
 }
 ```
 
+`findings` and `findingsOmitted` are always there, empty and zero on a `200` - so branch on the status line and
+not on whether the fields are present.
+
 `422 Unprocessable Content` - the request was understood and its content cannot be processed. The body is the
-same RFC 9457 problem document a rejected upload is answered with, carrying the report as extension members:
+same RFC 9457 problem document a rejected upload is answered with, served as `application/problem+json` and
+carrying the report as extension members:
 
 ```json
 {
@@ -284,7 +290,8 @@ same RFC 9457 problem document a rejected upload is answered with, carrying the 
 ```
 
 So a pipeline branches three ways: `200` publish, `422` print the findings and stop, anything else fail loudly
-because the endpoint or the token is wrong.
+because the endpoint or the token is wrong. The `200` is `application/json` and the `422` is
+`application/problem+json`; an `Accept` of either is answered rather than refused.
 
 | | |
 | --- | --- |
@@ -303,8 +310,9 @@ because the endpoint or the token is wrong.
 | A required parameter is missing | 400 | `MISSING_PARAMETER` |
 | A parameter this endpoint does not accept | 400 | `UNKNOWN_PARAMETER` |
 | A value that is not a slug, or a `type`/`source-format` that is not a known one | 400 | `INVALID_PARAMETER_VALUE` |
-| A body larger than a list of `max-paths` paths could be | 413 | `SIZE_LIMIT_EXCEEDED` - refused on its announced length, **before the body is read** |
-| More paths than [`max-paths`](configuration.md#uploads) | 413 | `TOO_MANY_PATHS` - counted after the body was parsed |
+| A body that is not a readable list of paths - malformed JSON, no body, a `paths` that is not a list | 400 | `INVALID_PARAMETER_VALUE` |
+| A body larger than a list of `max-paths` paths could be | 413 | `SIZE_LIMIT_EXCEEDED` - refused on its announced length **before the body is read**, and cut at the same limit **while it is read**, so a request that announces no length is bounded too |
+| More paths than [`max-paths`](configuration.md#uploads) | 413 | `TOO_MANY_PATHS` - counted while the list is read, so the request is refused at the path after the cap |
 | No token, or the role for another system | 401 / 403 | the security chain's own answer |
 
 A rejection here is **not** counted as a rejected upload: `jeap.doc.upload.rejected` is about uploads, and a
@@ -471,13 +479,14 @@ GET /api/sites/{site}/builds/{buildId}
 ```
 
 The runs of the generator for that site - **every part of it** - newest first, in every state. `limit` defaults
-to 20 and is brought into `1..100` rather than refused. Each build carries the part it produced, what it was
+to 20 and is brought into `1..100` rather than refused. Each build carries the `part` it produced, what it was
 asked for by, what became of it, when it started and finished, how long it took, how much of that was
-Docusaurus, the instance that ran it, what it published and how large that is - and `failureReason` when
-something went wrong.
+Docusaurus, the instance that ran it, what it published and how large that is, the `contentDigest` of what it
+wrote - and `failureReason` when something went wrong.
 
 A build in state `SKIPPED` published nothing and nothing is wrong with it: its part's content turned out to be
-exactly what is already being served, so the site generator was never started.
+exactly what is already being served, so the site generator was never started. `contentDigest` is what that
+comparison is made on: two builds of one part with the same digest wrote the same pages.
 
 It carries **no memory number**. It used to: the kernel's high-water mark, reset around each build, which was
 only that build's own while one build ran at a time. Several parts now build at once and each of them reset
@@ -511,6 +520,8 @@ Authorization: Bearer ...
 ```json
 {
   "environments": ["dev", "ref", "abn", "prod"],
+  "alreadyAskedFor": [],
+  "refused": [],
   "durable": false
 }
 ```
@@ -519,11 +530,19 @@ Answered with `202`. **Nothing runs on the request**: the ask goes onto the same
 schedule and the startup catch-up use, and the request thread is back within a millisecond. An import takes
 minutes, and two at once would fetch two landscapes into a heap sized for one.
 
+**The three lists say what became of each environment.** `environments` will be imported. `alreadyAskedFor`
+were already on the queue and had not started reading, so the ask joined that import instead of putting the
+same fetch behind it. `refused` were not queued at all - the queue is full, or the instance that answered is
+stopping - and the answer is `429` where that is every environment asked for, because telling an operator
+`202` for something that will not run is a lie about the one thing they are waiting for.
+
+An environment whose import is **running** is in `environments`: it is imported once more when that run ends.
+The run may already have read what the ask is about, which is exactly the case this endpoint exists for.
+
 **`durable` is always `false`, and it is in the answer rather than left to be assumed.** Unlike a build
 request, which is a row in the database, the import queue is the instance's own: an ask is lost if that
 instance stops before it runs. Nothing is broken by that - the schedule imports the environment anyway at its
-next occurrence - but it is the reason an ask is not a promise. A full queue is dropped with a warning for the
-same reason.
+next occurrence - but it is the reason an ask is not a promise.
 
 An `{environment}` this instance reads no architecture repository for is answered with `404`, and an instance
 that reads none at all answers `404` on both. The typo is the likely reason for asking twice, and importing an
@@ -567,9 +586,11 @@ The doc service is a web server as well as an API: every path that is not the AP
 description or the Swagger UI serves the generated documentation site, to anyone who can reach the service. See
 [Generating the documentation](generation.md).
 
-One of those paths is not published output but an answer of the service: `live-status.json`, under the base URL
-of each site, says when each of the site's environments last read its architecture repository, whether the
-import is behind, and when the import fires next. It belongs to the site and is open exactly as the site is -
+One of those paths is not published output but an answer of the service: `live-status.json`, **at the base URL
+of a site and only there**, says when each of the site's environments last read its architecture repository,
+whether the import is behind, and when the import fires next. A file of that name deeper in the tree is content
+like any other. It is answered before the site has to be published at all, so a site that has never been
+generated still reports why, and it is never cached. It belongs to the site and is open exactly as the site is -
 the page describing the documentation fetches it, because those statements would freeze into a page that is not
 rebuilt. What it may carry is the same decision as for that page; the administration API above is where a
 failure reason and the upstream URL stay.

@@ -73,4 +73,33 @@ class FrontMatterTest {
                 }
                 """);
     }
+
+    /** A category that starts open, which is what a reader sees of a chapter without clicking. */
+    @Test
+    void categoryFile_expanded_writesTheCollapsedFlag() {
+        assertThat(CategoryFile.expanded("5. Building Block View", 5)).isEqualTo("""
+                {
+                  "label": "5. Building Block View",
+                  "position": 5,
+                  "collapsed": false
+                }
+                """);
+    }
+
+    /**
+     * The custom property is what the site template matches a category on, so its exact spelling is a
+     * contract between this module and {@code docusaurus.config.js}. Pinned here rather than in a browser.
+     */
+    @Test
+    void categoryFile_marked_writesTheCustomProperty() {
+        assertThat(CategoryFile.marked("Systems", 1, "systemsIndex")).isEqualTo("""
+                {
+                  "label": "Systems",
+                  "position": 1,
+                  "customProps": {
+                    "systemsIndex": true
+                  }
+                }
+                """);
+    }
 }

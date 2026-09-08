@@ -92,7 +92,7 @@ public class BuildProperties {
      * <p>
      * It bounds the JavaScript side of a build and nothing else. The bundler is native code with an allocator
      * of its own, and on a large site that side is the larger one by far - see {@link #purgeNativeMemory}, and
-     * the peak the container reached, which every published build reports.
+     * the {@code jeap.doc.container.memory.used} gauge, which is where the peak of a container is read.
      */
     private DataSize maxNodeMemory = DataSize.ofMegabytes(1024);
 
@@ -147,10 +147,29 @@ public class BuildProperties {
      * what it does to the memory of a build: each worker thread is a V8 isolate with a heap of its own, and
      * {@code --max-old-space-size} bounds an isolate rather than the process - so a pool of them may hold a
      * multiple of {@link #maxNodeMemory} in one process, in a container that also holds this JVM. An instance
-     * whose container has the room buys the speed by switching it on; the number to decide it by is the peak
-     * the container reached, which every published build reports.
+     * whose container has the room buys the speed by switching it on; the number to decide it by is the
+     * {@code jeap.doc.container.memory.used} gauge over a range of builds.
      */
     private boolean ssgWorkerThreads = false;
+
+    /**
+     * How many pages the site generator hands one static-generation worker at a time.
+     * <p>
+     * Read only when {@link #ssgWorkerThreads} is on: it is the pooled executor that chunks the pages, and
+     * nothing else looks at the number.
+     * <p>
+     * <b>Deliberately not the generator's own default of ten.</b> At ten the pool spends most of its time
+     * waiting on the one thread that hands the chunks out and collects their results - measured at four
+     * threads, a worker is busy 66% of the time, and at eight threads 40% - and a task of ten pages also caps
+     * how many pages one worker can have in flight. At a hundred, the static generation of a large part is
+     * less than half of what it was, and the whole publication about a fifth faster.
+     * <p>
+     * Above a hundred the tasks start to run out before the threads do: a part of a few hundred pages then has
+     * fewer chunks than there are workers, and the pool degenerates towards serial for the small parts of a
+     * site. <b>At least 1</b> - {@code DocumentationBuildScheduling} refuses less while the service starts,
+     * because the generator does not check the value and renders no page at all for a zero.
+     */
+    private int ssgTaskSize = 100;
 
     /**
      * How many published sites to keep per site. Keeping a few makes a failed generation something to compare
@@ -170,4 +189,15 @@ public class BuildProperties {
      * the uploads next door, and a few minutes apart from it.
      */
     private String historyCron = "0 45 2 * * *";
+
+    /**
+     * When to ask for the sites nothing else publishes, in the time zone of the service. Every four hours
+     * during the working day by default; {@code "-"} switches it off.
+     * <p>
+     * A site whose environments have no architecture repository is asked for by no import, so the only other
+     * triggers it has are an upload and an operator. The content digest covers the service version, so such a
+     * site would keep serving what the release before last generated. Asking for every part of it is nearly
+     * free: a part whose content has not moved is not generated.
+     */
+    private String reconcileCron = "0 15 6-18/4 * * *";
 }

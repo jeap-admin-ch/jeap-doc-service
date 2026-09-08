@@ -47,13 +47,16 @@ public final class DocumentedSchema {
     }
 
     /**
+     * <b>The diagram is drawn out of the listed entries</b>, so a box on it always has an entry a reader can
+     * look up. Both bounds are the page's, and the smaller of the two is what the diagram gets.
+     *
      * @param maxDrawn  how many tables the entity relationship diagram may draw
      * @param maxListed how many entries the page may write with their columns
      */
     public static DocumentedSchema of(DatabaseSchema schema, int maxDrawn, int maxListed) {
         List<SchemaTable> documented = schema.documentedTables();
-        return new DocumentedSchema(schema, documented, DatabaseSchema.drawnFrom(documented, maxDrawn),
-                DatabaseSchema.listedFrom(documented, maxListed));
+        List<SchemaTable> listed = DatabaseSchema.listedFrom(documented, maxListed);
+        return new DocumentedSchema(schema, documented, DatabaseSchema.drawnFrom(listed, maxDrawn), listed);
     }
 
     /** Every table worth documenting, sorted by name, with each family of partitions as one entry. */
@@ -86,12 +89,19 @@ public final class DocumentedSchema {
         return listed;
     }
 
-    /** How many documented entries the diagram leaves out. The list of tables carries them anyway. */
+    /**
+     * How many of the <b>listed</b> entries the diagram leaves out - the diagram's own bound and nothing else.
+     * <p>
+     * Counted against the list rather than against everything documented because the diagram is drawn out of
+     * the listed entries: a page whose list is bounded draws fewer boxes than there are entries without the
+     * diagram's bound ever being reached, and a note blaming the diagram for that would name the wrong cause.
+     * What the list leaves out is {@link #notListed()}.
+     */
     public int notDrawn() {
-        return documented.size() - drawn.size();
+        return listed.size() - drawn.size();
     }
 
-    /** How many documented entries the page does not write. Only the published schema carries those. */
+    /** How many documented entries the page does not write. Nothing a reader can open carries those. */
     public int notListed() {
         return documented.size() - listed.size();
     }

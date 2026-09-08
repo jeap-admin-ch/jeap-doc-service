@@ -4,17 +4,20 @@ import ch.admin.bit.jeap.doc.domain.BuildState;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
 import ch.admin.bit.jeap.doc.domain.PartKey;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.Publication;
 import ch.admin.bit.jeap.doc.domain.port.CompletedPublication;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
+import ch.admin.bit.jeap.doc.domain.port.PublicationTotals;
+import ch.admin.bit.jeap.doc.domain.port.PublishedPart;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
 
@@ -204,36 +207,118 @@ class DocumentationBuildRepositoryAdapterIT extends PostgresTestContainerBase {
                 .doesNotContain(builds.published(shell(site)).orElseThrow().objectPrefix());
     }
 
+    /**
+     * What is served for a site: the newest succeeded build of <b>each</b> part, with its prefix, its digest
+     * and its page count in the right components.
+     * <p>
+     * The three publication queries all rest on one correlated subquery, and their projections put same-typed
+     * values next to each other - a swapped {@code part} and {@code objectPrefix} would pass validation and
+     * serve the wrong prefix.
+     */
+    @Test
+    void publishedPartsOf_thenItIsTheNewestSucceededBuildOfEveryPart() {
+        String site = site("two-parts");
+        PartKey orders = PartKey.of(site, "system-orders");
+        superseded(shell(site));
+        DocumentationBuild shell = builds.start(shell(site), BuildTrigger.IMPORT, INSTANCE, NOW.plusSeconds(10), null);
+        builds.succeeded(shell.id(), "sites/" + site + "/shell", 12, 4096, 900, "shell-digest", NOW.plusSeconds(11));
+        DocumentationBuild ofOrders = builds.start(orders, BuildTrigger.IMPORT, INSTANCE, NOW.plusSeconds(12), null);
+        builds.succeeded(ofOrders.id(), "sites/" + site + "/orders", 30, 8192, 900, "orders-digest", NOW.plusSeconds(13));
+        // A later failure of one part does not change what is published for it.
+        DocumentationBuild failed = builds.start(orders, BuildTrigger.IMPORT, INSTANCE, NOW.plusSeconds(14), null);
+        builds.failed(failed.id(), "exited with 1", NOW.plusSeconds(15));
+        // Another site's parts are none of this site's business.
+        String other = site("elsewhere");
+        DocumentationBuild elsewhere = builds.start(shell(other), BuildTrigger.IMPORT, INSTANCE, NOW, null);
+        builds.succeeded(elsewhere.id(), "sites/" + other + "/shell", 99, 99, 99, "other-digest", NOW.plusSeconds(1));
+
+        assertThat(builds.publishedPartsOf(site))
+                .extracting(PublishedPart::part, PublishedPart::objectPrefix, PublishedPart::contentDigest,
+                        PublishedPart::pageCount)
+                .containsExactlyInAnyOrder(
+                        tuple(SitePart.SHELL, "sites/" + site + "/shell", "shell-digest", 12),
+                        tuple("system-orders", "sites/" + site + "/orders", "orders-digest", 30));
+    }
+
+    /** What the site adds up to: the published build of each part, and not the ones they superseded. */
+    @Test
+    void publishedTotalsOf_thenItSumsThePublishedPartsAndNothingElse() {
+        String site = site("totals");
+        superseded(shell(site));
+        DocumentationBuild shell = builds.start(shell(site), BuildTrigger.IMPORT, INSTANCE, NOW.plusSeconds(10), null);
+        builds.succeeded(shell.id(), "sites/" + site + "/shell", 12, 4096, 900, "digest", NOW.plusSeconds(11));
+        DocumentationBuild orders = builds.start(PartKey.of(site, "system-orders"), BuildTrigger.IMPORT,
+                INSTANCE, NOW.plusSeconds(12), null);
+        builds.succeeded(orders.id(), "sites/" + site + "/orders", 30, 8192, 900, "digest", NOW.plusSeconds(13));
+
+        assertThat(builds.publishedTotalsOf(site))
+                .extracting(PublicationTotals::parts, PublicationTotals::pages, PublicationTotals::bytes)
+                .containsExactly(2, 42, 12288L);
+    }
+
+    /**
+     * The age of the oldest published part is what says a part has quietly stopped being rebuilt, which the
+     * newest publication of the site cannot.
+     */
+    @Test
+    void oldestPublicationAt_thenItIsTheOlderOfTheTwoParts() {
+        String site = site("oldest-part");
+        DocumentationBuild shell = builds.start(shell(site), BuildTrigger.IMPORT, INSTANCE, NOW, null);
+        builds.succeeded(shell.id(), "sites/" + site + "/shell", 1, 1, 1, "digest", NOW.plusSeconds(1));
+        DocumentationBuild orders = builds.start(PartKey.of(site, "system-orders"), BuildTrigger.IMPORT,
+                INSTANCE, NOW.plusSeconds(3600), null);
+        builds.succeeded(orders.id(), "sites/" + site + "/orders", 1, 1, 1, "digest", NOW.plusSeconds(3601));
+
+        assertThat(builds.oldestPublicationAt(site)).contains(NOW.plusSeconds(1));
+    }
+
+    /** A build of the part that succeeded and was then superseded by a later one. */
+    private void superseded(PartKey part) {
+        DocumentationBuild old = builds.start(part, BuildTrigger.IMPORT, INSTANCE, NOW, null);
+        builds.succeeded(old.id(), "sites/superseded/" + old.id(), 7, 7, 7, "old-digest", NOW.plusSeconds(1));
+    }
+
     @Test
     void deleteFinishedBefore_thenOnlyFinishedBuildsGo() {
         String site = site("history");
         DocumentationBuild finished = builds.start(shell(site), BuildTrigger.IMPORT, INSTANCE, NOW, null);
-        builds.succeeded(finished.id(), site + "/" + finished.id(), 1, 1, 1, "digest", NOW.plusSeconds(1));
+        builds.failed(finished.id(), "exited with 1", NOW.plusSeconds(1));
         DocumentationBuild running = builds.start(shell(site), BuildTrigger.IMPORT, INSTANCE, NOW, null);
 
-        assertThat(builds.deleteFinishedBefore(NOW.plusSeconds(600), Set.of())).isPositive();
+        assertThat(builds.deleteFinishedBefore(NOW.plusSeconds(600))).isPositive();
 
-        assertThat(builds.published(shell(site))).isEmpty();
+        assertThat(builds.recentOf(shell(site), 10)).extracting(DocumentationBuild::id)
+                .doesNotContain(finished.id());
         assertThat(builds.runningIds()).contains(running.id());
     }
 
     /**
-     * The newest successful build of a site is not only a record, it is the publication - so a site that is
-     * published rarely would otherwise lose what says it is published at all, and start answering that it has
-     * never been generated.
+     * The newest succeeded build of a part is not only a record, it is the publication - and a part whose
+     * content does not move is not rebuilt at all, so its publication is routinely older than the retention.
+     * The rule is in the statement: nothing has to name the row to spare.
      */
     @Test
-    void deleteFinishedBefore_thenThePublishedBuildIsKeptWhateverItsAge() {
+    void deleteFinishedBefore_thenWhatEachPartPublishedIsKeptWhateverItsAge() {
         String site = site("published-and-old");
         DocumentationBuild superseded = builds.start(shell(site), BuildTrigger.IMPORT, INSTANCE, NOW, null);
         builds.succeeded(superseded.id(), site + "/" + superseded.id(), 1, 1, 1, "digest", NOW.plusSeconds(1));
-        DocumentationBuild published = builds.start(shell(site), BuildTrigger.UPLOAD, INSTANCE, NOW.plusSeconds(2), null);
-        builds.succeeded(published.id(), site + "/" + published.id(), 1, 1, 1, "digest", NOW.plusSeconds(3));
+        DocumentationBuild shell = builds.start(shell(site), BuildTrigger.UPLOAD, INSTANCE, NOW.plusSeconds(2), null);
+        builds.succeeded(shell.id(), site + "/" + shell.id(), 1, 1, 1, "digest", NOW.plusSeconds(3));
+        PartKey orders = PartKey.of(site, "system-orders");
+        DocumentationBuild ofOrders = builds.start(orders, BuildTrigger.IMPORT, INSTANCE, NOW, null);
+        builds.succeeded(ofOrders.id(), site + "/" + ofOrders.id(), 1, 1, 1, "digest", NOW.plusSeconds(1));
 
-        int removed = builds.deleteFinishedBefore(NOW.plusSeconds(600), Set.of(published.id()));
+        int removed = builds.deleteFinishedBefore(NOW.plusSeconds(600));
 
-        assertThat(removed).isPositive();
-        assertThat(builds.published(shell(site))).get().extracting(DocumentationBuild::id).isEqualTo(published.id());
+        assertThat(removed).describedAs("the superseded build of the shell").isPositive();
+        // Both parts keep theirs, and the part nothing configures any more would too: it is the rows that
+        // decide, not a keep-set a caller assembled from the model.
+        assertThat(builds.published(shell(site))).get().extracting(DocumentationBuild::id)
+                .isEqualTo(shell.id());
+        assertThat(builds.published(orders)).get().extracting(DocumentationBuild::id)
+                .isEqualTo(ofOrders.id());
+        assertThat(builds.recentOf(shell(site), 10)).extracting(DocumentationBuild::id)
+                .doesNotContain(superseded.id());
     }
 
     /**

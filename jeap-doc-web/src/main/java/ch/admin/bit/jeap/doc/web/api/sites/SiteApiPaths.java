@@ -32,6 +32,9 @@ public final class SiteApiPaths {
     /** The builds of one part. There is no resource for the part itself: the index above carries them all. */
     public static final String PART_BUILDS = PARTS + "/{part}/builds";
 
+    /** One build of a site, by the identifier the history and the log lines name it with. */
+    public static final String BUILD = BUILDS + "/{buildId}";
+
 
     private SiteApiPaths() {
     }

@@ -226,10 +226,6 @@ port has exactly one adapter in the real application context. **Add the new port
   And **assert what your context expects, never how many rows exist**: `DocumentationParts.of(site)` answers
   with the parts this context has and what is published for each, which a foreign row cannot inflate.
 
-  Before pushing anything that writes to those tables, run the module both ways - `./mvnw verify -pl
-  jeap-doc-web -Dfailsafe.runOrder=alphabetical` and `-Dfailsafe.runOrder=reversealphabetical`. It is the only
-  cheap way to see what CI will see.
-
 - **Documentation sites are configured, never discovered.** `jeap.doc.sites` says which exist; an upload naming
   anything else is rejected, because a typo in a workflow configuration would otherwise create a second site that
   is generated and served next to the real one. Exactly one environment of a site is `main` and one `latest`,
@@ -293,8 +289,13 @@ are what keep that working. The plan behind it is the enabler's `MODULARIZATION.
   tree cannot be a partition, whatever else recommends it.
 - **The shared files are shared by measurement, not by hope.** Every part emits `assets/**` and `img/**`
   identically - it was measured, see `SharedAssets` - so they are published once per site and served from
-  there. Anything that makes two parts emit *different* bytes under the same name there breaks the site
-  silently, and the first casualty would be a stale bundle served to a page that needs the new one.
+  there. `branding/**` is there for the same reason and by construction rather than by measurement: a site's
+  logo is copied out of the one resource its configuration names. Anything that makes two parts emit
+  *different* bytes under the same name there breaks the site silently, and the first casualty would be a
+  stale bundle served to a page that needs the new one. **A shared file already stored with those bytes is not
+  written again** - fifty-two parts writing the same ninety names was five thousand requests for bytes that
+  were already there - and what decides is the stored entity tag, never that the key exists: the fixed-name
+  files of that prefix do change with a new version of the template.
 - **`SitePartition` is the only place that knows the axis.** Nothing else may derive a part from a system, an
   environment or a path: `partsOf`, `partOf` and `partsDocumenting` are the three questions everything else
   asks. `partOf` must answer **without reading the architecture model** - it is on the path of every request.
@@ -339,8 +340,10 @@ are what keep that working. The plan behind it is the enabler's `MODULARIZATION.
   asserts that order, and reversing it would publish the previous landscape for an hour.
 - **A gauge about the runner is pushed, not read.** `MicrometerBuildMetrics` cannot depend on
   `DocumentationBuildRunner` - the runner depends on the metrics port - so a number only the runner knows
-  reaches the meters through `BuildMetrics` (`slotsBusy`, `pass`), as `documentedSystems` and `triggered`
-  already do.
+  reaches the meters through `BuildMetrics` (`slotsBusy`), the way `triggered` already does. The systems a build
+  documented travel the same way, on `BuiltSite` through `succeeded`. A **pass** has no meter at all,
+  deliberately: it reports itself in one log line, because utilisation is the two slot gauges over a range -
+  see `docs/observability.md`.
 - **No `part` tag on the build timers.** A site has as many parts as it has systems; the sum of
   `jeap.doc.build` over a window is what publishing the documentation cost across all of them, and a part label
   would multiply the series and break that reading. Part-level detail belongs in the administration API and in
@@ -524,6 +527,25 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
   *inside a label* too), its links already carrying the base URL and the environment
   (`GenerationContext.diagramLink`), and its paths built by `DocumentationPaths` like every other link. What a
   fence claims is only true once a browser test renders it.
+
+  **So a new construct is rendered before it ships, and the check has to be able to fail.** The hand-written
+  fixture in `SiteBrowserTestBase` is the generator's syntax copied by hand, rendered for real by
+  `SiteTemplateBrowserIT` - change what the generator emits and change that fixture in the same commit, or the
+  browser goes on proving the old syntax. A deliberately broken diagram beside the candidate is what says the
+  check could have failed: PlantUML accepts a valid description diagram and falls through every factory to its
+  error diagram for anything else, and that difference is the signal.
+- **A box of a diagram is identified by its alias, and a name is not an identity.** Two systems may each have
+  a component called `gateway`, so `PlantUmlViews.Aliases` keys a component context view's boxes on
+  `ComponentContext.Node.key()` - the system and the component, kept apart as a record rather than joined into
+  a string. Keyed on the label alone they would be one box carrying the arrows of both, and nothing would say
+  so. The views whose boxes really are told apart by their name keep the name-keyed overload; the two
+  keyspaces cannot mix, because a key record is never equal to a string.
+- **Two colours, and they are not re-themed.** The subject of a context view is `#Gold`, a relation of a
+  component diagram is `#blue`, and both are element syntax rather than a `skinparam` - which is what keeps
+  them out of the two skinparams this service may emit. The site's plugin re-renders a diagram with PlantUML's
+  dark palette when a reader switches colour mode and never touches a colour the source names, so these two
+  are the same in either mode by decision. Changing that means changing what the source says, not adding a
+  theme.
 - **A name that becomes a path segment has to be unique, and a collision stops the run.** Two systems called
   `orders` and `ORDERS`, or two message types that kebab-case the same, quietly overwrote one another's page
   while the index still listed both. Wherever a name turns into a path, keep the segments handed out so far and
@@ -553,10 +575,16 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
   **`max-schema-table-list` is the exception, and it was not free.** It bounds the *facts*: a database schema
   page writes 200 entries and no more. The page below a diagram used to carry everything, and one component's
   did - 6583 tables, 33 527 rows of columns, an hour and a half of build time. Where a bound on the facts is
-  unavoidable, the page has to say how many entries it did not write **and** link the source that carries
-  them; that is what keeps it honest rather than merely short. Prefer summarising to bounding: the partitions
-  of one table are grouped into one entry first, which is what keeps this bound from ever applying to 828 of
-  the 830 schemas in the estate.
+  unavoidable, the page has to say how many entries it did not write; that is what keeps it honest rather than
+  merely short. Prefer summarising to bounding: the tables sharing one name pattern and one shape are grouped
+  into one entry first, which is what keeps this bound from ever applying to 828 of the 830 schemas in the
+  estate.
+
+  **It links nothing, and no page links the architecture repository's own API.** Naming the source that
+  carries the rest sounds like the honest thing, and it was tried: the only such source is `/docs-api`, an
+  internal address that a reader of a published site cannot reach at all - so the link answered nothing and
+  read as an offer. What a schema page has is its diagram and the entries on it. A `swaggerUrl` is different:
+  the architecture repository serves it absolute, for a browser to follow.
 - **The architecture repository is imported, not read during a build**, and a failing import never reaches a
   build - see `docs/architecture-import.md`. Three things about it are load-bearing and easy to undo by
   accident:

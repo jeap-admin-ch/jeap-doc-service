@@ -12,8 +12,8 @@ alter table documentation_build
     -- which is what makes a part per system affordable.
     add column content_digest varchar;
 
--- What is published: the newest succeeded build of one part. Replaces the index on (site, state, id).
-drop index if exists documentation_build_site_state_id;
+-- What is published: the newest succeeded build of one part. The index on (site, state, id) stays beside it:
+-- it answers when a part of this site was last published, which an index led by the part cannot serve.
 create index documentation_build_part_state_id on documentation_build (site, part, state, id desc);
 
 -- The standing request is per part now, so a burst of uploads for one system is one build of one part - and two
@@ -29,6 +29,7 @@ alter table documentation_build_request
 -- documentationBuild-<site>/system-<slug>. Both halves are unbounded - a site id is configuration, a system
 -- slug comes from the architecture repository - and the 64 characters ShedLock's example schema uses ran out
 -- at about a twenty-character system name, on a name that is inserted rather than trimmed. So the column is
--- as unbounded as everything else here. Widening a varchar rewrites neither the table nor its primary key.
+-- as unbounded as everything else here. Widening a varchar rewrites no row; it does rebuild the primary-key
+-- index, which on a two row table costs nothing.
 alter table shedlock
     alter column name type varchar;

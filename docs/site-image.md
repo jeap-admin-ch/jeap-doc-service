@@ -130,8 +130,8 @@ A documentation build is a Node process, and it is the largest thing the doc ser
 
 |        |                                                                                                                                                                                                                                                         |
 |--------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Memory | Give the container room for the JVM **and** for the build. `jeap.doc.build.max-node-memory` (1 GB by default) caps the Node heap and not the whole build - see below                            |
-| CPU    | An Rspack build uses every core it is given, and the static generation does too where `jeap.doc.build.ssg-worker-threads` is on. Give it more than one core; one part is built per instance at a time                                                        |
+| Memory | Give the container room for the JVM **and** for `jeap.doc.build.max-concurrent-parts` builds at once. `jeap.doc.build.max-node-memory` (1 GB by default) caps the Node heap of one of them and not the whole build - see below                            |
+| CPU    | An Rspack build uses every core it is given, and the static generation does too where `jeap.doc.build.ssg-worker-threads` is on. And an instance builds `jeap.doc.build.max-concurrent-parts` parts **at once** - three by default - so size the cores for that many Node processes, never fewer than the setting                                                        |
 | Disk   | The workspace holds the template, the content and the output. A few hundred MB is generous for a small site; `documentation_build.size_in_bytes` says the real number after the first builds                                                            |
 
 ### Sizing the memory
@@ -140,10 +140,12 @@ A documentation build is a Node process, and it is the largest thing the doc ser
 generation in the main process. It is not a cap on the build. The template bundles with Rspack, whose memory is
 native and lives outside that heap, so the container's own limit is the only bound on the bundle phase.
 
-**Size the container from what a build actually did**, not from the Node cap: `jeap.doc.container.memory.used`
-and the peak every published build reports, plus headroom. A build that was killed carries its peaks in its
-failure reason, and what a build does with the heap phase by phase is in the `[PERF]` lines the service logs
-at `DEBUG` (`jeap.doc.build.perf-log`).
+**Size the container from what a build actually did**, not from the Node cap:
+`max_over_time(jeap_doc_container_memory_used_bytes[15m])` over a window in which builds ran, plus headroom,
+and `jeap_doc_container_memory_oom_kills_total` for whether the limit has already been hit - see
+[Observability](observability.md#the-memory-of-the-container). No build reports a memory number of its own.
+What a build does with the heap phase by phase is in the `[PERF]` lines the service logs at `DEBUG`
+(`jeap.doc.build.perf-log`).
 
 **Give the JVM an absolute heap rather than a percentage of the container.** A container sized for the site
 generator would otherwise hand a share of every byte of it to a JVM that has no use for it.

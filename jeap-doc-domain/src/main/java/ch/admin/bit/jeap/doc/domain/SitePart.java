@@ -77,11 +77,29 @@ public record SitePart(PartKey key, String documents, String tree, boolean carri
      * Whether a path within the site is one of this part's. The shell owns nothing this way - it is what is
      * left when no other part matched.
      *
-     * @param pathWithinSite the path below the site's root, with a leading slash
+     * @param pathWithinSite the path below the site's root, with a leading slash. A fragment or a query is
+     *                       not part of the route and is cut off first
      */
     public boolean owns(String pathWithinSite) {
-        String path = pathWithinSite.endsWith("/") ? pathWithinSite : pathWithinSite + "/";
+        String path = route(pathWithinSite);
         return routePrefixes.stream().anyMatch(path::startsWith);
+    }
+
+    /**
+     * The route a path names, ending in a slash so that a prefix cannot match half a segment.
+     * <p>
+     * <b>A fragment and a query come off first.</b> A link written into a page carries them -
+     * {@code /systems/orders#context} - and putting the slash behind the fragment makes a string no prefix of
+     * this part can match. Both directions of that are wrong: a part would rewrite a link to a page of its
+     * own out of its build's link check, and the shell would leave a link into another part inside it, which
+     * fails the build on a route the shell does not have.
+     */
+    private static String route(String pathWithinSite) {
+        int hash = pathWithinSite.indexOf('#');
+        int query = pathWithinSite.indexOf('?');
+        int end = hash < 0 ? query : query < 0 ? hash : Math.min(hash, query);
+        String path = end < 0 ? pathWithinSite : pathWithinSite.substring(0, end);
+        return path.endsWith("/") ? path : path + "/";
     }
 
     /**

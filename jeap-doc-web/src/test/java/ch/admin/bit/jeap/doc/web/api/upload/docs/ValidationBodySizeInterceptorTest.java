@@ -13,8 +13,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * The bound on a validation request's body, applied to the length it announces.
  * <p>
- * {@code max-paths} is checked in the handler, and by then Jackson has deserialized the whole array - so on
- * its own it bounds nothing about memory. This is the half that can refuse a body without reading it.
+ * This is the cheap half: a body that says it is a gigabyte is refused without a byte of it being read. That
+ * the same limit also holds while a body streams is {@code PathTreeReaderTest}'s business.
  */
 class ValidationBodySizeInterceptorTest {
 
@@ -57,13 +57,11 @@ class ValidationBodySizeInterceptorTest {
     }
 
     /**
-     * <b>A request that announces no length is let through.</b> Chunked encoding carries no
-     * {@code Content-Length}, and refusing it would refuse a legitimate client to close a gap this cannot
-     * close anyway - counting a chunked body needs a wrapper around the stream. Every HTTP client a doc
-     * pipeline uses announces a length for a JSON body.
+     * <b>A request that announces no length is let through here.</b> There is nothing to compare, so it is
+     * the read that has to bound it - see {@code PathTreeReader}.
      */
     @Test
-    void aRequestThatAnnouncesNoLength_isLetThrough() {
+    void aRequestThatAnnouncesNoLength_isLeftToTheRead() {
         MockHttpServletRequest chunked = new MockHttpServletRequest("POST", "/api/uploads/docs/validation");
 
         assertThat(chunked.getContentLengthLong()).describedAs("as a chunked request arrives").isEqualTo(-1);

@@ -272,12 +272,18 @@ class Arc42ComponentTreeTest {
                 .contains("component \"orders-intake\"");
         assertThat(page).describedAs("the sibling it exchanges something with")
                 .contains("component \"orders-risk\"");
-        assertThat(page).describedAs("and the other system as one box, not its components")
-                .contains("component \"shipping\"")
-                .doesNotContain("shipping-gateway\"");
+        assertThat(page).describedAs("and the counterpart of the other system, named and inside a package "
+                                     + "for that system - what this component talks to is a component, and "
+                                     + "the model knows which")
+                .contains("package \"shipping\"")
+                .contains("component \"shipping-gateway\"");
         assertThat(page).describedAs("the table of relations below it").contains("## Relations")
                 .contains("OrdersPaymentAcceptedEvent")
                 .contains("ShippingArrangedEvent");
+        assertThat(page).describedAs("and the table names a foreign counterpart with the system that owns "
+                                     + "it, because two systems may each have a component of one name")
+                .contains("[shipping-gateway](/systems/shipping/system-architecture/building-block-view/"
+                          + "components/shipping-gateway/) ([shipping](/systems/shipping/))");
     }
 
     /**
@@ -291,6 +297,10 @@ class Arc42ComponentTreeTest {
         assertThat(read("component-architecture/3-context-and-scope/context-view.md"))
                 .contains("[[/docs/dev/systems/orders/system-architecture/building-block-view/components/"
                           + "orders-risk/]]")
+                .describedAs("a counterpart of another system, under that system's slug")
+                .contains("[[/docs/dev/systems/shipping/system-architecture/building-block-view/components/"
+                          + "shipping-gateway/]]")
+                .describedAs("and the package of that system, so the way into its documentation is kept")
                 .contains("[[/docs/dev/systems/shipping/]]");
     }
 
@@ -321,10 +331,14 @@ class Arc42ComponentTreeTest {
         String page = read("component-architecture/3-context-and-scope/context-view.md");
         assertThat(page).contains(":::note[Not every counterpart is drawn")
                 .describedAs("how many were left out, agreeing with the count, and no format specifier")
-                .contains("One of the 2 components and systems this one exchanges something with is left out")
+                .contains("One of the 2 counterparts this component exchanges something with is left out")
                 .doesNotContain("%d");
         assertThat(page).describedAs("and the table still carries the relation of the sibling it left out")
                 .contains("orders-risk");
+        assertThat(page).describedAs("the counterpart of the other system is not counted as left out: with "
+                                     + "no room to open that system it is drawn whole, and the relation is "
+                                     + "on that box")
+                .contains("component \"shipping\"");
     }
 
     /** Chapter 5 lists the three pages that exist, and links to each of them. */
@@ -363,6 +377,10 @@ class Arc42ComponentTreeTest {
         assertThat(page).describedAs("and it says which two tables it left out on purpose")
                 .contains("`flyway_schema_history`")
                 .contains("The machinery of a schema is not the data of the component");
+        assertThat(page.indexOf("Some tables are left out on purpose"))
+                .describedAs("above the list with the other reduction notes, rather than under the last of "
+                             + "two hundred table sections where it reads as belonging to that table")
+                .isLessThan(page.indexOf("## Tables"));
     }
 
     /**
@@ -381,8 +399,10 @@ class Arc42ComponentTreeTest {
         generate(partitioned);
 
         String page = read("component-architecture/5-building-block-view/database-schema.md");
-        assertThat(page).describedAs("both numbers, so that nothing is hidden by the grouping")
-                .contains("| Tables | 108 (3 after grouping partitions) |");
+        assertThat(page).describedAs("both numbers, and the second not put down to one of the two reductions "
+                                     + "- three of the hundred and five tables the schema hides are machinery")
+                .contains("| Tables | 108 (3 documented entries) |")
+                .doesNotContain("after grouping partitions");
         assertThat(page).describedAs("one heading per family rather than one per partition")
                 .contains("### `doc_meta_*`")
                 .contains("### `orders_order`")
@@ -391,12 +411,16 @@ class Arc42ComponentTreeTest {
                 .contains("\"orders_order\" }o--|| \"doc_meta_*\"");
         assertThat(page).describedAs("the convention is named, with one of this schema's own entries as the "
                                      + "example rather than an invented name")
-                .contains(":::info[Partitions are grouped]")
-                .contains("One table of this schema is published as a partition each")
+                .contains(":::info[Tables of one name pattern are grouped]")
+                .contains("One group of tables of this schema shares a name pattern and a shape")
                 .contains("`_*`")
                 .contains("`doc_meta_*` is one");
-        assertThat(page).describedAs("and the entry says what it stands for, so nothing is merely hidden")
-                .contains("105 partitions of one table, `_1` to `_105`.");
+        assertThat(page).describedAs("the entry says what it stands for, so nothing is merely hidden - and "
+                                     + "says it as what was observed rather than as a partitioning nothing "
+                                     + "here can read")
+                .contains("105 tables share this name pattern and this shape, `_1` to `_105`. They are "
+                          + "documented as one entry.")
+                .doesNotContain("partitions of one table");
         assertThat(page).describedAs("nothing was cut, so neither cutting note is there")
                 .doesNotContain("Not every table is drawn")
                 .doesNotContain("Not every table is listed");
@@ -407,7 +431,7 @@ class Arc42ComponentTreeTest {
      * write and where the rest is. An unbounded list is what cost one component's page an hour and a half.
      */
     @Test
-    void theDatabaseSchemaPage_whenThereAreMoreTablesThanTheListMayCarry_thenItSaysSoAndLinksTheSource()
+    void theDatabaseSchemaPage_whenThereAreMoreTablesThanTheListMayCarry_thenItSaysHowMany()
             throws IOException {
         context = contextOf(orders, new DiagramLimits(100, 4, 40, 100, 1));
 
@@ -415,13 +439,19 @@ class Arc42ComponentTreeTest {
 
         String page = read("component-architecture/5-building-block-view/database-schema.md");
         assertThat(page).contains(":::note[Not every table is listed]")
-                .contains("This page lists 1 of the 2 entries, by name.")
-                .describedAs("and where the rest is, as a link a browser can follow")
-                .contains("[the published schema](https://archrepo.example.com/archrepo/docs-api/systems"
-                          + "/orders/components/orders-intake/database-schema)");
+                .contains("This page lists 1 of the 2 entries, by name, and the rest are named nowhere on it.");
+        assertThat(page).describedAs("and it offers no way out of the site: the only thing that carries every "
+                                     + "entry is the architecture repository's API, which is an internal "
+                                     + "address no reader of a published site can follow. The provenance in "
+                                     + "the front matter names that upstream, and is not a link")
+                .doesNotContain("](https://archrepo")
+                .doesNotContain("docs-api");
         assertThat(page).describedAs("the first entry by name is written and the second is not")
                 .contains("### `orders_order`")
                 .doesNotContain("### `orders_party`");
+        assertThat(page).describedAs("and the diagram is not blamed for it: it draws out of the listed "
+                                     + "entries, and its own bound of a hundred was nowhere near")
+                .doesNotContain("Not every table is drawn");
     }
 
     /**
@@ -463,8 +493,9 @@ class Arc42ComponentTreeTest {
 
         String page = read("component-architecture/5-building-block-view/database-schema.md");
         assertThat(page).contains(":::note[Not every table is drawn")
-                .describedAs("what the picture shows, agreeing with the count, and no format specifiers")
-                .contains("The diagram draws 1 of the 2 entries")
+                .describedAs("what the picture shows, agreeing with the list it draws from, and no format "
+                             + "specifiers")
+                .contains("The diagram draws 1 of the 2 listed entries")
                 .doesNotContain("%d");
         assertThat(page).describedAs("the list carries both all the same")
                 .contains("### `orders_order`")
@@ -476,13 +507,43 @@ class Arc42ComponentTreeTest {
     }
 
     /**
+     * <b>Both bounds at once.</b> The diagram's note promises that the list below carries what the picture
+     * left out, which holds only while the list is complete - so where it is not, it stops promising and
+     * leaves saying where the rest is to the note that owns that sentence.
+     */
+    @Test
+    void theDatabaseSchemaPage_whenNeitherTheDiagramNorTheListFits_thenTheDiagramPromisesNothing()
+            throws IOException {
+        // Three entries, of which the list may carry two and the diagram may draw one: both bounds have to
+        // bite for this case to exist at all. A list bounded to one would leave the diagram with one entry
+        // to draw and one drawn, which is no reduction of the diagram's.
+        DocumentedComponent partitioned = componentOf(orders, "orders-intake")
+                .withArtifacts(partitionedSchema(), componentOf(orders, "orders-intake").api());
+        orders = orders(partitioned);
+        context = contextOf(orders, new DiagramLimits(100, 4, 40, 1, 2));
+
+        generate(partitioned);
+
+        String page = read("component-architecture/5-building-block-view/database-schema.md");
+        assertThat(page).contains(":::note[Not every table is drawn")
+                .contains("The diagram draws 1 of the 2 listed entries")
+                .contains("the list below is bounded as well, and says where the rest are");
+        assertThat(page).describedAs("and it claims nothing about a list that is bounded itself")
+                .doesNotContain("carries the one it leaves out")
+                .doesNotContain("carries every one it leaves out");
+        assertThat(page).describedAs("the note that does say how much is missing")
+                .contains(":::note[Not every table is listed]")
+                .contains("This page lists 2 of the 3 entries, by name, and the rest are named nowhere on it.");
+    }
+
+    /**
      * <b>The page is written as soon as the model says there is a schema</b>, the way the REST API page is.
      * Between an architecture import and the replication of the schema there would otherwise be no entry in
      * the chapter at all, and a reader would have no way to tell a schema that has not arrived from a
      * component that keeps no data.
      */
     @Test
-    void theDatabaseSchemaPage_whenNoSchemaWasReplicated_thenItSaysSoAndLinksThePublishedOne()
+    void theDatabaseSchemaPage_whenNoSchemaWasReplicated_thenItSaysSoAndWhatFixesIt()
             throws IOException {
         DocumentedComponent withoutSchema = componentOf(orders, "orders-intake")
                 .withArtifacts(null, componentOf(orders, "orders-intake").api());
@@ -493,14 +554,16 @@ class Arc42ComponentTreeTest {
 
         String page = read("component-architecture/5-building-block-view/database-schema.md");
         assertThat(page).contains("# Database Schema")
-                .contains("has not replicated it yet");
-        assertThat(page).describedAs("the version the model knows, and the link to the published schema")
-                .contains("`1.2.3`")
-                // A link, and not the address as code: a contentUrl is relative to the architecture
-                // repository, so it is only a link once this run has made it absolute - and the paragraph
-                // below the table tells the reader to open it.
-                .contains("[Open the schema](https://archrepo.example.com/archrepo/docs-api/systems/orders"
-                          + "/components/orders-intake/database-schema)");
+                .contains("has not replicated it yet")
+                .describedAs("and it says what fixes that rather than sending the reader anywhere")
+                .contains("The next import brings them.");
+        assertThat(page).describedAs("the version the model knows is on the page all the same")
+                .contains("`1.2.3`");
+        assertThat(page).describedAs("and no link into the architecture repository: it is an internal address, "
+                                     + "and a reader of a published site cannot follow it. The provenance in "
+                                     + "the front matter names that upstream, and is not a link")
+                .doesNotContain("](https://archrepo")
+                .doesNotContain("docs-api");
         assertThat(page).describedAs("and nothing that would need the replicated copy")
                 .doesNotContain("```plantuml")
                 .doesNotContain("## Tables");
@@ -600,6 +663,35 @@ class Arc42ComponentTreeTest {
         String page = read("component-architecture/5-building-block-view/rest-api.md");
         assertThat(page).contains("`/actuator/health`").contains("| Operations | 5 |");
         assertThat(page).doesNotContain("Not every operation is documented");
+    }
+
+    /**
+     * <b>A specification of nothing but paths the run leaves out.</b> It was replicated and it does declare
+     * operations, so neither "not replicated yet" nor "the architecture repository told us nothing" is true -
+     * and either would contradict the note directly above it.
+     */
+    @Test
+    void theRestApiPage_whenEveryOperationIsExcluded_thenItSaysSoRatherThanBlamingTheReplication()
+            throws IOException {
+        DocumentedComponent withActuator = componentOf(orders, "orders-intake")
+                .withArtifacts(componentOf(orders, "orders-intake").schema(), apiWithActuator());
+        orders = orders(withActuator);
+        context = contextWithout(orders, List.of("/api(/.*)?", "/actuator(/.*)?"));
+
+        generate(withActuator);
+
+        String page = read("component-architecture/5-building-block-view/rest-api.md");
+        assertThat(page).describedAs("the count and the note agree that nothing is described here")
+                .contains("| Operations | 0 |")
+                .contains(":::note[Not every operation is documented]")
+                .contains("5 of the 5 operations this specification declares are not described here");
+        assertThat(page).describedAs("and the page says what is true, with the specification to open")
+                .contains("Every operation this specification declares is one this documentation leaves out")
+                .contains("[the specification itself](https://archrepo.example.com/archrepo/swagger-ui/"
+                          + "index.html");
+        assertThat(page).describedAs("neither of the two sentences that would be false")
+                .doesNotContain("has not been replicated")
+                .doesNotContain("told this service nothing about its operations");
     }
 
     /**

@@ -207,12 +207,17 @@ public class DocumentationBuildRunner {
             // remove. A sweep is housekeeping over a directory this instance owns alone, and the pass is what
             // knows when none of its builds has started yet.
             siteBuilder.sweepWorkspaces(builds.runningIds());
-            if (slots() > 1) {
-                drainOnAPool();
-            } else {
-                drainOnThisThread();
+            try {
+                if (slots() > 1) {
+                    drainOnAPool();
+                } else {
+                    drainOnThisThread();
+                }
+            } finally {
+                // However the pass ended. A database blip in the middle of a refill propagates out of here,
+                // and without this the busy-slots gauge keeps the value it had while the instance sits idle.
+                report();
             }
-            report();
             return built > 0;
         }
 
@@ -337,7 +342,7 @@ public class DocumentationBuildRunner {
                 }
                 Optional<Site> configured = sites.find(key.site());
                 if (configured.isEmpty()) {
-                    forgetPartThatIsGone(key);
+                    forgetPartThatIsGone(key, owed.requestedAt());
                     settleWithoutABuild(key);
                     continue;
                 }
@@ -347,7 +352,7 @@ public class DocumentationBuildRunner {
                     // asked for belongs to the one before it.
                     log.warn("A build of {} was asked for, and the {} partition of that site has no such part; "
                              + "the request is dropped.", key, partition.axis());
-                    forgetPartThatIsGone(key);
+                    forgetPartThatIsGone(key, owed.requestedAt());
                     settleWithoutABuild(key);
                     continue;
                 }
@@ -542,29 +547,30 @@ public class DocumentationBuildRunner {
      * on a run without the lock would mark a live build as abandoned, and its instance would then record it as
      * succeeded over a failure reason saying its instance had stopped.
      */
-    private void forgetPartThatIsGone(PartKey part) {
-        exclusiveWork.underLock(LOCK_PREFIX + part, properties.getLockLease(), () -> forgetUnderLock(part));
+    private void forgetPartThatIsGone(PartKey part, Instant requestedAt) {
+        exclusiveWork.underLock(LOCK_PREFIX + part, properties.getLockLease(),
+                () -> forgetUnderLock(part, requestedAt));
     }
 
     /**
      * Reports each of the two separately, because they say different things to whoever reads the log: a run
      * that never finished, and a request nobody served.
      */
-    private boolean forgetUnderLock(PartKey part) {
+    private boolean forgetUnderLock(PartKey part, Instant requestedAt) {
         int abandoned = builds.abandonRunning(part, clock.instant()).size();
         if (abandoned > 0) {
             metrics.abandoned(part.site(), abandoned);
             log.warn("{} run(s) of {} never finished, and nothing configures that part any more; they are given "
                      + "up on.", abandoned, part);
         }
-        // Only a request that no instance has served for a long time. This instance not knowing the site does
-        // not mean no instance does: during a rolling deployment that *adds* a site, the instances that have it
-        // are serving its requests while the ones that do not would otherwise delete them - and a claimed
-        // request is gone, so the build would never run and nothing would say why.
-        boolean requestDropped = requests.pendingSince(part.site())
-                .filter(since -> since.isBefore(clock.instant().minus(forgetRequestsAfter())))
-                .map(since -> requests.claim(part).isPresent())
-                .orElse(false);
+        // Only a request that no instance has served for a long time, and the age is this part's own: another
+        // part of the site having waited an hour says nothing about this one. This instance not knowing the
+        // site does not mean no instance does - during a rolling deployment that *adds* a site, the instances
+        // that have it are serving its requests while the ones that do not would otherwise delete them, and a
+        // claimed request is gone, so the build would never run and nothing would say why.
+        boolean requestDropped = requestedAt != null
+                                 && requestedAt.isBefore(clock.instant().minus(forgetRequestsAfter()))
+                                 && requests.claim(part).isPresent();
         if (requestDropped) {
             log.warn("A build of {} was asked for, nothing configures that part any more, and no instance "
                      + "picked it up for {}; the request is dropped.", part, forgetRequestsAfter());
@@ -722,30 +728,59 @@ public class DocumentationBuildRunner {
                     generated.docusaurusMillis(), prepared.digest(), clock.instant());
             return new Published(generated, published);
         } catch (RuntimeException e) {
-            if (stopping) {
-                // Not a failure: this instance asked the generator to stop. Recorded apart from one, because
-                // the alarm is on failures and a deployment landing on a build must not page anybody.
-                recordAbort(site, build, request, e, startedAt);
-            } else {
-                builds.failed(build.id(), e.getMessage(), clock.instant());
-                log.error("{} ({}) could not be published; what was published before it is still being served.",
-                        part.key(), build.id(), e);
-                // Failed either way on the row - there is one way for a build to end badly. Counted apart,
-                // because a build that ran out of time is not put right the way a broken one is: see
-                // BuildMetrics.timedOut.
-                if (e instanceof SiteBuildTimeoutException) {
-                    metrics.timedOut(site.id(), trigger, elapsed(startedAt));
-                } else {
-                    metrics.failed(site.id(), trigger, elapsed(startedAt));
-                }
-            }
+            recordThatItDidNotWork(site, part, build, request, e, startedAt);
             return null;
+        } catch (Error e) {
+            // An OutOfMemoryError is the failure this feature invites, and a row left RUNNING keeps its
+            // workspace and reads as a live build until another pass abandons it. Recorded, then rethrown:
+            // what to do about an Error is not this method's decision.
+            recordThatItDidNotWork(site, part, build, request, e, startedAt);
+            throw e;
         } finally {
             siteBuilder.discard(build.id());
         }
     }
 
     /**
+     * Records a build that ended badly: the row first, then the meter.
+     * <p>
+     * Every write is guarded. This runs under memory pressure and with a stopping context, where a write is
+     * one more thing that can throw - and losing the record of a failure to a failure of recording it is how a
+     * row stays RUNNING for ever.
+     */
+    @SuppressWarnings("java:S1181") // The caller catches Error deliberately; this is where it is recorded.
+    private void recordThatItDidNotWork(Site site, SitePart part, DocumentationBuild build,
+                                        BuildRequest request, Throwable e, long startedAt) {
+        BuildTrigger trigger = request.trigger();
+        try {
+            if (stopping && e instanceof RuntimeException) {
+                // Not a failure: this instance asked the generator to stop. Recorded apart from one, because
+                // the alarm is on failures and a deployment landing on a build must not page anybody.
+                recordAbort(site, build, request, (RuntimeException) e, startedAt);
+                return;
+            }
+            builds.failed(build.id(), messageOf(e), clock.instant());
+            log.error("{} ({}) could not be published; what was published before it is still being served.",
+                    part.key(), build.id(), e);
+            // Failed either way on the row - there is one way for a build to end badly. Counted apart,
+            // because a build that ran out of time is not put right the way a broken one is: see
+            // BuildMetrics.timedOut.
+            if (e instanceof SiteBuildTimeoutException) {
+                metrics.timedOut(site.id(), trigger, elapsed(startedAt));
+            } else {
+                metrics.failed(site.id(), trigger, elapsed(startedAt));
+            }
+        } catch (RuntimeException whileRecording) {
+            log.warn("{} ({}) ended badly, and recording that failed too.", part.key(), build.id(),
+                    whileRecording);
+        }
+    }
+
+    /** What to write into the failure reason: an Error often carries no message at all. */
+    private static String messageOf(Throwable e) {
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+    }
+
     /** What a successful build produced, and where it went. */
     private record Published(BuiltSite generated, PublishedSite published) {
     }

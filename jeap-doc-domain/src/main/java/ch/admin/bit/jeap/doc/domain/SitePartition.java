@@ -24,8 +24,11 @@ public interface SitePartition {
     /**
      * Every part of the given site, the shell first.
      * <p>
-     * It may read the architecture model, so it is not for a request thread: a part per system exists because
-     * the model says the system does.
+     * <b>It reads the architecture model</b> - a part per system exists because the model says the system
+     * does - so it costs one indexed query per environment of the site and nothing is memoized. That is
+     * affordable on a request thread, which is what the administration API does; it is not affordable per
+     * page, which is why the generator asks once per build and passes the answer down. Serving a path asks
+     * {@link #partOf} instead, which reads no model at all.
      */
     List<SitePart> partsOf(Site site);
 

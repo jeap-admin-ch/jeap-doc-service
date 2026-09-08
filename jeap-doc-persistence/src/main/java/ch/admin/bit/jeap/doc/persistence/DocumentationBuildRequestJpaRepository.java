@@ -16,65 +16,40 @@ interface DocumentationBuildRequestJpaRepository
     List<DocumentationBuildRequestEntity> findAllByOrderByRequestedAtAsc();
 
     /**
-     * Asks for a build of one part, and does nothing at all when one is already pending - <b>in one
-     * statement</b>, which is what makes several triggers one request even when they arrive at the same moment
-     * on different instances.
+     * Asks for a build of one part, in <b>one statement</b>: it writes the request, or merges what this ask
+     * adds into the one that is already pending, and answers whether it was this call that created the row.
      * <p>
-     * The alternative, reading first and inserting when nothing is there, loses that race: the loser's insert
-     * violates the primary key, and a PostgreSQL transaction that has seen an error cannot be committed - so the
-     * exception cannot be caught and turned into "somebody else asked first" without giving up the transaction.
+     * One statement because three lost an ask. A read-then-insert loses the race outright - the loser's insert
+     * violates the primary key, and a PostgreSQL transaction that has seen an error cannot be committed. An
+     * insert followed by two updates loses it more quietly: another instance claiming the row in between
+     * leaves both updates matching nothing, so a forced publication is skipped by digest and a publication
+     * reads as over without that part.
+     * <p>
+     * A request that is joined keeps its instant and its trigger, so the age of a request stays the age of the
+     * oldest unserved ask. What the ask does add is the two things that are about the build rather than about
+     * who asked for it: it may no longer be skipped, and it belongs to a publication.
+     * <p>
+     * {@code xmax = 0} is what says the row is new - PostgreSQL leaves it at zero for a row this statement
+     * inserted, and sets it on one it updated.
      */
-    @Transactional
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "insert into documentation_build_request (site, part, requested_at, trigger_kind, "
                    + "                                        publication_id, publication_requested_at, forced) "
                    + "values (:site, :part, :requestedAt, :trigger, :publicationId, :publicationRequestedAt, "
                    + "        :forced) "
-                   + "on conflict (site, part) do nothing",
+                   + "on conflict (site, part) do update "
+                   + "   set forced = documentation_build_request.forced or excluded.forced, "
+                   + "       publication_id = coalesce(documentation_build_request.publication_id, "
+                   + "                                 excluded.publication_id), "
+                   + "       publication_requested_at = coalesce("
+                   + "               documentation_build_request.publication_requested_at, "
+                   + "               excluded.publication_requested_at) "
+                   + "returning (xmax = 0)",
             nativeQuery = true)
-    int requestIfAbsent(@Param("site") String site, @Param("part") String part,
-                        @Param("requestedAt") Instant requestedAt, @Param("trigger") String trigger,
-                        @Param("publicationId") String publicationId,
-                        @Param("publicationRequestedAt") Instant publicationRequestedAt,
-                        @Param("forced") boolean forced);
-
-    /**
-     * Raises the forced flag on a request that is already pending, and reports whether it was this call that
-     * raised it.
-     * <p>
-     * <b>What makes a forced publication reach a part that was already owed a build.</b> Two asks for one part
-     * are one row - the primary key says so - so an ask that may not be skipped cannot write a row of its own
-     * and must raise the flag on the one it finds. Idempotent, and one statement: two operators forcing at the
-     * same moment is one forced request.
-     */
-    @Transactional
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("update DocumentationBuildRequestEntity r set r.forced = true "
-           + "where r.id.site = :site and r.id.part = :part and r.forced = false")
-    int force(@Param("site") String site, @Param("part") String part);
-
-    /**
-     * Puts a request that is already pending into a publication, where it belongs to none - and reports
-     * whether it was this call that did it.
-     * <p>
-     * <b>Otherwise the publication reads as finished while one of its parts is still owed a build.</b> A part
-     * already owed one when a publication is asked for is built by that publication's pass and is one of its
-     * parts; leaving its row with a null publication takes it out of the two {@code not exists} clauses that
-     * decide whether the publication is over, because neither can join a row that carries no identifier. The
-     * wall clock then stops before the last part finished - which is the one number the publication gauges
-     * exist to report.
-     * <p>
-     * Only where there is none. A request that already belongs to a publication stays in it: the first ask is
-     * the one whose wait is being measured.
-     */
-    @Transactional
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("update DocumentationBuildRequestEntity r set r.publicationId = :publicationId, "
-           + "    r.publicationRequestedAt = :publicationRequestedAt "
-           + "where r.id.site = :site and r.id.part = :part and r.publicationId is null")
-    int adoptIntoPublication(@Param("site") String site, @Param("part") String part,
-                             @Param("publicationId") String publicationId,
-                             @Param("publicationRequestedAt") Instant publicationRequestedAt);
+    boolean requestOrJoin(@Param("site") String site, @Param("part") String part,
+                          @Param("requestedAt") Instant requestedAt, @Param("trigger") String trigger,
+                          @Param("publicationId") String publicationId,
+                          @Param("publicationRequestedAt") Instant publicationRequestedAt,
+                          @Param("forced") boolean forced);
 
     /**
      * Clears the pending request of one part in one statement, so that of two instances reaching this at the

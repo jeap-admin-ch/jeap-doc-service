@@ -175,10 +175,11 @@ public interface DocumentationBuildRepository {
     /**
      * Removes the record of builds that finished before the given instant, and reports how many.
      * <p>
-     * The builds named in {@code keep} are spared whatever their age. That is not a nicety: the newest
-     * successful build of a site <b>is</b> its publication, so a site that is published rarely - one that is only
-     * ever built when something is uploaded to it - would otherwise lose the row that says what is being served,
-     * and start answering that it has never been generated.
+     * <b>The newest succeeded build of a part is never removed</b>, whatever its age: that row <i>is</i> the
+     * part's publication, and without it nothing names what is being served. A part whose content does not
+     * move is not rebuilt at all, so its publication is routinely older than the retention. The rule belongs
+     * to this method rather than to a set of identifiers a caller passes in, because a caller deriving that
+     * set from anything but the build rows can get it wrong.
      */
-    int deleteFinishedBefore(Instant finishedBefore, Set<Long> keep);
+    int deleteFinishedBefore(Instant finishedBefore);
 }

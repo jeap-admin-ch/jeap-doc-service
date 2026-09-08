@@ -73,7 +73,6 @@ final class MemoryReadings {
     private static final Path CGROUP_V2 = Path.of("sys", "fs", "cgroup");
     private static final Path CGROUP_V1 = Path.of("sys", "fs", "cgroup", "memory");
 
-
     private MemoryReadings() {
     }
 

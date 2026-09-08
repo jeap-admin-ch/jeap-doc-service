@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.domain.architecture.imports;
 
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
@@ -12,11 +11,12 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * this JVM's heap at once, which nothing is sized for. So they queue, and run one after the other - which is
  * what happened before, only now without holding a scheduler thread while they do.
  * <p>
- * The queue is bounded and a cron that finds it full is dropped with a warning rather than queued behind an
- * import that is already late: the next quarter hour comes round anyway, and an unbounded queue would only
- * hide a repository that has become too slow to import at all.
+ * <b>The queue is bounded, and a full one refuses.</b> An import that would queue behind one already late is
+ * not worth waiting for - the next quarter hour comes round anyway, and an unbounded queue would only hide a
+ * repository that has become too slow to import at all. The refusal is thrown rather than swallowed, so that
+ * the schedule can log it and an operator asking over the API can be told: see
+ * {@link ArchitectureImportQueue}.
  */
-@Slf4j
 public final class ArchitectureImportExecutor {
 
     /** More than the environments an instance could reasonably have, so a full queue means something is wrong. */
@@ -41,10 +41,8 @@ public final class ArchitectureImportExecutor {
         // Not waited for: an import that is cut short by a shutdown is abandoned, and the stored landscape
         // serves on. Waiting minutes for it would only spend the shutdown budget the build needs.
         executor.setWaitForTasksToCompleteOnShutdown(false);
-        executor.setRejectedExecutionHandler((task, pool) -> log.warn(
-                "An architecture import was not started: {} imports are already waiting on the one import "
-                + "thread. It is dropped rather than queued further; the next schedule imports what this one "
-                + "did not.", pool.getQueue().size()));
+        // The default policy: it throws, and Spring turns that into a TaskRejectedException the caller can
+        // report. Dropping it here would leave the caller believing the import is coming.
         return executor;
     }
 }

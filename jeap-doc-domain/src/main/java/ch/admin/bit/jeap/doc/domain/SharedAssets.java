@@ -15,8 +15,13 @@ import java.util.Set;
  * <b>byte-identical</b>. The shared chunks are the framework and the theme, the per-page chunks carry a content
  * hash in their names, and the fixed-name files - the site's own logo, the diagram plugin's version-pinned
  * directory - are the same file by construction. The seven names that differ are the site-wide pages and files
- * ({@code index.html}, {@code 404.html}, {@code sitemap.xml} and their like), and those belong to the shell part
- * anyway.
+ * ({@code index.html}, {@code 404.html} and their like), and those belong to the shell part anyway.
+ * <p>
+ * <b>{@code branding/} is here for the same reason and not by measurement.</b> A site's logo and favicon are
+ * copied out of the one resource the site's configuration names, so every part writes the same bytes under the
+ * same name by construction. Written per part instead, they would have gone to each part's own prefix while a
+ * request for them resolves to the shell - so a system page would show no logo at all until the shell had been
+ * published once.
  * <p>
  * The one thing that follows: the fixed-name files are identical only while every part is built from the same
  * template, so a new version of the service or of the template has to rebuild every part. The content digest
@@ -28,7 +33,7 @@ public final class SharedAssets {
      * The top-level directories of a generated site that are shared. Everything else belongs to the part that
      * owns the path.
      */
-    public static final Set<String> DIRECTORIES = Set.of("assets", "img");
+    public static final Set<String> DIRECTORIES = Set.of("assets", "img", "branding");
 
     private SharedAssets() {
     }

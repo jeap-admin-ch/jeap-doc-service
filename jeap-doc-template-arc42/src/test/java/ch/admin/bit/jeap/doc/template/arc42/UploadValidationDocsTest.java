@@ -25,17 +25,30 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class UploadValidationDocsTest {
 
-    /** Relative to this module, because that is where surefire runs. */
-    private static final Path PAGE = Path.of("..", "docs", "upload-validation.md");
-
     private static String page;
 
     private final Arc42Template template = new Arc42Template();
 
     @BeforeAll
     static void readThePage() throws IOException {
-        assertThat(PAGE).describedAs("the page documenting the validation rules").exists();
-        page = Files.readString(PAGE, StandardCharsets.UTF_8);
+        Path found = thePage();
+        assertThat(found).describedAs("the page documenting the validation rules").isNotNull();
+        page = Files.readString(found, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The page, found by walking up from wherever the test was started: surefire runs in the module, an IDE
+     * may run in the repository.
+     */
+    private static Path thePage() {
+        for (Path directory = Path.of("").toAbsolutePath(); directory != null;
+             directory = directory.getParent()) {
+            Path candidate = directory.resolve("docs").resolve("upload-validation.md");
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     @Test
@@ -48,12 +61,16 @@ class UploadValidationDocsTest {
         }
     }
 
+    /**
+     * As a token of its own, because {@code md} is a substring of {@code mdx} - and the page says that
+     * {@code mdx} is refused, which would satisfy a plain {@code contains} on its own.
+     */
     @Test
     void thePageNamesEveryAllowedExtension() {
         for (String extension : template.allowedFileExtensions()) {
             assertThat(page)
                     .describedAs("'%s' is an extension arc42 accepts and has to be on the page", extension)
-                    .contains(extension);
+                    .containsPattern("(?<![\\w.-])" + extension + "(?![\\w-])");
         }
     }
 
@@ -89,10 +106,14 @@ class UploadValidationDocsTest {
         }
     }
 
-    /** The extension that must never be accepted, and the page has to be the place that says so. */
+    /**
+     * The extension that must never be accepted, and the page has to be the place that says so - in a
+     * sentence that refuses it rather than in a token that could be anywhere.
+     */
     @Test
     void thePageSaysThatMdxIsRefused() {
         assertThat(template.allowedFileExtensions()).doesNotContain("mdx");
-        assertThat(page).contains("mdx");
+        assertThat(page).describedAs("a sentence naming mdx and saying it is not taken")
+                .containsPattern("(?m)^.*`mdx`.*\\bnot\\b.*$");
     }
 }

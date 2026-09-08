@@ -126,7 +126,7 @@ public class NoBuildHistory implements DocumentationBuildRepository {
     }
 
     @Override
-    public int deleteFinishedBefore(Instant finishedBefore, Set<Long> keep) {
+    public int deleteFinishedBefore(Instant finishedBefore) {
         return 0;
     }
 }

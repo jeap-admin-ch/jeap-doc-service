@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
@@ -29,6 +30,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StructureValidationTest {
 
     private static final StructureChapter INTRO = StructureChapter.numbered(1, "1-intro", "Introduction");
+    /** Numbered 4 so that a folder naming chapter 5 under the number 4 has a wrong chapter to be sent to. */
+    private static final StructureChapter STRATEGY =
+            StructureChapter.numbered(4, "4-solution-strategy", "Solution Strategy");
     private static final StructureChapter BUILDING_BLOCKS =
             StructureChapter.numbered(5, "5-building-block-view", "Building Block View");
 
@@ -43,6 +47,11 @@ class StructureValidationTest {
 
     private static DocumentationPlacement componentDocs() {
         return new DocumentationPlacement(DocumentationType.COMPONENT_DOCS, "orders", "orders-intake", null,
+                "test", SourceFormat.MARKDOWN, null, null);
+    }
+
+    private static DocumentationPlacement libraryDocs() {
+        return new DocumentationPlacement(DocumentationType.LIBRARY_DOCS, "orders", null, "orders-client",
                 "test", SourceFormat.MARKDOWN, null, null);
     }
 
@@ -71,7 +80,8 @@ class StructureValidationTest {
         assertThat(report.pathsChecked()).isEqualTo(3);
         assertThat(report.pathsIgnored()).isZero();
         assertThat(report.template()).isEqualTo("test");
-        assertThat(report.allowedFolders()).containsExactly("1-intro", "5-building-block-view");
+        assertThat(report.allowedFolders())
+                .containsExactly("1-intro", "4-solution-strategy", "5-building-block-view");
         assertThat(report.allowedExtensions()).containsExactly("md", "png");
     }
 
@@ -143,7 +153,9 @@ class StructureValidationTest {
         StructureReport report = validate(systemDocs(), "4-building-block-view/design.md");
 
         assertThat(codesOf(report)).containsExactly(FindingCode.UNKNOWN_CHAPTER);
-        assertThat(report.findings().getFirst().message()).contains("4-building-block-view");
+        assertThat(report.findings().getFirst().message())
+                .isEqualTo("'4-building-block-view' is not a chapter of test. "
+                           + "Did you mean '5-building-block-view'?");
     }
 
     /** The three ways a chapter is written by mistake: its URL segment, its number, the slug of its title. */
@@ -161,6 +173,20 @@ class StructureValidationTest {
         assertThat(validate(systemDocs(), "somewhere-else/goals.md").findings().getFirst().message())
                 .describedAs("and nothing is guessed when nothing matches")
                 .doesNotContain("Did you mean");
+    }
+
+    /**
+     * A name under the wrong number means the chapter it names. Reading the number first would answer
+     * {@code 4-building-block-view} with chapter 4 - a chapter the upload said nothing about.
+     */
+    @Test
+    void aChapterNamedUnderTheWrongNumber_isSentToTheChapterItNames() {
+        assertThat(validate(systemDocs(), "4-building-block-view/design.md").findings().getFirst().message())
+                .contains("Did you mean '5-building-block-view'?")
+                .doesNotContain("4-solution-strategy");
+        assertThat(validate(systemDocs(), "9-introduction/goals.md").findings().getFirst().message())
+                .describedAs("the slug of a title counts as its name too")
+                .contains("Did you mean '1-intro'?");
     }
 
     @Test
@@ -230,6 +256,28 @@ class StructureValidationTest {
     }
 
     /**
+     * <b>Every name the site generator reads as a landing page is reserved.</b> Docusaurus takes
+     * {@code index}, {@code readme} or the folder's own name, folded, so all of them resolve to the URL of the
+     * generated landing page and would fail the build of that part as a duplicate route.
+     */
+    @Test
+    void everyNameThatIsReadAsALandingPage_isReserved() {
+        assertThat(codesOf(validate(systemDocs(), "1-intro/README.md")))
+                .containsExactly(FindingCode.RESERVED_NAME);
+        assertThat(codesOf(validate(systemDocs(), "1-intro/readme.md")))
+                .containsExactly(FindingCode.RESERVED_NAME);
+        assertThat(codesOf(validate(systemDocs(), "1-intro/INDEX.MD")))
+                .describedAs("the generator folds the case, so the rule does too")
+                .containsExactly(FindingCode.RESERVED_NAME);
+        assertThat(codesOf(validate(systemDocs(), "1-intro/1-intro.md")))
+                .describedAs("a document of the folder's own name is that folder's index")
+                .containsExactly(FindingCode.RESERVED_NAME);
+        assertThat(validate(systemDocs(), "1-intro/readme.png").findings())
+                .describedAs("and only a document can collide with a document")
+                .isEmpty();
+    }
+
+    /**
      * <b>The rule is about documents, not about files.</b> Only a Markdown file becomes a route, so an image
      * named after a generated page is an image and nothing collides.
      */
@@ -249,6 +297,16 @@ class StructureValidationTest {
         assertThat(validate(componentDocs(), "5-building-block-view/whitebox-view.md").findings())
                 .describedAs("nor a whitebox view for a component")
                 .isEmpty();
+    }
+
+    /** Nothing is generated for a library, so only the landing page names are reserved for one. */
+    @Test
+    void aLibrary_hasNothingReservedBeyondTheLandingPage() {
+        assertThat(validate(libraryDocs(), "5-building-block-view/whitebox-view.md").findings())
+                .describedAs("a page generated for a system is a page a library may write itself")
+                .isEmpty();
+        assertThat(codesOf(validate(libraryDocs(), "1-intro/index.md")))
+                .containsExactly(FindingCode.RESERVED_NAME);
     }
 
     @Test
@@ -281,6 +339,19 @@ class StructureValidationTest {
         assertThat(codesOf(report)).containsExactly(FindingCode.EMPTY_TREE);
         assertThat(report.findings().getFirst().message()).contains("all 2 of its files");
         assertThat(report.pathsIgnored()).isEqualTo(2);
+    }
+
+    /**
+     * A null is not a path, and a finding with no path is one the report presents as being about the whole
+     * tree. So it is dropped and counted instead of reported.
+     */
+    @Test
+    void aNullAmongThePaths_isDroppedRatherThanReportedWithoutOne() {
+        StructureReport report = validation.validate(systemDocs(), Arrays.asList("1-intro/goals.md", null));
+
+        assertThat(report.findings()).isEmpty();
+        assertThat(report.pathsChecked()).isEqualTo(1);
+        assertThat(report.pathsIgnored()).isEqualTo(1);
     }
 
     @Test
@@ -320,6 +391,16 @@ class StructureValidationTest {
         assertThat(codesOf(validate(html("5-building-block-view"), "docs/index.html")))
                 .describedAs("at the root of the set, not somewhere in it")
                 .contains(FindingCode.MISSING_ENTRY_POINT);
+    }
+
+    /** The two hygiene rules hold for an HTML upload too: it follows no chapters, but a path is still a path. */
+    @Test
+    void html_withAPathThatIsNotOneOrAppearsTwice_isRefused() {
+        assertThat(codesOf(validate(html("5-building-block-view"), "index.html", "/app/main.js")))
+                .containsExactly(FindingCode.INVALID_PATH);
+        assertThat(codesOf(validate(html("5-building-block-view"), "index.html", "app/main.js",
+                "app/main.js")))
+                .containsExactly(FindingCode.DUPLICATE_PATH);
     }
 
     @Test
@@ -373,7 +454,7 @@ class StructureValidationTest {
 
         @Override
         public List<StructureChapter> chapters() {
-            return List.of(INTRO, BUILDING_BLOCKS);
+            return List.of(INTRO, STRATEGY, BUILDING_BLOCKS);
         }
 
         @Override

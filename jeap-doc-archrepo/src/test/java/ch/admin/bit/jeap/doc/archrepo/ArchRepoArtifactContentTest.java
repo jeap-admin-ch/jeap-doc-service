@@ -244,7 +244,7 @@ class ArchRepoArtifactContentTest {
         assertThat(read.name()).isEqualTo("orders_db");
         assertThat(read.version()).describedAs("a number is not the version string this shows").isNull();
         assertThat(read.tables()).isEmpty();
-        assertThat(read.isEmpty()).isTrue();
+        assertThat(read.documentedTables()).isEmpty();
     }
 
     /** A foreign key of a table that is not documented is still read; nothing renders an arrow to nowhere. */

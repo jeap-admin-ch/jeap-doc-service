@@ -70,14 +70,4 @@ public final class CategoryFile {
                 }
                 """.formatted(Scalars.quoted(label), position, Scalars.quoted(property));
     }
-
-    /** As {@link #expanded(String, int)}, with the position coming from the folder's number prefix. */
-    public static String expanded(String label) {
-        return """
-                {
-                  "label": %s,
-                  "collapsed": false
-                }
-                """.formatted(Scalars.quoted(label));
-    }
 }

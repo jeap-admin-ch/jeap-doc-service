@@ -48,7 +48,7 @@ flowchart LR
 | `jeap-doc-objectstorage`    | driven adapter     | S3 over the jEAP object storage starter, and the startup check of the bucket                                          |
 | `jeap-doc-sitegenerator`    | driven adapter     | Produces the site: the build workspace, what the site template reads, the site template itself, the generator process |
 | `jeap-doc-archrepo`         | driven adapter     | Everything about the architecture repository: the client of its `/docs-api` behind the three upstream ports of [the import](architecture-import.md), and the reading of a replicated artifact behind `ArchitectureArtifactContent` |
-| `jeap-doc-metrics`          | driven adapter     | The Micrometer meters behind the `UploadMetrics`, `BuildMetrics` and `ArchitectureImportMetrics` ports, and the `ContainerMemory` reading |
+| `jeap-doc-metrics`          | driven adapter     | The Micrometer meters behind the `UploadMetrics`, `BuildMetrics` and `ArchitectureImportMetrics` ports, and the container memory gauges, which are read in this module and have no port in the domain - nothing in the domain asks what the container holds |
 | `jeap-doc-site`             | resources          | The site generator's own application - no Java. Read from the classpath, never from a directory beside the jar        |
 | `jeap-doc-web`              | driving adapter    | The Spring Boot application: REST API, OpenAPI, security, and the documentation it serves                             |
 | `jeap-doc-service-instance` | packaging          | POM-only module a project depends on to create its own doc service instance                                           |

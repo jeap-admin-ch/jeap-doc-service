@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Duration;
@@ -181,6 +182,28 @@ class SiteLiveStatusIT extends DocServiceIntegrationTestBase {
         mockMvc.perform(get(path("governance")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.site").value("governance"));
+    }
+
+    /**
+     * <b>The site's own path is this resource, and no other path is</b> - and it is answered before the site
+     * has to be published at all.
+     * <p>
+     * Both halves are one decision of {@code SiteRequestHandler}. The file name is matched against the whole
+     * path within the site rather than against its last segment, so a page of that name inside the tree stays
+     * content: a resolver matching the name anywhere would answer a page of the documentation with the status
+     * instead. And the interception comes before the published check, which is why the site of this class -
+     * which no case here ever publishes - answers its status at all, while the same name one level down gets
+     * the answer of a site that has not been generated.
+     */
+    @Test
+    void get_whenTheNameIsInsideTheTree_thenItIsContentAndNotTheStatus() throws Exception {
+        mockMvc.perform(get(path(SITE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.site").value(SITE));
+
+        mockMvc.perform(get("/site/" + SITE + "/systems/orders/" + DocumentationLiveStatus.FILE_NAME))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
     }
 
     private static String path(String site) {

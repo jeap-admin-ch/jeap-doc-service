@@ -1,23 +1,27 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationPlacement;
-import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
-import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureReport;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureValidation;
 import ch.admin.bit.jeap.doc.web.api.Roles;
 import ch.admin.bit.jeap.doc.web.api.upload.UploadPaths;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -56,7 +60,7 @@ class DocumentationValidationController {
     static final String VALIDATION_PATH = "/validation";
 
     private final StructureValidation validation;
-    private final UploadProperties uploadProperties;
+    private final PathTreeReader pathTreeReader;
 
     @Operation(summary = "Validate the structure of a documentation set",
             description = "Answers whether the path tree would be accepted, against the chapters, the "
@@ -65,10 +69,21 @@ class DocumentationValidationController {
                           + "of the files is the doc workflow's own half of the validation. Answers 200 when "
                           + "there is nothing to report and 422 with the findings when there is; the "
                           + "parameters this endpoint accepts are the ones the structure depends on, and a "
-                          + "request carrying any other is rejected.")
-    @PostMapping(path = VALIDATION_PATH, consumes = "application/json", produces = "application/json")
+                          + "request carrying any other is rejected.",
+            requestBody = @RequestBody(required = true,
+                    content = @Content(schema = @Schema(implementation = PathTreeDto.class))))
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Nothing to report",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = StructureReportDto.class))),
+            @ApiResponse(responseCode = "422", description = "The structure is invalid; the report is carried "
+                                                            + "as the extension members of the problem document",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ProblemDetail.class)))})
+    @PostMapping(path = VALIDATION_PATH, consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE})
     @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM)
-    public ResponseEntity<Object> validate(
+    public ResponseEntity<?> validate(
             @Parameter(description = "What the documents document: system-docs, component-docs or library-docs")
             @RequestParam("type") String type,
             @Parameter(description = "System the documents belong to, and the system the role is checked for")
@@ -85,29 +100,30 @@ class DocumentationValidationController {
             @RequestParam(name = "location", required = false) String location,
             @Parameter(description = "Slug identifying HTML documents within their section")
             @RequestParam(name = "topic", required = false) String topic,
-            @RequestBody PathTreeDto body) {
+            // The body is read here rather than bound: both bounds on it have to apply while it is read, and
+            // its shape is declared on the operation above.
+            HttpServletRequest request) {
 
         DocumentationPlacement placement = new DocumentationPlacement(
                 DocumentationTypeDto.fromParameterValue(type).toDomain(), system, component, library, template,
                 SourceFormatDto.fromParameterValue(sourceFormat).toDomain(), location, topic);
-        // Not null: @RequestBody is required, so a request with no body is answered 400 before this runs.
-        List<String> paths = body.pathsOrEmpty();
-        int maxPaths = uploadProperties.getValidation().getMaxPaths();
-        if (paths.size() > maxPaths) {
-            throw InvalidUploadException.tooManyPaths(paths.size(), maxPaths);
-        }
+        List<String> paths = pathTreeReader.read(request);
 
         StructureReport report = validation.validate(placement, paths);
         StructureReportDto answer = StructureReportDto.of(report);
         if (report.isValid()) {
             log.debug("The documentation set of {} follows {}: {} path(s) checked, {} ignored.",
                     system, report.template(), report.pathsChecked(), report.pathsIgnored());
-            return ResponseEntity.ok(answer);
+            // The media type explicitly, so that a client asking for the problem document by name is
+            // answered rather than refused on content negotiation.
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(answer);
         }
         log.info("The documentation set of {} does not follow {}: {} problem(s) in {} path(s).",
                 system, report.template(), report.findings().size() + report.findingsOmitted(),
                 report.pathsChecked());
-        return ResponseEntity.unprocessableEntity().body(problemOf(answer));
+        return ResponseEntity.unprocessableEntity()
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(problemOf(answer));
     }
 
     /**

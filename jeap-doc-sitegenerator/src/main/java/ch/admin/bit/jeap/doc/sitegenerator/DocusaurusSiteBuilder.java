@@ -20,7 +20,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -61,7 +63,7 @@ public class DocusaurusSiteBuilder implements SiteBuilder {
      * {@link PreparedPart} because it is the site generator's own bookkeeping - the domain hands the prepared
      * part back to be generated and has no use for the counts on the way.
      */
-    private final Map<Long, Map<String, EnvironmentModel>> preparedModels = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Long, Map<String, EnvironmentModel>> preparedModels = new ConcurrentHashMap<>();
 
     private final BuildProperties properties;
     private final BuildWorkspaces workspaces;
@@ -119,18 +121,6 @@ public class DocusaurusSiteBuilder implements SiteBuilder {
                 generatedAt);
     }
 
-    /** Removes a scratch directory, and says so rather than failing an answer that has already been given. */
-    private void discard(Path scratch) {
-        if (scratch == null) {
-            return;
-        }
-        try {
-            org.springframework.util.FileSystemUtils.deleteRecursively(scratch);
-        } catch (IOException e) {
-            log.warn("The scratch directory {} could not be removed.", scratch, e);
-        }
-    }
-
     @Override
     public void discard(long buildId) {
         preparedModels.remove(buildId);
@@ -184,7 +174,7 @@ public class DocusaurusSiteBuilder implements SiteBuilder {
      * counted is the business of the page that describes the documentation.
      */
     private static Map<String, Integer> systemsPerEnvironment(Map<String, EnvironmentModel> models) {
-        Map<String, Integer> systems = new java.util.LinkedHashMap<>();
+        Map<String, Integer> systems = new LinkedHashMap<>();
         models.forEach((environment, model) -> systems.put(environment, model.systemCount()));
         return systems;
     }

@@ -14,6 +14,7 @@ import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -184,10 +185,6 @@ class DocumentationBuildRepositoryAdapter implements DocumentationBuildRepositor
     }
 
     /**
-     * One statement, and the newest of what it finds - see
-     * {@link DocumentationBuildJpaRepository#findCompletedPublications}.
-     */
-    /**
      * How far back the last completed publication is looked for, counted from the newest publication of that
      * site rather than from now.
      * <p>
@@ -195,7 +192,7 @@ class DocumentationBuildRepositoryAdapter implements DocumentationBuildRepositor
      * further, because the aggregate below groups over every row in the window. A week is several publications
      * on any site that publishes at all.
      */
-    private static final java.time.Duration PUBLICATION_WINDOW = java.time.Duration.ofDays(7);
+    private static final Duration PUBLICATION_WINDOW = Duration.ofDays(7);
 
     @Override
     @Transactional(readOnly = true)
@@ -219,8 +216,8 @@ class DocumentationBuildRepositoryAdapter implements DocumentationBuildRepositor
      * The two outcomes that mean <i>this part is up to date</i>, newest first. A skip is one of them, and
      * since a part whose content has not moved is never generated, it is the ordinary one.
      */
-    private static final java.util.List<BuildState> CONFIRMED_CURRENT =
-            java.util.List.of(BuildState.SUCCEEDED, BuildState.SKIPPED);
+    private static final List<BuildState> CONFIRMED_CURRENT =
+            List.of(BuildState.SUCCEEDED, BuildState.SKIPPED);
 
     @Override
     @Transactional(readOnly = true)
@@ -272,9 +269,8 @@ class DocumentationBuildRepositoryAdapter implements DocumentationBuildRepositor
 
     @Override
     @Transactional
-    public int deleteFinishedBefore(Instant finishedBefore, Set<Long> keep) {
-        // `not in ()` is not valid SQL, so an empty set is given one identifier no sequence hands out.
-        return builds.deleteFinishedBefore(finishedBefore, keep.isEmpty() ? Set.of(-1L) : keep);
+    public int deleteFinishedBefore(Instant finishedBefore) {
+        return builds.deleteFinishedBefore(finishedBefore);
     }
 
     /**

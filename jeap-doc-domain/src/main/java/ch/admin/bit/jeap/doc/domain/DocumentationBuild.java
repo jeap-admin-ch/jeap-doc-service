@@ -61,9 +61,4 @@ public record DocumentationBuild(
                 instance, objectPrefix, pageCount, sizeInBytes, docusaurusMillis, failureReason,
                 contentDigest);
     }
-
-    /** What this build is called where a site and a part have to read as one name: a log line, a lock. */
-    public String qualifiedName() {
-        return site + "/" + part;
-    }
 }

@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.domain.architecture.imports;
 
+import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
@@ -16,10 +17,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -123,6 +126,32 @@ class ArchitectureModelImportStepTest {
         assertThat(models.stored.systems()).hasSize(1);
     }
 
+    /**
+     * <b>Nothing is published that was not stored.</b> Asking for a build is the last thing a replacing run
+     * does, so a run that read no landscape at all must not reach it - a build claimed after one would
+     * publish a landscape this service never has.
+     */
+    @Test
+    void run_whenTheUpstreamCannotBeRead_thenNothingIsAskedFor() {
+        upstream.has("Orders", "Shipping");
+        upstream.failsOn("Shipping");
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.FAILED);
+
+        assertThat(models.writes).isZero();
+        assertThat(trigger.asked).isEmpty();
+    }
+
+    /** And a run that stopped at its deadline stored nothing either, so it asks for nothing. */
+    @Test
+    void run_whenTheDeadlineHasGone_thenNothingIsAskedFor() {
+        upstream.has("Orders");
+
+        assertThat(step.run(ENVIRONMENT, Deadline.of(Duration.ZERO))).isEqualTo(ImportOutcome.PARTIAL);
+
+        assertThat(trigger.asked).isEmpty();
+    }
+
     @Test
     void run_whenNothingHasEverBeenImported_thenTheWholeLandscapeIsStored() {
         upstream.has("Orders", "Shipping");
@@ -214,7 +243,7 @@ class ArchitectureModelImportStepTest {
     void run_whenTheDeadlineHasGone_thenNothingIsWritten() {
         upstream.has("Orders");
 
-        assertThat(step.run(ENVIRONMENT, Deadline.of(java.time.Duration.ZERO)))
+        assertThat(step.run(ENVIRONMENT, Deadline.of(Duration.ZERO)))
                 .isEqualTo(ImportOutcome.PARTIAL);
 
         assertThat(models.writes).isZero();
@@ -245,7 +274,7 @@ class ArchitectureModelImportStepTest {
     void run_whenTheDeadlineHasGone_thenTheRowSaysPartialRatherThanFailed() {
         upstream.has("Orders");
 
-        assertThat(step.run(ENVIRONMENT, Deadline.of(java.time.Duration.ZERO)))
+        assertThat(step.run(ENVIRONMENT, Deadline.of(Duration.ZERO)))
                 .isEqualTo(ImportOutcome.PARTIAL);
 
         ArchitectureImportState state = imports.state(ENVIRONMENT, ArchitectureImportKind.MODEL);
@@ -478,7 +507,7 @@ class ArchitectureModelImportStepTest {
         /** The order the upstream happens to answer the system list in, which is not part of the landscape. */
         void listsTheSystemsBackwards() {
             List<String> reversed = new ArrayList<>(systems);
-            java.util.Collections.reverse(reversed);
+            Collections.reverse(reversed);
             systems = List.copyOf(reversed);
         }
 
@@ -554,16 +583,16 @@ class ArchitectureModelImportStepTest {
      * What the import asked for, kept rather than acted on. Which parts that is is
      * DocumentationBuildTriggerTest's business; what this class is about is <i>whether it asked</i>.
      */
-    private static final class RecordingTrigger extends ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger {
+    private static final class RecordingTrigger extends DocumentationBuildTrigger {
 
-        private final List<String> asked = new java.util.ArrayList<>();
+        private final List<String> asked = new ArrayList<>();
         /** What had already been written when the documentation was asked for - the order is the point. */
-        private List<String> askedAfter = new java.util.ArrayList<>();
-        private List<String> writeOrder = new java.util.ArrayList<>();
+        private List<String> askedAfter = new ArrayList<>();
+        private List<String> writeOrder = new ArrayList<>();
         private boolean failing;
 
         private RecordingTrigger() {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null);
         }
 
         @Override
@@ -583,7 +612,7 @@ class ArchitectureModelImportStepTest {
         private Instant storedImportedAt;
         private int writes;
         /** What was written, and in which order - shared with the state rows, which are written after it. */
-        private List<String> writeOrder = new java.util.ArrayList<>();
+        private List<String> writeOrder = new ArrayList<>();
 
         @Override
         public ArchitectureSnapshot read(String environment) {
@@ -608,7 +637,7 @@ class ArchitectureModelImportStepTest {
 
         private final Map<String, ArchitectureImportState> states = new LinkedHashMap<>();
         /** The same list the landscape writes into, so that the order between the two is visible. */
-        private List<String> writeOrder = new java.util.ArrayList<>();
+        private List<String> writeOrder = new ArrayList<>();
 
         @Override
         public ArchitectureImportState state(String environment, ArchitectureImportKind kind) {

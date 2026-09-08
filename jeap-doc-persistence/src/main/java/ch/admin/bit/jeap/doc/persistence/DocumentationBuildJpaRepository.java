@@ -196,10 +196,21 @@ interface DocumentationBuildJpaRepository extends JpaRepository<DocumentationBui
     @Query("update DocumentationBuildEntity b set b.objectPrefix = null where b.objectPrefix = :objectPrefix")
     int forgetObjectPrefix(@Param("objectPrefix") String objectPrefix);
 
+    /**
+     * Deletes the finished builds older than the given instant, except the newest succeeded one of each part -
+     * the row that is that part's publication.
+     */
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("delete from DocumentationBuildEntity b where b.finishedAt is not null "
-           + "and b.finishedAt < :finishedBefore and b.id not in :keep")
-    int deleteFinishedBefore(@Param("finishedBefore") Instant finishedBefore,
-                             @Param("keep") Collection<Long> keep);
+    @Query("""
+            delete from DocumentationBuildEntity b
+            where b.finishedAt is not null
+              and b.finishedAt < :finishedBefore
+              and (b.state <> ch.admin.bit.jeap.doc.domain.BuildState.SUCCEEDED
+                   or exists (select 1 from DocumentationBuildEntity newer
+                              where newer.site = b.site and newer.part = b.part
+                                and newer.state = ch.admin.bit.jeap.doc.domain.BuildState.SUCCEEDED
+                                and newer.id > b.id))
+            """)
+    int deleteFinishedBefore(@Param("finishedBefore") Instant finishedBefore);
 }

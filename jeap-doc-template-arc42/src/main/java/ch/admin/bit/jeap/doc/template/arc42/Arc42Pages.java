@@ -46,21 +46,21 @@ final class Arc42Pages {
     }
 
     /**
-     * The sentence at the foot of a generated page: <i>the source is recognizable on every page</i>, written
-     * for a reader rather than for a machine.
-     */
-    /**
      * The note under a diagram that left something out, choosing between the singular and the plural.
      * <p>
      * <b>Every one of these notes has to choose.</b> A bound of forty or a hundred is crossed one thing at a
      * time, so the first page that ever shows one of them is about exactly one - and "1 of the 2 tables are
-     * left out" is what a reader sees where nothing chose. The three notes say different things, so what is
+     * left out" is what a reader sees where nothing chose. These notes say different things, so what is
      * shared here is the rule rather than the sentence.
      */
     static Markdown leftOut(int truncated, String whenOne, String whenSeveral) {
         return Md.text(truncated == 1 ? whenOne : whenSeveral);
     }
 
+    /**
+     * The sentence at the foot of a generated page: <i>the source is recognizable on every page</i>, written
+     * for a reader rather than for a machine.
+     */
     static MarkdownWriter provenance(MarkdownWriter page, GenerationContext context) {
         // Two timestamps, because they answer two different questions now that the model is imported on a
         // schedule of its own: how current the content is, and when the page was last written.

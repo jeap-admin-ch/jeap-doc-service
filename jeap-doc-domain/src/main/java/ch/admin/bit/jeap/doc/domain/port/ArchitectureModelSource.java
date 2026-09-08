@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.domain.port;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -50,5 +51,5 @@ public interface ArchitectureModelSource {
      * It is how a site knows which parts it has ({@link ch.admin.bit.jeap.doc.domain.SitePartition}), and it
      * is asked while serving a request - so it must stay a projection.
      */
-    java.util.List<String> systemSlugsOf(String environment);
+    List<String> systemSlugsOf(String environment);
 }

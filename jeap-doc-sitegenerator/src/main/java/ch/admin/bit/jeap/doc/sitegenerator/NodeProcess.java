@@ -19,6 +19,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -58,7 +59,7 @@ public class NodeProcess {
      * them. Adding a process to it before checking {@link #aborted} is what closes the race with a stop that
      * lands between starting a child and publishing it here.
      */
-    private final Set<Process> current = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Set<Process> current = ConcurrentHashMap.newKeySet();
 
     /** Set by {@link #abort()}, so that the destroyed process is reported as given up on rather than as failed. */
     private final AtomicBoolean aborted = new AtomicBoolean();
@@ -101,7 +102,8 @@ public class NodeProcess {
         // A platform thread, not a virtual one. The work here is a blocking read on a pipe, which is exactly
         // the case virtual threads do not help with: the JDK cannot unmount a carrier thread for file and pipe
         // I/O, so a virtual thread reading a process pipe pins its carrier for the whole build. One thread per
-        // build, one build per instance - a platform thread is the cheaper and the honest choice.
+        // build, and an instance builds up to max-concurrent-parts of them - a handful of platform threads is
+        // the cheaper and the honest choice.
         // A daemon thread: a helper the generator spawned can inherit the pipe and keep it open after the
         // process tree is destroyed, and this thread is only ever waited on for a couple of seconds. A
         // non-daemon one parked in that read would stop the JVM exiting at all.
@@ -147,7 +149,7 @@ public class NodeProcess {
      */
     public void abort() {
         aborted.set(true);
-        java.util.List<Process> running = java.util.List.copyOf(current);
+        List<Process> running = List.copyOf(current);
         current.clear();
         if (!running.isEmpty()) {
             log.info("Giving up on {} site generator run(s): this instance is stopping.", running.size());
@@ -197,6 +199,11 @@ public class NodeProcess {
             environment.put("DOCUSAURUS_PERF_LOGGER", "true");
         }
         environment.put("NODE_OPTIONS", nodeOptions);
+        // How many pages one static-generation worker is handed at a time. Unconditionally, whether or not the
+        // pool is on: the pooled executor is the only thing that reads it, and coupling two properties to save
+        // an ignored entry in a child's environment buys nothing.
+        environment.put("DOCUSAURUS_SSG_WORKER_THREAD_TASK_SIZE",
+                Integer.toString(properties.getSsgTaskSize()));
         if (properties.isPurgeNativeMemory()) {
             // The two mimalloc options that make the allocator of the native bundler give pages back rather
             // than hold them: purge as soon as they are free instead of after a delay, and purge the pages of

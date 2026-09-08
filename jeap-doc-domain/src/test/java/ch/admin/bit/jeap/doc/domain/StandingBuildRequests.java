@@ -21,6 +21,18 @@ public class StandingBuildRequests implements DocumentationBuildRequestRepositor
     private final Map<PartKey, BuildRequest> pending = new ConcurrentHashMap<>();
 
     @Override
+    public int requestAll(java.util.List<PartKey> parts, BuildTrigger trigger, Instant now,
+                          Publication publication, boolean forced) {
+        int created = 0;
+        for (PartKey part : parts) {
+            if (request(part, trigger, now, publication, forced)) {
+                created++;
+            }
+        }
+        return created;
+    }
+
+    @Override
     public boolean request(PartKey part, BuildTrigger trigger, Instant now, Publication publication,
                            boolean forced) {
         BuildRequest standing = pending.putIfAbsent(part,

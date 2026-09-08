@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.web.api.architecture;
 
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import org.junit.jupiter.api.AfterAll;
@@ -17,6 +18,10 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMoc
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -73,37 +78,61 @@ class ArchitectureImportApiIT extends DocServiceIntegrationTestBase {
     }
 
     /**
-     * The shape of the state index: one entry per configured environment, the model first because it is what
-     * decides which systems exist and therefore which artifacts are orphans.
+     * The shape of the state index: one entry per configured environment, with an entry per import kind and
+     * the model first, because it is what decides which systems exist and therefore which artifacts are
+     * orphans.
+     * <p>
+     * <b>Every kind, counted against the enum.</b> The endpoint reports
+     * {@code ArchitectureImportKind.values()}, so a kind added or dropped changes what a caller reads - and a
+     * case asserting three entries by index would not notice.
+     * <p>
+     * <b>This environment's entry, found by its id rather than by position.</b> The index carries one entry
+     * per configured environment, and what else is configured is the context's business, not this case's.
      * <p>
      * Only the fields an import cannot change are asserted. An ask made by another case runs on a thread of
      * its own, so what the last outcome is at any moment is not this test's to know.
      */
     @Test
-    void environments_thenEachConfiguredOneIsReportedWithItsThreeKindsModelFirst() throws Exception {
+    void environments_thenEachConfiguredOneIsReportedWithEveryKindModelFirst() throws Exception {
+        String own = "$[?(@.environment=='" + ENVIRONMENT + "')]";
+
         mockMvc.perform(get(ArchitectureApiPaths.ENVIRONMENTS).with(readRole()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.environment=='" + ENVIRONMENT + "')]").exists())
-                .andExpect(jsonPath("$[0].environment").value(ENVIRONMENT))
-                .andExpect(jsonPath("$[0].sourceUrl").value(ARCH_REPO.baseUrl()))
-                .andExpect(jsonPath("$[0].imports[0].kind").value("MODEL"))
-                .andExpect(jsonPath("$[0].imports[1].kind").value("OPENAPI_SPEC"))
-                .andExpect(jsonPath("$[0].imports[2].kind").value("DATABASE_SCHEMA"));
+                .andExpect(jsonPath(own).exists())
+                .andExpect(jsonPath(own + ".sourceUrl").value(hasItem(ARCH_REPO.baseUrl())))
+                .andExpect(jsonPath(own + ".imports[*].kind")
+                        .value(hasSize(ArchitectureImportKind.values().length)))
+                .andExpect(jsonPath(own + ".imports[0].kind").value(hasItem("MODEL")))
+                .andExpect(jsonPath(own + ".imports[1].kind").value(hasItem("OPENAPI_SPEC")))
+                .andExpect(jsonPath(own + ".imports[2].kind").value(hasItem("DATABASE_SCHEMA")))
+                .andExpect(jsonPath(own + ".imports[3].kind").value(hasItem("MESSAGE_SCHEMA")));
     }
 
+    /**
+     * The answer names the environment, whether this ask put the import on the queue or joined one that was
+     * already there - a second ask for an environment already queued is not queued twice, and which of the
+     * two happened depends on whether the import thread has reached the earlier one.
+     */
     @Test
     void requestImport_thenAcceptedAndTheEnvironmentIsNamed() throws Exception {
-        mockMvc.perform(post(ArchitectureApiPaths.ENVIRONMENT_IMPORTS, ENVIRONMENT).with(adminRole()))
+        String answer = mockMvc.perform(post(ArchitectureApiPaths.ENVIRONMENT_IMPORTS, ENVIRONMENT)
+                        .with(adminRole()))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.environments").value(ENVIRONMENT))
-                .andExpect(jsonPath("$.durable").value(false));
+                .andExpect(jsonPath("$.durable").value(false))
+                .andExpect(jsonPath("$.refused").value(empty()))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(answer).contains(ENVIRONMENT);
     }
 
     @Test
     void requestEveryImport_thenAcceptedAndEveryConfiguredEnvironmentIsNamed() throws Exception {
-        mockMvc.perform(post(ArchitectureApiPaths.IMPORTS).with(adminRole()))
+        String answer = mockMvc.perform(post(ArchitectureApiPaths.IMPORTS).with(adminRole()))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.environments").value(ENVIRONMENT));
+                .andExpect(jsonPath("$.refused").value(empty()))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(answer).contains(ENVIRONMENT);
     }
 
     /**

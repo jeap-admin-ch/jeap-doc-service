@@ -212,9 +212,11 @@ final class Arc42ComponentPages {
                 .frontMatter(Arc42Pages.generated(CONTEXT_VIEW_LABEL, 1, context))
                 .heading(1, CONTEXT_VIEW_LABEL)
                 .paragraph(Md.sentence("What {} exchanges with the other components of {} and with the "
-                                       + "systems around it, and what travels between them. Another system is "
-                                       + "one box - what is inside it is described in its own documentation. "
-                                       + "A solid arrow is a message, a dotted one a REST call.",
+                                       + "components of the systems around it, and what travels between "
+                                       + "them. Each is drawn inside the system that owns it, and only the "
+                                       + "ones this component exchanges something with are named - a box for "
+                                       + "another system is not that system's decomposition. A solid arrow "
+                                       + "is a message, a dotted one a REST call.",
                         Md.code(component.name()),
                         Md.link(DocumentationPaths.system(system.slug()), system.name())));
 
@@ -222,27 +224,26 @@ final class Arc42ComponentPages {
             page.paragraph("The architecture model records no relation between this component and anything "
                            + "else. It exchanges nothing that any importer has seen.");
         } else {
-            PlantUmlViews.Diagram diagram =
-                    PlantUmlViews.componentContextView(componentContext, system.slug(), context);
+            PlantUmlViews.Diagram diagram = PlantUmlViews.componentContextView(componentContext, context);
             page.fence(PlantUmlViews.LANGUAGE, diagram.source());
-            int counterparts = componentContext.siblings().size()
-                               + componentContext.externalSystems().size();
+            int counterparts = componentContext.counterparts().size();
             if (componentContext.truncated() > 0) {
                 page.admonition("note", "Not every counterpart is drawn",
                         Arc42Pages.leftOut(componentContext.truncated(),
-                                ("One of the %d components and systems this one exchanges something with is "
-                                 + "left out of the diagram so that it stays readable. The table below names "
-                                 + "it.").formatted(counterparts),
-                                ("%d of the %d components and systems this one exchanges something with are "
-                                 + "left out of the diagram so that it stays readable. The table below lists "
-                                 + "every one of them.")
+                                ("One of the %d counterparts this component exchanges something with is left "
+                                 + "out of the diagram so that it stays readable. The table below names it.")
+                                        .formatted(counterparts),
+                                ("%d of the %d counterparts this component exchanges something with are left "
+                                 + "out of the diagram so that it stays readable. The table below lists every "
+                                 + "one of them.")
                                         .formatted(componentContext.truncated(), counterparts)));
             }
+            writeUnplacedNote(page, componentContext);
             page.heading(2, "Relations");
             page.table(List.of("From", "To", "Kind", "What travels"), componentContext.edges().stream()
                     .map(edge -> List.of(
-                            endLink(edge.from(), system, context),
-                            endLink(edge.to(), system, context),
+                            endLink(edge.from()),
+                            endLink(edge.to()),
                             Md.text(edge.kind().verb()),
                             Md.joinWith(", ", edge.labels().stream().map(Md::code).toList())))
                     .toList());
@@ -323,17 +324,6 @@ final class Arc42ComponentPages {
         // copy rather than to read as prose, and an underscore in one is not emphasis.
         facts.add(List.of(Md.text("Database"), codeOr(schema == null ? null : schema.name())));
         facts.add(List.of(Md.text("Schema version"), schemaVersion(component, schema)));
-        if (component.databaseSchema() != null) {
-            // Absolute, because a contentUrl is served relative to the architecture repository and a browser
-            // has to be able to follow it - the paragraph below this table tells the reader to. Relative, it
-            // was never a link at all: linkOrCode links only what it can, so the row read as plain code.
-            //
-            // linkOrCode and not link: the URL is whatever the architecture repository stored, and link throws
-            // on a target it will not put on a page - which would end the generation of every system here.
-            facts.add(List.of(Md.text("Published schema"),
-                    Md.linkOrCode(context.archRepoLink(component.databaseSchema().contentUrl()),
-                            "Open the schema")));
-        }
         if (documented != null) {
             facts.add(List.of(Md.text("Tables"), tableCount(documented)));
         }
@@ -342,7 +332,7 @@ final class Arc42ComponentPages {
         if (schema == null) {
             page.paragraph("The architecture repository knows that this component publishes a database "
                            + "schema and this service has not replicated it yet, so there is no diagram and "
-                           + "no list of tables. Open the published schema itself to read them.");
+                           + "no list of tables. The next import brings them.");
             Arc42Pages.provenance(page, context);
             Arc42Pages.write(directory, DATABASE_SCHEMA_PAGE + ".md", page);
             return;
@@ -350,23 +340,19 @@ final class Arc42ComponentPages {
 
         if (documented.isEmpty()) {
             page.paragraph("The published schema holds no table this documentation shows.");
+            writeHiddenNote(page, documented);
         } else {
             page.fence(PlantUmlViews.LANGUAGE, PlantUmlViews.databaseSchema(documented).source());
             // Four reductions can apply to one page - partitions grouped, the diagram cut, the list cut, the
-            // machinery hidden - and each of them says so in its own note. A reader who cannot tell them
-            // apart cannot tell what is missing from what is merely summarised.
+            // machinery hidden - and each of them says so in its own note. They stand together above the
+            // list, because a reader who cannot tell them apart cannot tell what is missing from what is
+            // merely summarised - and under two hundred table sections the last of them reads as belonging
+            // to the last table.
             writeDiagramNote(page, documented);
             writePartitionNote(page, documented);
-            writeListNote(page, component, context, documented);
+            writeListNote(page, documented);
+            writeHiddenNote(page, documented);
             writeTables(page, documented);
-        }
-        if (!documented.hiddenTables().isEmpty()) {
-            // Named rather than dropped silently, so that nobody has to guess whether the schema or the
-            // documentation is the incomplete one.
-            page.admonition("info", "Some tables are left out on purpose", Md.sentence(
-                    "The machinery of a schema is not the data of the component, so neither the diagram nor "
-                    + "the list carries {}.",
-                    Md.joinWith(", ", documented.hiddenTables().stream().map(Md::code).toList())));
         }
         Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, DATABASE_SCHEMA_PAGE + ".md", page);
@@ -385,25 +371,60 @@ final class Arc42ComponentPages {
                 : codeOr(component.databaseSchema().schemaVersion());
     }
 
-    /** What the picture leaves out. About the picture only: the list below carries those entries. */
+    /**
+     * What the picture leaves out. About the picture only: the list below carries those entries.
+     * <p>
+     * <b>Unless the list is bounded as well.</b> Then it does not carry all of them either, and the note
+     * saying so is {@link #writeListNote}'s - so this one stops promising rather than contradicting it.
+     * <p>
+     * <b>And nothing at all where the diagram drew every entry the page lists.</b> The diagram is drawn out of
+     * the listed entries, so a bounded list makes it smaller without its own bound being anywhere near - and
+     * this note would tell the reader the renderer was the constraint when it was not. What the list left out
+     * is the list note's to say.
+     */
     private static void writeDiagramNote(MarkdownWriter page, DocumentedSchema documented) {
         int notDrawn = documented.notDrawn();
         if (notDrawn == 0) {
             return;
         }
-        int entries = documented.documentedCount();
+        int entries = documented.listed().size();
+        String bounded = ("The diagram draws %d of the %d listed entries. It is bounded because the engine "
+                          + "lays a picture out by recursion, so a larger one renders as nothing at all; ")
+                .formatted(entries - notDrawn, entries);
+        if (documented.notListed() > 0) {
+            page.admonition("note", "Not every table is drawn",
+                    Md.text(bounded + "the list below is bounded as well, and says where the rest are."));
+            return;
+        }
         page.admonition("note", "Not every table is drawn", Arc42Pages.leftOut(notDrawn,
-                ("The diagram draws %d of the %d entries. It is bounded because the engine lays a picture "
-                 + "out by recursion, so a larger one renders as nothing at all; the list below carries the "
-                 + "one it leaves out.").formatted(entries - notDrawn, entries),
-                ("The diagram draws %d of the %d entries. It is bounded because the engine lays a picture "
-                 + "out by recursion, so a larger one renders as nothing at all; the list below carries "
-                 + "every one it leaves out.").formatted(entries - notDrawn, entries)));
+                bounded + "the list below carries the one it leaves out.",
+                bounded + "the list below carries every one it leaves out."));
     }
 
     /**
-     * That partitions were grouped, and what to read a {@code _*} as. <b>Named rather than left to be
-     * guessed</b>: a reader who does not know the convention would read one entry as one table.
+     * Which machinery tables the page left out, named rather than dropped silently - so that nobody has to
+     * guess whether the schema or the documentation is the incomplete one.
+     */
+    private static void writeHiddenNote(MarkdownWriter page, DocumentedSchema documented) {
+        if (documented.hiddenTables().isEmpty()) {
+            return;
+        }
+        page.admonition("info", "Some tables are left out on purpose", Md.sentence(
+                "The machinery of a schema is not the data of the component, so neither the diagram nor "
+                + "the list carries {}.",
+                Md.joinWith(", ", documented.hiddenTables().stream().map(Md::code).toList())));
+    }
+
+    /**
+     * That tables sharing a name pattern and a shape were grouped, and what to read a {@code _*} as.
+     * <b>Named rather than left to be guessed</b>: a reader who does not know the convention would read one
+     * entry as one table.
+     * <p>
+     * <b>Worded for what is known, which is less than "these are partitions".</b> The grouping reads a name
+     * pattern and compares columns and primary keys - see {@code ShardFamilies} - and a published schema says
+     * nothing about what a table is for. Tables kept deliberately apart, one per year or per version, look
+     * exactly like partitions to it. So the page says what it saw and lets the reader check it against the
+     * count and the range.
      */
     private static void writePartitionNote(MarkdownWriter page, DocumentedSchema documented) {
         int families = documented.collapsedFamilies();
@@ -415,45 +436,53 @@ final class Arc42ComponentPages {
         String example = documented.documented().stream()
                 .filter(table -> table.shards() != null)
                 .findFirst().orElseThrow().name();
-        page.admonition("info", "Partitions are grouped", Md.join(
+        page.admonition("info", "Tables of one name pattern are grouped", Md.join(
                 Arc42Pages.leftOut(families,
-                        "One table of this schema is published as a partition each. It is documented once, "
-                        + "under the name of the table it partitions with a ",
-                        ("%d tables of this schema are published as a partition each. Each is documented "
-                         + "once, under the name of the table it partitions with a ").formatted(families)),
+                        "One group of tables of this schema shares a name pattern and a shape - the same "
+                        + "columns and the same primary key, which is what a partitioned table looks like. It "
+                        + "is documented as one entry, under the shared part of the name with a ",
+                        ("%d groups of tables of this schema each share a name pattern and a shape - the same "
+                         + "columns and the same primary key, which is what a partitioned table looks like. "
+                         + "Each is documented as one entry, under the shared part of the name with a ")
+                                .formatted(families)),
                 Md.code("_*"),
-                Md.sentence(" postfix - {} is one. Every such entry says how many partitions it stands for, "
-                            + "and their range.", Md.code(example))));
+                Md.sentence(" postfix - {} is one. Every such entry says how many tables it stands for, and "
+                            + "their range.", Md.code(example))));
     }
 
     /**
-     * That the list itself is bounded, with the link to the schema that carries all of it. <b>The only note
-     * about content the page does not write at all</b>, so it has to say where the rest is.
+     * That the list itself is bounded. <b>The only note about content the page does not write at all</b>, so
+     * it says how much, and it says it in the entries a reader can count on the page.
+     * <p>
+     * <b>And it links nothing.</b> The only other place that carries every entry is the architecture
+     * repository's own API, which is not a page: it is an internal address a reader of a published site
+     * cannot follow, and a link to it read as an offer that answered nothing. The diagram and the entries
+     * that are here are what the page has.
      */
-    private static void writeListNote(MarkdownWriter page, DocumentedComponent component,
-                                      GenerationContext context, DocumentedSchema documented) {
+    private static void writeListNote(MarkdownWriter page, DocumentedSchema documented) {
         if (documented.notListed() == 0) {
             return;
         }
-        Markdown where = component.databaseSchema() == null ? Md.text("the published schema")
-                : Md.linkOrCode(context.archRepoLink(component.databaseSchema().contentUrl()),
-                        "the published schema");
         page.admonition("note", "Not every table is listed", Md.sentence(
-                "This page lists {} of the {} entries, by name. Open {} to read the rest.",
+                "This page lists {} of the {} entries, by name, and the rest are named nowhere on it.",
                 Md.text(String.valueOf(documented.listed().size())),
-                Md.text(String.valueOf(documented.documentedCount())), where));
+                Md.text(String.valueOf(documented.documentedCount()))));
     }
 
     /**
      * How many tables the page documents. Both numbers where they differ, because a reader has to be able to
      * see that the schema holds 6583 tables and that the page shows 260 of them - rather than be shown 260
      * and told nothing.
+     * <p>
+     * <b>The second number is not named after one of the two reductions.</b> Machinery tables are left out and
+     * partitions are grouped, and a cell reading "after grouping partitions" would put the hidden tables down
+     * to the grouping. Which reduction did what is what the two notes below the diagram say.
      */
     private static Markdown tableCount(DocumentedSchema documented) {
-        if (documented.collapsedFamilies() == 0) {
+        if (documented.rawTableCount() == documented.documentedCount()) {
             return Md.text(String.valueOf(documented.documentedCount()));
         }
-        return Md.text("%d (%d after grouping partitions)"
+        return Md.text("%d (%d documented entries)"
                 .formatted(documented.rawTableCount(), documented.documentedCount()));
     }
 
@@ -464,8 +493,10 @@ final class Arc42ComponentPages {
             page.heading(3, Md.code(table.name()));
             if (table.shards() != null) {
                 // Summarised, never hidden: the count and the range are what let a reader see that this one
-                // entry stands for a hundred and twenty-five tables.
-                page.paragraph(Md.sentence("{} partitions of one table, {} to {}.",
+                // entry stands for a hundred and twenty-five tables. And said as what was observed - the
+                // grouping reads a name pattern and a shape, and cannot know that they are partitions.
+                page.paragraph(Md.sentence("{} tables share this name pattern and this shape, {} to {}. They "
+                                           + "are documented as one entry.",
                         Md.text(String.valueOf(table.shards().count())),
                         Md.code(table.shards().firstSuffix()), Md.code(table.shards().lastSuffix())));
             }
@@ -532,8 +563,10 @@ final class Arc42ComponentPages {
         page.table(List.of("", ""), facts);
 
         writeExcludedNote(page, declared, api);
-        if (api == null || api.isEmpty()) {
+        if (declared == null || api == null) {
             writeOperationsFromTheModel(page, component, context);
+        } else if (api.isEmpty()) {
+            writeEveryOperationExcluded(page, component, declared);
         } else {
             for (ApiGroup group : api.groups()) {
                 page.heading(2, group.name());
@@ -573,6 +606,32 @@ final class Arc42ComponentPages {
                  + "specification itself to read it.").formatted(declared.operations().size()),
                 ("%d of the %d operations this specification declares are not described here. Open the "
                  + "specification itself to read them.").formatted(excluded, declared.operations().size())));
+    }
+
+    /**
+     * That the specification is replicated and describes nothing the documentation shows, because every
+     * operation it declares is a path the run leaves out.
+     * <p>
+     * <b>Both other branches would be false here.</b> Listing the model's operations says the specification
+     * has not been replicated, or that the architecture repository knows of no operation - and the
+     * specification is there, with operations in it.
+     */
+    private static void writeEveryOperationExcluded(MarkdownWriter page, DocumentedComponent component,
+                                                    RestApiOverview declared) {
+        page.heading(2, "Operations");
+        if (declared.isEmpty()) {
+            page.paragraph("The published specification declares no operation.");
+            return;
+        }
+        page.paragraph(Md.sentence("Every operation this specification declares is one this documentation "
+                                   + "leaves out, so there is nothing to group here. Open {} to read them.",
+                specification(component)));
+    }
+
+    /** The specification, as a link where the model knows a Swagger UI for it. */
+    private static Markdown specification(DocumentedComponent component) {
+        return component.openApi() == null ? Md.text("the specification itself")
+                : Md.linkOrCode(component.openApi().swaggerUrl(), "the specification itself");
     }
 
     /**
@@ -782,13 +841,49 @@ final class Arc42ComponentPages {
      * Resolved through the model rather than lower-cased into a path. The ends come from relations and are
      * free text, so a name the model does not carry gets no link instead of a broken one.
      */
-    private static Markdown endLink(String name, DocumentedSystem system, GenerationContext context) {
-        return system.components().stream()
-                .filter(candidate -> candidate.name().equalsIgnoreCase(name))
-                .findFirst()
-                .map(candidate -> Md.link(DocumentationPaths.component(system.slug(), SYSTEM_SEGMENT,
-                        BUILDING_BLOCK_VIEW, candidate.slug()), candidate.name()))
-                .orElseGet(() -> systemLink(name, context));
+    /**
+     * One end of a relation, linked to its own page where this run writes one.
+     * <p>
+     * A counterpart of another system is named with the system it belongs to, because two systems may each
+     * have a component of one name and the table would otherwise say which of them nothing at all. The
+     * slugs come from the view, which resolved them from the model.
+     */
+    private static Markdown endLink(ComponentContext.Node node) {
+        if (node.isSystem()) {
+            return node.systemSlug() == null ? Md.code(node.label())
+                    : Md.link(DocumentationPaths.system(node.systemSlug()), node.label());
+        }
+        Markdown component = node.componentSlug() == null || node.systemSlug() == null
+                ? Md.code(node.label())
+                : Md.link(DocumentationPaths.component(node.systemSlug(), SYSTEM_SEGMENT,
+                        BUILDING_BLOCK_VIEW, node.componentSlug()), node.label());
+        if (node.kind() != ComponentContext.NodeKind.NEIGHBOUR_COMPONENT) {
+            return component;
+        }
+        Markdown owner = node.systemSlug() == null ? Md.code(node.systemName())
+                : Md.link(DocumentationPaths.system(node.systemSlug()), node.systemName());
+        // Md.sentence and not Md.join with a " (" fragment: Md.text drops leading whitespace, so the name
+        // and its system would run together.
+        return Md.sentence("{} ({})", component, owner);
+    }
+
+    /**
+     * The counterparts the model names without the system that owns them. They are on the table like every
+     * other relation and on the diagram nowhere, so the page says that rather than leaving a reader to
+     * count the boxes.
+     */
+    private static void writeUnplacedNote(MarkdownWriter page, ComponentContext context) {
+        int unplaced = context.unplaced().size();
+        if (unplaced == 0) {
+            return;
+        }
+        String pattern = unplaced == 1
+                ? "One counterpart is named without the system that owns it, so the diagram has no box for "
+                  + "it: {}. The table below carries its relations."
+                : ("%d counterparts are named without the system that owns them, so the diagram has no box "
+                   + "for them: {}. The table below carries their relations.").formatted(unplaced);
+        page.admonition("note", "Not every counterpart can be placed", Md.sentence(pattern,
+                Md.joinWith(", ", context.unplaced().stream().map(node -> Md.code(node.label())).toList())));
     }
 
     /** A system name, linked when this run documents it. A link to a missing page fails the site build. */

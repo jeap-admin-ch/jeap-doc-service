@@ -19,9 +19,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 
@@ -128,7 +130,25 @@ class NodeProcessTest {
 
         String seen = Files.readString(workingDirectory.resolve("environment.txt"), StandardCharsets.UTF_8);
         assertThat(seen.lines()).containsExactlyInAnyOrder("PATH", "HOME", "CI", "NODE_OPTIONS",
-                "DOCUSAURUS_PERF_LOGGER", "MIMALLOC_PURGE_DELAY", "MIMALLOC_ABANDONED_PAGE_PURGE");
+                "DOCUSAURUS_PERF_LOGGER", "DOCUSAURUS_SSG_WORKER_THREAD_TASK_SIZE", "MIMALLOC_PURGE_DELAY",
+                "MIMALLOC_ABANDONED_PAGE_PURGE");
+    }
+
+    /**
+     * The pages one static-generation worker is handed at a time. The generator's own default is ten, at which
+     * the pool spends most of its time waiting for the thread that hands the chunks out.
+     */
+    @Test
+    void run_thenTheChildIsToldHowManyPagesAStaticGenerationTaskCarries() throws IOException {
+        properties.setSsgTaskSize(250);
+        script("tasks.mjs", """
+                import {writeFileSync} from 'node:fs';
+                writeFileSync('tasks.txt', process.env.DOCUSAURUS_SSG_WORKER_THREAD_TASK_SIZE ?? 'unset');
+                """);
+
+        node.run(workingDirectory, "tasks.mjs");
+
+        assertThat(Files.readString(workingDirectory.resolve("tasks.txt"))).isEqualTo("250");
     }
 
     /**
@@ -332,6 +352,54 @@ class NodeProcessTest {
         assertThatThrownBy(() -> node.run(workingDirectory, "hang.mjs"))
                 .isInstanceOf(SiteBuildException.class)
                 .hasMessageContaining("this instance is stopping");
+    }
+
+    /**
+     * A stop has to end <b>every</b> build in flight. An instance builds up to
+     * {@code jeap.doc.build.max-concurrent-parts} parts at once, and a child left running would outlive the
+     * instance that was told to stop, holding a container's worth of memory.
+     */
+    @Test
+    void abort_whenSeveralScriptsAreRunning_thenAllOfThemEnd() throws Exception {
+        properties.setTimeout(Duration.ofMinutes(15));
+        ListAppender<ILoggingEvent> logged = captureLog();
+        Path one = hangingScriptIn("one");
+        Path other = hangingScriptIn("two");
+
+        ExecutorService running = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> first = running.submit(() -> node.run(one, "hang.mjs"));
+            Future<?> second = running.submit(() -> node.run(other, "hang.mjs"));
+            awaitUntil(Duration.ofSeconds(20), () -> Files.exists(one.resolve("started.txt"))
+                                                     && Files.exists(other.resolve("started.txt")));
+
+            node.abort();
+
+            // With a timeout, because the failure this guards against is a process that was not destroyed -
+            // and its thread would then wait for the whole build timeout rather than fail.
+            for (Future<?> build : List.of(first, second)) {
+                assertThatThrownBy(() -> build.get(10, TimeUnit.SECONDS))
+                        .cause()
+                        .isInstanceOf(SiteBuildException.class)
+                        .hasMessageContaining("this instance is stopping");
+            }
+            assertThat(logged.list).extracting(ILoggingEvent::getFormattedMessage)
+                    .describedAs("the line an operator reads says how many runs were given up on")
+                    .contains("Giving up on 2 site generator run(s): this instance is stopping.");
+        } finally {
+            running.shutdownNow();
+        }
+    }
+
+    /** A hanging script in a directory of its own, which says when it is up. */
+    private Path hangingScriptIn(String directory) throws IOException {
+        Path working = Files.createDirectories(workingDirectory.resolve(directory));
+        Files.writeString(working.resolve("hang.mjs"), """
+                import {writeFileSync} from 'node:fs';
+                writeFileSync('started.txt', 'yes');
+                setInterval(() => {}, 1000);
+                """, StandardCharsets.UTF_8);
+        return working;
     }
 
     @Test

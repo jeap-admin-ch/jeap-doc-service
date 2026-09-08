@@ -1,9 +1,9 @@
 /**
  * Fills in what the run that produced this site cost, on the page describing the documentation.
  *
- * A page cannot describe the build that writes it: the pages, the bytes, the duration and the memory peak are
- * known when the generator has finished, and the page was written at the start of the same run. So the doc
- * service writes them beside the site as JSON, between the generator and the upload, and this fetches them.
+ * A page cannot describe the build that writes it: the pages, the bytes and the duration are known when the
+ * generator has finished, and the page was written at the start of the same run. So the doc service writes
+ * them beside the site as JSON, between the generator and the upload, and this fetches them.
  *
  * Three things about how it finds them are deliberate:
  *

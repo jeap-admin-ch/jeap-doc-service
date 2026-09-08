@@ -32,9 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
-import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
 
 /**
  * Two instances working one queue of parts.
@@ -247,7 +245,6 @@ class DocumentationBuildRunnerConcurrencyTest {
                 .contains(NOW.plusSeconds(1));
     }
 
-    /** Counts the builds it ran, and does whatever the test wants done while one of them runs. */
     /**
      * The workspaces are swept once for the pass, and not once for every build in it.
      * <p>
@@ -273,6 +270,7 @@ class DocumentationBuildRunnerConcurrencyTest {
         assertThat(builder.sweeps.get()).describedAs("one sweep for the pass, not one per build").isEqualTo(1);
     }
 
+    /** Counts the builds it ran, and does whatever the test wants done while one of them runs. */
     private static final class CountingSiteBuilder implements SiteBuilder {
 
         private final List<String> generated = Collections.synchronizedList(new ArrayList<>());

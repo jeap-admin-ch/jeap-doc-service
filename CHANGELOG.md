@@ -5,13 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.0] - 2026-09-08
 
-- Component documentation is generated: an arc42 tree per component - context, database schema, REST API, messages.
-- A site is published as one build per system, several at a time, only where content moved; live status is fetched.
-- The database schema page is bounded: partition shards are grouped, and two limits cap the diagram and the list.
-- An upload can be checked before it is sent - `POST /api/uploads/docs/validation`, with the rules per template.
-- A publication has an id, a wall clock, a meter and log fields per part; the search is gone, workspaces swept per pass.
+- Component documentation is generated: an arc42 tree per component - context view, database schema, REST API, messages.
+- A site is published as one build per system, several at a time, and only where the content digest moved.
+- A component context view names the components it exchanges something with, each inside the system that owns it.
+- An upload's structure can be checked before it is sent: `POST /api/uploads/docs/validation`.
+- What is true only now - the imports, the schedules - is served live beside the site instead of frozen into a page.
 
 ## [1.3.0] - 2026-09-06
 

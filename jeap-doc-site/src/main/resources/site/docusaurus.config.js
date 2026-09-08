@@ -50,9 +50,26 @@ const routePrefixOf = (environment) => (environment.main ? '' : `/${environment.
 const part = site.part || {
     id: 'shell',
     shell: true,
+    carriesWholeEnvironments: true,
     tree: '',
     environments: environments.map((environment) => environment.id),
 };
+
+if (!Array.isArray(part.environments)) {
+    throw new Error(
+        `site.json describes the part ${part.id} without part.environments. The site generator writes that ` +
+        `array; it says which of the site's environments this part carries.`);
+}
+
+// Guarded rather than defaulted: a missing boolean reads as false, and this one decides whether the navbar,
+// the footer and the sidebar treat the site's own pages as routes of this build. False where it should be true
+// builds a shell whose sidebar lists no system and whose own links all leave the check - a wrong site that
+// nothing fails on.
+if (typeof part.carriesWholeEnvironments !== 'boolean') {
+    throw new Error(
+        `site.json describes the part ${part.id} without part.carriesWholeEnvironments. The site generator ` +
+        `writes that flag; it says whether this part wrote the site's own pages.`);
+}
 
 /** The path within an environment's tree that this part carries: '' for a whole tree. */
 const partTree = part.tree ? `/${part.tree}` : '';
@@ -79,11 +96,14 @@ if (carriedEnvironments.length === 0) {
  *
  * Docusaurus checks every link against the routes of its own build, and with `onBrokenLinks: 'throw'` a link
  * into another part's routes would fail the build. `pathname://` renders a plain anchor and leaves the check,
- * which is what the environment switcher has always done. The shell part owns these pages, so there the links
- * stay checked - and that is where a broken one would be a defect.
+ * which is what the environment switcher has always done. A part that carries whole environment trees is the
+ * one that writes these pages, so there the links stay checked - and that is where a broken one would be a
+ * defect. Asked as `carriesWholeEnvironments` rather than as `shell`: what matters is whether this build wrote
+ * them, which is the same condition the generator writes them under, and the two coincide only for a partition
+ * whose parts are systems.
  */
 function siteLink(label, path) {
-    return part.shell
+    return part.carriesWholeEnvironments
         ? {label, to: path}
         // target: '_self' because `pathname://` is a protocol and Docusaurus reads any protocol as "not this
         // site", adding target="_blank" - so a footer link to another part of the same site opened a new tab.
@@ -100,12 +120,12 @@ function siteLink(label, path) {
  * the dev tree of a system clicked "All systems" and landed in the main environment's index, which is exactly
  * the failure `plugins/remark-env-links` exists to prevent. Here the environment is in scope.
  *
- * Only where that environment has a systems index at all. The shell writes one when the environment's
- * landscape has a system in it, and `pathname://` is outside `onBrokenLinks`, so a link to one nobody wrote
- * is a 404 no build could have caught.
+ * Only where that environment has a systems index at all. The part carrying whole environment trees writes one
+ * when the environment's landscape has a system in it, and `pathname://` is outside `onBrokenLinks`, so a link
+ * to one nobody wrote is a 404 no build could have caught.
  */
 function escapePointOf(environment) {
-    if (part.shell || !environment.hasSystems) {
+    if (part.carriesWholeEnvironments || !environment.hasSystems) {
         return [];
     }
     return [{
@@ -124,25 +144,29 @@ function escapePointOf(environment) {
  * unchecked links, the way the escape point out of a part is.
  */
 function systemLinksOf(environment) {
-    return (environment.systems || []).map((system) => ({
-        type: 'link',
-        label: system.label,
-        href: `pathname://${site.baseUrl.replace(/\/$/, '')}${routePrefixOf(environment)}${system.path}`,
-    }));
+    return (environment.systems || [])
+        // An entry missing either half would become a link labelled `undefined` or an href ending in it, and
+        // `pathname://` is outside the broken-link check - so no build would ever say so.
+        .filter((system) => system && typeof system.label === 'string' && typeof system.path === 'string')
+        .map((system) => ({
+            type: 'link',
+            label: system.label,
+            href: `pathname://${site.baseUrl.replace(/\/$/, '')}${routePrefixOf(environment)}${system.path}`,
+        }));
 }
 
 /**
- * The sidebar of a part, with the systems listed after the shell's systems index.
+ * The sidebar of a part, with the systems listed after the systems index.
  *
- * Only the shell has one. A part that carries a single system has no systems index in its tree at all, and
- * its way out is `escapePointOf`.
+ * Only a part carrying whole environment trees has one. A part that carries a single system has no systems
+ * index in its tree at all, and its way out is `escapePointOf`.
  *
  * **Found by the custom property the generator writes into its `_category_.json`**, not by its label - a
  * label is exactly what someone changes. The category holds only its own index page, so what is added to it
  * is everything under it.
  */
 function withSystemsListed(environment, items) {
-    if (!part.shell) {
+    if (!part.carriesWholeEnvironments) {
         return items;
     }
     const links = systemLinksOf(environment);
@@ -377,10 +401,10 @@ const config = {
                 title: site.title,
                 logo: {
                     alt: site.title,
-                    // The site's front page belongs to the shell part; every other part links it unchecked.
-                    // With target, or the logo of a system's part opens the front page in a new tab - the
-                    // navbar logo takes one of its own, which Logo passes to Link.
-                    ...(part.shell ? {} : {href: `pathname://${site.baseUrl}`, target: '_self'}),
+                    // The site's front page belongs to the part that carries whole environment trees; every
+                    // other part links it unchecked. With target, or the logo of a system's part opens the
+                    // front page in a new tab - the navbar logo takes one of its own, which Logo passes to Link.
+                    ...(part.carriesWholeEnvironments ? {} : {href: `pathname://${site.baseUrl}`, target: '_self'}),
                     src: site.logo || 'img/logo.svg',
                     width: 28,
                     height: 28,

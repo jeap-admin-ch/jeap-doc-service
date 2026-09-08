@@ -42,12 +42,13 @@ public interface SiteBuilder {
     BuiltSite generate(PreparedPart prepared);
 
     /**
-     * Gives up on the build running right now, so that an instance being stopped ends it in a second rather
-     * than at its timeout. Does nothing on an instance that is not building.
+     * Gives up on every build running right now - an instance builds several parts at once - so that one being
+     * stopped ends them in a second rather than at their timeout. Does nothing on an instance that is not
+     * building.
      * <p>
-     * What it does <b>not</b> do is interrupt the thread running the build. That thread has a terminal state to
+     * What it does <b>not</b> do is interrupt the threads running those builds. Each has a terminal state to
      * write, a lock to give back and a request to put back, and it needs a working database connection for all
-     * three; the generator is stopped underneath it instead, so that {@link #generate} fails the ordinary way
+     * three; the generator is stopped underneath them instead, so that {@link #generate} fails the ordinary way
      * and the caller stays in control.
      */
     void abortCurrentBuild();

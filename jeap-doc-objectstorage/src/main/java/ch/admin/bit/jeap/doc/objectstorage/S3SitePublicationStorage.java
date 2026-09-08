@@ -15,6 +15,7 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -25,10 +26,14 @@ import software.amazon.awssdk.services.s3.model.Tagging;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -36,6 +41,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Stream;
 
 /**
@@ -85,6 +91,9 @@ class S3SitePublicationStorage implements SitePublicationStorage {
                 .filter(file -> !where.isShared(directory.relativize(file).toString().replace('\\', '/')))
                 .toList();
         long size = ownFiles.stream().mapToLong(S3SitePublicationStorage::sizeOf).sum();
+        // Written from every upload thread, so that the line below can say how much of the shared prefix this
+        // build did not have to write again.
+        LongAdder sharedAlreadyThere = new LongAdder();
         try (ExecutorService uploads = Executors.newFixedThreadPool(
                 Math.min(properties.getPublicationConcurrency(), Math.max(files.size(), 1)),
                 runnable -> {
@@ -94,23 +103,40 @@ class S3SitePublicationStorage implements SitePublicationStorage {
                 })) {
             List<Callable<Void>> tasks = files.stream()
                     .map(file -> (Callable<Void>) () -> {
-                        put(where, directory, file);
+                        if (!put(where, directory, file)) {
+                            sharedAlreadyThere.increment();
+                        }
                         return null;
                     })
                     .toList();
             List<Future<Void>> pending = tasks.stream().map(uploads::submit).toList();
             awaitAll(pending, prefix);
         }
-        log.info("Published {} files ({} bytes) under {}, and {} shared file(s) of the site beside them.",
-                ownFiles.size(), size, prefix, files.size() - ownFiles.size());
+        int shared = files.size() - ownFiles.size();
+        log.info("Published {} files ({} bytes) under {}, and {} shared file(s) of the site beside them, of "
+                 + "which {} were already stored with the same content.",
+                ownFiles.size(), size, prefix, shared, sharedAlreadyThere.sum());
         return new PublishedSite(prefix, ownFiles.size(), size);
     }
 
-    private void put(PartPublication where, Path directory, Path file) {
+    /**
+     * Writes one file of the output, and answers whether it was written.
+     * <p>
+     * <b>A shared file already stored with the same bytes is not written again.</b> The shared prefix belongs
+     * to the site rather than to a build, so every part of a publication writes the same ninety-odd names into
+     * it: a fifty-two-part site did that fifty-two times, some five thousand requests for bytes that were
+     * already there. What decides is the stored entity tag against the digest of the file, and not merely that
+     * the key exists - the fixed-name files of the prefix do change with a new version of the template, and
+     * skipping on existence would strand a stale logo or a stale theme chunk there for ever.
+     */
+    private boolean put(PartPublication where, Path directory, Path file) {
         String path = directory.relativize(file).toString().replace('\\', '/');
         // The shared files of a site go to one prefix, written by every part build: the same bytes under the
         // same name, so one build overwriting another's file writes what was already there.
         String key = keyOf(where.prefixOf(path), path);
+        if (where.isShared(path) && isAlreadyStored(key, file)) {
+            return false;
+        }
         s3Client.putObject(PutObjectRequest.builder()
                 .bucket(properties.getBucket())
                 .key(key)
@@ -121,6 +147,56 @@ class S3SitePublicationStorage implements SitePublicationStorage {
                         .value(CONTENT_TAG_VALUE)
                         .build()).build())
                 .build(), RequestBody.fromFile(file));
+        return true;
+    }
+
+    /**
+     * Whether the object under this key is already the bytes of this file.
+     * <p>
+     * The entity tag of an object written in one request is the hex MD5 of its content, which is what this
+     * compares against. Anything else - a missing object, an object written in parts, a storage that tags
+     * differently - simply does not match, and the file is written; there is no case in which this decides to
+     * skip a file whose bytes differ. A failure to read the tag is not one either: it is answered as "not
+     * stored", because writing a file twice is cheap and not writing it is a broken site.
+     */
+    private boolean isAlreadyStored(String key, Path file) {
+        try {
+            HeadObjectResponse stored = s3Client.headObject(HeadObjectRequest.builder()
+                    .bucket(properties.getBucket())
+                    .key(key)
+                    .build());
+            return stored.contentLength() != null && stored.contentLength() == sizeOf(file)
+                   && unquoted(stored.eTag()).equalsIgnoreCase(md5Of(file));
+        } catch (NoSuchKeyException e) {
+            return false;
+        } catch (RuntimeException e) {
+            log.debug("The stored copy of {} could not be read, so it is written again.", key, e);
+            return false;
+        }
+    }
+
+    private static String unquoted(String eTag) {
+        return eTag == null ? "" : eTag.replace("\"", "");
+    }
+
+    /** The digest an entity tag is compared against. MD5 because that is what S3 puts in the tag. */
+    @SuppressWarnings("java:S4790") // Not a security decision: this is the digest the S3 entity tag carries.
+    private static String md5Of(Path file) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("MD5");
+            try (InputStream content = Files.newInputStream(file)) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = content.read(buffer)) > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (IOException e) {
+            throw new UncheckedIOException("The file %s could not be read to publish it.".formatted(file), e);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("MD5 is not available.", e);
+        }
     }
 
     /**

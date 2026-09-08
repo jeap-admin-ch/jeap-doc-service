@@ -35,10 +35,11 @@ import java.util.regex.Pattern;
  * doing.
  * <p>
  * <b>Asking is not building.</b> Every trigger in the service goes through {@link DocumentationBuildTrigger},
- * which sets one collapsing request per site that {@code DocumentationBuildRunner} claims under that site's
- * lock - and one build of a site at a time, exactly one follow-up run per burst of triggers and one build per
- * tick per instance all rest on there being no second path to a build. So this endpoint asks, answers
- * {@code 202} and says how long it takes until an instance looks; it never starts a build on the request thread.
+ * which sets one collapsing request per <b>part</b> that {@code DocumentationBuildRunner} claims under that
+ * part's own lock - and one build of a part at a time, exactly one follow-up run per burst of triggers and the
+ * bound on how many parts an instance builds at once all rest on there being no second path to a build. So this
+ * endpoint asks, answers {@code 202} and says how long it takes until an instance looks; it never starts a
+ * build on the request thread.
  */
 @Slf4j
 @RestController
@@ -171,7 +172,7 @@ class SiteAdminController {
     }
 
     @Operation(summary = "Read one build of a site")
-    @GetMapping(path = SiteApiPaths.BUILDS + "/{buildId}", produces = "application/json")
+    @GetMapping(path = SiteApiPaths.BUILD, produces = "application/json")
     @PreAuthorize(Roles.HAS_SITES_READ_ROLE)
     public BuildDto build(
             @Parameter(description = "Identifier of the site") @PathVariable String site,

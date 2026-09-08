@@ -6,8 +6,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
@@ -44,7 +46,7 @@ public class SystemSitePartition implements SitePartition {
      */
     @Override
     public List<SitePart> partsOf(Site site) {
-        List<SitePart> parts = new java.util.ArrayList<>();
+        List<SitePart> parts = new ArrayList<>();
         parts.add(shellOf(site));
         for (String slug : systemSlugsOf(site)) {
             parts.add(systemPart(site, slug));
@@ -103,12 +105,13 @@ public class SystemSitePartition implements SitePartition {
      * against and what the part's Docusaurus build mounts its trees at, so the two cannot drift apart.
      */
     private SitePart systemPart(Site site, String systemSlug) {
+        String path = DocumentationPaths.system(systemSlug);
         List<String> prefixes = site.environments().stream()
-                .map(environment -> environment.routePrefix() + DocumentationPaths.system(systemSlug))
+                .map(environment -> environment.routePrefix() + path)
                 .toList();
         // The tree without its slashes: it is a path inside an environment's content and inside its URL, and
         // both are built from it.
-        String tree = DocumentationPaths.system(systemSlug).substring(1, DocumentationPaths.system(systemSlug).length() - 1);
+        String tree = path.substring(1, path.length() - 1);
         return new SitePart(PartKey.of(site.id(), SYSTEM_PREFIX + systemSlug),
                 "the system " + systemSlug, tree, true, environmentIdsOf(site), prefixes);
     }
@@ -117,8 +120,8 @@ public class SystemSitePartition implements SitePartition {
      * Every system slug of the site, from every environment that reads an architecture model. Sorted and
      * without duplicates, so two runs produce the same parts in the same order.
      */
-    private java.util.SortedSet<String> systemSlugsOf(Site site) {
-        java.util.SortedSet<String> slugs = new TreeSet<>();
+    private SortedSet<String> systemSlugsOf(Site site) {
+        SortedSet<String> slugs = new TreeSet<>();
         for (SiteEnvironment environment : site.environments()) {
             if (architectureModel.isConfiguredFor(environment.id())) {
                 slugs.addAll(architectureModel.systemSlugsOf(environment.id()));

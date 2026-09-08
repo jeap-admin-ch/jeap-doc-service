@@ -155,8 +155,9 @@ announced.
 **The structure of the bundle is checked on request, not on upload.** A pipeline asks
 `POST /api/uploads/docs/validation` before it builds the ZIP, and gets a finding per misfiled path - the rules
 are on [What an upload is validated against](upload-validation.md). The upload endpoint itself does not apply
-them: what keeps a misfiled page out of a site is that validation and the publication that writes an upload
-into the tree.
+them, and that validation is advisory: it is what a pipeline uses to keep a misfiled page out of a site, and
+nothing today refuses one that skipped it. The publication that writes an upload into the tree will apply the
+same rules, and it is not written yet - see below.
 
 The **Markdown itself** - CommonMark, dead links, the front-matter allowlist - is the doc workflow's half of
 the validation, before anything is sent; the doc service never sees a file's bytes. And nothing is scanned for
@@ -164,9 +165,10 @@ malware: that is descoped from this enabler.
 
 ## What happens next
 
-An upload that stored its bundle **asks for its site to be published**, unless that site is configured not to be
-(`publish-on-upload`). It does not wait for the build: several uploads arriving while one runs are one request,
-and the next run serves all of them - see [Generating the documentation](generation.md).
+An upload that stored its bundle **asks for the part that carries its system to be published**, unless that
+site is configured not to be (`publish-on-upload`). It does not wait for the build: several uploads for one
+system arriving while a build runs are one request, and the next run serves all of them - see
+[Generating the documentation](generation.md).
 
 The upload itself stays `PENDING`. Taking the uploaded documentation over into the generated site is not yet
 implemented; until it is, a build publishes what the doc service generates itself.

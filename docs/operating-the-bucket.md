@@ -12,8 +12,11 @@ keeps working when the service does not.
 | Prefix     | What it is                                | Removed by                                                                                                                                                   |
 |------------|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `uploads/` | The bundles as they arrived               | The bucket. The service removes the *record* of an upload after `jeap.doc.upload.housekeeping.retention`; the bundle it points at has to outlive that record |
-| `<site>/<build>/` | The generated parts of a site, one prefix per build | The service, down to `jeap.doc.build.retention` per part, after every successful build |
-| `<site>/shared/`  | The files every part of a site emits identically - the bundles and the site's images. Written by every part build under the same names | Nothing yet: they are overwritten by every build that emits them, and a name nothing references any more is a small leak. See [Generating the documentation](generation.md) |
+| `sites/<site>/<build>/` | The generated parts of a site, one prefix per build | The service, down to `jeap.doc.build.retention` per part, after every successful build |
+| `sites/<site>/shared/`  | The files every part of a site emits identically - the bundles, the site's images and its branding. Written by whichever part build finds them changed or missing; one that is already stored with the same bytes is not written again | Nothing yet: they are overwritten by every build that emits them, and a name nothing references any more is a small leak. See [Generating the documentation](generation.md) |
+
+`uploads` is `jeap.doc.storage.upload-prefix` and `sites` is `jeap.doc.storage.site-prefix`, and an instance
+may set either to something else - which is why the rules below name a tag rather than a prefix.
 
 **Every object the service writes carries the tag `jeap-doc-content`** - `upload` or `site` - so that a rule can
 name what it is expiring rather than a prefix an instance configures for itself.

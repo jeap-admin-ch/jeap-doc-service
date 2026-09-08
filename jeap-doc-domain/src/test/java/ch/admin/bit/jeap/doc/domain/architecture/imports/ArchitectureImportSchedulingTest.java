@@ -3,7 +3,6 @@ package ch.admin.bit.jeap.doc.domain.architecture.imports;
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 import org.springframework.scheduling.support.CronExpression;
 
@@ -84,6 +83,6 @@ class ArchitectureImportSchedulingTest {
         // The job is never asked anything: an instance with no environment configured schedules nothing, which
         // is what makes the checks the only thing under test here.
         ArchitectureImportJob job = mock(ArchitectureImportJob.class);
-        return new ArchitectureImportScheduling(job, properties, mock(TaskExecutor.class));
+        return new ArchitectureImportScheduling(job, properties, mock(ArchitectureImportQueue.class));
     }
 }

@@ -43,6 +43,18 @@ public interface DocumentationBuildRequestRepository {
     boolean request(PartKey part, BuildTrigger trigger, Instant now, Publication publication, boolean forced);
 
     /**
+     * Asks for a build of every one of the given parts, and reports how many of them were not already owed
+     * one.
+     * <p>
+     * <b>All of them in one transaction</b>, because the parts of a publication have to become owed together.
+     * A publication is over when nothing of it is building and nothing of it is still owed, so another
+     * instance that sees the first part of fifty and none of the rest can build that one, find nothing else
+     * owed, and report a publication that took seconds.
+     */
+    int requestAll(List<PartKey> parts, BuildTrigger trigger, Instant now, Publication publication,
+                   boolean forced);
+
+    /**
      * The parts with a pending request, oldest first. Read only: claiming happens inside the part's lock.
      */
     List<BuildRequest> pending();

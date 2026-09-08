@@ -1,11 +1,6 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
-import ch.admin.bit.jeap.doc.domain.port.DocumentationStatus;
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import ch.admin.bit.jeap.doc.domain.port.PartPublication;
@@ -42,15 +37,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -232,9 +225,8 @@ class DocumentationBuildRunnerTest {
      */
     @Test
     void runOnce_whenTheSiteIsUnknownAndTheRequestIsRecent_thenItIsLeftForAnInstanceThatKnowsIt() {
-        when(requests.pending())
-                .thenReturn(List.of(new BuildRequest(PartKey.shellOf("gone"), NOW, BuildTrigger.UPLOAD, null, false)));
-        when(requests.pendingSince("gone")).thenReturn(Optional.of(NOW.minus(Duration.ofSeconds(30))));
+        when(requests.pending()).thenReturn(List.of(new BuildRequest(PartKey.shellOf("gone"),
+                NOW.minus(Duration.ofSeconds(30)), BuildTrigger.UPLOAD, null, false)));
 
         assertThat(runner.runOnce()).isFalse();
 
@@ -248,14 +240,31 @@ class DocumentationBuildRunnerTest {
      */
     @Test
     void runOnce_whenTheSiteIsUnknownAndNobodyHasServedTheRequest_thenItIsDropped() {
-        when(requests.pending())
-                .thenReturn(List.of(new BuildRequest(PartKey.shellOf("gone"), NOW, BuildTrigger.UPLOAD, null, false)));
-        when(requests.pendingSince("gone")).thenReturn(Optional.of(NOW.minus(Duration.ofHours(24))));
+        when(requests.pending()).thenReturn(List.of(new BuildRequest(PartKey.shellOf("gone"),
+                NOW.minus(Duration.ofHours(24)), BuildTrigger.UPLOAD, null, false)));
 
         assertThat(runner.runOnce()).isFalse();
 
         verify(requests).claim(PartKey.shellOf("gone"));
         verify(siteBuilder, never()).generate(any());
+    }
+
+    /**
+     * The age that decides is the part's own. One part of a site having waited all day says nothing about a
+     * part asked for seconds ago, and dropping the fresh one would lose a build nothing asks for again.
+     */
+    @Test
+    void runOnce_whenAnotherPartOfTheUnknownSiteIsOld_thenTheFreshRequestIsStillLeftAlone() {
+        PartKey waiting = PartKey.of("gone", "system-orders");
+        PartKey fresh = PartKey.of("gone", "system-shipping");
+        when(requests.pending()).thenReturn(List.of(
+                new BuildRequest(waiting, NOW.minus(Duration.ofHours(24)), BuildTrigger.UPLOAD, null, false),
+                new BuildRequest(fresh, NOW.minus(Duration.ofSeconds(5)), BuildTrigger.UPLOAD, null, false)));
+
+        assertThat(runner.runOnce()).isFalse();
+
+        verify(requests).claim(waiting);
+        verify(requests, never()).claim(fresh);
     }
 
     /**
@@ -268,7 +277,6 @@ class DocumentationBuildRunnerTest {
         when(builds.partsWithRunningBuilds()).thenReturn(Set.of(PartKey.shellOf("gone")));
         when(builds.abandonRunning(eq(PartKey.shellOf("gone")), any()))
                 .thenReturn(List.of(build(3L, BuildState.RUNNING).abandonedAt(NOW)));
-        when(requests.pendingSince("gone")).thenReturn(Optional.empty());
 
         assertThat(runner.runOnce()).isFalse();
 
@@ -657,6 +665,69 @@ class DocumentationBuildRunnerTest {
     }
 
     /**
+     * An Error is the failure this feature invites - a build that runs out of memory - and the row has to end
+     * up somewhere terminal all the same: one left RUNNING keeps its workspace and reads as a live build until
+     * another pass abandons it, which then costs a full rebuild.
+     */
+    @Test
+    void runOnce_whenTheBuildDiesOnAnError_thenItIsRecordedAsFailedAndTheErrorIsRethrown() {
+        pending(SITE);
+        when(siteBuilder.generate(any())).thenThrow(new OutOfMemoryError("Java heap space"));
+
+        // The pass turns it into a broken part rather than starting more builds, so runOnce itself returns.
+        assertThat(runner.runOnce()).isFalse();
+
+        verify(builds).failed(eq(7L), eq("Java heap space"), any());
+        assertThat(metrics.results).containsExactly("failed:" + SITE + ":UPLOAD");
+    }
+
+    /** An Error usually carries no message, and an empty failure reason says nothing to whoever reads the row. */
+    @Test
+    void runOnce_whenTheErrorHasNoMessage_thenItsTypeIsTheFailureReason() {
+        pending(SITE);
+        when(siteBuilder.generate(any())).thenThrow(new OutOfMemoryError());
+
+        runner.runOnce();
+
+        verify(builds).failed(eq(7L), eq("OutOfMemoryError"), any());
+    }
+
+    /**
+     * The slots are given back however the pass ended. A read that throws in the middle of one propagates out
+     * of the drain, and the gauge would otherwise keep the value it had while this instance sits idle.
+     */
+    @Test
+    void runOnce_whenTheDrainThrows_thenTheSlotsAreStillGivenBack() {
+        properties.setMaxConcurrentParts(1);
+        pending(SITE);
+        // The second read of what is owed: the first fills the queue, and the refill after the build throws.
+        when(requests.pending())
+                .thenReturn(List.of(new BuildRequest(SHELL, NOW, BuildTrigger.UPLOAD, null, false)))
+                .thenThrow(new IllegalStateException("no connection"));
+
+        assertThatThrownBy(runner::runOnce).isInstanceOf(IllegalStateException.class);
+
+        assertThat(metrics.slotsBusy).last().isEqualTo(0);
+    }
+
+    /**
+     * The other half of the skip: the objects have to still be there. A publication the retention removed the
+     * files of is served by nothing, so its part is built again however unchanged its content is.
+     */
+    @Test
+    void runOnce_whenThePublishedBuildHasNoObjectsLeft_thenItIsBuiltAgainDespiteTheDigest() {
+        pending(SITE);
+        DocumentationBuild swept = new DocumentationBuild(3L, SITE, SitePart.SHELL, BuildTrigger.IMPORT,
+                BuildState.SUCCEEDED, NOW, NOW, "test", null, 12, 4096, 900, null, "digest-of-now");
+        when(builds.published(SHELL)).thenReturn(Optional.of(swept));
+
+        assertThat(runner.runOnce()).isTrue();
+
+        assertThat(metrics.results).containsExactly("succeeded:" + SITE + ":UPLOAD");
+        verify(builds, never()).skipped(anyLong(), any());
+    }
+
+    /**
      * A build somebody asked for by hand is never skipped, and the reason it is the <b>request</b> that says so
      * rather than its trigger is this: two asks for one part are one row, and that row keeps the trigger that
      * asked first. Reading the trigger meant a forced publication was skipped for exactly the parts the hourly
@@ -793,10 +864,6 @@ class DocumentationBuildRunnerTest {
     }
 
     /**
-     * What the runner's use of the lock looks like from the domain's side. Refusing is exactly what a site
-     * another instance is building looks like.
-     */
-    /**
      * An instance with no architecture repository, so that a site is never held back for want of a model. What
      * holding one back does is {@link ArchitectureModelReadinessTest}'s business.
      */
@@ -852,20 +919,4 @@ class DocumentationBuildRunnerTest {
         }
     }
 
-    private static String published(ListAppender<ILoggingEvent> logged) {
-        return logged.list.stream()
-                .map(ILoggingEvent::getFormattedMessage)
-                .filter(line -> line.contains("is published:"))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("nothing was published"));
-    }
-
-    private static ListAppender<ILoggingEvent> captureLog() {
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        Logger logger = (Logger) org.slf4j.LoggerFactory.getLogger(DocumentationBuildRunner.class);
-        logger.setLevel(Level.INFO);
-        logger.addAppender(appender);
-        return appender;
-    }
 }

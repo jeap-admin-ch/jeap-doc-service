@@ -52,7 +52,7 @@ class ArchitectureImportSchedulingContextTest {
 
         new ApplicationContextRunner()
                 .withUserConfiguration(ExecutorsOfOtherStarters.class, DocServiceExecutor.class,
-                        ArchitectureImportScheduling.class)
+                        ArchitectureImportQueue.class, ArchitectureImportScheduling.class)
                 .withBean(ArchitectureImportProperties.class, ArchitectureImportProperties::new)
                 .withBean(ArchitectureImportJob.class, () -> job)
                 .run(context -> {
@@ -87,7 +87,7 @@ class ArchitectureImportSchedulingContextTest {
 
         new ApplicationContextRunner()
                 .withUserConfiguration(ExecutorsOfOtherStarters.class, DocServiceExecutor.class,
-                        ArchitectureImportScheduling.class)
+                        ArchitectureImportQueue.class, ArchitectureImportScheduling.class)
                 .withBean(ArchitectureImportProperties.class, ArchitectureImportProperties::new)
                 .withBean(ArchitectureImportJob.class, () -> job)
                 .run(context -> {
@@ -118,7 +118,7 @@ class ArchitectureImportSchedulingContextTest {
 
         new ApplicationContextRunner()
                 .withUserConfiguration(ExecutorsOfOtherStarters.class, DocServiceExecutor.class,
-                        ArchitectureImportScheduling.class)
+                        ArchitectureImportQueue.class, ArchitectureImportScheduling.class)
                 .withBean(ArchitectureImportProperties.class, () -> properties)
                 .withBean(ArchitectureImportJob.class, () -> job)
                 .run(context -> {

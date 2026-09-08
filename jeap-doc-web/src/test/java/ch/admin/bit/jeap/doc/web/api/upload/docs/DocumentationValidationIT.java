@@ -3,17 +3,23 @@ package ch.admin.bit.jeap.doc.web.api.upload.docs;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.nio.charset.StandardCharsets;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,6 +49,35 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
 
     private static RequestPostProcessor mayUpload() {
         return authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")));
+    }
+
+    /**
+     * The same request with its length withheld, as a chunked one arrives. MockMvc derives the content length
+     * from the content it is given, so the request is built here rather than with the builder above.
+     */
+    private static RequestBuilder chunkedValidationOf(String body) {
+        return context -> {
+            MockHttpServletRequest request = new MockHttpServletRequest(context, "POST", PATH) {
+                @Override
+                public int getContentLength() {
+                    return -1;
+                }
+            };
+            request.setAsyncSupported(true);
+            request.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            request.setContent(body.getBytes(StandardCharsets.UTF_8));
+            request.setParameter("type", "system-docs");
+            request.setParameter("system", SYSTEM);
+            request.setParameter("template", "arc42");
+            request.setParameter("source-format", "markdown");
+            return mayUpload().postProcessRequest(request);
+        };
+    }
+
+    private static String tree(int paths, String path) {
+        return "{\"paths\": [" + IntStream.range(0, paths)
+                .mapToObj(index -> "\"" + path + "\"")
+                .collect(Collectors.joining(",")) + "]}";
     }
 
     /**
@@ -164,13 +199,40 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
     }
 
     /**
-     * <b>An oversized body is refused before it is read.</b> {@code max-paths} alone bounds nothing: it is
-     * counted in the handler, and by then the whole array is in the heap - on a container that is also
-     * running a Docusaurus build, that is the instance's memory.
-     * <p>
-     * The body here is small and its announced length is not: what is under test is that the length decides,
-     * which is the only way to refuse a gigabyte without reading it.
+     * <b>Many tiny paths stay within the byte limit and are refused on their number.</b> Two hundred
+     * thousand one-character paths are under a megabyte and two hundred thousand strings in the heap, so the
+     * number has to be capped while the array is read - see {@code PathTreeReaderTest}.
      */
+    @Test
+    void aBodyOfVeryManyTinyPaths_isRefusedOnTheirNumber() throws Exception {
+        mockMvc.perform(validationOf(tree(200_000, "a")).with(mayUpload()))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value("TOO_MANY_PATHS"));
+    }
+
+    /**
+     * <b>A body that announces no length is bounded while it is read.</b> Chunked encoding carries no
+     * {@code Content-Length}, so the interceptor has nothing to compare - and the caller here needs no more
+     * than any doc pipeline's own token. Eleven megabytes in ten thousand paths passes the cap on the number
+     * and is refused on the bytes, which is the bound that no announcement can get around.
+     */
+    @Test
+    void aChunkedBodyLargerThanAnyListOfPaths_isCutWhileItIsRead() throws Exception {
+        String path = "1-intro/" + "p".repeat(1088) + ".md";
+
+        mockMvc.perform(chunkedValidationOf(tree(10_000, path)))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value("SIZE_LIMIT_EXCEEDED"));
+    }
+
+    /** And a chunked body that is a documentation set is answered like any other. */
+    @Test
+    void aChunkedBodyWithinTheLimit_isAnswered() throws Exception {
+        mockMvc.perform(chunkedValidationOf("{\"paths\": [\"1-intro/goals.md\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pathsChecked").value(1));
+    }
+
     /**
      * <b>An oversized body is refused on its length, not on its content.</b> This body carries more than
      * {@code max-paths} paths as well, so without the guard the same request would be answered
@@ -207,6 +269,52 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.detail").value("1 problem."))
                 .andExpect(jsonPath("$.pathsChecked").value(0));
+    }
+
+    /**
+     * <b>Each answer carries the media type that matches it.</b> The report is JSON and the problem document
+     * is a problem document, so a client that asks for {@code application/problem+json} by name is answered
+     * rather than refused on content negotiation.
+     */
+    @Test
+    void eachAnswer_carriesTheMediaTypeThatMatchesIt() throws Exception {
+        mockMvc.perform(validationOf("{\"paths\": [\"1-intro/goals.md\"]}").with(mayUpload()))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, startsWith("application/json")));
+        mockMvc.perform(validationOf("{\"paths\": [\"1-intro/index.md\"]}").with(mayUpload()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, startsWith("application/problem+json")));
+    }
+
+    @Test
+    void withAcceptOfTheProblemDocument_neitherAnswerIsRefused() throws Exception {
+        mockMvc.perform(validationOf("{\"paths\": [\"1-intro/goals.md\"]}")
+                        .accept(MediaType.APPLICATION_PROBLEM_JSON).with(mayUpload()))
+                .andExpect(status().isOk());
+        mockMvc.perform(validationOf("{\"paths\": [\"1-intro/index.md\"]}")
+                        .accept(MediaType.APPLICATION_PROBLEM_JSON).with(mayUpload()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.findings[0].code").value("RESERVED_NAME"));
+    }
+
+    /**
+     * <b>A body that is not a readable path tree is the endpoint's problem document too.</b> It is the most
+     * likely mistake a workflow hand-building the JSON makes, and the answer has to carry the {@code code}
+     * this endpoint's contract tells a pipeline to read.
+     */
+    @Test
+    void aBodyThatIsNotAPathTree_isFourHundredWithTheUploadProblemDocument() throws Exception {
+        mockMvc.perform(validationOf("{\"paths\":").with(mayUpload()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER_VALUE"))
+                .andExpect(jsonPath("$.type").value(UploadProblems.PROBLEM_TYPE))
+                .andExpect(jsonPath("$.detail").value("The request body is not a readable path tree."));
+        mockMvc.perform(validationOf("").with(mayUpload()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER_VALUE"));
+        mockMvc.perform(validationOf("{\"paths\": {}}").with(mayUpload()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER_VALUE"));
     }
 
     @Test

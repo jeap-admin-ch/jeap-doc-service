@@ -90,12 +90,27 @@ public class InvalidUploadException extends RuntimeException {
     /**
      * More paths than one validation request may carry. Refused rather than answered: the answer would be a
      * report about a tree that is a mistake in the workflow configuration.
+     * <p>
+     * <i>More than</i> rather than how many: the cap is applied while the body is read, and counting them all
+     * would mean having read them all.
      */
-    public static InvalidUploadException tooManyPaths(int paths, int limit) {
+    public static InvalidUploadException tooManyPaths(int limit) {
         return new InvalidUploadException(Code.TOO_MANY_PATHS,
-                ("The documentation set carries %d paths, and at most %d may be validated in one request. A "
-                 + "set of that size is a path pointing at more than the documentation.")
-                        .formatted(paths, limit));
+                ("The documentation set carries more than %d paths, and at most that many may be validated in "
+                 + "one request. A set of that size is a path pointing at more than the documentation.")
+                        .formatted(limit));
+    }
+
+    /**
+     * A validation request whose body is not a path tree - malformed JSON, no body, or a {@code paths} that is
+     * not an array of strings.
+     * <p>
+     * The parser's own message is deliberately not passed on: what is wrong with the JSON is in the caller's
+     * own body, and an internal message tells them nothing they can act on.
+     */
+    public static InvalidUploadException bodyIsNotAPathTree() {
+        return new InvalidUploadException(Code.INVALID_PARAMETER_VALUE,
+                "The request body is not a readable path tree.");
     }
 
     public static InvalidUploadException tooLarge(long limit) {
@@ -106,9 +121,8 @@ public class InvalidUploadException extends RuntimeException {
     /**
      * A validation request whose body is larger than the paths it may carry could ever be.
      * <p>
-     * Refused <b>before the body is read</b>, which is what makes it different from
-     * {@link #tooManyPaths}: that one counts the paths, and counting them means having parsed them all into
-     * the heap first.
+     * Refused <b>before the body is read at all</b>, on the announced length, which is what makes it
+     * different from {@link #tooManyPaths}: that one is reached while reading the paths.
      */
     public static InvalidUploadException bodyTooLarge(long announced, long limit) {
         return new InvalidUploadException(Code.SIZE_LIMIT_EXCEEDED,

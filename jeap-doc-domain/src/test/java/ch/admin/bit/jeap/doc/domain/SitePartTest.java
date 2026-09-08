@@ -27,6 +27,24 @@ class SitePartTest {
     }
 
     /**
+     * <b>A fragment and a query are not part of the route.</b> A link on a page carries them, and a part that
+     * read them as part of the path would answer both directions wrongly: its own link would be rewritten out
+     * of its build's link check, and the shell would leave a link into another part inside the check - which
+     * fails the build on a route the shell does not have.
+     */
+    @Test
+    void owns_whenThePathCarriesAFragmentOrAQuery_thenOnlyTheRouteIsCompared() {
+        SitePart part = partOwning("/systems/orders/", "/dev/systems/orders/");
+
+        assertThat(part.owns("/systems/orders#context")).isTrue();
+        assertThat(part.owns("/systems/orders/#context")).isTrue();
+        assertThat(part.owns("/dev/systems/orders/system-architecture/intro/#goals")).isTrue();
+        assertThat(part.owns("/systems/orders?print=1")).isTrue();
+        assertThat(part.owns("/systems/orders-archive/#context")).describedAs("and no more than the route")
+                .isFalse();
+    }
+
+    /**
      * A path that only starts with the same letters is not inside the part. Without the trailing slash,
      * {@code /systems/orders-archive/} would be served out of the publication of {@code orders}.
      */
@@ -39,7 +57,6 @@ class SitePartTest {
         assertThat(part.owns("/dev/systems/orders/")).isFalse();
     }
 
-    /** The shell owns nothing this way: it is what is left when no other part matched. */
     /** The shell carries whole environment trees; a part named after something carries a subtree of them. */
     @Test
     void aPartKnowsWhatItCarries() {

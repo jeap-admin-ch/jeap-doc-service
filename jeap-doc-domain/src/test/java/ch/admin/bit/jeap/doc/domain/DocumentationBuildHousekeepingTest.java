@@ -10,16 +10,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+/**
+ * The nightly clean-up asks for one delete, over everything that finished before the retention.
+ * <p>
+ * Which rows survive it is the repository's rule and is asserted against a real database in
+ * {@code DocumentationBuildRepositoryAdapterIT}: a keep-set assembled here could not name the publication of a
+ * part the configuration no longer has.
+ */
 @ExtendWith(MockitoExtension.class)
 class DocumentationBuildHousekeepingTest {
 
@@ -30,57 +34,26 @@ class DocumentationBuildHousekeepingTest {
 
     @Test
     void removeOldBuilds_thenTheRecordsOlderThanTheRetentionGo() {
-        DocumentationBuildHousekeeping housekeeping = housekeeping(new SiteProperties());
-        when(builds.published(PartKey.shellOf(Site.DEFAULT_SITE))).thenReturn(Optional.empty());
-        when(builds.deleteFinishedBefore(any(), anySet())).thenReturn(3);
+        when(builds.deleteFinishedBefore(any())).thenReturn(3);
 
-        housekeeping.removeOldBuilds();
+        housekeeping().removeOldBuilds();
 
         ArgumentCaptor<Instant> finishedBefore = ArgumentCaptor.forClass(Instant.class);
-        org.mockito.Mockito.verify(builds).deleteFinishedBefore(finishedBefore.capture(), anySet());
+        verify(builds).deleteFinishedBefore(finishedBefore.capture());
         assertThat(finishedBefore.getValue()).isEqualTo(NOW.minus(new BuildProperties().getHistoryRetention()));
     }
 
-    /**
-     * The one rule this class exists for: the newest successful build of a site is not only a record, it is the
-     * publication. Losing it would leave a rarely-built site answering that it has never been generated.
-     */
+    /** Nothing is read to decide what to keep - the clean-up is the one statement. */
     @Test
-    void removeOldBuilds_thenThePublishedBuildOfEverySiteIsKept() {
-        SiteProperties properties = new SiteProperties();
-        Map<String, SiteProperties.Site> sites = new LinkedHashMap<>();
-        sites.put(Site.DEFAULT_SITE, new SiteProperties.Site());
-        sites.put("governance", new SiteProperties.Site());
-        properties.setSites(sites);
-        when(builds.published(PartKey.shellOf(Site.DEFAULT_SITE))).thenReturn(Optional.of(build(11L)));
-        when(builds.published(PartKey.shellOf("governance"))).thenReturn(Optional.of(build(22L)));
+    void removeOldBuilds_thenNoBuildIsReadToDecideWhatToKeep() {
+        housekeeping().removeOldBuilds();
 
-        housekeeping(properties).removeOldBuilds();
-
-        ArgumentCaptor<Set<Long>> keep = ArgumentCaptor.captor();
-        org.mockito.Mockito.verify(builds).deleteFinishedBefore(any(), keep.capture());
-        assertThat(keep.getValue()).containsExactlyInAnyOrder(11L, 22L);
+        verify(builds).deleteFinishedBefore(any());
+        verifyNoMoreInteractions(builds);
     }
 
-    @Test
-    void removeOldBuilds_whenASiteHasNeverBeenPublished_thenItContributesNothingToKeep() {
-        when(builds.published(PartKey.shellOf(Site.DEFAULT_SITE))).thenReturn(Optional.empty());
-
-        housekeeping(new SiteProperties()).removeOldBuilds();
-
-        ArgumentCaptor<Set<Long>> keep = ArgumentCaptor.captor();
-        org.mockito.Mockito.verify(builds).deleteFinishedBefore(any(), keep.capture());
-        assertThat(keep.getValue()).isEmpty();
-    }
-
-    private DocumentationBuildHousekeeping housekeeping(SiteProperties properties) {
-        return new DocumentationBuildHousekeeping(builds, new DocumentationSites(properties),
-                new SystemSitePartition(new NoArchitectureModel()), new BuildProperties(),
+    private DocumentationBuildHousekeeping housekeeping() {
+        return new DocumentationBuildHousekeeping(builds, new BuildProperties(),
                 Clock.fixed(NOW, ZoneOffset.UTC), new DirectExclusiveWork());
-    }
-
-    private static DocumentationBuild build(long id) {
-        return new DocumentationBuild(id, Site.DEFAULT_SITE, SitePart.SHELL, BuildTrigger.IMPORT,
-                BuildState.SUCCEEDED, NOW, NOW, "test", "default/" + id, 1, 1, 1, null, "digest");
     }
 }

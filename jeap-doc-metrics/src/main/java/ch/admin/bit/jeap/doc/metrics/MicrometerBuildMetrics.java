@@ -2,31 +2,36 @@ package ch.admin.bit.jeap.doc.metrics;
 
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
-import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
-import ch.admin.bit.jeap.doc.domain.port.CompletedPublication;
-
+import ch.admin.bit.jeap.doc.domain.SitePartition;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
+import ch.admin.bit.jeap.doc.domain.port.CompletedPublication;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
-import ch.admin.bit.jeap.doc.domain.port.PublicationTotals;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
+import ch.admin.bit.jeap.doc.domain.port.PublicationTotals;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.binder.MeterBinder;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.util.Optional;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.DoubleSupplier;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.function.ToDoubleFunction;
+import java.util.function.ToLongFunction;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -43,6 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * survive a restart and read the same on every instance - it is the shape the governance service's scheduled
  * jobs already use.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
@@ -59,7 +65,7 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
     private final DocumentationBuildRepository builds;
     private final DocumentationBuildRequestRepository requests;
     private final DocumentationSites sites;
-    private final ch.admin.bit.jeap.doc.domain.SitePartition partition;
+    private final SitePartition partition;
     private final Clock clock;
 
     /**
@@ -149,7 +155,7 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
                 .register(meterRegistry);
         for (Site site : sites.all()) {
             String id = site.id();
-            Gauge.builder("jeap.doc.build.last.success.age", () -> ageOrNaN(builds.lastSuccessAt(id)))
+            databaseGauge("jeap.doc.build.last.success.age", () -> ageOrNaN(builds.lastSuccessAt(id)))
                     .description("Seconds since this documentation site was last published, NaN while it never has been")
                     .baseUnit("seconds")
                     .tag(SITE_TAG, id)
@@ -158,13 +164,13 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
             // generated at all, so a site nobody changes goes days without a publication and its last success
             // ages without bound - correctly. What says the service is still going through this site's parts
             // is a build that ended in either of the outcomes meaning "this part is up to date".
-            Gauge.builder("jeap.doc.build.last.check.age", () -> ageOrNaN(builds.lastCheckAt(id)))
+            databaseGauge("jeap.doc.build.last.check.age", () -> ageOrNaN(builds.lastCheckAt(id)))
                     .description("Seconds since a part of this documentation site was last published or found "
                                  + "already current, NaN while none ever was")
                     .baseUnit("seconds")
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
-            Gauge.builder("jeap.doc.build.request.age", () -> ageOf(requests.pendingSince(id)))
+            databaseGauge("jeap.doc.build.request.age", () -> ageOf(requests.pendingSince(id)))
                     .description("Seconds the oldest pending build request of this site has been waiting, 0 if none")
                     .baseUnit("seconds")
                     .tag(SITE_TAG, id)
@@ -175,15 +181,15 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
             // The site captured rather than found again, and memoized: partsOf reads the architecture model,
             // and its own contract says that is not for a request thread - a scrape is one.
             Memo<Integer> parts = new Memo<>(AGGREGATE_TTL, ignored -> partition.partsOf(site).size());
-            Gauge.builder("jeap.doc.parts", () -> parts.of(id))
+            databaseGauge("jeap.doc.parts", () -> parts.of(id))
                     .description("Parts this documentation site is published as")
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
-            Gauge.builder("jeap.doc.parts.pending", () -> requests.pendingCount(id))
+            databaseGauge("jeap.doc.parts.pending", () -> requests.pendingCount(id))
                     .description("Parts of this site that are owed a build right now")
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
-            Gauge.builder("jeap.doc.part.age", () -> ageOf(builds.oldestPublicationAt(id)))
+            databaseGauge("jeap.doc.part.age", () -> ageOf(builds.oldestPublicationAt(id)))
                     .description("Seconds since the oldest published part of this site was built, 0 if none")
                     .baseUnit("seconds")
                     .tag(SITE_TAG, id)
@@ -191,13 +197,11 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
             // Read from the database, like the two ages above and for the same reason: an in-memory value
             // reads 0 on every instance that did not itself run the last build, and 0 again after a restart -
             // so the drop it is watched for would be reported by a deployment and by the wrong pod.
-            Gauge.builder("jeap.doc.build.pages", () -> publishedValue(id,
-                            ch.admin.bit.jeap.doc.domain.port.PublicationTotals::pages))
+            databaseGauge("jeap.doc.build.pages", () -> publishedValue(id, PublicationTotals::pages))
                     .description("Pages this documentation site is published with, across its parts")
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
-            Gauge.builder("jeap.doc.build.bytes", () -> publishedValue(id,
-                            ch.admin.bit.jeap.doc.domain.port.PublicationTotals::bytes))
+            databaseGauge("jeap.doc.build.bytes", () -> publishedValue(id, PublicationTotals::bytes))
                     .description("Size of this documentation site as published, across its parts")
                     .baseUnit("bytes")
                     .tag(SITE_TAG, id)
@@ -205,16 +209,39 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
             // The wall clock of a whole publication, which no instance knows on its own: its parts are built
             // on several of them. Read from the database for that reason, and NaN until one has completed -
             // never 0, which would read as a publication that took no time.
-            Gauge.builder("jeap.doc.publication.seconds",
+            databaseGauge("jeap.doc.publication.seconds",
                             () -> publicationValue(id, publication -> publication.duration().toMillis() / 1000.0))
                     .description("Wall clock of the last completed full publication of this site, NaN while none has completed")
                     .baseUnit("seconds")
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
-            Gauge.builder("jeap.doc.publication.parts", () -> publicationValue(id, CompletedPublication::parts))
+            databaseGauge("jeap.doc.publication.parts",
+                            () -> publicationValue(id, CompletedPublication::parts))
                     .description("Parts the last completed full publication of this site went through")
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
+        }
+    }
+
+    /**
+     * A gauge whose value comes from the database.
+     * <p>
+     * <b>Guarded, because Micrometer does not guard a supplier.</b> A connection timeout or a lock in any one
+     * of them propagates out of the Prometheus endpoint as a 500, and the scrape then reports nothing at all -
+     * including the memory and JVM meters that would say what is wrong. A blind gauge is one series; NaN is
+     * what this class already means by "nothing to measure".
+     */
+    private static Gauge.Builder<Supplier<Number>> databaseGauge(String name,
+                                                                                    DoubleSupplier read) {
+        return Gauge.builder(name, () -> readOrNaN(name, read));
+    }
+
+    private static double readOrNaN(String name, DoubleSupplier read) {
+        try {
+            return read.getAsDouble();
+        } catch (RuntimeException e) {
+            log.debug("The {} gauge could not be read; it reports NaN for this scrape.", name, e);
+            return Double.NaN;
         }
     }
 
@@ -225,9 +252,9 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
      * for, and reading it from the rows is what makes it the same number on every instance and after a restart.
      */
     private double publicationValue(String site,
-                                    java.util.function.ToDoubleFunction<CompletedPublication> of) {
+                                    ToDoubleFunction<CompletedPublication> of) {
         return lastPublication.of(site)
-                .map(publication -> of.applyAsDouble(publication))
+                .map(of::applyAsDouble)
                 .orElse(Double.NaN);
     }
 
@@ -481,7 +508,7 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
      * published as several builds, so the pages of one of them are not the pages of the documentation.
      */
     private double publishedValue(String site,
-                                  java.util.function.ToLongFunction<PublicationTotals> value) {
+                                  ToLongFunction<PublicationTotals> value) {
         return value.applyAsLong(publishedTotals.of(site));
     }
 
@@ -495,10 +522,10 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
     private static final class Memo<T> {
 
         private final long ttlNanos;
-        private final java.util.function.Function<String, T> read;
+        private final Function<String, T> read;
         private final Map<String, Held<T>> held = new ConcurrentHashMap<>();
 
-        private Memo(Duration ttl, java.util.function.Function<String, T> read) {
+        private Memo(Duration ttl, Function<String, T> read) {
             this.ttlNanos = ttl.toNanos();
             this.read = read;
         }

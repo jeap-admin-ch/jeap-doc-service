@@ -27,23 +27,22 @@ import java.util.Set;
  * extensions it takes and what it generates; deciding, wording and ordering is here, so that the finding
  * codes are one set whatever methodology is named - see {@code docs/upload-validation.md}.
  * <p>
- * <b>In the domain because it has a second caller.</b> This endpoint is advisory: a pipeline may skip it and
- * an upload is accepted without it. What actually keeps a duplicate route out of a site is the publication,
- * which writes uploaded files into the tree while a build runs and has to apply the same rules or the two
- * answers differ - and the site generator must not reach the web layer.
+ * The endpoint that asks is advisory: a pipeline may skip it, and an upload is accepted without it. The rules
+ * are in the domain so that the publication can apply the same ones once it writes an upload into a site.
  */
 @Service
 @RequiredArgsConstructor
 public class StructureValidation {
 
     /**
-     * What the domain reserves in every chapter of every template, whatever the template generates.
+     * The names the site generator reads as a chapter's landing page, beside the chapter folder's own name.
      * <p>
-     * Only the chapter's landing page. <b>{@code _category_.json} is not on this list</b> and does not need to
-     * be: it begins with an underscore, which rule 7 refuses for every template - and it would take a
-     * dependency from this module onto {@code jeap-doc-markdown}, where the name is spelled, to name it here.
+     * Every chapter has a generated landing page, so a document of one of these names is a second document at
+     * that page's URL. <b>{@code _category_.json} is not on this list</b> and does not need to be: it begins
+     * with an underscore, which is refused for every template - and naming it here would take a dependency
+     * onto {@code jeap-doc-markdown}, where it is spelled.
      */
-    static final Set<String> RESERVED_EVERYWHERE = Set.of(DocumentationPaths.INDEX_SEGMENT);
+    static final Set<String> LANDING_PAGE_NAMES = Set.of(DocumentationPaths.INDEX_SEGMENT, "readme");
 
     /** The longest a path may be. One absurd path among sane ones is a mistake in one path, not a bad tree. */
     public static final int MAX_PATH_LENGTH = 1024;
@@ -69,8 +68,8 @@ public class StructureValidation {
                                     .formatted(placement.template(), String.join(", ", sorted(templates.ids()))))));
         }
 
-        List<String> ignored = given.stream().filter(IgnoredPaths::isIgnored).toList();
-        List<String> checked = given.stream().filter(path -> !IgnoredPaths.isIgnored(path)).toList();
+        List<String> ignored = given.stream().filter(StructureValidation::isDropped).toList();
+        List<String> checked = given.stream().filter(path -> !isDropped(path)).toList();
         boolean html = placement.sourceFormat() == SourceFormat.HTML;
         List<String> allowedExtensions =
                 sorted(html ? MicrositeRules.allowedFileExtensions() : template.get().allowedFileExtensions());
@@ -94,7 +93,17 @@ public class StructureValidation {
                 findings);
     }
 
-    /** The eight path rules and the two set-level ones, in the order §4.1 of the plan sets out. */
+    /**
+     * What is dropped before any rule runs: the files nobody wrote, and a null, which is not a path at all.
+     * <p>
+     * A finding about a null would have to carry no path, and a report presents a finding with no path as one
+     * about the whole tree.
+     */
+    private static boolean isDropped(String path) {
+        return path == null || IgnoredPaths.isIgnored(path);
+    }
+
+    /** The eight path rules and the two set-level ones, in the order the finding codes are documented in. */
     private List<StructureFinding> markdownFindings(DocumentationPlacement placement, StructureTemplate template,
                                                     List<String> checked) {
         List<StructureFinding> findings = new ArrayList<>();
@@ -162,7 +171,13 @@ public class StructureValidation {
             return Optional.empty();
         }
         String document = name.substring(0, name.length() - extension.length() - 1);
-        if (isReserved(document, template, chapter, placement)) {
+        if (isLandingPageName(document, chapter)) {
+            return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
+                    ("'%s' is read as the landing page of %s, and the doc service generates that page. Two "
+                     + "documents at one URL fail the build of this part, so rename the page.")
+                            .formatted(document, chapter.folder())));
+        }
+        if (template.generatedNames(chapter, placement.subject()).contains(document)) {
             return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
                     ("'%s' is generated into %s by the doc service. Two documents at one URL fail the build of "
                      + "this part, so rename the page.").formatted(document, chapter.folder())));
@@ -170,10 +185,17 @@ public class StructureValidation {
         return Optional.empty();
     }
 
-    private boolean isReserved(String document, StructureTemplate template, StructureChapter chapter,
-                               DocumentationPlacement placement) {
-        return RESERVED_EVERYWHERE.contains(document)
-               || template.generatedNames(chapter, placement.subject()).contains(document);
+    /**
+     * Whether the site generator would read this document as the chapter's landing page: {@code index},
+     * {@code readme} or the chapter folder's own name.
+     * <p>
+     * Folded, because that is how the generator decides it - so {@code README.md} and {@code INDEX.MD} resolve
+     * to the same URL as the generated landing page and would fail the build as a duplicate route.
+     */
+    private static boolean isLandingPageName(String document, StructureChapter chapter) {
+        String folded = document.toLowerCase(Locale.ROOT);
+        return LANDING_PAGE_NAMES.contains(folded)
+               || folded.equals(chapter.folder().toLowerCase(Locale.ROOT));
     }
 
     /** An HTML upload is a microsite: no chapters, its own allowlist, and an entry point. */
@@ -249,11 +271,15 @@ public class StructureValidation {
     /**
      * Rule 4's message tries to be useful rather than only correct: a folder that is recognisably a chapter
      * written the wrong way is named, and anything else is left to the list of chapters on the report.
+     * <p>
+     * <b>The name decides before the number does.</b> A folder carrying a chapter's name under the wrong
+     * number - {@code 4-building-block-view} - means the chapter it names, and answering it with the chapter
+     * its number happens to hit would send the reader to the wrong one. The number is what is left when the
+     * name matches nothing, which is the case of a folder written in another language.
      */
     private static String unknownChapterMessage(StructureTemplate template, String folder) {
-        Optional<StructureChapter> meant = template.orderedChapters().stream()
-                .filter(chapter -> looksLike(chapter, folder))
-                .findFirst();
+        Optional<StructureChapter> meant = chapterNamedBy(template, folder)
+                .or(() -> chapterNumberedBy(template, folder));
         return meant
                 .map(chapter -> "'%s' is not a chapter of %s. Did you mean '%s'?"
                         .formatted(folder, template.id(), chapter.folder()))
@@ -261,15 +287,23 @@ public class StructureValidation {
                         .formatted(folder, template.id()));
     }
 
-    /** The three ways a chapter is written by mistake: its URL segment, its number, or the slug of its title. */
-    private static boolean looksLike(StructureChapter chapter, String folder) {
-        if (chapter.urlSegment().equalsIgnoreCase(folder)) {
-            return true;
-        }
-        if (chapter.isNumbered() && folder.startsWith(chapter.number() + "-")) {
-            return true;
-        }
-        return Slugs.toSlug(chapter.title()).equalsIgnoreCase(folder);
+    /**
+     * The chapter whose name the folder carries - its URL segment or the slug of its title - whatever number
+     * stands in front of it.
+     */
+    private static Optional<StructureChapter> chapterNamedBy(StructureTemplate template, String folder) {
+        String name = folder.replaceFirst("^\\d+-", "");
+        return template.orderedChapters().stream()
+                .filter(chapter -> chapter.urlSegment().equalsIgnoreCase(name)
+                                   || Slugs.toSlug(chapter.title()).equalsIgnoreCase(name))
+                .findFirst();
+    }
+
+    /** The chapter the folder's number names, for a folder whose name matches no chapter at all. */
+    private static Optional<StructureChapter> chapterNumberedBy(StructureTemplate template, String folder) {
+        return template.orderedChapters().stream()
+                .filter(chapter -> chapter.isNumbered() && folder.startsWith(chapter.number() + "-"))
+                .findFirst();
     }
 
     private static String extensionOf(String name) {

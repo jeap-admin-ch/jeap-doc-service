@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -94,7 +95,7 @@ class StoredArchitectureModel implements ArchitectureModelSource {
     }
 
     @Override
-    public java.util.List<String> systemSlugsOf(String environment) {
+    public List<String> systemSlugsOf(String environment) {
         return models.systemSlugsOf(environment);
     }
 }

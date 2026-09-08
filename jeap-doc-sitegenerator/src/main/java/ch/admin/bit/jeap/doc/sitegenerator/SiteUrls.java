@@ -26,13 +26,13 @@ public class SiteUrls {
     public SiteUrls(PublicationProperties publication,
                     @Value("${server.servlet.context-path:}") String contextPath) {
         // Not optional, and checked here rather than at the first build: the generated site carries this origin
-        // in its sitemap and its metadata, and the site generator refuses an empty one - which would otherwise
-        // surface minutes into a build instead of in the deployment.
+        // in its page metadata, and the site generator refuses an empty one - which would otherwise surface
+        // minutes into a build instead of in the deployment.
         if (!StringUtils.hasText(publication.getUrl())) {
             throw new IllegalStateException(
                     "jeap.doc.publication.url is not configured. It is the origin the documentation is published "
                     + "under, without a path - for example https://doc.example.ch - and the generated site needs "
-                    + "it for its sitemap and its page metadata.");
+                    + "it for the canonical URL of a page and its Open Graph tags.");
         }
         this.origin = requireAnOrigin(publication.getUrl());
         this.contextPath = normalize(contextPath);
@@ -40,8 +40,8 @@ public class SiteUrls {
 
     /**
      * The value has to be an origin and nothing more. A path belongs in the context path, and one given here
-     * would be doubled - the generated sitemap and every canonical URL would carry it twice - or would fail the
-     * Docusaurus build minutes into a run.
+     * would be doubled - every canonical URL would carry it twice - or would fail the Docusaurus build minutes
+     * into a run.
      */
     private static String requireAnOrigin(String url) {
         java.net.URI uri;
@@ -66,7 +66,7 @@ public class SiteUrls {
     }
 
     /**
-     * The origin the documentation is published under, for the sitemap and the page metadata.
+     * The origin the documentation is published under, for the page metadata.
      */
     public String url() {
         return origin;
