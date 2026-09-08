@@ -68,6 +68,22 @@ public final class Arc42Chapters {
         };
     }
 
+    /**
+     * And what each chapter answers about a <b>component</b>, for the landing page of its structure.
+     * <p>
+     * Its own wording, because the same chapter asks a different question one level down: chapter 5 opens a
+     * system into its components, and a component into its data and its interfaces.
+     */
+    static String componentSummaryOf(StructureChapter chapter) {
+        return switch (chapter.number()) {
+            case 1 -> "What the component is, and who is responsible for it.";
+            case 3 -> "What the component talks to, and about what.";
+            case 5 -> "The data it keeps and the interfaces it offers.";
+            case 6 -> "How the component behaves while it runs.";
+            default -> summaryOf(chapter);
+        };
+    }
+
     private Arc42Chapters() {
     }
 }

@@ -64,8 +64,9 @@ Ports and adapters, one auto-configuration per module - see `docs/architecture.m
   validation in the web layer.
 - `jeap-doc-template-arc42/` - the **arc42 structure template**: its twelve chapters, its structural rules, and
   the pages generated into them. A third kind of module beside a domain and an adapter; see below.
-- `jeap-doc-archrepo/` - the client of the architecture repository's `/docs-api`, behind
-  `ArchitectureModelUpstream` and `ArchitectureArtifactUpstream`. An adapter like any other.
+- `jeap-doc-archrepo/` - everything about the architecture repository: the client of its `/docs-api`, behind
+  `ArchitectureModelUpstream` and `ArchitectureArtifactUpstream`, and the reading of a replicated artifact,
+  behind `ArchitectureArtifactContent`. An adapter like any other.
 - `jeap-doc-service-instance/` - POM-only module for downstream instances.
 
 Keep the layering: business logic goes into the domain, technology into an adapter, and an adapter never depends
@@ -82,6 +83,10 @@ reach the other.
 - **A template module depends on `jeap-doc-domain` and `jeap-doc-markdown`**, plus `spring-boot-starter` for
   its auto-configuration. A template engine, an HTTP client, a JSON mapper or a dependency on
   `jeap-doc-sitegenerator` would be a leak, and it would travel all the way into the upload validation.
+  **This is why a component's database schema and its OpenAPI specification are not parsed in the template
+  that renders them**: the bytes are read behind `ArchitectureArtifactContent` in `jeap-doc-archrepo`, which
+  is the module that knows the shapes of that upstream's payloads, and a template is handed records of this
+  service's own model.
 - **Nothing outside a template names it.** `SystemPages` injects every `StructureTemplate`, and
   `jeap-doc-template-arc42` is on the classpath with no class referring to it.
   A second methodology is a dependency and a bean.
@@ -104,7 +109,9 @@ number and a dot - is escaped in `MarkdownWriter.paragraph` for the same reason:
 `1. Introduction and Goals` is not an ordered list. A list item and an admonition body also stand at the start
 of a line and are **not** guarded; no caller reaches that today, and whoever writes the one that does has to
 apply `withoutOpeningABlock` there too. Leading whitespace is dropped in `Md.text` instead, because four
-*columns* of it - a tab counts to the next tab stop - open a code block wherever the fragment lands. PlantUML escaping is a third thing again - the fence body is opaque to Markdown, and `PlantUmlViews`
+*columns* of it - a tab counts to the next tab stop - open a code block wherever the fragment lands. **So a
+separator written as `Md.text(" - ")` between two fragments loses its leading space and the two run
+together**: put a separator in the pattern of `Md.sentence` or in `Md.joinWith`, which keep it. PlantUML escaping is a third thing again - the fence body is opaque to Markdown, and `PlantUmlViews`
 does its own.
 
 **`Md.link` throws, `Md.linkOrCode` does not, and which one to use depends on where the target came from.** A
@@ -145,8 +152,9 @@ port has exactly one adapter in the real application context. **Add the new port
 - **Site paths**: everything below `/api/sites` administers a documentation site - `POST /api/sites/{site}/builds`
   asks for one to be published, the `GET` endpoints report what the generator has been doing. The paths are the
   constants of `SiteApiPaths`. **Asking is not building**: the endpoint goes through `DocumentationBuildTrigger`
-  like every other trigger and answers `202`, because a second path to a build would break the per-site lock, the
-  collapsing of a burst of triggers into one run and one build per tick per instance, all at once.
+  like every other trigger and answers `202`, because a second path to a build would break the per-part lock, the
+  collapsing of a burst of triggers into one run and the bound on how many parts an instance builds at once, all
+  at once.
 - **Upload parameters**: the query parameters of the upload endpoint are kebab-case and mirror the keys of the
   doc workflow configuration (`source-format`, `source-repository`, ...). Which of them are required depends on
   the type and the source format - the rules live in `DocumentationUploadDescriptor` in the domain, and
@@ -190,6 +198,30 @@ port has exactly one adapter in the real application context. **Add the new port
   in `jeap-doc-objectstorage` - so a failing constraint or object key names the adapter. The end-to-end tests live
   in `jeap-doc-web` on `DocServiceIntegrationTestBase`, which starts both containers once per JVM and disables the
   permit-all chain of the jEAP security test starter, so they see production security.
+
+- **`-pl <module>` builds against the jars in `~/.m2`, not against your working tree.** A test in
+  `jeap-doc-web` sees the last *installed* `jeap-doc-domain` or `jeap-doc-site`, so a change there is invisible
+  until it is installed - and installing the one module alone has been seen to leave the old jar in place. The
+  symptoms do not say "stale build": an `AbstractMethodError`, a switch that "does not cover all possible input
+  values", a package that "does not exist", a browser test still seeing a template change you reverted.
+  `target/delombok` also keeps the sources of the branch last built, so the javadoc plugin compiles classes
+  that no longer exist after a branch switch. In both cases run the whole reactor:
+  `./mvnw -o clean install -DskipTests`, then the module's tests. `-DskipTests` still compiles test sources.
+
+- **Every `*IT` in `jeap-doc-web` shares one database and one bucket, and class order is the filesystem's.**
+  So a row another class wrote is there when yours runs, and whether it is there differs between your machine
+  and CI - which is how a green local `verify` becomes a red build. It has cost two CI failures so far: two
+  classes using the site `default` for the same build lock, and a class counting published parts of a site
+  another class had written a foreign part for.
+
+  Two rules follow. **Give a class its own site** where it writes builds, requests or locks - add
+  `jeap.doc.sites.<id>` in its `@DynamicPropertySource` rather than reaching for `default` or `governance`.
+  And **assert what your context expects, never how many rows exist**: `DocumentationParts.of(site)` answers
+  with the parts this context has and what is published for each, which a foreign row cannot inflate.
+
+  Before pushing anything that writes to those tables, run the module both ways - `./mvnw verify -pl
+  jeap-doc-web -Dfailsafe.runOrder=alphabetical` and `-Dfailsafe.runOrder=reversealphabetical`. It is the only
+  cheap way to see what CI will see.
 
 - **Documentation sites are configured, never discovered.** `jeap.doc.sites` says which exist; an upload naming
   anything else is rejected, because a typo in a workflow configuration would otherwise create a second site that
@@ -240,9 +272,65 @@ port has exactly one adapter in the real application context. **Add the new port
   the driver downloads its own bundles on first use otherwise. A missing Chrome fails the build rather than
   skipping the suite: a browser suite that skips itself is green because it ran nothing.
 - **The browser tests run against the service, not against the build output.** The
-  `Content-Security-Policy` applies to every path of a site and is what would silently stop the diagrams, the
-  search or the colour mode; a suite serving the generated files itself sends none and passes regardless. They
+  `Content-Security-Policy` applies to every path of a site and is what would silently stop the diagrams or
+  the colour mode; a suite serving the generated files itself sends none and passes regardless. They
   build one real site per JVM and publish it the way a build does.
+
+## Publishing a site in parts
+
+A site is generated, published and served as several Docusaurus builds - one per **part** - and the rules below
+are what keep that working. The plan behind it is the enabler's `MODULARIZATION.md`.
+
+- **A part is a set of whole URL subtrees.** A Docusaurus build puts everything it emits under its own base
+  URL, so a request has to resolve to exactly one part. An axis whose parts are not whole subtrees of the URL
+  tree cannot be a partition, whatever else recommends it.
+- **The shared files are shared by measurement, not by hope.** Every part emits `assets/**` and `img/**`
+  identically - it was measured, see `SharedAssets` - so they are published once per site and served from
+  there. Anything that makes two parts emit *different* bytes under the same name there breaks the site
+  silently, and the first casualty would be a stale bundle served to a page that needs the new one.
+- **`SitePartition` is the only place that knows the axis.** Nothing else may derive a part from a system, an
+  environment or a path: `partsOf`, `partOf` and `partsDocumenting` are the three questions everything else
+  asks. `partOf` must answer **without reading the architecture model** - it is on the path of every request.
+- **The content digest decides whether a build runs**, so anything written into a page that changes between two
+  runs over the same documentation has to be in the volatile set of `SiteSources` - the build's timestamps and
+  its identifier are there already. Add a new one and forget this, and every part rebuilds every hour; hash
+  something that is not volatile, and a change never gets published. `ContentDigest` explains both directions.
+- **A link that leaves a part cannot be checked by the build that writes it.** `CrossPartLinks` rewrites those
+  links once, over the written content, rather than at the thirty places that write one - so a new page cannot
+  forget the rule. Inside a part, `onBrokenLinks: 'throw'` still catches a generator bug, and that is the half
+  worth keeping.
+- **A build somebody asked for by hand is never skipped.** The reason to force a publication is that something
+  outside the content changed - the site template most of all, which a `SNAPSHOT` version does not
+  distinguish - and an operator told "nothing to do" would have no way to get one. What says so is the
+  request's own `forced` column and **not** its `trigger_kind`: two asks for one part are one row, and that row
+  keeps the trigger that asked *first*, so on a site fed by the hourly import the trigger would read `IMPORT`
+  for most of every hour. A forced ask raises the flag on the request it finds pending.
+- **An instance builds in a pass, not one batch per poll.** A pass fills its
+  `jeap.doc.build.max-concurrent-parts` slots and refills the slot of a part that is done at once, until
+  nothing is owed; `runOnce()` returns when the pass is over, which is what keeps `awaitIdle`, the shutdown
+  path and "one pass at a time" as they were. Four rules hold it together and each of them has a test: what is
+  owed is read again after every build **including for a part the pass has already built** - offered once and
+  no more, a part asked for again waited out the whole pass, measured at 65 minutes; a part another instance
+  holds or one whose build threw is still offered only once (or the pass spins on it), the order within a
+  second of request time is each instance's own (or every instance goes for the same part), and the largest
+  parts go first (or the tail of the pass is one of them).
+  Anything a build touches outside its own row is reached from several threads: `NodeProcess` keeps a set of
+  running children so that a stop ends all of them, and **nothing a build records may be a reading of the
+  container** - the per-build memory peak was exactly that and is gone, because overlapping builds each reset
+  the kernel's mark the others were accumulating into.
+- **Anything a build reads that every build reads is read once, not once per part.** The landscape is the one
+  that mattered - fifty parts over four environments read it two hundred times - and `StoredArchitectureModel`
+  holds it, keyed on when that environment was last read successfully. That key only works because the import
+  writes the landscape, *then* the state row, *then* the build requests; `ArchitectureModelImportStepTest`
+  asserts that order, and reversing it would publish the previous landscape for an hour.
+- **A gauge about the runner is pushed, not read.** `MicrometerBuildMetrics` cannot depend on
+  `DocumentationBuildRunner` - the runner depends on the metrics port - so a number only the runner knows
+  reaches the meters through `BuildMetrics` (`slotsBusy`, `pass`), as `documentedSystems` and `triggered`
+  already do.
+- **No `part` tag on the build timers.** A site has as many parts as it has systems; the sum of
+  `jeap.doc.build` over a window is what publishing the documentation cost across all of them, and a part label
+  would multiply the series and break that reading. Part-level detail belongs in the administration API and in
+  the log.
 
 ## How to write
 
@@ -401,6 +489,11 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
   while *every* system context diagram failed to parse and drew an error box instead. Match something only the
   working state produces: the text the diagram should contain, not the presence of an element. The same goes
   for a test that ticks a shared queue - assert that *this* build ran, or it passes having built nothing.
+- **A format string built by concatenation has to be parenthesised before `.formatted`.**
+  `"a %d " + "and b".formatted(x)` applies the substitution to `"and b"` alone, so the specifier in the first
+  literal reaches the page verbatim. Both truncation notes of the system diagrams shipped that way, and the
+  tests that covered them asserted the note's title rather than its number - so **a test over a formatted
+  message asserts the substituted value**, not that the message is there.
 - **Nothing inside a fence is checked by anything.** The Markdown escaping does not reach into it, Docusaurus
   does not resolve its links, `onBrokenLinks` does not look in, and a diagram that does not parse renders as an
   error box without failing the build. So everything a fence needs it has to carry itself: its own escaping
@@ -428,6 +521,19 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
   nested conditions reads worse. `java:S1192` where the duplicated literal is the *label* `arc42` next to the
   template id `ID` - the same spelling, two different things. Do not "fix" these on the next scan; everything
   else Sonar reports is worth fixing.
+- **Every reduction on a page says so, and every bound is on a picture - with one measured exception.** Five
+  bounds exist - `max-diagram-nodes`, `max-edge-labels`, `max-context-components`, `max-schema-table-diagram`
+  and `max-schema-table-list` - and they travel to a template together, in `DiagramLimits`, so that they
+  arrive as named values rather than as five integers in a row. A new bound goes in there, is validated in
+  `GeneratorProperties.check()`, and the page says what it left out.
+
+  **`max-schema-table-list` is the exception, and it was not free.** It bounds the *facts*: a database schema
+  page writes 200 entries and no more. The page below a diagram used to carry everything, and one component's
+  did - 6583 tables, 33 527 rows of columns, an hour and a half of build time. Where a bound on the facts is
+  unavoidable, the page has to say how many entries it did not write **and** link the source that carries
+  them; that is what keeps it honest rather than merely short. Prefer summarising to bounding: the partitions
+  of one table are grouped into one entry first, which is what keeps this bound from ever applying to 828 of
+  the 830 schemas in the estate.
 - **The architecture repository is imported, not read during a build**, and a failing import never reaches a
   build - see `docs/architecture-import.md`. Three things about it are load-bearing and easy to undo by
   accident:

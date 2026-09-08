@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.sites;
 
 import ch.admin.bit.jeap.doc.domain.BuildRequest;
+import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
@@ -13,16 +14,19 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Asking for a site to be published.
+ * Asking for documentation to be published.
  * <p>
- * The endpoint asks and does not build: what it leaves behind is the same collapsing request every other trigger
- * leaves, which is what these tests read back. The suite runs with a poll interval longer than itself, so
- * nothing claims the request in between.
+ * A site is published as several builds, one per part, so there are two asks: one for the whole site, which
+ * walks its parts and asks for the ones whose content has moved, and one for a single part, which asks
+ * outright. Neither builds: what they leave behind is the same collapsing request every other trigger leaves,
+ * which is what these tests read back. The suite runs with a poll interval longer than itself, so nothing
+ * claims the request in between.
  */
 class BuildTriggerApiIT extends DocServiceIntegrationTestBase {
 
@@ -41,17 +45,23 @@ class BuildTriggerApiIT extends DocServiceIntegrationTestBase {
     @BeforeEach
     @AfterEach
     void withoutAStandingRequest() {
-        requests.claim(SITE);
+        // Every part of it, and not only its shell: these cases ask for parts by name, and a request left
+        // behind by one of them is what the next one would read as its own.
+        requests.pending().stream()
+                .filter(request -> request.site().equals(SITE))
+                .forEach(request -> requests.claim(request.part()));
     }
 
+    /**
+     * Asking for a site asks for every part of it, whether its content has moved or not - which is what to use
+     * after changing the site template, when the content of a part is the same and nothing else would ask.
+     */
     @Test
-    void requestBuild_thenAcceptedAndTheSiteIsOwedAManualBuild() throws Exception {
+    void requestBuild_thenAcceptedAndEveryPartIsAskedFor() throws Exception {
         mockMvc.perform(post(SiteApiPaths.BUILDS, SITE).with(adminRole()))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.site").value(SITE))
-                .andExpect(jsonPath("$.requested").value(true))
-                .andExpect(jsonPath("$.trigger").value("MANUAL"))
-                .andExpect(jsonPath("$.pendingSince").isNotEmpty())
+                .andExpect(jsonPath("$.partsRequested").value(1))
                 .andExpect(jsonPath("$.picksUpWithinSeconds").isNumber());
 
         assertThat(standingRequest()).isNotNull()
@@ -59,22 +69,70 @@ class BuildTriggerApiIT extends DocServiceIntegrationTestBase {
     }
 
     /**
-     * The collapsing rule: however often it is asked for, the site is built once. The second ask says it did not
+     * One part, asked for outright: a part somebody asks for is built whether its content moved or not, so
+     * there is nothing to walk and the answer is the request itself.
+     */
+    @Test
+    void requestPartBuild_thenAcceptedAndThatPartIsOwedAManualBuild() throws Exception {
+        mockMvc.perform(post(SiteApiPaths.PART_BUILDS, SITE, "shell").with(adminRole()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.site").value(SITE))
+                .andExpect(jsonPath("$.part").value("shell"))
+                .andExpect(jsonPath("$.requested").value(true))
+                .andExpect(jsonPath("$.trigger").value("MANUAL"))
+                .andExpect(jsonPath("$.pendingSince").isNotEmpty());
+
+        assertThat(standingRequest()).isNotNull()
+                .extracting(BuildRequest::trigger).isEqualTo(BuildTrigger.MANUAL);
+    }
+
+    /** A part this site is not published as is a typo in the request, not something that might appear later. */
+    @Test
+    void requestPartBuild_whenThePartIsNotOneOfTheSites_thenNotFound() throws Exception {
+        mockMvc.perform(post(SiteApiPaths.PART_BUILDS, SITE, "system-nobody-documents").with(adminRole()))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * The collapsing rule: however often a part is asked for, it is built once. The second ask says it did not
      * create the request, and answers with the first one's timestamp - which is when the build will happen.
      */
     @Test
-    void requestBuild_whenABuildIsAlreadyPending_thenItJoinsIt() throws Exception {
-        mockMvc.perform(post(SiteApiPaths.BUILDS, SITE).with(adminRole()))
+    void requestPartBuild_whenABuildIsAlreadyPending_thenItJoinsIt() throws Exception {
+        mockMvc.perform(post(SiteApiPaths.PART_BUILDS, SITE, "shell").with(adminRole()))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.requested").value(true));
 
-        mockMvc.perform(post(SiteApiPaths.BUILDS, SITE).with(adminRole()))
+        mockMvc.perform(post(SiteApiPaths.PART_BUILDS, SITE, "shell").with(adminRole()))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.requested").value(false))
                 .andExpect(jsonPath("$.trigger").value("MANUAL"));
 
         assertThat(requests.pending()).filteredOn(request -> request.site().equals(SITE)).hasSize(1);
     }
+
+    /**
+     * What a site is published as, as an operator reads it: its parts, what each carries, and whether one is
+     * owed a build - which is true here, because the ask above left a request.
+     * <p>
+     * <b>Nothing is asserted about what is published.</b> The classes of this module share a database, so
+     * whether this site has ever been built depends on what ran before; the state a part is in belongs to the
+     * end-to-end test, which controls it.
+     */
+    @Test
+    void parts_thenTheyAreAnsweredWithWhatEachOfThemCarries() throws Exception {
+        mockMvc.perform(post(SiteApiPaths.PART_BUILDS, SITE, "shell").with(adminRole()))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get(SiteApiPaths.PARTS, SITE).with(readRole()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].part").value("shell"))
+                .andExpect(jsonPath("$[0].documents").isNotEmpty())
+                .andExpect(jsonPath("$[0].environments").isArray())
+                .andExpect(jsonPath("$[0].routePrefixes").isArray())
+                .andExpect(jsonPath("$[0].owedABuild").value(true));
+    }
+
 
     /**
      * A site is configuration, so one that is not there is a typo in the request rather than something that
@@ -120,6 +178,44 @@ class BuildTriggerApiIT extends DocServiceIntegrationTestBase {
         assertThat(standingRequest()).isNull();
     }
 
+    /**
+     * The per-part endpoint is the same resource with a narrower target, so it is the same three refusals -
+     * and it had none of them. A part is one system's documentation, but an operator role and not a system's
+     * is what may republish it: an upload role is granted per system to a pipeline, and publishing is not
+     * uploading.
+     */
+    @Test
+    void requestPartBuild_whenThereIsNoToken_thenUnauthorized() throws Exception {
+        mockMvc.perform(post(SiteApiPaths.PART_BUILDS, SITE, "shell"))
+                .andExpect(status().isUnauthorized());
+
+        assertThat(standingRequest()).isNull();
+    }
+
+    @Test
+    void requestPartBuild_whenTheRoleOnlyReads_thenForbidden() throws Exception {
+        mockMvc.perform(post(SiteApiPaths.PART_BUILDS, SITE, "shell")
+                        .with(authentication(tokenWithRoles(sitesRole("read")))))
+                .andExpect(status().isForbidden());
+
+        assertThat(standingRequest()).isNull();
+    }
+
+    @Test
+    void requestPartBuild_whenTheRoleIsAnUploadRole_thenForbidden() throws Exception {
+        mockMvc.perform(post(SiteApiPaths.PART_BUILDS, SITE, "system-" + SYSTEM_NAME.toLowerCase())
+                        .with(authentication(tokenWithRoles(uploadsRole(SYSTEM_NAME, "write")))))
+                .andExpect(status().isForbidden());
+
+        assertThat(standingRequest()).isNull();
+    }
+
+    @Test
+    void requestPartBuild_whenTheSiteIsNotConfigured_thenNotFound() throws Exception {
+        mockMvc.perform(post(SiteApiPaths.PART_BUILDS, "a-site-nobody-configured", "shell").with(adminRole()))
+                .andExpect(status().isNotFound());
+    }
+
     private BuildRequest standingRequest() {
         return requests.pending().stream()
                 .filter(request -> request.site().equals(SITE))
@@ -129,5 +225,9 @@ class BuildTriggerApiIT extends DocServiceIntegrationTestBase {
 
     private static RequestPostProcessor adminRole() {
         return authentication(tokenWithRoles(sitesRole("admin")));
+    }
+
+    private static RequestPostProcessor readRole() {
+        return authentication(tokenWithRoles(sitesRole("read")));
     }
 }

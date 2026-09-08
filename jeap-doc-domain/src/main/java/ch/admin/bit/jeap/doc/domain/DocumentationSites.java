@@ -125,7 +125,6 @@ public class DocumentationSites {
                 configured.getFavicon() == null ? configured.getLogo() : configured.getFavicon(),
                 configured.getColorScheme(),
                 environments,
-                configured.getPublicationSchedule(),
                 configured.isPublishOnUpload(),
                 configured.isArchitectureModelRequired());
     }
@@ -217,9 +216,8 @@ public class DocumentationSites {
 
     private String describe() {
         return sites.values().stream()
-                .map(site -> "%s (%s, %s)".formatted(site.id(),
-                        site.environments().stream().map(SiteEnvironment::id).toList(),
-                        site.schedule().map("on '%s'"::formatted).orElse("on upload only")))
+                .map(site -> "%s (%s)".formatted(site.id(),
+                        site.environments().stream().map(SiteEnvironment::id).toList()))
                 .toList().toString();
     }
 }

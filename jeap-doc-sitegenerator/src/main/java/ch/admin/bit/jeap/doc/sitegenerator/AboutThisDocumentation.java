@@ -193,7 +193,7 @@ public class AboutThisDocumentation {
 
     private static Markdown counted(EnvironmentModel model) {
         return Md.text("%d systems, %d components, %d messages"
-                .formatted(model.systems(), model.components(), model.messages()));
+                .formatted(model.systemCount(), model.components(), model.messages()));
     }
 
     /**
@@ -272,15 +272,12 @@ public class AboutThisDocumentation {
     private void writeSchedules(MarkdownWriter page, DocumentationFacts facts) {
         page.heading(2, "When this changes");
         List<List<Markdown>> rows = new ArrayList<>();
-        rows.add(scheduleRow("This site is published", facts.schedules().publication(),
-                facts.schedules().publicationAt(), facts.service().generatedAt(),
-                facts.site().publishOnUpload() ? "only when something is uploaded to it"
+        // The import is what publishes the documentation: it asks for every part of every site documenting
+        // the environment it read, so a site has no publication schedule of its own.
+        rows.add(scheduleRow("The architecture model is imported, and the site published",
+                facts.schedules().import_(), facts.schedules().importAt(), facts.service().generatedAt(),
+                facts.site().publishOnUpload() ? "only when something is uploaded to this site"
                         : "only when an operator asks for it"));
-        if (facts.schedules().import_() != null || facts.environments().stream()
-                .anyMatch(DocumentationFacts.EnvironmentFacts::modelConfigured)) {
-            rows.add(scheduleRow("The architecture model is imported", facts.schedules().import_(),
-                    facts.schedules().importAt(), facts.service().generatedAt(), "not on a schedule"));
-        }
         page.table(List.of("", "Schedule", "Next"), rows);
         // Only where it is true. The table three headings above prints "An upload publishes the site: no"
         // wherever it is not, and a page that says both is a page a reader cannot use.
@@ -295,8 +292,19 @@ public class AboutThisDocumentation {
         if (cron == null || cron.isBlank()) {
             return List.of(Md.text(what), Md.italic(whenThereIsNone), Md.text(""));
         }
-        return List.of(Md.text(what), Md.code(cron), next == null ? Md.text("")
-                : Md.text(DisplayTime.of(next) + " (" + spellOut(Duration.between(now, next)) + ")"));
+        return List.of(Md.text(what), Md.code(cron),
+                next == null ? Md.text("") : Md.text(whenItFiresNext(next, now)));
+    }
+
+    /**
+     * When a schedule fires next, as the row prints it.
+     * <p>
+     * <b>Volatile</b>: it moves with the clock rather than with the documentation, so the digest of a part's
+     * content has to ignore it - otherwise the part carrying this page could never be skipped. See
+     * {@code SiteSources}, which hands it to {@code ContentDigest}.
+     */
+    static String whenItFiresNext(Instant next, Instant now) {
+        return DisplayTime.of(next) + " (" + spellOut(Duration.between(now, next)) + ")";
     }
 
     /** A duration as a reader says it. Minutes and hours only: nothing here is worth a second. */

@@ -31,9 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class DocumentationBuildSchedulingTest {
 
     @Mock
-    private DocumentationBuildTrigger trigger;
-    @Mock
-    private DocumentationBuildRunner runner;
+    private DocumentationBuildPickup pickup;
     @Mock
     private DocumentationBuildHousekeeping housekeeping;
 
@@ -46,37 +44,23 @@ class DocumentationBuildSchedulingTest {
         registrar = new ScheduledTaskRegistrar();
     }
 
-    @Test
-    void configureTasks_thenTheRunnerTheHousekeepingAndEverySiteWithAScheduleAreRegistered() {
-        SiteProperties.Site governance = new SiteProperties.Site();
-        governance.setPublicationSchedule("0 15 * * * *");
-
-        scheduling(propertiesOf(Map.of(Site.DEFAULT_SITE, new SiteProperties.Site(), "governance", governance)))
-                .configureTasks(registrar);
-
-        assertThat(registrar.getFixedDelayTaskList())
-                .describedAs("the runner, on a fixed delay").hasSize(1);
-        // The build housekeeping, and one task per site that configures a schedule.
-        assertThat(registrar.getCronTaskList()).hasSize(3);
-    }
-
     /**
-     * A site with no schedule is published only when something is uploaded to it. That is a legitimate thing to
-     * want and needs no separate flag - so nothing must be registered for it.
+     * Two tasks and no more: the poll that picks up what has been asked for, and the housekeeping. A site has
+     * no publication schedule of its own - what publishes it hourly is the architecture import.
      */
     @Test
-    void configureTasks_whenASiteConfiguresNoSchedule_thenNoTaskIsRegisteredForIt() {
-        SiteProperties.Site onUploadOnly = new SiteProperties.Site();
-        onUploadOnly.setPublicationSchedule(null);
+    void configureTasks_thenThePollAndTheHousekeepingAreRegistered() {
+        scheduling(propertiesOf(Map.of(Site.DEFAULT_SITE, new SiteProperties.Site(),
+                "governance", new SiteProperties.Site()))).configureTasks(registrar);
 
-        scheduling(propertiesOf(Map.of(Site.DEFAULT_SITE, onUploadOnly))).configureTasks(registrar);
-
-        // The build housekeeping only - nothing for the site itself.
-        assertThat(registrar.getCronTaskList()).hasSize(1);
+        assertThat(registrar.getFixedDelayTaskList())
+                .describedAs("the poll, on a fixed delay").hasSize(1);
+        assertThat(registrar.getCronTaskList())
+                .describedAs("the build housekeeping, and nothing per site").hasSize(1);
     }
 
     @Test
-    void configureTasks_thenTheRunnerIsOnTheConfiguredPollInterval() {
+    void configureTasks_thenThePollIsOnTheConfiguredPollInterval() {
         properties.setPollInterval(Duration.ofSeconds(45));
 
         scheduling(new SiteProperties()).configureTasks(registrar);
@@ -132,8 +116,7 @@ class DocumentationBuildSchedulingTest {
     }
 
     private DocumentationBuildScheduling scheduling(SiteProperties siteProperties) {
-        return new DocumentationBuildScheduling(new DocumentationSites(siteProperties), trigger, runner,
-                housekeeping, properties);
+        return new DocumentationBuildScheduling(pickup, housekeeping, properties);
     }
 
     private static SiteProperties propertiesOf(Map<String, SiteProperties.Site> sites) {

@@ -12,17 +12,20 @@ keeps working when the service does not.
 | Prefix     | What it is                                | Removed by                                                                                                                                                   |
 |------------|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `uploads/` | The bundles as they arrived               | The bucket. The service removes the *record* of an upload after `jeap.doc.upload.housekeeping.retention`; the bundle it points at has to outlive that record |
-| `sites/`   | The generated sites, one prefix per build | The service, down to `jeap.doc.build.retention` per site, after every successful build                                                                       |
+| `<site>/<build>/` | The generated parts of a site, one prefix per build | The service, down to `jeap.doc.build.retention` per part, after every successful build |
+| `<site>/shared/`  | The files every part of a site emits identically - the bundles and the site's images. Written by every part build under the same names | Nothing yet: they are overwritten by every build that emits them, and a name nothing references any more is a small leak. See [Generating the documentation](generation.md) |
 
 **Every object the service writes carries the tag `jeap-doc-content`** - `upload` or `site` - so that a rule can
 name what it is expiring rather than a prefix an instance configures for itself.
 
 ## The rules to provision
 
-| Tag                       | Expire after                                                                                    |                                                                                                                                                                        |
-|---------------------------|-------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `jeap-doc-content=upload` | **A few days longer than `jeap.doc.upload.housekeeping.retention`** (14 days by default, so 21) | An upload must never outlive its bundle                                                                                                                                |
-| `jeap-doc-content=site`   | **2 days**                                                                                      | A site is regenerated several times a day, so anything two days old is a build nobody will serve again - and the retention will normally have removed it hours earlier |
+| Tag                       | Expire after                                                                                    |                                         |
+|---------------------------|-------------------------------------------------------------------------------------------------|-----------------------------------------|
+| `jeap-doc-content=upload` | **A few days longer than `jeap.doc.upload.housekeeping.retention`** (14 days by default, so 21) | An upload must never outlive its bundle |
+
+**No rule over `jeap-doc-content=site`** - see below. The service's own retention removes what it superseded,
+and nothing else may.
 
 Two more that are always safe and easy to forget:
 
@@ -32,23 +35,27 @@ Two more that are always safe and easy to forget:
   delete marker and nothing ever actually leaves.
 
 
-**The two days assume the site is on a schedule.** A site that configures an empty `publication-schedule` is
-published only when something is uploaded to it, which is a supported thing to want - and for such a site the
-rule is a timer on its documentation. Two days after the last upload the objects are gone while the database
-still says the site is published, so every page answers `503` until someone uploads again, which for a stable
-component can be months. Either keep a `publication-schedule` on every site, or size the `jeap-doc-content=site`
-expiry for the longest plausible gap between uploads to the sites that have none.
+## Why there is no age rule over the sites
 
-## Why two days is safe for the sites, and what that implies
+**A published part is written once and then left alone.** A build whose content hashes to what is already
+published does not run the site generator and uploads nothing, so the objects a site is serving keep the date
+of the build that last *changed* that part - which for a part nobody edits is as old as the part. An age rule
+over `jeap-doc-content=site` therefore expires exactly the documentation nobody has had to touch: the objects
+go while the database still says the part is published, every page of it answers `503` or `404`, and the next
+build finds its digest unchanged and publishes nothing - so it never heals. Only a forced build does.
 
-**Nothing under `sites/` is a source of truth.** A generated site is derived from the site template and from the
-architecture model, so the worst a rule that fires too early can do is take the site offline until the next
-build - it loses nothing.
+That is what makes an age rule unsafe **at any value**, and not merely too short a one. It used to be two days,
+justified by a site being regenerated several times a day; publishing in parts abolished that, deliberately -
+see [Generating the documentation](generation.md).
 
-That said, the number means what it says: **if no build of a site succeeds for two days, that site goes
-offline**, and `GET /` answers `503` until one does. That is intended rather than an accident. A site that has
-not regenerated in two days on a schedule of several a day is broken and should already have been alarmed on -
-see [Observability](observability.md), where the first alarm fires after hours, not days.
+**What removes a superseded build is the service.** Its retention deletes the objects of a publication it has
+replaced, once the replacement is being served, and it is the only thing that knows which those are. What a
+lifecycle rule can still do safely on this prefix is the two housekeeping rules above - incomplete multipart
+uploads and noncurrent versions - because neither is addressed by anything.
+
+**Nothing under `sites/` is a source of truth**, so nothing is *lost* either way: a generated site is derived
+from the site template and the architecture model. The cost of getting this wrong is a site that is offline
+until somebody notices and forces a publication, not data.
 
 ## The rule that must not be written
 
@@ -60,8 +67,8 @@ they came from has its own, shorter expiry - and the current version of a set ca
 component that publishes once and stays stable for a year is the normal case. An age rule over that prefix would
 delete exactly the documentation of the teams who got it right and left it alone.
 
-Age can tell a superseded build from a current one, because a site is rebuilt on a schedule. It cannot tell an
-orphan document from a well-kept one.
+Age cannot tell an orphan document from a well-kept one - and, since a part that has not changed is no longer
+rebuilt, it can no longer tell a superseded build from a current one either.
 
 ## Related
 

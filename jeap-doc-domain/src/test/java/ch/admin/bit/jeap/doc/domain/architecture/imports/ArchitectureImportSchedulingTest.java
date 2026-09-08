@@ -68,20 +68,16 @@ class ArchitectureImportSchedulingTest {
     }
 
     /**
-     * What the schedule is <b>for</b>: a site on its default publication schedule generates from a model that
-     * was imported twenty minutes earlier, not from one that is an hour old.
+     * What the schedule is <b>for</b>: the import is what publishes the documentation, so it runs on the hour
+     * it is meant to be read on. It asks for every part of every site documenting the environment it read, and
+     * the parts whose content has not moved are skipped.
      */
     @Test
-    void cron_whenBothAreLeftAtTheirDefaults_thenAnImportStandsInFrontOfEveryPublication() {
-        CronExpression importCron = CronExpression.parse(new ArchitectureImportProperties().getCron());
-        CronExpression publication = CronExpression.parse(new SiteProperties.Site().getPublicationSchedule());
+    void cron_whenItIsLeftAtItsDefault_thenItRunsThroughTheWorkingDay() {
+        CronExpression cron = CronExpression.parse(new ArchitectureImportProperties().getCron());
 
         LocalDateTime middleOfTheMorning = LocalDateTime.of(2026, 9, 3, 9, 30);
-        LocalDateTime nextPublication = publication.next(middleOfTheMorning);
-        LocalDateTime nextImport = importCron.next(middleOfTheMorning);
-
-        assertThat(nextImport).isBefore(nextPublication);
-        assertThat(Duration.between(nextImport, nextPublication)).isEqualTo(Duration.ofMinutes(20));
+        assertThat(cron.next(middleOfTheMorning)).isEqualTo(LocalDateTime.of(2026, 9, 3, 9, 45));
     }
 
     private static ArchitectureImportScheduling schedulingWith(ArchitectureImportProperties properties) {

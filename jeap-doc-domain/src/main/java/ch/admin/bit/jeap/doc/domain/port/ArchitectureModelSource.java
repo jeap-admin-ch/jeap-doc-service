@@ -43,4 +43,12 @@ public interface ArchitectureModelSource {
      * and not this one's.
      */
     ArchitectureSnapshot read(String environment);
+
+    /**
+     * The slugs of the systems this environment's model holds, sorted, without reading the landscape.
+     * <p>
+     * It is how a site knows which parts it has ({@link ch.admin.bit.jeap.doc.domain.SitePartition}), and it
+     * is asked while serving a request - so it must stay a projection.
+     */
+    java.util.List<String> systemSlugsOf(String environment);
 }

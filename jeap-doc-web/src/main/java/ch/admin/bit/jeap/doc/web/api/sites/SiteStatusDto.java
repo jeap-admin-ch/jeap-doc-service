@@ -16,7 +16,6 @@ import java.util.List;
  *
  * @param site                the identifier of the site
  * @param title               what the site calls itself
- * @param publicationSchedule the cron expression it is published on, null when it has none
  * @param publishOnUpload     whether an upload for it asks for a build
  * @param environments        its environments, in the order the switcher shows them
  * @param pending             the build owed to it, null when nothing is owed
@@ -28,7 +27,6 @@ import java.util.List;
 record SiteStatusDto(
         String site,
         String title,
-        String publicationSchedule,
         boolean publishOnUpload,
         List<String> environments,
         PendingBuildDto pending,
@@ -55,7 +53,6 @@ record SiteStatusDto(
         return new SiteStatusDto(
                 site.id(),
                 site.title(),
-                site.publicationSchedule(),
                 site.publishOnUpload(),
                 site.environments().stream().map(SiteEnvironment::id).toList(),
                 PendingBuildDto.of(status.pending()),

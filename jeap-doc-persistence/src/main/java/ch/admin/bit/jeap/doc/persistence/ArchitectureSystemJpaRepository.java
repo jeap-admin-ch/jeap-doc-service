@@ -16,6 +16,15 @@ interface ArchitectureSystemJpaRepository extends JpaRepository<ArchitectureSyst
     List<ArchitectureSystemEntity> findByEnvironmentOrderBySlug(String environment);
 
     /**
+     * The slugs of one environment's systems, and nothing else.
+     * <p>
+     * A projection rather than the entities: it answers which parts a site has, which is asked far more often
+     * than a landscape is read and must not load one to answer it.
+     */
+    @Query("select s.slug from ArchitectureSystemEntity s where s.environment = :environment order by s.slug")
+    List<String> findSlugsByEnvironment(@Param("environment") String environment);
+
+    /**
      * Removes the systems of one environment, in <b>one</b> statement.
      * <p>
      * Written out rather than derived: {@code @Modifying} is only honoured on a {@code @Query}, so a derived

@@ -13,18 +13,19 @@ import java.util.Optional;
  * of the site-level files want: they are about what a site says about itself, not about what is documented in
  * it.
  */
-public final class NoArchitectureModel implements ArchitectureModelSource {
+public class NoArchitectureModel implements ArchitectureModelSource {
 
     /** The one instance needed: it has no state, and every answer of it is the same. */
     static final NoArchitectureModel INSTANCE = new NoArchitectureModel();
 
-    private NoArchitectureModel() {
+    NoArchitectureModel() {
     }
 
     public static SystemPages systemPages(SiteUrls urls) {
-        return new SystemPages(new NoArchitectureModel(), NoMessageSchemas.INSTANCE, new StructureTemplates(List.of()),
-                new GeneratorProperties(), new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
-                BuildMetrics.NONE, urls);
+        return new SystemPages(new NoArchitectureModel(), NoMessageSchemas.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                new StructureTemplates(List.of()), new GeneratorProperties(),
+                new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(), BuildMetrics.NONE, urls);
     }
 
     @Override
@@ -40,6 +41,11 @@ public final class NoArchitectureModel implements ArchitectureModelSource {
     @Override
     public ArchitectureSnapshot read(String environment) {
         throw new IllegalStateException("No architecture repository is configured for " + environment + ".");
+    }
+
+    @Override
+    public java.util.List<String> systemSlugsOf(String environment) {
+        return java.util.List.of();
     }
 
     @Override

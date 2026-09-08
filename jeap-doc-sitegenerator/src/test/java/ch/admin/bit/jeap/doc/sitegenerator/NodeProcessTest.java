@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
+import ch.admin.bit.jeap.doc.domain.port.SiteBuildTimeoutException;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -93,8 +94,10 @@ class NodeProcessTest {
         properties.setTimeout(Duration.ofMillis(500));
         script("hang.mjs", "setInterval(() => {}, 1000);");
 
+        // The type, not only the message: it is what tells the runner to count this apart from a build that
+        // broke, and a message match would go on passing after somebody threw the plain exception again.
         assertThatThrownBy(() -> node.run(workingDirectory, "hang.mjs"))
-                .isInstanceOf(SiteBuildException.class)
+                .isInstanceOf(SiteBuildTimeoutException.class)
                 .hasMessageContaining("did not finish within");
     }
 
@@ -193,11 +196,15 @@ class NodeProcessTest {
     }
 
     /**
-     * The performance log is the one part of the generator's output that is wanted while a build succeeds, so
-     * it is logged at INFO; everything else stays at DEBUG and is kept for the reason of a failed build.
+     * <b>Every line of the generator's output is DEBUG</b>, the performance lines included.
+     * <p>
+     * A build writes hundreds of lines and a publication is dozens of builds, so at INFO the generator's own
+     * output is most of what an instance logs - and none of it answers a question an operator asks. What the
+     * perf log is for is a build that grows or slows down, which is a debug session rather than a running
+     * concern; what a failure was is in the tail, which is kept whatever the level.
      */
     @Test
-    void run_thenThePerfLogLinesAreLoggedAtInfoAndTheRestAtDebug() throws IOException {
+    void run_thenEveryLineOfTheGeneratorsOutputIsLoggedAtDebug() throws IOException {
         ListAppender<ILoggingEvent> logged = captureLog();
         script("perf.mjs", """
                 console.log('[PERF] Load site - 12.00 ms - (Heap 40mb -> 41mb / Total 60mb)');
@@ -210,24 +217,10 @@ class NodeProcessTest {
                 .filteredOn(event -> event.getFormattedMessage().startsWith("[site generator]"))
                 .extracting(ILoggingEvent::getLevel, ILoggingEvent::getFormattedMessage)
                 .containsExactly(
-                        tuple(Level.INFO,
+                        tuple(Level.DEBUG,
                                 "[site generator] [PERF] Load site - 12.00 ms - (Heap 40mb -> 41mb / Total 60mb)"),
                         tuple(Level.DEBUG,
                                 "[site generator] [INFO] Compiling Client"));
-    }
-
-    @Test
-    void run_whenThePerfLogIsOff_thenAPerfLineIsOrdinaryOutput() throws IOException {
-        properties.setPerfLog(false);
-        ListAppender<ILoggingEvent> logged = captureLog();
-        script("perf.mjs", "console.log('[PERF] Load site - 12.00 ms')");
-
-        node.run(workingDirectory, "perf.mjs");
-
-        assertThat(logged.list)
-                .filteredOn(event -> event.getFormattedMessage().startsWith("[site generator]"))
-                .extracting(ILoggingEvent::getLevel)
-                .containsExactly(Level.DEBUG);
     }
 
     /**

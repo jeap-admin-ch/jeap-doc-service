@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.web.site;
 
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
+import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
@@ -49,7 +50,7 @@ class SiteApiIT extends DocServiceIntegrationTestBase {
 
     @BeforeEach
     void publishASite(@org.junit.jupiter.api.io.TempDir Path site) throws IOException {
-        DocumentationBuild build = builds.start(Site.DEFAULT_SITE, BuildTrigger.SCHEDULE, "test", Instant.now());
+        DocumentationBuild build = builds.start(PartKey.shellOf(Site.DEFAULT_SITE), BuildTrigger.IMPORT, "test", Instant.now(), null);
         Files.writeString(site.resolve("index.html"), "<html><body>Documentation</body></html>",
                 StandardCharsets.UTF_8);
         Files.writeString(site.resolve("404.html"), "<html><body>Not found here</body></html>",
@@ -59,13 +60,17 @@ class SiteApiIT extends DocServiceIntegrationTestBase {
         Files.createDirectories(site.resolve("dev"));
         Files.writeString(site.resolve("dev/index.html"), "<html><body>Development</body></html>",
                 StandardCharsets.UTF_8);
-        Files.createDirectories(site.resolve("systems/orders/api"));
-        Files.writeString(site.resolve("systems/orders/api/index.html"), "<html><body>The API of orders</body></html>",
+        // Not below /systems/: this fixture is the shell, and a part carrying a system owns that system's
+        // subtree - so a system part another test class published would own this page rather than the shell,
+        // and it would be served from a site that does not have it.
+        Files.createDirectories(site.resolve("guide/api"));
+        Files.writeString(site.resolve("guide/api/index.html"), "<html><body>The API of orders</body></html>",
                 StandardCharsets.UTF_8);
 
         String prefix = Site.DEFAULT_SITE + "/" + build.id();
-        publication.publish(prefix, site);
-        builds.succeeded(build.id(), prefix, 3, 100, 10, null, Instant.now());
+        publication.publish(new ch.admin.bit.jeap.doc.domain.port.PartPublication(prefix,
+                ch.admin.bit.jeap.doc.domain.SharedAssets.prefixOf(Site.DEFAULT_SITE)), site);
+        builds.succeeded(build.id(), prefix, 3, 100, 10, "digest", Instant.now());
         publishedBuildId = build.id();
     }
 
@@ -124,7 +129,7 @@ class SiteApiIT extends DocServiceIntegrationTestBase {
      */
     @Test
     void get_whenAPageLivesUnderAnApiSegment_thenItIsStillOpenDocumentation() throws Exception {
-        mockMvc.perform(get("/systems/orders/api/"))
+        mockMvc.perform(get("/guide/api/"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("The API of orders")));
     }

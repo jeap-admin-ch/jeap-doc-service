@@ -40,6 +40,10 @@ class DocumentationBuildEntity {
     @Column(nullable = false, updatable = false)
     private String site;
 
+    /** Which part of that site this build produced - the shell, or one named after what it documents. */
+    @Column(nullable = false, updatable = false)
+    private String part;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "trigger_kind", nullable = false, updatable = false)
     private BuildTrigger trigger;
@@ -50,6 +54,16 @@ class DocumentationBuildEntity {
 
     @Column(name = "started_at", nullable = false, updatable = false)
     private Instant startedAt;
+
+    /**
+     * The full publication this build was part of, or null where it was not part of one - an upload asks for
+     * one part, and one part is not a publication. Inherited from the request when the build starts.
+     */
+    @Column(name = "publication_id", updatable = false)
+    private String publicationId;
+
+    @Column(name = "publication_requested_at", updatable = false)
+    private Instant publicationRequestedAt;
 
     @Column(name = "finished_at")
     private Instant finishedAt;
@@ -69,21 +83,20 @@ class DocumentationBuildEntity {
     @Column(name = "docusaurus_millis", nullable = false)
     private long docusaurusMillis;
 
-    /**
-     * What the build did to the memory of its container: the highest usage, what the container is killed at,
-     * and whether that usage is this build's own peak or only an upper bound on it. All three are null
-     * together, for a build whose container could not be read - off Linux, and wherever no cgroup files are
-     * there.
-     */
-    @Column(name = "memory_peak_bytes")
-    private Long memoryPeakBytes;
-
-    @Column(name = "memory_limit_bytes")
-    private Long memoryLimitBytes;
-
-    @Column(name = "memory_peak_exact")
-    private Boolean memoryPeakExact;
+    // memory_peak_bytes, memory_limit_bytes and memory_peak_exact are still columns of this table and are
+    // deliberately not mapped: what wrote them was the per-build high-water mark, which is gone. They are
+    // dropped a release later than the code that filled them, so that an instance of the version before this
+    // one goes on inserting rows while a deployment is half-done.
 
     @Column(name = "failure_reason")
     private String failureReason;
+
+    /**
+     * What the generated content of this part hashed to. A build whose content hashes to the digest of what is
+     * published produces the same site, so it is not run at all - which is what makes a part per system
+     * affordable.
+     */
+    @Column(name = "content_digest")
+    private String contentDigest;
+
 }

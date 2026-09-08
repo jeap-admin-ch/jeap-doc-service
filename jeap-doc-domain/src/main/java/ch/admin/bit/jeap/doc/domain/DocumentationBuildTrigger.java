@@ -1,18 +1,41 @@
 package ch.admin.bit.jeap.doc.domain;
 
+import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.util.List;
 
 /**
- * Asks for a documentation site to be published.
+ * Asks for a part of a documentation site to be published.
  * <p>
- * Everything that wants a site rebuilt comes through here - an upload, the schedule - so there is exactly one
- * path to a build and the collapsing rule covers all of them: a request that is already pending is left alone,
- * and however many triggers arrive while a build runs, the next run serves all of them at once.
+ * Everything that wants documentation rebuilt comes through here - an upload, the architecture import, an
+ * operator - so there is exactly one path to a build and the collapsing rule covers all of them: a request
+ * that is already pending is left alone, and however many triggers arrive while a build runs, the next run
+ * serves all of them at once.
+ * <p>
+ * <b>A trigger also asks this instance to look now</b>, rather than at its next poll - see
+ * {@link DocumentationBuildPickup}. It is advisory: the request is what a build rests on.
+ * <p>
+ * <b>What may not be skipped is decided here.</b> An operator's ask carries {@code forced}, so the build it
+ * leads to is run whether the content moved or not; an upload and an import do not, because their whole
+ * subject is content that moved and the digest is right about them. It is a field of the request rather than
+ * a reading of the trigger, since a request already pending keeps the trigger that asked first.
+ * <p>
+ * <b>A trigger that asks for every part of a site mints a {@link Publication}</b> and puts its identifier on
+ * every one of those requests, so that the wall clock of a full publication is a thing the service can measure
+ * across its instances. An upload does not: one part is not a publication.
+ * <p>
+ * <b>There are three of them, and only the upload names one part.</b> An import asks for the whole site: which
+ * systems its landscape changed is a question this variant does not ask, because a part is a system and a
+ * system is quick to generate - so asking is more machinery than rebuilding.
+ * <p>
+ * <b>What a trigger names is a thing, not a part.</b> An upload names a system, the import names a system in an
+ * environment; which part carries it is the {@link SitePartition}'s answer, and that is the whole reason this
+ * class talks to one.
  */
 @Slf4j
 @Service
@@ -21,37 +44,87 @@ public class DocumentationBuildTrigger {
 
     private final DocumentationBuildRequestRepository requests;
     private final DocumentationSites sites;
+    private final SitePartition partition;
+    private final BuildMetrics metrics;
+    private final DocumentationBuildPickup pickup;
     private final Clock clock;
 
     /**
-     * Asks for a build of the given site because something was uploaded to it, unless that site does not want to
-     * be published on upload.
+     * Asks for the documentation of one system to be published, because something was uploaded for it - unless
+     * that site does not want to be published on upload.
+     * <p>
+     * <b>An upload names no environment</b> ({@code DocumentationUploadDescriptor} carries the site, the system,
+     * the component and the version), so the partition decides which parts that touches. With a part per system
+     * it is exactly one.
      */
-    public void requestBecauseOfUpload(String site) {
+    public void requestBecauseOfUpload(String site, String system) {
         sites.find(site)
                 .filter(Site::publishOnUpload)
-                .ifPresent(configured -> request(configured.id(), BuildTrigger.UPLOAD));
+                .ifPresent(configured -> {
+                    List<SitePart> parts = partition.partsDocumenting(configured, null, system);
+                    // No publication: an upload asks for one part, and one part is not a publication. Not
+                    // forced either - an upload changes the content, so the digest decides and is right.
+                    requestParts(parts, BuildTrigger.UPLOAD, null, false);
+                    metrics.triggered(configured.id(), BuildTrigger.UPLOAD, parts.size());
+                });
     }
 
     /**
-     * Asks for a build of the given site because its schedule came round.
+     * Asks for the documentation of one environment's landscape to be published, and reports how many parts
+     * that was.
+     * <p>
+     * <b>Every part of it</b>: the import knows the environment and nothing finer, on purpose. What each part
+     * then costs is decided by its content - a part whose pages hash to what is published is not generated -
+     * so the price of not knowing which systems moved is the content of every part, and not a site rebuilt.
+     * <p>
+     * Every site that has this environment, because an environment is not a site's own: one landscape can be
+     * documented by several of them.
      */
-    public void requestBecauseOfSchedule(String site) {
-        request(site, BuildTrigger.SCHEDULE);
+    public int requestBecauseTheModelWasImported(String environment) {
+        int requested = 0;
+        for (Site site : sites.all()) {
+            if (site.environments().stream().noneMatch(each -> each.id().equals(environment))) {
+                continue;
+            }
+            List<SitePart> parts = partition.partsOf(site);
+            requestParts(parts, BuildTrigger.IMPORT, Publication.askedAt(clock.instant()), false);
+            metrics.triggered(site.id(), BuildTrigger.IMPORT, parts.size());
+            requested += parts.size();
+        }
+        return requested;
     }
 
     /**
-     * Asks for a build of the given site because somebody asked for one over the administration API, and reports
+     * Asks for one part to be published because somebody asked for it over the administration API, and reports
      * what became of the request.
      * <p>
      * Unlike {@link #requestBecauseOfUpload} this does <b>not</b> ask whether the site wants to be published on
      * upload: a site that is published only when something is uploaded to it is exactly the site somebody has to
-     * be able to publish by hand. Whether the site exists at all is decided by the caller, so that an unknown one
-     * is refused rather than silently dropped.
+     * be able to publish by hand. Whether the site and the part exist at all is decided by the caller, so that
+     * an unknown one is refused rather than silently dropped.
      */
-    public BuildRequestOutcome requestBecauseAnOperatorAsked(String site) {
-        boolean created = request(site, BuildTrigger.MANUAL);
-        return new BuildRequestOutcome(created, standingRequestFor(site));
+    public BuildRequestOutcome requestBecauseAnOperatorAsked(PartKey part) {
+        boolean created = request(part, BuildTrigger.MANUAL, null, true);
+        pickup.whenAskedFor();
+        return new BuildRequestOutcome(created, standingRequestFor(part));
+    }
+
+    /**
+     * Asks for <b>every</b> part of a site to be published, whether its content has moved or not.
+     * <p>
+     * What an operator gets when they force a publication: the digest is not consulted, because the reason to
+     * force one is that something outside the content changed - the site template while it is being worked on,
+     * most of all. Answers the parts that were asked for.
+     */
+    public List<SitePart> requestEveryPart(String site) {
+        return sites.find(site)
+                .map(configured -> {
+                    List<SitePart> all = partition.partsOf(configured);
+                    requestParts(all, BuildTrigger.MANUAL, Publication.askedAt(clock.instant()), true);
+                    metrics.triggered(configured.id(), BuildTrigger.MANUAL, all.size());
+                    return all;
+                })
+                .orElseGet(List::of);
     }
 
     /**
@@ -61,20 +134,34 @@ public class DocumentationBuildTrigger {
      * has already started. That is not worth a lock over, so the outcome says the request is no longer pending
      * and means it.
      */
-    private BuildRequest standingRequestFor(String site) {
+    private BuildRequest standingRequestFor(PartKey part) {
         return requests.pending().stream()
-                .filter(request -> request.site().equals(site))
+                .filter(request -> request.part().equals(part))
                 .findFirst()
                 .orElse(null);
     }
 
-    private boolean request(String site, BuildTrigger trigger) {
-        if (requests.request(site, trigger, clock.instant())) {
-            log.info("A build of the documentation site {} was asked for by {}.", site, trigger);
+    /**
+     * One wake-up for the lot, and after the requests are written: an import asks for fifty parts, and fifty
+     * wake-ups would be forty-nine passes that find what the first one is already building.
+     */
+    private void requestParts(List<SitePart> parts, BuildTrigger trigger, Publication publication,
+                              boolean forced) {
+        for (SitePart part : parts) {
+            request(part.key(), trigger, publication, forced);
+        }
+        if (!parts.isEmpty()) {
+            pickup.whenAskedFor();
+        }
+    }
+
+    private boolean request(PartKey part, BuildTrigger trigger, Publication publication, boolean forced) {
+        if (requests.request(part, trigger, clock.instant(), publication, forced)) {
+            log.info("A build of {} was asked for by {}.", part, trigger);
             return true;
         }
-        log.debug("A build of the documentation site {} is already pending; the {} trigger joins it.",
-                site, trigger);
+        log.debug("A build of {} is already pending; the {} trigger joins it{}.", part, trigger,
+                forced ? " and it may no longer be skipped" : "");
         return false;
     }
 }

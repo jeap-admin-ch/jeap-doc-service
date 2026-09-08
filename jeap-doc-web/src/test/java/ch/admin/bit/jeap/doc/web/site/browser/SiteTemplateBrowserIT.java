@@ -1,14 +1,11 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
-import com.microsoft.playwright.APIResponse;
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.AriaRole;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
-
-import java.util.regex.Pattern;
 
 import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
 
@@ -120,176 +117,6 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
     }
 
     /**
-     * The search index was empty for four review rounds while every test passed: it is a file, and asserting
-     * that the file exists says nothing about whether typing a word finds anything. The index is fetched by the
-     * page, so this is also what would notice a {@code connect-src} the service does not allow.
-     */
-    @Test
-    void search_whenAWordIsSearchedFor_thenTheHitLeadsToThePageItIsOn() {
-        // Not through the navbar's autocomplete but through the search page, which is the same index and the
-        // same query without a dropdown's timing. The service redirects onto the canonical trailing slash on
-        // the way, so the query has to survive that redirect for this to find anything at all.
-        open("/search?q=" + SEARCHABLE_TERM);
-
-        Locator hit = page.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName(GUIDE_TITLE)).first();
-        assertThat(hit).isVisible();
-
-        // Which environment's copy this is belongs to the scoping tests below; that the hit leads to the page
-        // is what this one is about. The href carries the plugin's own highlight query, hence the pattern.
-        hit.click();
-        page.waitForURL(Pattern.compile(".*/" + GUIDE_ROUTE + "/.*"));
-        // The page's own title, and only it: the URL changes before the router has rendered the route behind
-        // it, and every result on the page left behind is a heading of the same name one level down.
-        assertThat(guideTitle()).isVisible();
-        assertNothingWentWrongInTheBrowser();
-    }
-
-    /**
-     * The site is one build over four environment trees. Before the index was split, every query answered with
-     * the same page once per environment and the reader had to read URLs to find the tree they were already in.
-     */
-    @Test
-    void search_whenScopedToAnEnvironment_thenOnlyThatEnvironmentsCopyIsFound() {
-        SiteEnvironment dev = environmentNamed("dev");
-
-        open("/search?q=" + SEARCHABLE_TERM + "&ctx=" + dev.id());
-
-        // More than one entry can lead to the same page - the index holds its title and its heading - so what
-        // matters is that this environment is on the page at all and that no other one is.
-        assertThat(hitsIn(dev).first()).isVisible();
-        for (SiteEnvironment other : environments()) {
-            if (!other.id().equals(dev.id())) {
-                assertThat(hitsIn(other)).hasCount(0);
-            }
-        }
-        // Not only the right link but the right page behind it: the four copies differ in one line, and this
-        // is the one that says which tree it came out of.
-        hitsIn(dev).first().click();
-        page.waitForURL(Pattern.compile(".*/" + dev.id() + "/" + GUIDE_ROUTE + "/.*"));
-        assertThat(page.getByText(guideMarkerOf(dev))).isVisible();
-        assertNothingWentWrongInTheBrowser();
-    }
-
-    /**
-     * The main environment is served at the site root, so it is not one of the configured search paths - it is
-     * what is left when none of them matched. That makes it the case the two options left at their defaults
-     * would break, and the one worth a test of its own.
-     */
-    @Test
-    void search_whenScopedToNothing_thenTheMainEnvironmentsCopyIsFound() {
-        SiteEnvironment main = mainEnvironment();
-
-        open("/search?q=" + SEARCHABLE_TERM);
-
-        assertThat(hitsIn(main).first()).isVisible();
-        for (SiteEnvironment other : environments()) {
-            if (!other.main()) {
-                assertThat(hitsIn(other)).hasCount(0);
-            }
-        }
-        hitsIn(main).first().click();
-        page.waitForURL(Pattern.compile(".*/" + GUIDE_ROUTE + "/.*"));
-        assertThat(page.getByText(guideMarkerOf(main))).isVisible();
-        assertNothingWentWrongInTheBrowser();
-    }
-
-    /**
-     * One index file per environment, each holding only its own pages, and the main environment's is the one
-     * with no environment in its name - it is what is left when none of the configured paths matched.
-     * <p>
-     * This is the mechanism rather than the appearance: the scoping is a partitioned index, not a filter over
-     * results, so a reader on DEV is not shown a PROD hit because their browser never fetched one. Asked over
-     * HTTP because that is how the browser asks, which also says the service serves the files at all.
-     */
-    @Test
-    void search_thenEachEnvironmentIsServedAnIndexOfItsOwn() {
-        open("/");
-
-        for (SiteEnvironment environment : environments()) {
-            String index = indexOf(environment);
-            for (SiteEnvironment other : environments()) {
-                boolean itsOwn = other.id().equals(environment.id());
-                String route = other.main() ? "\"/" + GUIDE_ROUTE + "/\"" : "\"/" + other.id() + "/" + GUIDE_ROUTE + "/\"";
-                if (itsOwn) {
-                    Assertions.assertThat(index)
-                            .describedAs("the index of %s should hold its own guide page", environment.id())
-                            .contains(route);
-                } else {
-                    Assertions.assertThat(index)
-                            .describedAs("the index of %s should not hold the guide page of %s",
-                                    environment.id(), other.id())
-                            .doesNotContain(route);
-                }
-            }
-        }
-        assertNothingWentWrongInTheBrowser();
-    }
-
-    /**
-     * The navbar needs nothing from the reader: it takes the scope from the page it is on. What it derived is
-     * in the link it offers to the full results, which is the only anchor its dropdown puts on the page.
-     */
-    @Test
-    void search_whenReadingAnEnvironment_thenTheNavbarSearchesThatEnvironment() {
-        SiteEnvironment dev = environmentNamed("dev");
-
-        open("/" + dev.id() + "/" + GUIDE_ROUTE + "/");
-        typeIntoTheSearchBox();
-
-        assertThat(scopedResultsLink(dev).first()).isVisible();
-        assertNothingWentWrongInTheBrowser();
-    }
-
-    /**
-     * The two halves together: the switcher changes the route, and the scope of the search follows the route
-     * without anything else being told. Switching environment and then searching is what a reader does, and
-     * neither feature is worth much if it stops at the other one's edge.
-     */
-    @Test
-    void search_whenTheEnvironmentIsSwitchedFirst_thenTheSearchFollowsIt() {
-        SiteEnvironment dev = environmentNamed("dev");
-        open("/" + GUIDE_ROUTE + "/");
-
-        switcher().click();
-        environmentLink(dev).click();
-        page.waitForURL(url("/" + dev.id() + "/" + GUIDE_ROUTE + "/"));
-
-        typeIntoTheSearchBox();
-
-        // The scope the box derived from the route, as it puts it into the link to the full results - the
-        // suggestions themselves are not links, so this is the one place it is visible in the page.
-        assertThat(scopedResultsLink(dev).first()).isVisible();
-        assertNothingWentWrongInTheBrowser();
-    }
-
-    /**
-     * The search page takes its scope from the URL rather than from the path it is on, so it needs a control.
-     * The search plugin renders one, and it cannot offer the main environment at all - that is the leftover
-     * bucket and has no path to name it by - so the site brings its own and hides the plugin's.
-     */
-    @Test
-    void searchPage_whenAnEnvironmentIsChosen_thenTheResultsMoveToItIncludingTheMainOne() {
-        SiteEnvironment dev = environmentNamed("dev");
-
-        open("/search?q=" + SEARCHABLE_TERM + "&ctx=" + dev.id());
-
-        assertThat(environmentSelector()).hasValue(dev.id());
-        assertThat(environmentSelector().locator("option")).hasCount(environments().size());
-        assertThat(page.locator("#context-selector")).isHidden();
-
-        // The main environment is the empty value, which is what the plugin knows the leftover bucket as.
-        environmentSelector().selectOption("");
-
-        // The selector changes the scope by rewriting the query string, and the plugin searches again from it.
-        // Wait for that, then for the previous results to go: only then are the ones on the page the new ones.
-        page.waitForURL(url -> !url.contains("ctx="));
-        assertThat(hitsIn(dev)).hasCount(0);
-
-        assertThat(hitsIn(mainEnvironment()).first()).isVisible();
-        assertNothingWentWrongInTheBrowser();
-    }
-
-    /**
      * A fence becomes a diagram in the browser, not on the server: the generated page carries only the
      * attribute saying that it should be one. The plugin renders with WebAssembly, which the service's
      * Content-Security-Policy has to allow - {@code 'wasm-unsafe-eval'} and {@code worker-src blob:} - so this
@@ -308,6 +135,93 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
         assertThat(diagram).containsText("orders-intake");
         assertThat(diagram).containsText("shipping");
         assertThat(diagram).not().containsText("Syntax Error");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>A link in a diagram is followed, and it is followed in the tab the reader is in.</b>
+     * <p>
+     * The links a system context view draws are the way from one system to its neighbours, and they are the
+     * one kind of link nothing else can check: they sit inside a fence, so the generator does not rewrite
+     * them and Docusaurus never sees them as routes. What renders them is PlantUML in the reader's browser,
+     * which is where this looks.
+     */
+    @Test
+    void diagrams_whenABoxIsLinked_thenItIsAnAnchorThatIsFollowedInTheSameTab() {
+        open("/" + GUIDE_ROUTE + "/");
+        Locator diagram = page.locator("[data-plantuml-diagram] svg:has(text)").first();
+        assertThat(diagram).isVisible();
+
+        // The anchor the linked box became. PlantUML wraps the box in an <a>, so a box that lost its link is
+        // a box with no anchor rather than a broken one.
+        Locator linked = diagram.locator("a[*|href='/']").first();
+        assertThat(linked).isVisible();
+        assertThat(linked).not().hasAttribute("target", "_blank");
+
+        int tabsBefore = page.context().pages().size();
+        linked.click();
+        page.waitForURL(url -> url.endsWith("/"));
+
+        Assertions.assertThat(page.context().pages())
+                .describedAs("a link within the site must not open a new tab - a reader following a diagram "
+                             + "into another system would collect one per hop")
+                .hasSize(tabsBefore);
+        Assertions.assertThat(page.url()).endsWith("/");
+        Assertions.assertThat(page.url()).doesNotContain(GUIDE_ROUTE);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * The other kind of diagram the generator writes: an entity relationship diagram. None of its constructs
+     * appears in a component diagram, and PlantUML draws a syntax error as a picture too - so what proves it
+     * parsed is that the tables are in it and the complaint is not.
+     */
+    @Test
+    void diagrams_whenAPageHoldsAnEntityRelationshipFence_thenItIsRenderedToo() {
+        open("/" + GUIDE_ROUTE + "/");
+
+        Locator diagrams = page.locator("[data-plantuml-diagram] svg:has(text)");
+        assertThat(diagrams).hasCount(2);
+
+        Locator schema = diagrams.last();
+        assertThat(schema).isVisible();
+        assertThat(schema).containsText("orders_order");
+        assertThat(schema).containsText("orders_party");
+        // A column, which only an entity has: a component box carries no rows.
+        assertThat(schema).containsText("party_id");
+        assertThat(schema).not().containsText("Syntax Error");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>A column is drawn where it was declared, whatever its type says.</b> PlantUML tells a field from a
+     * method by whether the line has parentheses, and a column type usually has them - {@code numeric(12,2)},
+     * {@code text[]} - but that heuristic is a {@code class} member's, not an {@code entity}'s: every member
+     * of an entity is a field. If it ever became an entity's too, those two columns would be drawn in a
+     * compartment of their own after {@code remark}, below a separator that means nothing and with a method
+     * icon beside them. The source parses and reads correctly either way, so only a rendering can tell -
+     * which is why the assertion is here and not in a unit test, and why the generator emits no
+     * {@code {field}} markers to guard against something that does not happen.
+     */
+    @Test
+    void diagrams_thenEveryColumnIsDrawnAsAColumnInItsDeclaredPlace() {
+        open("/" + GUIDE_ROUTE + "/");
+
+        // Waited for before it is read: the plugin renders in the browser, one diagram at a time, and
+        // textContent() does not retry - so reading the last one too early reads the first one instead, which
+        // is a green test that asserted the wrong diagram or a failure that looks like a generator bug.
+        Locator diagrams = page.locator("[data-plantuml-diagram] svg:has(text)");
+        assertThat(diagrams).hasCount(2);
+        String schema = diagrams.last().textContent();
+
+        Assertions.assertThat(schema).describedAs("the type is on the page as the database spells it")
+                .contains("numeric(12,2)")
+                .contains("text[]");
+        Assertions.assertThat(schema.indexOf("remark"))
+                .describedAs("the plain column declared after the parameterised ones is still drawn after "
+                             + "them, so neither of those was moved into a compartment of methods")
+                .isGreaterThan(schema.indexOf("numeric(12,2)"))
+                .isGreaterThan(schema.indexOf("text[]"));
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -343,57 +257,6 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
     private Locator guideTitle() {
         return page.getByRole(AriaRole.HEADING,
                 new Page.GetByRoleOptions().setName(GUIDE_TITLE).setLevel(1));
-    }
-
-    /**
-     * Puts the searchable term into the navbar's search box, which is what opens its results. Key by key: the
-     * box loads its index when it is first focused and reacts to what is typed, and a value set in one go has
-     * been seen to arrive before it is listening.
-     */
-    private void typeIntoTheSearchBox() {
-        Locator box = page.locator("input.navbar__search-input").first();
-        box.click();
-        box.pressSequentially(SEARCHABLE_TERM, new Locator.PressSequentiallyOptions().setDelay(60));
-    }
-
-    /**
-     * The navbar's link to the full results, which carries the scope it derived from the route it is on. The
-     * suggestions themselves are not links - selecting one is a router push - so this is where what the box
-     * decided becomes visible in the page.
-     */
-    private Locator scopedResultsLink(SiteEnvironment environment) {
-        return page.locator("a[href*='ctx=" + environment.id() + "']");
-    }
-
-    /** The site's own environment selector on the search page. */
-    private Locator environmentSelector() {
-        return page.locator("#search-environment");
-    }
-
-    /**
-     * The links on a search result page that lead to one environment's copy of the guide page. By the start of
-     * the href, not by what it contains: the main environment is served at the site root, so a link to its
-     * copy is a prefix of nothing while every other environment's copy carries its id in front.
-     */
-    private Locator hitsIn(SiteEnvironment environment) {
-        String prefix = environment.main() ? "" : "/" + environment.id();
-        return page.locator("a[href^='" + prefix + "/" + GUIDE_ROUTE + "/']");
-    }
-
-    /** One environment's search index, as the browser fetches it. */
-    private String indexOf(SiteEnvironment environment) {
-        String name = "search-index" + (environment.main() ? "" : "-" + environment.id()) + ".json";
-        APIResponse response = page.request().get(url("/" + name));
-        Assertions.assertThat(response.status())
-                .describedAs("the service should serve %s", name).isEqualTo(200);
-        return response.text();
-    }
-
-    private SiteEnvironment mainEnvironment() {
-        return environments().stream()
-                .filter(SiteEnvironment::main)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No environment is the main one."));
     }
 
     private Locator environmentLink(SiteEnvironment environment) {

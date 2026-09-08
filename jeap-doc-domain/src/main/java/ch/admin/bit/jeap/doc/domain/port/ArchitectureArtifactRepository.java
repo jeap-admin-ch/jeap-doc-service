@@ -26,18 +26,17 @@ public interface ArchitectureArtifactRepository {
     List<ArchitectureArtifactRef> findRefs(String environment, ArchitectureImportKind kind);
 
     /**
-     * The content of one artifact, for whoever renders it.
+     * The content of one artifact, addressed by the component that published it. <b>The only way to read
+     * one</b>, for the replication as well as for a generation run.
      * <p>
-     * <b>Nothing renders them yet.</b> The OpenAPI specifications and the database schemas are replicated and
-     * are not on a page, so this and {@link #findAll} are the read side of a generator that does not exist -
-     * kept, rather than deleted and written again, because the replication beside them is what is expensive to
-     * get right and both are covered by the adapter's tests.
+     * There is deliberately no read of a whole system's or a whole environment's artifacts. A specification
+     * is among the largest text this service stores, and neither a replication nor a generation run needs
+     * more than one of them at a time - a read that answered a list would put a component count's multiple of
+     * {@code max-artifact-size} live at once. Both callers loop over the components instead; the names come
+     * from the stored model or from {@link #findRefs}, and each lookup is served by the unique index.
      */
     Optional<ArchitectureArtifact> find(String environment, ArchitectureImportKind kind, String system,
                                         String component);
-
-    /** Every artifact of one system, for a generation run that documents it - see {@link #find}. */
-    List<ArchitectureArtifact> findAll(String environment, ArchitectureImportKind kind, String system);
 
     void store(ArchitectureArtifact artifact);
 

@@ -43,7 +43,9 @@ class SiteServingBrowserIT extends SiteBrowserTestBase {
         // that the file was found, fetched and read.
         PlaywrightAssertions.assertThat(page.getByText("Generated in")).isVisible();
         PlaywrightAssertions.assertThat(page.getByText("1 min 32 s")).isVisible();
-        PlaywrightAssertions.assertThat(page.getByText("11264 MB of 16384 MB (69%)")).isVisible();
+        // And no memory row: the per-build peak is gone, because overlapping builds each reset the kernel's
+        // mark the others were accumulating into - what the container does is a series to query.
+        PlaywrightAssertions.assertThat(page.getByText("Memory of the container")).not().isVisible();
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -139,7 +141,7 @@ class SiteServingBrowserIT extends SiteBrowserTestBase {
         String entityTag = document.headers().get("etag");
 
         // From the page itself, so the request carries the site's origin and the service's own
-        // Content-Security-Policy applies to it - the same connection the search index is fetched over.
+        // Content-Security-Policy applies to it, as it does to every request a page of the site makes.
         Object status = page.evaluate("""
                 async (tag) => {
                     const response = await fetch(location.href, {headers: {'If-None-Match': tag}});

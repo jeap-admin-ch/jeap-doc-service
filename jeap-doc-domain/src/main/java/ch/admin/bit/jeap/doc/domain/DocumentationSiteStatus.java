@@ -29,11 +29,12 @@ public class DocumentationSiteStatus {
     /**
      * Every configured site, in the order they are configured.
      * <p>
-     * What is pending and what is running is read once for all sites rather than once per site - there is at
-     * most one request per site and hardly ever a running build, so both are a handful of rows however many
-     * sites an instance serves. What is published and what was built last are still read <b>per site</b>, two
-     * indexed single-row queries each: sites are configured rather than discovered, so there are a handful of
-     * them, and a query per site is not worth a join to avoid.
+     * What is pending and what is running is read once for all sites rather than once per site. There is one
+     * request per <b>part</b> now, so a site fed by the hourly import has as many as it has systems; still a
+     * few hundred rows however many sites an instance serves, and read as one statement. Of the requests of a
+     * site the <b>oldest</b> is the one shown, which is what says how long anything has been waiting. What is
+     * published and what was built last are still read <b>per site</b>, two indexed single-row queries each:
+     * sites are configured rather than discovered, so there are a handful of them.
      */
     public List<SiteStatus> all() {
         Map<String, BuildRequest> pending = requests.pending().stream()
@@ -74,9 +75,15 @@ public class DocumentationSiteStatus {
         return builds.find(site, id);
     }
 
+    /**
+     * <b>{@code published} is the shell's publication and not the site's.</b> A site is published as several
+     * builds and no one of them is <i>the</i> published one; the shell is the part that answers for the site's
+     * own pages, so its build is what says the site is being served at all. How the rest of it stands is
+     * {@code /parts} - a site whose shell publishes and whose systems all fail is a healthy shell.
+     */
     private SiteStatus statusOf(Site site, BuildRequest pending, List<DocumentationBuild> running) {
         return new SiteStatus(site, pending, running,
-                builds.published(site.id()).orElse(null),
+                builds.published(PartKey.shellOf(site.id())).orElse(null),
                 builds.recent(site.id(), 1).stream().findFirst().orElse(null));
     }
 }

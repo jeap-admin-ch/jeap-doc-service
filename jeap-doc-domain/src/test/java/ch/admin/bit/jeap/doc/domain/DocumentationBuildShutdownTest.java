@@ -1,7 +1,6 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
-import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
@@ -33,6 +32,8 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -75,18 +76,20 @@ class DocumentationBuildShutdownTest {
         DocumentationSites sites = new DocumentationSites(new SiteProperties());
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         metrics = new RecordingBuildMetrics();
-        runner = new DocumentationBuildRunner(requests, builds, sites, siteBuilder, publication,
-                properties, metrics, alwaysGranting(), alwaysReady(), ContainerMemory.NONE, clock);
+        runner = new DocumentationBuildRunner(requests, builds, sites,
+                new SystemSitePartition(new NoArchitectureModel()), siteBuilder, publication,
+                properties, metrics, alwaysGranting(), alwaysReady(), clock);
         shutdown = new DocumentationBuildShutdown(runner, siteBuilder, properties);
         shutdown.start();
         scheduler = Executors.newSingleThreadExecutor();
 
-        when(requests.pending()).thenReturn(List.of(new BuildRequest(SITE, NOW, BuildTrigger.UPLOAD)));
-        when(requests.claim(SITE)).thenReturn(Optional.of(BuildTrigger.UPLOAD));
-        when(builds.abandonRunning(anyString(), any())).thenReturn(List.of());
-        when(builds.start(anyString(), any(), anyString(), any())).thenReturn(
-                new DocumentationBuild(7L, SITE, BuildTrigger.UPLOAD, BuildState.RUNNING, NOW, null, "test",
-                        null, 0, 0, 0, null, null));
+        BuildRequest request = new BuildRequest(PartKey.shellOf(SITE), NOW, BuildTrigger.UPLOAD, null, false);
+        when(requests.pending()).thenReturn(List.of(request));
+        when(requests.claim(PartKey.shellOf(SITE))).thenReturn(Optional.of(request));
+        when(builds.abandonRunning(any(), any())).thenReturn(List.of());
+        when(builds.start(any(), any(), anyString(), any(), any())).thenReturn(
+                new DocumentationBuild(7L, SITE, SitePart.SHELL, BuildTrigger.UPLOAD, BuildState.RUNNING, NOW,
+                        null, "test", null, 0, 0, 0, null, null));
     }
 
     @AfterEach
@@ -112,13 +115,13 @@ class DocumentationBuildShutdownTest {
 
         assertThat(tick.get(5, TimeUnit.SECONDS)).isTrue();
         verify(builds).aborted(eq(7L), anyString(), any());
-        verify(builds, never()).failed(anyLong(), anyString(), any(), any());
-        verify(builds, never()).succeeded(anyLong(), anyString(), anyInt(), anyLong(), anyLong(), any(), any());
+        verify(builds, never()).failed(anyLong(), anyString(), any());
+        verify(builds, never()).succeeded(anyLong(), anyString(), anyInt(), anyLong(), anyLong(), anyString(), any());
         // The distinction the abort path exists for: the alarm counts failures, and a deployment landing on a
         // build must not page anybody.
         assertThat(metrics.results).containsExactly("aborted:" + SITE + ":UPLOAD");
         // Asked for again, so the next instance to poll runs it rather than the site waiting for its schedule.
-        verify(requests).request(eq(SITE), eq(BuildTrigger.UPLOAD), any());
+        verify(requests).request(eq(PartKey.shellOf(SITE)), eq(BuildTrigger.UPLOAD), any(), any(), eq(false));
         verify(publication).delete("default/7");
         verify(siteBuilder.discarded).accept(7L);
     }
@@ -130,7 +133,8 @@ class DocumentationBuildShutdownTest {
     @Test
     void stop_whenEveryWriteFails_thenItStillReturnsInsideItsBudget() throws Exception {
         when(builds.aborted(anyLong(), anyString(), any())).thenThrow(new IllegalStateException("no connection"));
-        when(requests.request(anyString(), any(), any())).thenThrow(new IllegalStateException("no connection"));
+        when(requests.request(any(), any(), any(), any(), anyBoolean()))
+                .thenThrow(new IllegalStateException("no connection"));
         doThrowOnDelete();
 
         Future<Boolean> tick = scheduler.submit(runner::runOnce);
@@ -144,7 +148,7 @@ class DocumentationBuildShutdownTest {
         assertThat(took).isLessThan(properties.getShutdownTimeout());
         // Every step was attempted, none of them stopped the next.
         verify(builds).aborted(eq(7L), anyString(), any());
-        verify(requests).request(eq(SITE), any(), any());
+        verify(requests).request(eq(PartKey.shellOf(SITE)), any(), any(), any(), anyBoolean());
         verify(publication).delete("default/7");
     }
 
@@ -174,7 +178,7 @@ class DocumentationBuildShutdownTest {
 
         assertThat(runner.runOnce()).isFalse();
 
-        verify(builds, never()).start(anyString(), any(), anyString(), any());
+        verify(builds, never()).start(any(), any(), anyString(), any(), any());
     }
 
     @Test
@@ -221,7 +225,7 @@ class DocumentationBuildShutdownTest {
         ticking.join(10_000);
 
         verify(builds).aborted(eq(7L), anyString(), any());
-        verify(requests).request(eq(SITE), eq(BuildTrigger.UPLOAD), any());
+        verify(requests).request(eq(PartKey.shellOf(SITE)), eq(BuildTrigger.UPLOAD), any(), any(), eq(false));
         verify(publication).delete("default/7");
         assertThat(interruptedAtTheEnd).isTrue();
     }
@@ -264,7 +268,16 @@ class DocumentationBuildShutdownTest {
         private volatile Thread interruptOnAbort;
 
         @Override
-        public BuiltSite generate(long buildId, Site site, java.time.Instant generatedAt) {
+        public ch.admin.bit.jeap.doc.domain.port.PreparedPart prepare(long buildId, Site site, SitePart part,
+                                                                      java.time.Instant generatedAt) {
+            // The cheap half never blocks: what this test is about is the generator being given up on.
+            return new ch.admin.bit.jeap.doc.domain.port.PreparedPart(buildId, part, Path.of("workspace"),
+                    "digest-of-a-blocking-build");
+        }
+
+
+        @Override
+        public BuiltSite generate(ch.admin.bit.jeap.doc.domain.port.PreparedPart prepared) {
             started.countDown();
             try {
                 if (!aborted.await(30, TimeUnit.SECONDS)) {
@@ -314,6 +327,11 @@ class DocumentationBuildShutdownTest {
             @Override
             public java.util.Optional<String> sourceUrlOf(String environment) {
                 return java.util.Optional.empty();
+            }
+
+            @Override
+            public java.util.List<String> systemSlugsOf(String environment) {
+                return java.util.List.of();
             }
 
             @Override

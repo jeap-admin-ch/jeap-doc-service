@@ -50,6 +50,27 @@ public class Arc42Template implements StructureTemplate {
     static final String SYSTEM_REACTIONS_PAGE = "system-reactions";
 
     /**
+     * Where a component's context view is served, inside its own context and scope.
+     * <p>
+     * Without the {@code component-} prefix the system's page carries: the path already holds the component
+     * and {@code component-architecture}, so the prefix would say the word a third time. The heading and the
+     * navigation label are <i>Component Context View</i> all the same.
+     */
+    static final String COMPONENT_CONTEXT_VIEW_PAGE = "context-view";
+
+    /** Where a component's entity relationship diagram is served, inside its building block view. */
+    static final String DATABASE_SCHEMA_PAGE = "database-schema";
+
+    /** And the overview of its REST API, beside it. */
+    static final String REST_API_PAGE = "rest-api";
+
+    /** And the messages it produces and consumes. */
+    static final String MESSAGES_PAGE = "messages";
+
+    /** The component's counterpart of {@link #SYSTEM_REACTIONS_PAGE}, empty for the same reason. */
+    static final String COMPONENT_REACTIONS_PAGE = "component-reactions";
+
+    /**
      * The four chapters this template generates into. A gap in the numbering is how a reader sees that a
      * chapter has not been written.
      */

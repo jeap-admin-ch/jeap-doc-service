@@ -4,6 +4,7 @@ import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactContent;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactUpstream;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
 import ch.admin.bit.jeap.doc.domain.port.MessageSchemaUpstream;
@@ -63,6 +64,15 @@ public class ArchRepoConfiguration {
     ArchitectureArtifactUpstream architectureArtifactUpstream(ArchRepoClients clients,
                                                               ArchitectureImportProperties properties) {
         return new ArchRepoArtifactUpstream(clients, properties);
+    }
+
+    /**
+     * Reading a replicated artifact needs no client and no configuration. It only needs to know the shapes
+     * of this upstream's payloads, which is what this module is for.
+     */
+    @Bean
+    ArchitectureArtifactContent architectureArtifactContent(JsonMapper json) {
+        return new ArchRepoArtifactContent(json);
     }
 
     @Bean

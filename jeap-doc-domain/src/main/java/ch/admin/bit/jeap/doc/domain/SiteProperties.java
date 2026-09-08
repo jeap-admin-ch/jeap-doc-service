@@ -62,17 +62,6 @@ public class SiteProperties {
          */
         private List<Environment> environments = List.of();
 
-        /**
-         * When the site is regenerated, as a cron expression in the time zone of the service. **An empty value
-         * means never on a schedule** - the site is then published only when something is uploaded to it. There is no
-         * separate enabled flag: a schedule that is not there is a schedule that does not run.
-         * <p>
-         * The default is hourly through the working day, from 06:05 to 20:05: documentation that is a day old is
-         * documentation nobody trusts, and a build outside those hours would only regenerate what nobody is
-         * reading. Five minutes past the hour rather than on it, so that every site of every instance does not
-         * ask for a build in the same second.
-         */
-        private String publicationSchedule = "0 5 6-20 * * *";
 
         /**
          * Whether an upload for this site asks for a build of it.

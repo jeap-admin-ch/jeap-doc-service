@@ -45,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class BuildShutdownIT {
 
+    /** The default site. {@link BuildPickupIT} shares this database and deliberately uses another one. */
     private static final String SITE = "default";
 
     @Test
@@ -103,7 +104,7 @@ class BuildShutdownIT {
 
     private void requestABuild(ConfigurableApplicationContext context) {
         context.getBean(ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger.class)
-                .requestBecauseOfSchedule(SITE);
+                .requestBecauseAnOperatorAsked(ch.admin.bit.jeap.doc.domain.PartKey.shellOf(SITE));
     }
 
     private Connection ownConnection() throws Exception {
@@ -137,7 +138,9 @@ class BuildShutdownIT {
     private static boolean lockIsHeld(Connection connection) throws Exception {
         try (PreparedStatement statement = connection.prepareStatement(
                 "select lock_until from shedlock where name = ?")) {
-            statement.setString(1, "documentationBuild-" + SITE);
+            // The lock is named after the part, not the site: without the part this looked for a row that
+            // never exists and the assertion below passed whatever the runner had done.
+            statement.setString(1, "documentationBuild-" + SITE + "/shell");
             try (ResultSet rows = statement.executeQuery()) {
                 // No row at all means it was never taken; a lock_until in the past means it was given back.
                 return rows.next() && rows.getTimestamp(1).toInstant().isAfter(Instant.now());
@@ -164,11 +167,6 @@ class BuildShutdownIT {
         @Bean
         ch.admin.bit.jeap.doc.domain.port.BuildMetrics buildMetrics() {
             return ch.admin.bit.jeap.doc.domain.port.BuildMetrics.NONE;
-        }
-
-        @Bean
-        ch.admin.bit.jeap.doc.domain.port.ContainerMemory containerMemory() {
-            return ch.admin.bit.jeap.doc.domain.port.ContainerMemory.NONE;
         }
 
         @Bean
@@ -289,8 +287,9 @@ class BuildShutdownIT {
         SitePublicationStorage publicationStorage() {
             return new SitePublicationStorage() {
                 @Override
-                public PublishedSite publish(String prefix, Path directory) {
-                    return new PublishedSite(prefix, 1, 1);
+                public PublishedSite publish(ch.admin.bit.jeap.doc.domain.port.PartPublication where,
+                                             Path directory) {
+                    return new PublishedSite(where.prefix(), 1, 1);
                 }
 
                 @Override
@@ -321,12 +320,22 @@ class BuildShutdownIT {
             // What the run cost is not what this test is about.
         }
 
-        private final CountDownLatch started = new CountDownLatch(1);
-        private final CountDownLatch aborted = new CountDownLatch(1);
+        // Package-private: BuildPickupIT waits on the same latch, from the same harness.
+        final CountDownLatch started = new CountDownLatch(1);
+        final CountDownLatch aborted = new CountDownLatch(1);
 
         @Override
-        public BuiltSite generate(long buildId, ch.admin.bit.jeap.doc.domain.Site site,
-                                  java.time.Instant generatedAt) {
+        public ch.admin.bit.jeap.doc.domain.port.PreparedPart prepare(
+                long buildId, ch.admin.bit.jeap.doc.domain.Site site,
+                ch.admin.bit.jeap.doc.domain.SitePart part, java.time.Instant generatedAt) {
+            // The cheap half never blocks: what this test is about is the generator being given up on.
+            return new ch.admin.bit.jeap.doc.domain.port.PreparedPart(buildId, part,
+                    java.nio.file.Path.of("workspace"), "digest-of-a-blocking-build");
+        }
+
+
+        @Override
+        public BuiltSite generate(ch.admin.bit.jeap.doc.domain.port.PreparedPart prepared) {
             started.countDown();
             try {
                 if (!aborted.await(60, TimeUnit.SECONDS)) {

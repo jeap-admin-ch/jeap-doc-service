@@ -21,6 +21,7 @@ import java.util.List;
  * @param restApis       the operations it provides
  * @param openApi        its OpenAPI specification, or null
  * @param databaseSchema its database schema, or null
+ * @param artifacts      what was replicated of those two, parsed - null until a generation run joins it in
  */
 public record DocumentedComponent(
         String name,
@@ -32,7 +33,8 @@ public record DocumentedComponent(
         ZonedDateTime lastSeen,
         List<RestApiOperation> restApis,
         OpenApiReference openApi,
-        DatabaseSchemaReference databaseSchema) {
+        DatabaseSchemaReference databaseSchema,
+        ComponentArtifacts artifacts) {
 
     /**
      * How long a component may go unseen before its documentation is worth distrusting. The same fortnight the
@@ -55,7 +57,18 @@ public record DocumentedComponent(
      */
     public DocumentedComponent withSlug(String slug) {
         return new DocumentedComponent(name, slug, description, type, team, importer, lastSeen, restApis,
-                openApi, databaseSchema);
+                openApi, databaseSchema, artifacts);
+    }
+
+    /**
+     * The same component with what was replicated of its artifacts joined onto it.
+     * <p>
+     * A generation run does this per system, like the message schemas, so that a whole landscape of
+     * specifications is never held while the site generator runs.
+     */
+    public DocumentedComponent withArtifacts(DatabaseSchema schema, RestApiOverview api) {
+        return new DocumentedComponent(name, slug, description, type, team, importer, lastSeen, restApis,
+                openApi, databaseSchema, new ComponentArtifacts(schema, api));
     }
 
     /**
@@ -68,10 +81,20 @@ public record DocumentedComponent(
     public DocumentedComponent seenByTheDay() {
         return lastSeen == null ? this
                 : new DocumentedComponent(name, slug, description, type, team, importer,
-                        lastSeen.truncatedTo(ChronoUnit.DAYS), restApis, openApi, databaseSchema);
+                        lastSeen.truncatedTo(ChronoUnit.DAYS), restApis, openApi, databaseSchema, artifacts);
     }
 
     public boolean hasRestApi() {
         return openApi != null || !restApis.isEmpty();
+    }
+
+    /** The replicated database schema, or null - the reference in {@code databaseSchema} says it exists. */
+    public DatabaseSchema schema() {
+        return artifacts == null ? null : artifacts.schema();
+    }
+
+    /** The overview of the replicated OpenAPI specification, or null. */
+    public RestApiOverview api() {
+        return artifacts == null ? null : artifacts.api();
     }
 }

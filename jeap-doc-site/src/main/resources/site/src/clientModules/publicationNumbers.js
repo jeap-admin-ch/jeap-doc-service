@@ -41,31 +41,21 @@ function spellOutDuration(millis) {
     return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
 }
 
-function memoryOf(status) {
-    if (!isNumber(status.memoryPeakBytes)) {
-        return null;
-    }
-    const peak = status.memoryPeakExact === false ? 'at most ' : '';
-    if (!isNumber(status.memoryLimitBytes) || status.memoryLimitBytes <= 0) {
-        return `${peak}${megabytes(status.memoryPeakBytes)}`;
-    }
-    const percent = Math.round((status.memoryPeakBytes / status.memoryLimitBytes) * 100);
-    return `${peak}${megabytes(status.memoryPeakBytes)} of ${megabytes(status.memoryLimitBytes)} (${percent}%)`;
-}
-
-/** The rows to show, in the order they read: what came out, then what it cost. */
+/**
+ * The rows to show, in the order they read: what came out, then what it cost.
+ *
+ * No memory row. It used to print the container's high-water mark around this build, which was only ever this
+ * build's own while one build ran at a time - with several parts building at once each of them reset what the
+ * others had accumulated. What the container does is a series to query
+ * (`jeap.doc.container.memory.used`), not a number for a page to claim.
+ */
 function rowsOf(status) {
-    const rows = [
+    return [
         ['Pages', String(status.pageCount)],
         ['Size', megabytes(status.sizeInBytes)],
         ['Generated in', spellOutDuration(status.generatedInMillis)],
         ['Of which the site generator', spellOutDuration(status.generatorMillis)],
     ];
-    const memory = memoryOf(status);
-    if (memory) {
-        rows.push(['Memory of the container', memory]);
-    }
-    return rows;
 }
 
 function tableOf(status) {

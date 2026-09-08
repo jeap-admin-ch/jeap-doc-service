@@ -42,6 +42,7 @@ class ArchitectureModelImportStepTest {
     private FakeUpstream upstream;
     private InMemoryModels models;
     private InMemoryImports imports;
+    private RecordingTrigger trigger;
     private ArchitectureModelImportStep step;
 
     @BeforeEach
@@ -49,8 +50,77 @@ class ArchitectureModelImportStepTest {
         upstream = new FakeUpstream();
         models = new InMemoryModels();
         imports = new InMemoryImports();
+        imports.writeOrder = models.writeOrder;
+        trigger = new RecordingTrigger();
+        trigger.writeOrder = models.writeOrder;
         step = new ArchitectureModelImportStep(upstream, models, imports, ArchitectureImportMetrics.NONE,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                trigger, Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    /**
+     * <b>The import is what publishes the documentation.</b> A landscape that is new asks for the site to be
+     * built, and which parts of it moved is not asked: a part is one system, and a part whose content has not
+     * moved is not generated.
+     */
+    @Test
+    void run_whenTheLandscapeChanged_thenTheDocumentationIsAskedFor() {
+        upstream.has("Orders", "Shipping");
+        step.run(ENVIRONMENT, Deadline.none());
+
+        upstream.has("Orders", "Shipping", "Tariffs");
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
+
+        assertThat(trigger.asked).containsExactly(ENVIRONMENT, ENVIRONMENT);
+    }
+
+    /**
+     * <b>The landscape is stored before the state row that says the repository was read.</b>
+     * <p>
+     * What a build reads is held between builds, keyed on when the repository was last read successfully - see
+     * {@code StoredArchitectureModel}. That is only safe in this order: a state row written first would let a
+     * build read the landscape this import is about to replace and hold it under the new key, and the site
+     * would then publish the previous landscape until the next import.
+     * <p>
+     * And the builds are asked for last, for the same reason: a trigger starts a pass at once now, so a part
+     * that started before the state row moved would hold the landscape that was just replaced.
+     */
+    @Test
+    void run_whenTheLandscapeIsStored_thenTheStateRowComesAfterItAndTheBuildsAfterThat() {
+        upstream.has("Orders");
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
+
+        assertThat(models.writeOrder).containsExactly("landscape", "last success");
+        assertThat(trigger.askedAfter).containsExactly("landscape", "last success");
+    }
+
+    /**
+     * A run that finds the landscape it already has asks for nothing at all. It is the one thing that is still
+     * compared: the landscape as a whole, by the hash the fetch produced - so an hour in which nothing changed
+     * costs no build and no content.
+     */
+    @Test
+    void run_whenTheLandscapeIsUnchanged_thenNothingIsAskedFor() {
+        upstream.has("Orders");
+        step.run(ENVIRONMENT, Deadline.none());
+        trigger.asked.clear();
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.UNCHANGED);
+
+        assertThat(trigger.asked).isEmpty();
+    }
+
+    /**
+     * The landscape is stored either way. Asking for the documentation is what happens *after* it, so a
+     * trigger that throws costs an hour - the next import publishes it - and never the landscape.
+     */
+    @Test
+    void run_whenAskingForTheDocumentationFails_thenTheLandscapeIsStillImported() {
+        trigger.failing = true;
+        upstream.has("Orders");
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
+        assertThat(models.stored.systems()).hasSize(1);
     }
 
     @Test
@@ -466,7 +536,7 @@ class ArchitectureModelImportStepTest {
             List<DocumentedComponent> parts = new ArrayList<>();
             for (String name : components.getOrDefault(system, List.of())) {
                 parts.add(new DocumentedComponent(name, null, null, ComponentType.of("BACKEND"), null, null,
-                        lastSeen, List.of(), null, null));
+                        lastSeen, List.of(), null, null, null));
             }
             return Optional.of(new SystemTopology(system, null, List.of(), null, parts, List.of()));
         }
@@ -480,11 +550,40 @@ class ArchitectureModelImportStepTest {
         }
     }
 
+    /**
+     * What the import asked for, kept rather than acted on. Which parts that is is
+     * DocumentationBuildTriggerTest's business; what this class is about is <i>whether it asked</i>.
+     */
+    private static final class RecordingTrigger extends ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger {
+
+        private final List<String> asked = new java.util.ArrayList<>();
+        /** What had already been written when the documentation was asked for - the order is the point. */
+        private List<String> askedAfter = new java.util.ArrayList<>();
+        private List<String> writeOrder = new java.util.ArrayList<>();
+        private boolean failing;
+
+        private RecordingTrigger() {
+            super(null, null, null, null, null, null);
+        }
+
+        @Override
+        public int requestBecauseTheModelWasImported(String environment) {
+            if (failing) {
+                throw new IllegalStateException("the database went away");
+            }
+            askedAfter = List.copyOf(writeOrder);
+            asked.add(environment);
+            return 1;
+        }
+    }
+
     private static final class InMemoryModels implements ArchitectureModelRepository {
 
         private ArchitectureModel stored = ArchitectureModel.empty();
         private Instant storedImportedAt;
         private int writes;
+        /** What was written, and in which order - shared with the state rows, which are written after it. */
+        private List<String> writeOrder = new java.util.ArrayList<>();
 
         @Override
         public ArchitectureSnapshot read(String environment) {
@@ -492,16 +591,24 @@ class ArchitectureModelImportStepTest {
         }
 
         @Override
+        public List<String> systemSlugsOf(String environment) {
+            return stored.systems().stream().map(DocumentedSystem::slug).sorted().toList();
+        }
+
+        @Override
         public void replace(String environment, ArchitectureModel model, Instant importedAt) {
             stored = model;
             storedImportedAt = importedAt;
             writes++;
+            writeOrder.add("landscape");
         }
     }
 
     private static final class InMemoryImports implements ArchitectureImportRepository {
 
         private final Map<String, ArchitectureImportState> states = new LinkedHashMap<>();
+        /** The same list the landscape writes into, so that the order between the two is visible. */
+        private List<String> writeOrder = new java.util.ArrayList<>();
 
         @Override
         public ArchitectureImportState state(String environment, ArchitectureImportKind kind) {
@@ -516,6 +623,9 @@ class ArchitectureModelImportStepTest {
         @Override
         public void save(ArchitectureImportState state) {
             states.put(state.environment() + state.kind(), state);
+            if (state.lastSuccessAt() != null) {
+                writeOrder.add("last success");
+            }
         }
     }
 }

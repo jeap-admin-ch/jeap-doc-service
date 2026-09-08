@@ -120,6 +120,23 @@ class ShedLockExclusiveWorkIT extends PostgresTestContainerBase {
         assertThat(outer).contains("inner");
     }
 
+    /**
+     * A lock is named after what it locks, and a part is named {@code <site>/system-<slug>} - a site id from
+     * the configuration and a system slug from the architecture repository, neither of them bounded. The name
+     * is inserted as it is given, so a column too narrow for it means that one part never builds while the
+     * others do. Fails against the {@code varchar(64)} the table had before the split.
+     */
+    @Test
+    void underLock_whenTheNameIsLongerThanTheColumnUsedToBe_thenTheLockIsStillTaken() {
+        // The prefix DocumentationBuildRunner uses, spelled out: it is package private in the domain.
+        String name = "documentationBuild-applicationplatform/system-zollanmeldung-warenverkehr-import";
+        assertThat(name.length())
+                .describedAs("a name that fits in 64 characters would prove nothing")
+                .isGreaterThan(64);
+
+        assertThat(exclusiveWork.underLock(name, LEASE, () -> "done")).contains("done");
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             if (!latch.await(10, TimeUnit.SECONDS)) {

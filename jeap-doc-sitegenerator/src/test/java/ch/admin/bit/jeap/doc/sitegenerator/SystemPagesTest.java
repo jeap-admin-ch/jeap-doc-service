@@ -2,6 +2,18 @@ package ch.admin.bit.jeap.doc.sitegenerator;
 
 import java.util.Collection;
 import java.util.ArrayList;
+import ch.admin.bit.jeap.doc.domain.SitePart;
+import ch.admin.bit.jeap.doc.domain.PartKey;
+import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
+import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
+import ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchema;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
+import ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactRef;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactContent;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactRepository;
 import ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef;
@@ -55,7 +67,7 @@ class SystemPagesTest {
     void write_whenATemplateWritesNothing_thenTheLandingPageDoesNotLinkToIt() throws IOException {
         SystemPages pages = pagesWith(new SilentTemplate());
 
-        pages.write("default", "prod", "/", directory, GENERATED_AT);
+        pages.write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
         String landingPage = Files.readString(directory.resolve("systems").resolve("orders")
                 .resolve("index.md"));
@@ -68,7 +80,7 @@ class SystemPagesTest {
     void write_whenATemplateWritesASubtree_thenTheLandingPageLinksToIt() throws IOException {
         SystemPages pages = pagesWith(new WritingTemplate());
 
-        pages.write("default", "prod", "/", directory, GENERATED_AT);
+        pages.write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
         assertThat(Files.readString(directory.resolve("systems").resolve("orders").resolve("index.md")))
                 .contains("## Documentation")
@@ -86,7 +98,7 @@ class SystemPagesTest {
             throws IOException {
         RecordingTemplate template = new RecordingTemplate();
 
-        pagesWith(template).write("default", "prod", "/", directory, GENERATED_AT);
+        pagesWith(template).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
         assertThat(template.context).isNotNull();
         assertThat(template.context.modelImportedAt()).isEqualTo(CONTENT_IMPORTED_AT);
@@ -100,10 +112,17 @@ class SystemPagesTest {
     @Test
     void write_thenItAnswersWhatTheEnvironmentsModelContributed() throws IOException {
         Optional<EnvironmentModel> model = pagesWith(new SilentTemplate())
-                .write("default", "prod", "/", directory, GENERATED_AT);
+                .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
         assertThat(model).isPresent();
-        assertThat(model.orElseThrow().systems()).isEqualTo(1);
+        assertThat(model.orElseThrow().systemCount()).isEqualTo(1);
+        assertThat(model.orElseThrow().systems())
+                .describedAs("the systems themselves, because the shell's sidebar lists them and they are "
+                             + "built as parts of their own - the name as the model spells it, the path as "
+                             + "the slug does")
+                .extracting(EnvironmentModel.DocumentedSystemEntry::label,
+                        EnvironmentModel.DocumentedSystemEntry::path)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("ORDERS", "/systems/orders/"));
         assertThat(model.orElseThrow().importedAt()).isEqualTo(CONTENT_IMPORTED_AT);
     }
 
@@ -114,7 +133,7 @@ class SystemPagesTest {
     @Test
     void write_whenNoArchitectureRepositoryIsConfigured_thenNothingRatherThanZero() throws IOException {
         Optional<EnvironmentModel> model = NoArchitectureModel.systemPages(null)
-                .write("default", "prod", "/", directory, GENERATED_AT);
+                .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
         assertThat(model).isEmpty();
     }
@@ -132,9 +151,10 @@ class SystemPagesTest {
     void write_thenEachSystemsSchemasAreReadForThatSystemAndJoinedOntoItsVersions() throws IOException {
         RecordingTemplate template = new RecordingTemplate();
         RecordingSchemas schemas = new RecordingSchemas();
-        new SystemPages(new OneSystem(), schemas, new StructureTemplates(List.of(template)),
+        new SystemPages(new OneSystem(), schemas, NoArchitectureArtifacts.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
-                BuildMetrics.NONE, null).write("default", "prod", "/", directory, GENERATED_AT);
+                BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
         assertThat(schemas.asked).describedAs("one read, by the model's own spelling of the system name")
                 .containsExactly("prod ORDERS");
@@ -151,9 +171,10 @@ class SystemPagesTest {
     @Test
     void write_whenNothingWasReplicated_thenTheVersionsAreLeftAsTheyAre() throws IOException {
         RecordingTemplate template = new RecordingTemplate();
-        new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, new StructureTemplates(List.of(template)),
+        new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
-                BuildMetrics.NONE, null).write("default", "prod", "/", directory, GENERATED_AT);
+                BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
         assertThat(template.system.messages()).singleElement().satisfies(message ->
                 assertThat(message.versions()).singleElement().satisfies(version -> {
@@ -162,8 +183,107 @@ class SystemPagesTest {
                 }));
     }
 
+    /**
+     * The artifacts are read <b>one component and one kind at a time</b> and joined onto that component, so
+     * that neither a landscape's nor a system's worth of specifications is ever held at once. A specification
+     * may be eight megabytes, and the model a build holds stays in memory until the generator has finished.
+     * <p>
+     * <b>Addressed by the model's own spellings</b>, {@code ORDERS} and {@code orders-intake}, which the
+     * lookup then folds - the stub has the artifact under {@code ORDERS-INTAKE}, the way the replication
+     * stored it. An address built from the slug, or a lookup that matched exactly, would find nothing, and
+     * every page would come out complete and without a schema or an API on it.
+     */
+    @Test
+    void write_thenTheArtifactsAreReadOneComponentAtATimeAndJoinedOntoIt() throws IOException {
+        RecordingTemplate template = new RecordingTemplate();
+        RecordingArtifacts artifacts = new RecordingArtifacts();
+
+        new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, artifacts, artifacts,
+                new StructureTemplates(List.of(template)), new GeneratorProperties(),
+                new ArchitectureImportProperties(), BuildMetrics.NONE, null)
+                .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        assertThat(artifacts.asked)
+                .describedAs("one lookup per component and kind, by the model's own spelling of both names")
+                .containsExactly("prod DATABASE_SCHEMA ORDERS/orders-intake",
+                        "prod OPENAPI_SPEC ORDERS/orders-intake");
+        assertThat(template.system.components()).singleElement().satisfies(component -> {
+            assertThat(component.schema()).isNotNull();
+            assertThat(component.schema().name()).isEqualTo("orders_db");
+            assertThat(component.api()).isNotNull();
+            assertThat(component.api().version()).isEqualTo("2.4.0");
+        });
+    }
+
+    /**
+     * A component whose artifacts were never replicated - new, or missed by a run that hit its deadline -
+     * is left as the model had it. It keeps its pages and carries no schema and no API, so a replication that
+     * is behind never costs a page.
+     */
+    @Test
+    void write_whenNoArtifactWasReplicated_thenTheComponentsAreLeftAsTheyAre() throws IOException {
+        RecordingTemplate template = new RecordingTemplate();
+
+        pagesWith(template).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        assertThat(template.system.components()).singleElement().satisfies(component -> {
+            assertThat(component.artifacts()).isNull();
+            assertThat(component.schema()).isNull();
+            assertThat(component.api()).isNull();
+        });
+    }
+
+    /**
+     * An artifact that cannot be read costs its own page and nothing else. There is no {@code try} around
+     * the generation of a site, so one that threw here would end the documentation of every system of the
+     * environment.
+     */
+    @Test
+    void write_whenAnArtifactCannotBeRead_thenTheComponentSimplyCarriesNone() throws IOException {
+        RecordingTemplate template = new RecordingTemplate();
+        RecordingArtifacts unreadable = new RecordingArtifacts();
+        unreadable.readable = false;
+
+        new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, unreadable, unreadable,
+                new StructureTemplates(List.of(template)), new GeneratorProperties(),
+                new ArchitectureImportProperties(), BuildMetrics.NONE, null)
+                .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        assertThat(template.system.components()).singleElement().satisfies(component -> {
+            assertThat(component.name()).isEqualTo("orders-intake");
+            assertThat(component.schema()).isNull();
+            assertThat(component.api()).isNull();
+        });
+    }
+
+    /**
+     * A component the replication holds nothing for is left as the model had it - it keeps its pages and
+     * simply carries no schema and no API, which is why a replication that is behind never costs a page.
+     */
+    @Test
+    void write_whenTheReplicationHoldsNothingForTheComponent_thenItIsLeftAsItIs() throws IOException {
+        RecordingTemplate template = new RecordingTemplate();
+        RecordingArtifacts other = new RecordingArtifacts();
+        other.stored = "orders-risk";
+
+        new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, other, other,
+                new StructureTemplates(List.of(template)), new GeneratorProperties(),
+                new ArchitectureImportProperties(), BuildMetrics.NONE, null)
+                .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        assertThat(other.asked).describedAs("it is still asked for, once per kind")
+                .containsExactly("prod DATABASE_SCHEMA ORDERS/orders-intake",
+                        "prod OPENAPI_SPEC ORDERS/orders-intake");
+        assertThat(template.system.components()).singleElement().satisfies(component -> {
+            assertThat(component.artifacts()).isNull();
+            assertThat(component.schema()).isNull();
+            assertThat(component.api()).isNull();
+        });
+    }
+
     private SystemPages pagesWith(StructureTemplate template) {
-        return new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, new StructureTemplates(List.of(template)),
+        return new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
                 BuildMetrics.NONE, null);
     }
@@ -187,10 +307,19 @@ class SystemPagesTest {
         }
 
         @Override
+        public java.util.List<String> systemSlugsOf(String environment) {
+            return read(environment).model().systems().stream()
+                    .map(ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem::slug).sorted().toList();
+        }
+
+        @Override
         public ArchitectureSnapshot read(String environment) {
             return new ArchitectureSnapshot(
                     ArchitectureModel.of(List.of(new DocumentedSystem("ORDERS", "orders", null, List.of(), null,
-                            List.of(), List.of(), List.of(new ch.admin.bit.jeap.doc.domain.architecture
+                            List.of(new DocumentedComponent("orders-intake", "orders-intake", null,
+                                    ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null,
+                                    null)),
+                            List.of(), List.of(new ch.admin.bit.jeap.doc.domain.architecture
                             .DocumentedMessage("OrdersPaidEvent", "orders-paid-event",
                             ch.admin.bit.jeap.doc.domain.architecture.MessageKind.EVENT, null, "orders.paid",
                             null, null, null,
@@ -319,5 +448,82 @@ class SystemPagesTest {
         public void remove(Collection<MessageVersionRef> versions) {
             throw new UnsupportedOperationException();
         }
+    }
+
+    /**
+     * The replicated artifact of one component, and a note of what was asked for.
+     * <p>
+     * It stands in for both halves of the reading, so that a test about the join has one place to look. Like
+     * the database it replaces it answers <b>one artifact per lookup</b> - a whole system's worth of
+     * specifications is never in memory at once - and it folds the component name the way the unique index
+     * does, because the model and these rows carry the spellings of two exports of one upstream.
+     */
+    private static final class RecordingArtifacts implements ArchitectureArtifactRepository,
+            ArchitectureArtifactContent {
+
+        private final List<String> asked = new ArrayList<>();
+
+        /** Whether the bytes read back are what the format says, which decides whether a page gets them. */
+        private boolean readable = true;
+
+        /** The component the replication has an artifact for, spelled the way <b>it</b> stores it. */
+        private String stored = "ORDERS-INTAKE";
+
+        @Override
+        public List<ArchitectureArtifactRef> findRefs(String environment, ArchitectureImportKind kind) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Optional<ArchitectureArtifact> find(String environment, ArchitectureImportKind kind,
+                                                   String system, String componentName) {
+            asked.add(environment + " " + kind + " " + system + "/" + componentName);
+            if (!stored.equalsIgnoreCase(componentName)) {
+                return Optional.empty();
+            }
+            return Optional.of(new ArchitectureArtifact(environment, kind, "orders", stored, "1",
+                    "\"sha256:one\"", new byte[]{'{', '}'}, 2, GENERATED_AT, GENERATED_AT));
+        }
+
+        @Override
+        public void store(ArchitectureArtifact artifact) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void confirm(String environment, ArchitectureImportKind kind, String system,
+                            String componentName, Instant checkedAt) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void remove(Collection<ArchitectureArtifactRef> stored) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int removeOrphans(String environment) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Optional<DatabaseSchema> databaseSchema(ArchitectureArtifact artifact) {
+            return readable
+                    ? Optional.of(new DatabaseSchema("orders_db", "1.2.3", List.of()))
+                    : Optional.empty();
+        }
+
+        @Override
+        public Optional<RestApiOverview> restApi(ArchitectureArtifact artifact) {
+            return readable
+                    ? Optional.of(new RestApiOverview("2.4.0", "https://orders.example.ch/api", List.of()))
+                    : Optional.empty();
+        }
+    }
+
+    /** The part that carries the whole of one environment, systems and all. */
+    private static SitePart wholeSite() {
+        return new SitePart(PartKey.shellOf("default"), "the site itself", "", true, List.of("prod"),
+                List.of());
     }
 }

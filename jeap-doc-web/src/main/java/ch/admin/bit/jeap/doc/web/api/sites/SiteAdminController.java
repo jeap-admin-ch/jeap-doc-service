@@ -3,8 +3,11 @@ package ch.admin.bit.jeap.doc.web.api.sites;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.BuildRequestOutcome;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
+import ch.admin.bit.jeap.doc.domain.DocumentationParts;
 import ch.admin.bit.jeap.doc.domain.DocumentationSiteStatus;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
+import ch.admin.bit.jeap.doc.domain.PartKey;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.web.api.Roles;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -55,27 +58,82 @@ class SiteAdminController {
 
     private final DocumentationSites sites;
     private final DocumentationSiteStatus status;
+    private final DocumentationParts parts;
     private final DocumentationBuildTrigger trigger;
     private final BuildProperties buildProperties;
     private final Clock clock;
 
     @Operation(summary = "Ask for a site to be published",
-            description = "Asks for the documentation site to be generated and published. The build does not "
-                          + "run on this request: it is picked up by an instance within the poll interval, and "
-                          + "an ask that joins a request already pending is answered with requested=false.")
+            description = "Asks for every part of the site to be generated and published, whether its content "
+                          + "has moved or not - which is what to use after changing the site template. "
+                          + "Nothing runs on this request: the builds are picked up by an instance within the "
+                          + "poll interval.")
     @PostMapping(path = SiteApiPaths.BUILDS, produces = "application/json")
     @PreAuthorize(Roles.HAS_SITES_ADMIN_ROLE)
-    public ResponseEntity<BuildRequestedDto> requestBuild(
+    public ResponseEntity<PublicationRequestedDto> requestBuild(
             @Parameter(description = "Identifier of the site") @PathVariable String site,
             Authentication caller) {
         requireConfigured(site);
-        BuildRequestOutcome outcome = trigger.requestBecauseAnOperatorAsked(site);
-        log.info("A build of the documentation site {} was asked for over the API by {}; it {}.",
-                site, nameOf(caller),
+        List<SitePart> asked = trigger.requestEveryPart(site);
+        log.info("Every part of the documentation site {} was asked for over the API by {}: {} part(s).",
+                site, nameOf(caller), asked.size());
+        return ResponseEntity.accepted()
+                .body(PublicationRequestedDto.of(site, asked.size(), buildProperties.getPollInterval()));
+    }
+
+    @Operation(summary = "Ask for one part of a site to be published",
+            description = "Asks for one part of the documentation site to be generated and published, whether "
+                          + "its content has moved or not. The build does not run on this request: it is "
+                          + "picked up by an instance within the poll interval, and an ask that joins a "
+                          + "request already pending is answered with requested=false.")
+    @PostMapping(path = SiteApiPaths.PART_BUILDS, produces = "application/json")
+    @PreAuthorize(Roles.HAS_SITES_ADMIN_ROLE)
+    public ResponseEntity<BuildRequestedDto> requestPartBuild(
+            @Parameter(description = "Identifier of the site") @PathVariable String site,
+            @Parameter(description = "Identifier of the part") @PathVariable String part,
+            Authentication caller) {
+        requireConfigured(site);
+        SitePart configured = parts.of(site, part)
+                .map(DocumentationParts.PartState::part)
+                .orElseThrow(() -> unknownPart(site, part));
+        BuildRequestOutcome outcome = trigger.requestBecauseAnOperatorAsked(configured.key());
+        log.info("A build of {} was asked for over the API by {}; it {}.", configured.key(), nameOf(caller),
                 outcome.created() ? "was put on the queue" : "joined a request already pending");
         return ResponseEntity.accepted()
-                .body(BuildRequestedDto.of(site, outcome, buildProperties.getPollInterval()));
+                .body(BuildRequestedDto.of(configured.key(), outcome, buildProperties.getPollInterval()));
     }
+
+    @Operation(summary = "Read the parts of a site",
+            description = "Answers the parts the documentation site is published as: what each carries, what "
+                          + "is published for it and whether it is owed a build. The age of the oldest part is "
+                          + "what says whether a part has quietly stopped being rebuilt.")
+    @GetMapping(path = SiteApiPaths.PARTS, produces = "application/json")
+    @PreAuthorize(Roles.HAS_SITES_READ_ROLE)
+    public List<PartDto> parts(@Parameter(description = "Identifier of the site") @PathVariable String site) {
+        Instant now = clock.instant();
+        return parts.of(site).orElseThrow(() -> unknownSite(site)).stream()
+                .map(state -> PartDto.of(state.part(), state.published(), state.owedABuild(), now))
+                .toList();
+    }
+
+    @Operation(summary = "Read the builds of one part of a site")
+    @GetMapping(path = SiteApiPaths.PART_BUILDS, produces = "application/json")
+    @PreAuthorize(Roles.HAS_SITES_READ_ROLE)
+    public List<BuildDto> partBuilds(
+            @Parameter(description = "Identifier of the site") @PathVariable String site,
+            @Parameter(description = "Identifier of the part") @PathVariable String part,
+            @Parameter(description = "How many builds to answer with, at most 100")
+            @RequestParam(name = "limit", defaultValue = "" + DEFAULT_HISTORY_LIMIT) int limit) {
+        requireConfigured(site);
+        SitePart configured = parts.of(site, part)
+                .map(DocumentationParts.PartState::part)
+                .orElseThrow(() -> unknownPart(site, part));
+        Instant now = clock.instant();
+        return parts.recentBuildsOf(configured.key(), Math.clamp(limit, 1, MAX_HISTORY_LIMIT)).stream()
+                .map(build -> BuildDto.of(build, now))
+                .toList();
+    }
+
 
     @Operation(summary = "Read the state of every site",
             description = "Answers what each documentation site is configured to do and what has actually "
@@ -134,6 +192,11 @@ class SiteAdminController {
         if (sites.find(site).isEmpty()) {
             throw unknownSite(site);
         }
+    }
+
+    private ResponseStatusException unknownPart(String site, String part) {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "The documentation site %s has no part %s.".formatted(site, part));
     }
 
     private ResponseStatusException unknownSite(String site) {

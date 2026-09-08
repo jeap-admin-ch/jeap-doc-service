@@ -4,13 +4,21 @@ import ch.admin.bit.jeap.doc.domain.architecture.view.WhiteboxView;
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
+import ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchema;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
+import ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactContent;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository;
@@ -38,6 +46,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 import static ch.admin.bit.jeap.doc.markdown.FrontMatter.frontMatter;
 
@@ -62,6 +71,13 @@ public class SystemPages {
      * the landscape read returns, deliberately.
      */
     private final MessageSchemaRepository messageSchemas;
+
+    /** The replicated OpenAPI specifications and database schemas, read <b>per system</b> - see below. */
+    private final ArchitectureArtifactRepository artifacts;
+
+    /** What turns their bytes into what a page shows. */
+    private final ArchitectureArtifactContent artifactContent;
+
     private final StructureTemplates templates;
     private final GeneratorProperties properties;
     private final ArchitectureImportProperties importProperties;
@@ -72,16 +88,24 @@ public class SystemPages {
     private static final String SYSTEMS_LABEL = "Systems";
 
     /**
-     * Writes the documentation of every system of one environment, and reports how many there were - or
-     * nothing at all when the environment reads no architecture model.
+     * The custom property that says which of the shell's sidebar categories is the systems index.
+     * <b>Read by {@code docusaurus.config.js}</b>, which hangs one link per system under it: every system is
+     * built as a part of its own, so its pages are in no tree the shell's build can see.
+     */
+    private static final String SYSTEMS_INDEX_PROPERTY = "systemsIndex";
+
+
+    /**
+     * Writes what one part carries of one environment, and reports what that environment's model contributed -
+     * or nothing at all when the environment reads no architecture model.
      * <p>
      * An environment with no architecture repository writes nothing, not even an empty index. An empty index
      * would say the landscape is empty rather than that it was not read.
      */
-    public Optional<EnvironmentModel> write(Site site, SiteEnvironment environment,
+    public Optional<EnvironmentModel> write(Site site, SiteEnvironment environment, SitePart part,
                                            Path environmentDirectory, Instant generatedAt) throws IOException {
-        return write(site.id(), environment.id(), diagramLinkPrefixOf(site, environment), environmentDirectory,
-                generatedAt);
+        return write(site.id(), environment.id(), part, diagramLinkPrefixOf(site, environment),
+                environmentDirectory, generatedAt);
     }
 
     /**
@@ -115,7 +139,7 @@ public class SystemPages {
         return urls.baseUrl(site) + (environment.main() ? "" : environment.id() + "/");
     }
 
-    Optional<EnvironmentModel> write(String site, String environment, String diagramLinkPrefix,
+    Optional<EnvironmentModel> write(String site, String environment, SitePart part, String diagramLinkPrefix,
                                      Path environmentDirectory, Instant generatedAt) throws IOException {
         if (!architectureModel.isConfiguredFor(environment)) {
             log.debug("No architecture repository is configured for the environment {}; no system "
@@ -142,19 +166,39 @@ public class SystemPages {
         GenerationContext context = new GenerationContext(model, environment,
                 architectureModel.sourceUrlOf(environment).orElse(""),
                 snapshot.importedAt(), generatedAt,
-                properties.getMaxDiagramNodes(), properties.getMaxEdgeLabels(), diagramLinkPrefix);
+                properties.limits(), diagramLinkPrefix, properties.apiPaths());
 
-        Path systems = environmentDirectory.resolve(DocumentationPaths.SYSTEMS_SEGMENT);
-        Files.createDirectories(systems);
-        Files.writeString(systems.resolve(CategoryFile.NAME), CategoryFile.of(SYSTEMS_LABEL, 1),
-                StandardCharsets.UTF_8);
-        writeIndex(model, context, systems);
+        // The site's own index of the systems belongs to the part that carries whole environment trees. A
+        // part that carries one system writes that system and nothing above it: the directory above is another
+        // part's, and two parts writing the same page would be two publications claiming one URL.
+        if (part.carriesWholeEnvironments()) {
+            Path systems = environmentDirectory.resolve(DocumentationPaths.SYSTEMS_SEGMENT);
+            Files.createDirectories(systems);
+            // Marked so that the site template can find this category among the shell's own and hang one
+            // link per system under it. Found by the property and not by the label, because a label is
+            // exactly what someone changes.
+            Files.writeString(systems.resolve(CategoryFile.NAME),
+                    CategoryFile.marked(SYSTEMS_LABEL, 1, SYSTEMS_INDEX_PROPERTY),
+                    StandardCharsets.UTF_8);
+            writeIndex(model, context, systems);
+        }
+        if (!part.carriesSystems()) {
+            log.debug("Wrote the index of {} systems into the {} tree of {}.",
+                    model.systems().size(), environment, part.key());
+            return Optional.of(counted(model, snapshot));
+        }
 
-        for (DocumentedSystem documented : model.systems()) {
+        for (DocumentedSystem documented : systemsOf(model, part)) {
             // The schemas of this system, and only this system: the renderings of a whole landscape have no
             // business being held while the site generator runs for minutes afterwards.
-            DocumentedSystem system = withSchemas(documented, environment);
-            Path directory = systems.resolve(system.slug());
+            DocumentedSystem system = withArtifacts(withSchemas(documented, environment), environment);
+            // Where this part mounts its content. A part carrying a whole environment writes the system
+            // below the systems directory of that tree; a part carrying one system writes it at the tree it
+            // is mounted at - the same path either way, and the one the site template points its docs plugin
+            // at.
+            Path directory = part.carriesWholeEnvironments()
+                    ? environmentDirectory.resolve(DocumentationPaths.SYSTEMS_SEGMENT).resolve(system.slug())
+                    : environmentDirectory.resolve(part.tree());
             Files.createDirectories(directory);
             Files.writeString(directory.resolve(CategoryFile.NAME), CategoryFile.of(system.name()),
                     StandardCharsets.UTF_8);
@@ -169,14 +213,44 @@ public class SystemPages {
             }
             writeLandingPage(system, context, directory, written);
         }
-        log.info("Generated the documentation of {} systems into the {} tree.",
-                model.systems().size(), environment);
+        log.debug("Generated the documentation of {} system(s) into the {} tree of {}.",
+                systemsOf(model, part).size(), environment, part.key());
         // Counted off the landscape this run has just generated from, so that the page describing the
         // documentation says what is in it without asking the database again.
-        return Optional.of(new EnvironmentModel(model.systems().size(),
+        return Optional.of(counted(model, snapshot));
+    }
+
+    /**
+     * What this environment's landscape contributed, counted over the <b>whole</b> model rather than over what
+     * this part wrote. The page describing the documentation says how large the landscape is, which is the same
+     * answer whichever part is being built.
+     */
+    private static EnvironmentModel counted(ArchitectureModel model, ArchitectureSnapshot snapshot) {
+        // The systems themselves and not only their number: the shell's sidebar lists them, and they are in
+        // other parts' builds - so the only place that can name them is the run that read the landscape.
+        List<EnvironmentModel.DocumentedSystemEntry> systems = model.systems().stream()
+                .map(system -> new EnvironmentModel.DocumentedSystemEntry(system.name(),
+                        DocumentationPaths.system(system.slug())))
+                .toList();
+        return new EnvironmentModel(systems,
                 countOf(model, system -> system.components().size()),
                 countOf(model, system -> system.messages().size()),
-                snapshot.importedAt()));
+                snapshot.importedAt());
+    }
+
+    /**
+     * The systems this part writes: every one of them where it carries whole environment trees, and the one
+     * its tree names otherwise.
+     * <p>
+     * A part whose system is not in this environment's landscape writes nothing into that tree, which is a
+     * system that is not deployed on that stage - not an error.
+     */
+    private static List<DocumentedSystem> systemsOf(ArchitectureModel model, SitePart part) {
+        if (part.carriesWholeEnvironments()) {
+            return model.systems();
+        }
+        String slug = part.tree().substring(part.tree().lastIndexOf('/') + 1);
+        return model.find(slug).map(List::of).orElseGet(List::of);
     }
 
     private static int countOf(ArchitectureModel model, java.util.function.ToIntFunction<DocumentedSystem> of) {
@@ -232,6 +306,53 @@ public class SystemPages {
                       + "no version of its model.", replicated.size(), system.name(), environment);
         }
         return system.withMessages(messages);
+    }
+
+    /**
+     * The same system with the replicated artifacts of its components joined onto them.
+     * <p>
+     * <b>Read and parsed one component at a time</b>, and never held past the parsing. A specification is
+     * among the largest text this service stores - the import bounds one at {@code max-artifact-size}, eight
+     * megabytes by default - and the model a build holds stays in memory until the site generator has
+     * finished. Reading a whole system's worth in one list would put a component count's multiple of that
+     * bound live at once, on a task whose memory is what decides whether a build survives. The extra round
+     * trips are two indexed lookups per component.
+     * <p>
+     * The rows do not need the model's snapshot: an artifact row is replaced whole, so there is nothing a
+     * concurrent import could tear.
+     * <p>
+     * <b>Matched ignoring case, like every other name join in this service.</b> The lookup folds both names
+     * the way the unique index does, because the model and these rows carry the spellings of two exports of
+     * one upstream. A join that matched exactly would take every schema and every API overview off the
+     * system's pages, with no failed build and nothing in the log to find it by.
+     * <p>
+     * An artifact that could not be read is left out, and the page falls back to what the model knows.
+     */
+    private DocumentedSystem withArtifacts(DocumentedSystem system, String environment) {
+        if (system.components().isEmpty()) {
+            return system;
+        }
+        List<DocumentedComponent> components = new ArrayList<>();
+        int joined = 0;
+        for (DocumentedComponent component : system.components()) {
+            DatabaseSchema schema = readArtifact(environment, system, component,
+                    ArchitectureImportKind.DATABASE_SCHEMA, artifactContent::databaseSchema).orElse(null);
+            RestApiOverview api = readArtifact(environment, system, component,
+                    ArchitectureImportKind.OPENAPI_SPEC, artifactContent::restApi).orElse(null);
+            joined += schema == null && api == null ? 0 : 1;
+            components.add(component.withArtifacts(schema, api));
+        }
+        return joined == 0 ? system : system.withComponents(components);
+    }
+
+    /**
+     * The artifact of one kind for one component, parsed. Nothing is stored, so the bytes are collectable as
+     * soon as this returns - which is the whole point of reading them one at a time.
+     */
+    private <T> Optional<T> readArtifact(String environment, DocumentedSystem system,
+                                         DocumentedComponent component, ArchitectureImportKind kind,
+                                         Function<ArchitectureArtifact, Optional<T>> parse) {
+        return artifacts.find(environment, kind, system.name(), component.name()).flatMap(parse);
     }
 
     /** How a version of the model and a replicated row find each other: by name, folded. */

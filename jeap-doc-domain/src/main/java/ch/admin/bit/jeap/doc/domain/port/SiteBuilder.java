@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.port;
 
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 
 import java.time.Instant;
 import java.util.Set;
@@ -10,21 +11,35 @@ import java.util.Set;
  * <p>
  * The domain decides <b>what the documentation contains</b>; this decides <b>how a site is produced from it</b>.
  * Nothing about the site generator reaches the domain, and nothing about which pages exist reaches the adapter.
+ * <p>
+ * A site is produced one <b>part</b> at a time, and in two steps: the content of a part is written and hashed,
+ * and only then - if that hash is not what is already published - is the site generator started. Writing the
+ * content is seconds and the generator is minutes, which is what makes a part per system affordable.
  */
 public interface SiteBuilder {
 
     /**
-     * Generates the site of one build: prepares a workspace named after the build, writes the content of the
-     * site into it, installs the site template over that content and runs the generator.
+     * Writes the content of one part into a workspace named after the build, and reports what it hashed to.
+     * <p>
+     * Nothing is generated yet: this is the cheap half, and its digest is what decides whether the expensive
+     * half runs at all.
      *
      * @param buildId     the identifier of the build, which the workspace is named after
-     * @param site        the site to generate
+     * @param site        the site the part belongs to
+     * @param part        the part to write
      * @param generatedAt when this build started, as the generated pages report it
+     * @throws SiteBuildException when the content could not be written
+     */
+    PreparedPart prepare(long buildId, Site site, SitePart part, Instant generatedAt);
+
+    /**
+     * Installs the site template over a prepared part's content and runs the generator over it.
+     *
      * @return what was produced
      * @throws SiteBuildException when the site could not be generated - the reason is what an operator reads on
      *                            the failed build
      */
-    BuiltSite generate(long buildId, Site site, Instant generatedAt);
+    BuiltSite generate(PreparedPart prepared);
 
     /**
      * Gives up on the build running right now, so that an instance being stopped ends it in a second rather

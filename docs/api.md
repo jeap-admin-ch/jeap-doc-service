@@ -210,6 +210,34 @@ Authorization: Bearer ...
 ```json
 {
   "site": "default",
+  "partsRequested": 51,
+  "picksUpWithinSeconds": 30
+}
+```
+
+**There is no `force` parameter.** This endpoint forces by definition: what it asks for is not skipped by the
+content digest, which is the whole reason it exists.
+
+**A site is published as several builds, one per part** - see
+[Generating the documentation](generation.md). This asks for every one of them, whether its content has moved
+or not, which is what to use after changing the site template: the content of a part is then the same, so
+nothing else would ask for a build. Nothing runs on the request; the builds are picked up within
+`jeap.doc.build.poll-interval`, which is what `picksUpWithinSeconds` says.
+
+`partsRequested` is how many parts were asked for - every part of the site, and `0` only for a site with no
+parts at all.
+
+### Asking for one part to be published
+
+```
+POST /api/sites/{site}/parts/{part}/builds
+Authorization: Bearer ...
+```
+
+```json
+{
+  "site": "default",
+  "part": "system-orders",
   "requested": true,
   "trigger": "MANUAL",
   "pendingSince": "2026-08-28T09:12:03Z",
@@ -218,14 +246,57 @@ Authorization: Bearer ...
 ```
 
 **Asking is not building.** The request is answered with `202` and the build happens afterwards: what the
-endpoint leaves behind is the same collapsing request an upload and the schedule leave, and an instance picks it
-up within `jeap.doc.build.poll-interval` - which is what `picksUpWithinSeconds` says. See
-[Generating the documentation](generation.md).
+endpoint leaves behind is the same collapsing request an upload and the import leave.
 
-`requested` is `false` when a build was already pending: the ask joined it, the answer is still `202` because the
-build the caller wants is going to happen, and `pendingSince` and `trigger` then describe the *earlier* request -
-which is the honest answer to when the site will be built. Both are absent once an instance has claimed the
-request, which means the build has already started.
+`requested` is `false` when a build of that part was already pending: the ask joined it, the answer is still
+`202` because the build the caller wants is going to happen, and `pendingSince` and `trigger` then describe the
+*earlier* request - which is the honest answer to when it will be built. Both are absent once an instance has
+claimed the request, which means the build has already started. A part somebody asked for is built whether its
+content moved or not.
+
+### Reading the parts
+
+```
+GET /api/sites/{site}/parts
+```
+
+```json
+[
+  {
+    "part": "shell",
+    "documents": "the site itself",
+    "routePrefixes": [],
+    "environments": ["dev", "ref", "abn", "prod"],
+    "publishedAt": "2026-09-04T05:06:11Z",
+    "ageSeconds": 3600,
+    "contentDigest": "6f1c…",
+    "owedABuild": false
+  },
+  {
+    "part": "system-orders",
+    "documents": "the system orders",
+    "routePrefixes": ["/dev/systems/orders/", "/systems/orders/"],
+    "environments": ["dev", "ref", "abn", "prod"],
+    "publishedAt": "2026-09-03T14:22:08Z",
+    "ageSeconds": 60000,
+    "contentDigest": "a12b…",
+    "owedABuild": true
+  }
+]
+```
+
+What the site is published as: the shell, which carries the site's own pages and whatever no other part claims,
+and one part per system. `routePrefixes` is what each of them answers for, and `contentDigest` is what its
+content hashed to - a build of that part publishes nothing unless its own content hashes to something else.
+
+**`ageSeconds` is the number to read.** A part nobody has rebuilt for a week either has not changed for a week
+or has stopped being built, and the two are told apart by whether the other parts of the site are younger.
+
+```
+GET /api/sites/{site}/parts/{part}/builds?limit=20
+```
+
+is the build history of one part, in the shape [the builds](#reading-the-builds) answer with.
 
 ### Reading the state of the sites
 
@@ -238,7 +309,6 @@ GET /api/sites/{site}   # one of them
 {
   "site": "default",
   "title": "jEAP Documentation",
-  "publicationSchedule": "0 5 6-20 * * *",
   "publishOnUpload": true,
   "environments": ["dev", "ref", "abn", "prod"],
   "pending": { "since": "2026-08-28T09:12:03Z", "trigger": "MANUAL" },
@@ -249,18 +319,29 @@ GET /api/sites/{site}   # one of them
 ```
 
 It answers *why is this site not updating* without a log search, which is what it is for: what the site is
-configured to do is on it next to what has actually happened. A site with no `publicationSchedule` that nothing
-uploads to is behaving exactly as configured, and nothing else would say so.
+configured to do is on it next to what has actually happened. There is no publication schedule any more - a
+site is published when its architecture model is imported and when something is uploaded to it, and a site with
+`publishOnUpload` false that no import feeds is behaving exactly as configured.
 
 The three build objects on it - `published`, `running` and `lastBuild` - are the same record
 [the build history](#reading-the-builds) answers with, trimmed above only to keep the example readable: they
-carry the instance that ran the build, its object prefix, the reason it failed and the memory columns as well.
+carry the instance that ran the build, its object prefix and the reason it failed as well.
 
-`published` is the newest **successful** build - the one being served - and `lastBuild` is the newest whatever
-became of it. When they disagree, the site's builds are failing while the last good one is still being served.
-`pending` is `null` when nothing is owed, and `running` is empty unless a build is happening right now; it is a
-list because an instance that lost its lock lease carries on building until another one abandons it, which leaves
-two.
+**`published` is the shell part's publication**, not the site's: a site is published as several builds and no
+one of them is *the* published one. The shell answers for the site's own pages, so its build is what says the
+site is being served at all - and a site whose shell publishes while its fifty-one system parts all fail reads
+healthy here. [`/parts`](#reading-the-parts) is what says how the rest of it stands.
+
+`lastBuild` is the newest build of any part, whatever became of it - and on a site nobody changes that is
+normally a `SKIPPED` row, because a part whose content has not moved is not generated. So `published` and
+`lastBuild` disagreeing is the ordinary case rather than a signal; what says builds are failing is the failure
+alarm, and what says nothing is going through the parts at all is
+`jeap.doc.build.last.check.age` - see [Observability](observability.md).
+
+`pending` is `null` when nothing is owed and otherwise the **oldest** of the site's pending requests, which is
+what says how long anything has been waiting. `running` is empty unless a build is happening right now; it is a
+list because several parts build at once, and because an instance that lost its lock lease carries on building
+until another one abandons it.
 
 ### Reading the builds
 
@@ -269,25 +350,96 @@ GET /api/sites/{site}/builds?limit=20
 GET /api/sites/{site}/builds/{buildId}
 ```
 
-The runs of the generator for that site, newest first, in every state. `limit` defaults to 20 and is brought into
-`1..100` rather than refused. Each build carries what it was asked for by, what became of it, when it started and
-finished, how long it took, how much of that was Docusaurus, the instance that ran it, what it published and how
-large that is - and `failureReason` when something went wrong.
+The runs of the generator for that site - **every part of it** - newest first, in every state. `limit` defaults
+to 20 and is brought into `1..100` rather than refused. Each build carries the part it produced, what it was
+asked for by, what became of it, when it started and finished, how long it took, how much of that was
+Docusaurus, the instance that ran it, what it published and how large that is - and `failureReason` when
+something went wrong.
 
-It also carries what the run did to the memory of its container, which is the number a container is sized from -
-a build is a child process whose bundler allocates outside any heap this service can see:
+A build in state `SKIPPED` published nothing and nothing is wrong with it: its part's content turned out to be
+exactly what is already being served, so the site generator was never started.
 
-| Field              |                                                                                                                                                                                |
-|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `memoryPeakBytes`  | The highest the container went during the run. **Null where the container's memory cannot be read** - off Linux, and wherever the cgroup files are not there. Null is not zero |
-| `memoryLimitBytes` | What the container is killed at, null where nothing names a limit                                                                                                              |
-| `memoryPeakExact`  | Whether that is the run's own peak, or only an upper bound on it: `false` where the kernel's high-water mark could not be reset and this build stayed below an earlier one     |
-
-A build that **failed** carries them too, and that is the case they exist for: a generator killed for want of
-memory exits with 137, and how close it came is then a number to compare rather than a sentence to read.
+It carries **no memory number**. It used to: the kernel's high-water mark, reset around each build, which was
+only that build's own while one build ran at a time. Several parts now build at once and each of them reset
+what the others had accumulated, so the field said *exact* about a number that was not. What the container does
+is `jeap.doc.container.memory.used` over whatever window is wanted - see
+[Observability](observability.md#the-memory-of-the-container).
 
 The build identifier comes from one sequence shared by every site, and a build is read by its site *and* its
 identifier: the URL of one site never answers with a build of another.
+
+## Asking for the architecture repository to be imported
+
+Everything below `/api/architecture` is about the imports. It has its own root rather than a place under
+`/api/sites` because **an import belongs to an environment and not to a site**: one doc service reads an
+architecture repository per stage, and every site carrying that environment is generated from the same import.
+The roles are the site ones - `<system-name>_@sites_#admin` to ask, `<system-name>_@sites_#read` to read -
+because what an import is for is the documentation those sites publish.
+
+**Why an operator needs this.** The model is imported on a schedule and a build reads what was stored, calling
+the architecture repository not at all. So a correction made in the architecture repository is invisible to the
+documentation until the next import - and forcing a publication does not help, because the build would publish
+the same stored model again. Before this endpoint the only way to bring a correction forward was to restart an
+instance and let the startup catch-up run.
+
+```
+POST /api/architecture/imports                             # every configured environment
+POST /api/architecture/environments/{environment}/imports  # one of them
+Authorization: Bearer ...
+```
+
+```json
+{
+  "environments": ["dev", "ref", "abn", "prod"],
+  "durable": false
+}
+```
+
+Answered with `202`. **Nothing runs on the request**: the ask goes onto the same single-threaded executor the
+schedule and the startup catch-up use, and the request thread is back within a millisecond. An import takes
+minutes, and two at once would fetch two landscapes into a heap sized for one.
+
+**`durable` is always `false`, and it is in the answer rather than left to be assumed.** Unlike a build
+request, which is a row in the database, the import queue is the instance's own: an ask is lost if that
+instance stops before it runs. Nothing is broken by that - the schedule imports the environment anyway at its
+next occurrence - but it is the reason an ask is not a promise. A full queue is dropped with a warning for the
+same reason.
+
+An `{environment}` this instance reads no architecture repository for is answered with `404`, and an instance
+that reads none at all answers `404` on both. The typo is the likely reason for asking twice, and importing an
+environment nobody reads would take a lock and log a failure instead of saying so.
+
+### Reading what the imports have been doing
+
+```
+GET /api/architecture/environments
+```
+
+```json
+[
+  {
+    "environment": "prod",
+    "sourceUrl": "https://archrepo.example.ch/archrepo",
+    "imports": [
+      {
+        "kind": "MODEL",
+        "itemCount": 52,
+        "complete": true,
+        "lastAttemptAt": "2026-09-07T18:45:26Z",
+        "lastSuccessAt": "2026-09-07T18:45:31Z",
+        "lastOutcome": "IMPORTED",
+        "failureReason": null
+      }
+    ]
+  }
+]
+```
+
+One entry per configured environment, and within it one per kind - the model first, because it decides which
+systems and components exist and therefore which artifacts are orphans. `lastOutcome` is not derivable from the
+two timestamps: a run that stopped at its deadline stored what it had reached and is neither a success nor a
+failure. `complete` is why the next run does or does not trust the index tag it was given - see
+[Importing the architecture model](architecture-import.md).
 
 ## Everything outside /api is the documentation
 

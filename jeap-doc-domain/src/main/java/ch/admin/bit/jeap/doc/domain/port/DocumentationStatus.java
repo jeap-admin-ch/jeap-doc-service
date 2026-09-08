@@ -5,10 +5,10 @@ import java.time.Instant;
 /**
  * What one run of the documentation generator cost, written beside the site it produced.
  * <p>
- * <b>This exists because a page cannot describe the build that writes it.</b> The pages, the bytes, the
- * duration and the memory peak are known when the generator has finished; the page that would print them was
- * written at the start of the same run. So the numbers are written as JSON at the seam between the generator
- * and the upload - into the output directory, before anything is published - and the page fetches them.
+ * <b>This exists because a page cannot describe the build that writes it.</b> The pages, the bytes and the
+ * duration are known when the generator has finished; the page that would print them was written at the start
+ * of the same run. So the numbers are written as JSON at the seam between the generator and the upload - into
+ * the output directory, before anything is published - and the page fetches them.
  * <p>
  * Everything here is publishable. It is the same rule {@code DocumentationFacts} follows and for the same
  * reason: the file is served to anyone who can read the site.
@@ -21,9 +21,6 @@ import java.time.Instant;
  * @param generatorMillis  how much of that was the site generator itself
  * @param pageCount        how many pages the run produced
  * @param sizeInBytes      how large the generated site is
- * @param memoryPeakBytes  the highest the container went during the run, or null where it cannot be read
- * @param memoryLimitBytes what the container is killed at, or null with the peak
- * @param memoryPeakExact  whether the peak is this run's own, or only an upper bound on it
  */
 public record DocumentationStatus(
         long buildId,
@@ -31,18 +28,12 @@ public record DocumentationStatus(
         long generatedInMillis,
         long generatorMillis,
         int pageCount,
-        long sizeInBytes,
-        Long memoryPeakBytes,
-        Long memoryLimitBytes,
-        Boolean memoryPeakExact) {
+        long sizeInBytes) {
 
-    /** The numbers of a finished run, from what it produced and what its container held. */
+    /** The numbers of a finished run, from what it produced. */
     public static DocumentationStatus of(long buildId, Instant generatedAt, long generatedInMillis,
-                                         BuiltSite generated, ContainerMemory.Peak peak) {
+                                         BuiltSite generated) {
         return new DocumentationStatus(buildId, generatedAt, generatedInMillis, generated.docusaurusMillis(),
-                generated.pageCount(), generated.sizeInBytes(),
-                peak == null ? null : peak.usedBytes(),
-                peak == null || peak.limitBytes() <= 0 ? null : peak.limitBytes(),
-                peak == null ? null : peak.exact());
+                generated.pageCount(), generated.sizeInBytes());
     }
 }

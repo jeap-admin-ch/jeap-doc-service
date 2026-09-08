@@ -2,12 +2,15 @@ package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
-import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationStatus;
 import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
+import ch.admin.bit.jeap.doc.domain.port.PartPublication;
+import ch.admin.bit.jeap.doc.domain.port.PreparedPart;
+import ch.admin.bit.jeap.doc.domain.port.PublishedPart;
 import ch.admin.bit.jeap.doc.domain.port.PublishedSite;
+import ch.admin.bit.jeap.doc.domain.port.SiteBuildTimeoutException;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuilder;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
 import lombok.RequiredArgsConstructor;
@@ -17,25 +20,44 @@ import org.springframework.stereotype.Service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.ToIntFunction;
 
 /**
- * Publishes the documentation sites that have been asked for, one at a time per site.
+ * Publishes the parts of the documentation sites that have been asked for, one at a time per part.
  * <p>
- * Three things about the order of a run are what the rest of this rests on:
+ * Four things about the order of a pass are what the rest of this rests on:
  * <ul>
  *   <li><b>The lock is taken before the request is claimed.</b> The other way round loses requests: an instance
  *   that clears the flag and then finds the lock held has thrown a build request away, and nobody will ask again
- *   until the next upload or the next schedule.</li>
+ *   until the next upload or the next pass.</li>
  *   <li><b>The request is claimed before anything is read.</b> Every trigger arriving from then on finds the flag
  *   clear and sets it again, so a burst of triggers during a build produces exactly one follow-up run.</li>
- *   <li><b>One build per tick per instance.</b> A build is a process that wants a core; three pending sites must
- *   not become three of them inside one container. Different instances still build different sites at the same
- *   time, which is what the per-site lock is for.</li>
+ *   <li><b>The content is written and hashed before the generator starts.</b> A part whose content is what is
+ *   already published is not generated at all - it is the cheap half deciding whether the expensive half runs,
+ *   and it is what makes a part per system affordable.</li>
+ *   <li><b>A pass keeps the slots full.</b> One instance builds {@code max-concurrent-parts} parts at a time -
+ *   a build is a process that wants a core, so a hundred pending parts must not become a hundred of them inside
+ *   one container - and it fills the slot of a part that is done at once, rather than waiting for the batch or
+ *   for the next poll. Different instances build different parts at the same time, which is what the per-part
+ *   lock is for.</li>
  * </ul>
  */
 @Slf4j
@@ -43,7 +65,7 @@ import java.util.concurrent.locks.ReentrantLock;
 @RequiredArgsConstructor
 public class DocumentationBuildRunner {
 
-    /** The prefix of the lock a site's build holds, so that two sites do not wait for each other. */
+    /** The prefix of the lock a part's build holds, so that two parts do not wait for each other. */
     static final String LOCK_PREFIX = "documentationBuild-";
 
     /**
@@ -56,27 +78,31 @@ public class DocumentationBuildRunner {
     private final DocumentationBuildRequestRepository requests;
     private final DocumentationBuildRepository builds;
     private final DocumentationSites sites;
+    private final SitePartition partition;
     private final SiteBuilder siteBuilder;
     private final SitePublicationStorage publication;
     private final BuildProperties properties;
     private final BuildMetrics metrics;
     private final ExclusiveWork exclusiveWork;
     private final ArchitectureModelReadiness readiness;
-    private final ContainerMemory containerMemory;
     private final Clock clock;
 
     /**
-     * Held for as long as a tick is running, so that a stopping instance can wait for the bookkeeping of the
+     * Held for as long as a pass is running, so that a stopping instance can wait for the bookkeeping of the
      * build it just gave up on. Acquiring it is the proof that this runner is idle - and idle here means the
      * terminal state was written, not merely that the site generator has stopped.
      */
     private final ReentrantLock ticking = new ReentrantLock();
 
-    /** Set once this instance is stopping: from then on no tick starts a build. */
+    /** Set once this instance is stopping: from then on no pass starts a build. */
     private volatile boolean stopping;
 
     /**
-     * Publishes at most one site, and reports whether it did. Called on a fixed delay, and by the tests directly.
+     * Publishes everything this instance is owed, and reports whether it published anything. Called on a fixed
+     * delay, and by the tests directly.
+     * <p>
+     * It returns when the pass is over - the builds it started have finished and written their terminal state -
+     * which is what {@link #awaitIdle} and the shutdown handling rest on.
      */
     public boolean runOnce() {
         if (stopping) {
@@ -84,9 +110,9 @@ public class DocumentationBuildRunner {
         }
         ticking.lock();
         try {
-            // Checked again inside: the instance may have started stopping while this tick waited for the one
+            // Checked again inside: the instance may have started stopping while this pass waited for the one
             // before it, and a build started now would be given up on immediately.
-            return !stopping && runTick();
+            return !stopping && runPass();
         } finally {
             ticking.unlock();
         }
@@ -105,7 +131,7 @@ public class DocumentationBuildRunner {
     }
 
     /**
-     * Waits until this runner is between ticks, for at most the given time, and reports whether it got there.
+     * Waits until this runner is between passes, for at most the given time, and reports whether it got there.
      * <p>
      * Returning true means the build that was in flight has finished writing what it had to write - which is
      * what a stopping instance needs to know before it lets its beans be destroyed.
@@ -118,21 +144,377 @@ public class DocumentationBuildRunner {
         return false;
     }
 
-    private boolean runTick() {
-        for (String site : sitesOwedABuild()) {
-            Optional<Site> configured = sites.find(site);
-            if (configured.isEmpty()) {
-                forgetSiteThatIsGone(site);
-                continue;
+    /**
+     * One pass over everything this instance is owed, and whether it built anything.
+     */
+    private boolean runPass() {
+        return new Pass().run();
+    }
+
+    /**
+     * One pass over what is owed: it keeps the configured number of builds running until nothing is left that
+     * this instance can build.
+     * <p>
+     * <b>A pass does not wait for a batch to finish.</b> The slot of a part that is done is filled with the
+     * next candidate at once. So a large part no longer holds the other slots empty, and a queue is no longer
+     * drained one poll interval per batch - what the poll interval decides is how soon an <i>idle</i> instance
+     * notices work.
+     * <p>
+     * <b>What is owed is read again after every build</b>, because a pass over a whole landscape lasts minutes:
+     * an upload arriving in the middle of one is served by that pass rather than by the next.
+     * <p>
+     * <b>A part is offered once per pass, unless it is asked for again after that.</b> Not looking at a part
+     * twice is what keeps a pass from spinning on the parts the other instances are building - but a pass can
+     * run for an hour, and a part it built in the first minute would otherwise stand unserved for the rest of
+     * it. So a part built or found current is offered again when a request arrives after the pass offered it;
+     * a part held by another instance, or one whose build threw, is not.
+     */
+    private final class Pass {
+
+        /** The parts this pass is building right now. */
+        private final Set<PartKey> inFlight = new HashSet<>();
+
+        /** The parts this pass is finished with: when it offered each of them, and how that ended. */
+        private final Map<PartKey, Settlement> settled = new HashMap<>();
+
+        /** Candidates read but not yet started, in the order they should be taken. */
+        private final Deque<Buildable> queue = new ArrayDeque<>();
+
+        /**
+         * How many pages each part of a site was published with, read once per pass. It is what the order of
+         * pick-up is banded by, and it barely moves during a pass - a part built in this one is settled and is
+         * not ordered again.
+         */
+        private final Map<String, Map<String, Integer>> publishedPages = new HashMap<>();
+
+        private final long startedAtNanos = System.nanoTime();
+        /** The build time of this pass added up over every slot: three busy slots for a minute is three. */
+        private final AtomicLong busyNanos = new AtomicLong();
+        private int built;
+        private int contended;
+        private int notOwed;
+        private int broken;
+
+        boolean run() {
+            if (!refill()) {
+                // Nothing is owed, which is what most passes find. No pool, no line, no lock.
+                return false;
             }
-            // Readiness is checked before the request is claimed, and short-circuits the build: claiming it and
-            // then declining to build would throw it away, and nothing would ask again until the next upload or
-            // the next schedule.
-            if (readiness.isReadyToBuild(configured.get()) && buildUnderLock(site)) {
-                return true;
+            if (slots() > 1) {
+                drainOnAPool();
+            } else {
+                drainOnThisThread();
+            }
+            report();
+            return built > 0;
+        }
+
+        /**
+         * Builds one part after another on the calling thread. It is what an instance with room for a single
+         * build wants: no pool, and the pass still carries on to the next part instead of waiting a poll
+         * interval for it.
+         */
+        private void drainOnThisThread() {
+            while (!stopping) {
+                Buildable next = nextCandidate();
+                if (next == null) {
+                    return;
+                }
+                PartKey key = next.part().key();
+                Instant offeredAt = clock.instant();
+                inFlight.add(key);
+                metrics.slotsBusy(inFlight.size());
+                PartOutcome outcome = buildOrReport(next);
+                inFlight.remove(key);
+                settle(key, offeredAt, outcome);
             }
         }
-        return false;
+
+        /**
+         * Keeps the slots full. The pool is created for the pass and closed with it - a pass exists only when
+         * there is something to build, so it never holds threads for nothing.
+         */
+        private void drainOnAPool() {
+            try (ExecutorService pool = Executors.newFixedThreadPool(slots(), runnable -> {
+                Thread thread = new Thread(runnable, "documentation-build");
+                thread.setDaemon(true);
+                return thread;
+            })) {
+                CompletionService<PartResult> finished = new ExecutorCompletionService<>(pool);
+                while (true) {
+                    fill(finished);
+                    if (inFlight.isEmpty() || !awaitOne(finished)) {
+                        return;
+                    }
+                }
+            }
+        }
+
+        /**
+         * Starts builds while there is a free slot and a candidate to put in it. <b>Nothing is started once the
+         * instance is stopping</b>: the builds already running have a terminal state to write, and the shutdown
+         * budget is theirs.
+         */
+        private void fill(CompletionService<PartResult> finished) {
+            while (inFlight.size() < slots() && !stopping) {
+                Buildable next = nextCandidate();
+                if (next == null) {
+                    return;
+                }
+                PartKey key = next.part().key();
+                // Taken when the part leaves the queue and not when its build ends: the build claims the
+                // request row before it reads anything, so a request arriving from here on is unserved by it.
+                Instant offeredAt = clock.instant();
+                inFlight.add(key);
+                metrics.slotsBusy(inFlight.size());
+                finished.submit(() -> new PartResult(key, offeredAt, buildOrReport(next)));
+            }
+        }
+
+        /**
+         * Waits for one of the running builds and frees its slot, and reports whether the pass may go on.
+         * <p>
+         * <b>A slot is freed by the build that held it, and by nothing else.</b> Either branch below leaves
+         * the pass over instead of freeing slots it cannot account for: {@code fill} would put a full
+         * complement of builds beside the ones still running, and the number of Docusaurus processes at once
+         * is what the container is sized for.
+         */
+        private boolean awaitOne(CompletionService<PartResult> finished) {
+            try {
+                PartResult result = finished.take().get();
+                inFlight.remove(result.part());
+                settle(result.part(), result.offeredAt(), result.outcome());
+                return true;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                // Every slot is given up on and the pass ends here, so nothing is read from settled again.
+                inFlight.clear();
+                return false;
+            } catch (ExecutionException e) {
+                // Unreachable, because the task answers with an outcome whatever happens - see buildOrReport.
+                // Were it ever reached, which slot came free is exactly what is not known.
+                log.error("A documentation build ended in a way its own error handling did not cover; the pass "
+                          + "ends here and what is still owed is picked up by the next one.", e.getCause());
+                return false;
+            }
+        }
+
+        /**
+         * The next candidate, or null when there is nothing left. Reading what is owed again happens here, and
+         * at most once per call: a pass that found nothing new and has nothing running is over.
+         */
+        private Buildable nextCandidate() {
+            if (queue.isEmpty()) {
+                refill();
+            }
+            return queue.poll();
+        }
+
+        /**
+         * Reads what is owed a build and puts what this pass may still take into the queue, reporting whether
+         * that was anything.
+         * <p>
+         * Anything that cannot be built is dealt with on the way - a part of a site nobody configures any more,
+         * or of an axis the site was cut on before - and settled, so that the junk is handled once per pass
+         * rather than on every refill.
+         */
+        private boolean refill() {
+            queue.clear();
+            // Once per site rather than once per candidate: it reads the import state of every environment of
+            // the site, and fifty parts of one site are one answer.
+            Map<String, Boolean> readyToBuild = new HashMap<>();
+            for (Owed owed : partsOwedABuild(this::pagesOf)) {
+                PartKey key = owed.part();
+                if (inFlight.contains(key) || !mayOffer(key, owed.requestedAt())) {
+                    continue;
+                }
+                Optional<Site> configured = sites.find(key.site());
+                if (configured.isEmpty()) {
+                    forgetPartThatIsGone(key);
+                    settleWithoutABuild(key);
+                    continue;
+                }
+                Optional<SitePart> part = partition.partOf(configured.get(), key.part());
+                if (part.isEmpty()) {
+                    // A part this partition would never produce: the axis of the split was changed, and what is
+                    // asked for belongs to the one before it.
+                    log.warn("A build of {} was asked for, and the {} partition of that site has no such part; "
+                             + "the request is dropped.", key, partition.axis());
+                    forgetPartThatIsGone(key);
+                    settleWithoutABuild(key);
+                    continue;
+                }
+                // Readiness is checked before the request is claimed, and short-circuits the build: claiming it
+                // and then declining to build would throw it away, and nothing would ask again until the next
+                // upload or the next import. Not settled either - a model that arrives during this pass makes
+                // the part buildable, and the next refill picks it up.
+                Site site = configured.get();
+                if (readyToBuild.computeIfAbsent(key.site(), id -> readiness.isReadyToBuild(site))) {
+                    queue.add(new Buildable(site, part.get()));
+                }
+            }
+            return !queue.isEmpty();
+        }
+
+        /**
+         * Builds one part, and turns anything its own error handling did not cover into an outcome. The time it
+         * held its slot is added up here, because that is what says whether the slots were used.
+         * <p>
+         * <b>{@code Throwable} and not {@code RuntimeException}</b>: a task that throws is a task whose slot
+         * the pass cannot account for - see {@link #awaitOne}. An {@code Error} is the likely one in a feature
+         * whose whole subject is memory pressure, and the answer to it must not be to start more builds.
+         */
+        @SuppressWarnings("java:S1181") // Catching Throwable is the point: see above.
+        private PartOutcome buildOrReport(Buildable next) {
+            long startedAt = System.nanoTime();
+            try {
+                return buildPart(next.site(), next.part());
+            } catch (Throwable e) {
+                log.error("The build of {} ended in a way its own error handling did not cover.",
+                        next.part().key(), e);
+                return PartOutcome.BROKEN;
+            } finally {
+                busyNanos.addAndGet(System.nanoTime() - startedAt);
+            }
+        }
+
+        /**
+         * Whether this pass may offer the part now.
+         * <p>
+         * A part it has not reached is always offered. One it has is offered again only when a request
+         * arrived after the pass offered it - see {@link Settlement} for which settlements allow that.
+         * <p>
+         * <b>It cannot spin, and that is a property of the data rather than of a guard.</b> A request keeps
+         * the instant it was first asked with, so a burst of triggers during one build is one row and one
+         * re-offer, and the re-offered build claims that row. The next re-offer needs a request written after
+         * <i>that</i> claim, which is a strictly later instant.
+         *
+         * @param requestedAt when the pending request was made, or null where only a running build says
+         *                    anything about this part. There is nothing to compare then, so once per pass is
+         *                    right for it
+         */
+        private boolean mayOffer(PartKey part, Instant requestedAt) {
+            Settlement settlement = settled.get(part);
+            return settlement == null
+                   || (settlement.mayBeOfferedAgain() && requestedAt != null
+                       && requestedAt.isAfter(settlement.offeredAt()));
+        }
+
+        /** A part there was nothing to build: no site configured, or no such part. Nothing offers it again. */
+        private void settleWithoutABuild(PartKey part) {
+            settled.put(part, new Settlement(clock.instant(), false));
+        }
+
+        private void settle(PartKey part, Instant offeredAt, PartOutcome outcome) {
+            settled.put(part, new Settlement(offeredAt, mayBeOfferedAgain(outcome)));
+            metrics.slotsBusy(inFlight.size());
+            switch (outcome) {
+                case BUILT -> built++;
+                case NOTHING_OWED -> notOwed++;
+                // Counted as it happens rather than when the pass ends: a pass can run for hours, and these
+                // two are what says the fleet is unwell while it still is.
+                case LOCKED_ELSEWHERE -> {
+                    contended++;
+                    metrics.contended();
+                }
+                case BROKEN -> {
+                    broken++;
+                    metrics.broken();
+                }
+            }
+        }
+
+        private int slots() {
+            return Math.max(1, properties.getMaxConcurrentParts());
+        }
+
+        /** What building this part cost last time, in pages - see {@link BuildPickUpOrder}. */
+        private int pagesOf(PartKey part) {
+            return publishedPages
+                    .computeIfAbsent(part.site(), this::pagesByPartOf)
+                    .getOrDefault(part.part(), BuildPickUpOrder.NEVER_PUBLISHED);
+        }
+
+        private Map<String, Integer> pagesByPartOf(String site) {
+            Map<String, Integer> pages = new HashMap<>();
+            for (PublishedPart published : builds.publishedPartsOf(site)) {
+                pages.put(published.part(), published.pageCount());
+            }
+            return pages;
+        }
+
+        /**
+         * What the pass did, in one line. <b>The utilisation is the point of it</b>: a pass whose slots stood
+         * empty is one that took longer than it had to, and every other thing reported about a build looks
+         * perfectly normal while it happens.
+         */
+        private void report() {
+            metrics.slotsBusy(0);
+            Duration duration = elapsed(startedAtNanos);
+            log.info("A build pass is over after {}: {} part(s) built, {} left to another instance, {} owed "
+                     + "nothing after all, {} broken - {}% of {} slot(s) busy.", duration, built, contended,
+                    notOwed, broken, Math.round(utilisation(duration) * 100), slots());
+        }
+
+        /**
+         * How much of the pass the slots were busy, from 0 to 1 - and 0 for a pass too short to divide by.
+         * <p>
+         * One is every slot building throughout. A third means the pass could have been a third as long, and
+         * the reasons are worth looking for in that order: fewer parts were owed than there are slots, the
+         * other instances held the locks, or the pass ran out of parts before it ran out of slots.
+         */
+        private double utilisation(Duration duration) {
+            long available = duration.toNanos() * slots();
+            return available <= 0 ? 0 : Math.min(1.0, (double) busyNanos.get() / available);
+        }
+    }
+
+    /** Which part a pass finished, when it was offered, and how it ended. */
+    private record PartResult(PartKey part, Instant offeredAt, PartOutcome outcome) {
+    }
+
+    /**
+     * When a pass offered a part, and whether a later request may make it offer that part again.
+     * <p>
+     * Only two outcomes allow it, because only for those is going back to the part work rather than a retry.
+     * <b>{@code LOCKED_ELSEWHERE} is another instance's part</b>, and reaching for it again is exactly the
+     * spin the once-per-pass rule exists to prevent. <b>{@code BROKEN} is a build that threw</b>, and running
+     * it again inside the same pass is a retry loop wearing a different hat. A part there was nothing to
+     * build at all is not offered again either.
+     */
+    private record Settlement(Instant offeredAt, boolean mayBeOfferedAgain) {
+    }
+
+    /**
+     * A part a pass may take, and when it was asked for - null where only a running build says anything about
+     * it, which is the recovery half of what is owed and carries no request.
+     */
+    private record Owed(PartKey part, Instant requestedAt) {
+    }
+
+    /** Which outcomes a later request may make a pass revisit - see {@link Settlement}. */
+    private static boolean mayBeOfferedAgain(PartOutcome outcome) {
+        return outcome == PartOutcome.BUILT || outcome == PartOutcome.NOTHING_OWED;
+    }
+
+    /** How one part of a pass ended. */
+    private enum PartOutcome {
+
+        /** A build ran. Whether it succeeded, was skipped by its digest or failed is that build's own record. */
+        BUILT,
+
+        /** Another instance holds this part's lock, and is building it. The request stays pending. */
+        LOCKED_ELSEWHERE,
+
+        /** Nothing was owed after all: another instance claimed the request between the read and the lock. */
+        NOTHING_OWED,
+
+        /** Something threw where nothing should. Counted, so that a pass full of them is visible. */
+        BROKEN
+    }
+
+    /** A part that is owed a build, with the site it belongs to. */
+    private record Buildable(Site site, SitePart part) {
     }
 
     /**
@@ -140,39 +522,39 @@ public class DocumentationBuildRunner {
      * <p>
      * The request is the obvious half. The other half is a run that was left behind when the site was removed:
      * without giving up on it, the row stays {@code RUNNING} for ever, its identifier keeps its workspace from
-     * being swept, and this warning is logged on every tick until someone notices.
+     * being swept, and this warning is logged on every pass until someone notices.
      * <p>
      * <b>Under the site's lock all the same</b>, because the sites are configured per instance: during a rolling
      * deployment that removes a site, the instances that still have it are entitled to be building it. Giving up
      * on a run without the lock would mark a live build as abandoned, and its instance would then record it as
      * succeeded over a failure reason saying its instance had stopped.
      */
-    private void forgetSiteThatIsGone(String site) {
-        exclusiveWork.underLock(LOCK_PREFIX + site, properties.getLockLease(), () -> forgetUnderLock(site));
+    private void forgetPartThatIsGone(PartKey part) {
+        exclusiveWork.underLock(LOCK_PREFIX + part, properties.getLockLease(), () -> forgetUnderLock(part));
     }
 
     /**
      * Reports each of the two separately, because they say different things to whoever reads the log: a run
      * that never finished, and a request nobody served.
      */
-    private boolean forgetUnderLock(String site) {
-        int abandoned = builds.abandonRunning(site, clock.instant()).size();
+    private boolean forgetUnderLock(PartKey part) {
+        int abandoned = builds.abandonRunning(part, clock.instant()).size();
         if (abandoned > 0) {
-            metrics.abandoned(site, abandoned);
-            log.warn("{} run(s) of the site {} never finished, and no such site is configured any more; they "
-                     + "are given up on.", abandoned, site);
+            metrics.abandoned(part.site(), abandoned);
+            log.warn("{} run(s) of {} never finished, and nothing configures that part any more; they are given "
+                     + "up on.", abandoned, part);
         }
         // Only a request that no instance has served for a long time. This instance not knowing the site does
         // not mean no instance does: during a rolling deployment that *adds* a site, the instances that have it
         // are serving its requests while the ones that do not would otherwise delete them - and a claimed
         // request is gone, so the build would never run and nothing would say why.
-        boolean requestDropped = requests.pendingSince(site)
+        boolean requestDropped = requests.pendingSince(part.site())
                 .filter(since -> since.isBefore(clock.instant().minus(forgetRequestsAfter())))
-                .map(since -> requests.claim(site).isPresent())
+                .map(since -> requests.claim(part).isPresent())
                 .orElse(false);
         if (requestDropped) {
-            log.warn("A build of the site {} was asked for, no such site is configured any more, and no "
-                     + "instance picked it up for {}; the request is dropped.", site, forgetRequestsAfter());
+            log.warn("A build of {} was asked for, nothing configures that part any more, and no instance "
+                     + "picked it up for {}; the request is dropped.", part, forgetRequestsAfter());
         }
         return requestDropped || abandoned > 0;
     }
@@ -187,43 +569,52 @@ public class DocumentationBuildRunner {
     }
 
     /**
-     * The sites that may owe a build, oldest request first, and then the ones that only a leftover row says
-     * anything about.
+     * The parts that may owe a build, in the order this instance takes them, and then the ones that only a
+     * leftover row says anything about.
      * <p>
      * The second half is the recovery: a build whose instance died was claimed when it started, so nothing asks
      * for it any more and the request cannot be what says it is owed. <b>The row that is still {@code RUNNING}
-     * is.</b> Whether it really is stale is not decided here - it is decided by whether its site's lock can be
+     * is.</b> Whether it really is stale is not decided here - it is decided by whether that part's lock can be
      * taken, which only succeeds once the dead instance's lease has run out.
      */
-    private List<String> sitesOwedABuild() {
-        List<String> owed = new ArrayList<>(requests.pending().stream().map(BuildRequest::site).toList());
-        for (String site : builds.sitesWithRunningBuilds()) {
-            if (!owed.contains(site)) {
-                owed.add(site);
+    private List<Owed> partsOwedABuild(ToIntFunction<PartKey> pagesOf) {
+        // Largest first and shuffled within a size band, so that the tail of a pass is not one large part and
+        // two instances do not both go for the head of the queue - see BuildPickUpOrder.
+        List<Owed> owed = new ArrayList<>();
+        Set<PartKey> requested = new HashSet<>();
+        for (BuildRequest request : BuildPickUpOrder.of(requests.pending(), pagesOf,
+                ThreadLocalRandom.current())) {
+            owed.add(new Owed(request.part(), request.requestedAt()));
+            requested.add(request.part());
+        }
+        for (PartKey part : builds.partsWithRunningBuilds()) {
+            if (requested.add(part)) {
+                owed.add(new Owed(part, null));
             }
         }
         return owed;
     }
 
     /**
-     * Takes the site's lock and builds it - or returns without doing anything when another instance holds it, in
-     * which case the request stays pending and is served after that build.
+     * Takes the part's lock and builds it - or reports that another instance holds it, in which case the request
+     * stays pending and is served after that instance's build.
      * <p>
      * The lease is far shorter than a build may take, because the lock is extended while the build runs. What it
-     * sizes is how long a killed instance blocks its site.
+     * sizes is how long a killed instance blocks that one part.
      */
-    private boolean buildUnderLock(String site) {
-        return exclusiveWork.underLock(LOCK_PREFIX + site, properties.getLockLease(), () -> claimAndBuild(site))
-                .orElse(false);
+    private PartOutcome buildPart(Site site, SitePart part) {
+        return exclusiveWork
+                .underLock(LOCK_PREFIX + part.key(), properties.getLockLease(), () -> claimAndBuild(site, part))
+                .orElse(PartOutcome.LOCKED_ELSEWHERE);
     }
 
-    private boolean claimAndBuild(String site) {
-        BuildTrigger trigger = whatThisSiteIsOwed(site);
-        if (trigger == null) {
-            return false;
+    private PartOutcome claimAndBuild(Site site, SitePart part) {
+        BuildRequest claimed = whatThisPartIsOwed(part.key());
+        if (claimed == null) {
+            return PartOutcome.NOTHING_OWED;
         }
-        build(sites.find(site).orElseThrow(), trigger);
-        return true;
+        build(site, part, claimed);
+        return PartOutcome.BUILT;
     }
 
     /**
@@ -235,17 +626,17 @@ public class DocumentationBuildRunner {
      * trigger arriving from now on finds the flag clear and sets it again, and a burst during a build produces
      * exactly one follow-up run.
      */
-    private BuildTrigger whatThisSiteIsOwed(String site) {
-        // Holding this site's lock means any build of it that is still marked as running has lost its lease, so
+    private BuildRequest whatThisPartIsOwed(PartKey part) {
+        // Holding this part's lock means any build of it that is still marked as running has lost its lease, so
         // it is a run whose instance disappeared rather than one in progress.
-        List<DocumentationBuild> abandoned = builds.abandonRunning(site, clock.instant());
+        List<DocumentationBuild> abandoned = builds.abandonRunning(part, clock.instant());
         if (!abandoned.isEmpty()) {
-            log.warn("{} build(s) of the site {} were still marked as running and have been given up on: the "
-                     + "instance running them stopped.", abandoned.size(), site);
-            metrics.abandoned(site, abandoned.size());
+            log.warn("{} build(s) of {} were still marked as running and have been given up on: the instance "
+                     + "running them stopped.", abandoned.size(), part);
+            metrics.abandoned(part.site(), abandoned.size());
         }
 
-        Optional<BuildTrigger> claimed = requests.claim(site);
+        Optional<BuildRequest> claimed = requests.claim(part);
         if (claimed.isPresent()) {
             return claimed.get();
         }
@@ -254,29 +645,32 @@ public class DocumentationBuildRunner {
         }
         if (abandoned.stream().anyMatch(build -> build.trigger() == BuildTrigger.RECOVERY)) {
             // Twice in a row is a build that kills whatever runs it. Repeating it would be a crash loop, so the
-            // site waits for an upload or its schedule instead.
-            log.error("The site {} lost a build that was already a recovery attempt; it is not run again "
-                      + "automatically. Something about this build is stopping the instance running it.", site);
+            // part waits for an upload or the next import instead.
+            log.error("{} lost a build that was already a recovery attempt; it is not run again automatically. "
+                      + "Something about this build is stopping the instance running it.", part);
             return null;
         }
-        return BuildTrigger.RECOVERY;
+        // Outside any publication: what the lost build belonged to is not on its row, and a recovery is a new
+        // ask rather than part of the ask that was interrupted.
+        // Not forced: a build that was interrupted is worth running again, and if its content turns out to be
+        // exactly what is published then the interrupted run had already done the work.
+        return new BuildRequest(part, clock.instant(), BuildTrigger.RECOVERY, null, false);
     }
 
-    private void build(Site site, BuildTrigger trigger) {
-        DocumentationBuild build = builds.start(site.id(), trigger, instanceName(), clock.instant());
-        log.info("Publishing the documentation site {} ({}), asked for by {}.", site.id(), build.id(), trigger);
+    private void build(Site site, SitePart part, BuildRequest request) {
+        BuildTrigger trigger = request.trigger();
+        DocumentationBuild build = builds.start(part.key(), trigger, instanceName(), clock.instant(),
+                request.publication());
+        log.info("Publishing {} - {} - ({}), asked for by {}.", part.key(), part.documents(), build.id(),
+                trigger);
         long startedAt = System.nanoTime();
-        // From here to the end of the build, so that what the container held is this build's rather than the
-        // container's history. It is the kernel's own high-water mark, not a sample: nothing runs while the
-        // build does, and nothing between two readings is missed.
-        ContainerMemory.Measurement memory = containerMemory.measure();
         // Past a publication nothing may take it back, so what follows one is deliberately outside the block
         // that can turn a build into a failure: a database hiccup while measuring the build or clearing away
         // what it superseded would otherwise rewrite a published build as failed - or, while stopping, as
         // aborted, and delete the very objects the row points at.
-        Published result = publish(site, build, trigger, startedAt, memory);
+        Published result = publish(site, part, build, request, startedAt);
         if (result != null) {
-            afterPublishing(site, build, trigger, result, startedAt);
+            afterPublishing(site, part, build, trigger, result, startedAt);
         }
     }
 
@@ -284,40 +678,52 @@ public class DocumentationBuildRunner {
      * Generates the site, puts it in the object storage and records the build as the published one - or records
      * why it is not, and reports nothing.
      */
-    private Published publish(Site site, DocumentationBuild build, BuildTrigger trigger, long startedAt,
-                              ContainerMemory.Measurement memory) {
+    private Published publish(Site site, SitePart part, DocumentationBuild build, BuildRequest request,
+                              long startedAt) {
+        BuildTrigger trigger = request.trigger();
         try {
             siteBuilder.sweepWorkspaces(builds.runningIds());
             Instant generatedAt = clock.instant();
-            BuiltSite generated = siteBuilder.generate(build.id(), site, generatedAt);
-            // Read once, here, and used by all three of the places that report this build: the file beside the
-            // site, the row, and the line that says it was published. The kernel's mark only rises, so reading
-            // it again after the upload would give the row a higher number than the file it was written beside
-            // - two numbers for one build, and an operator comparing them for nothing.
-            ContainerMemory.Peak peak = memory.peak().orElse(null);
+            // The cheap half first: the content, and what it hashes to.
+            PreparedPart prepared = siteBuilder.prepare(build.id(), site, part, generatedAt);
+            // The request and not its trigger: a request already pending when an operator forced a
+            // publication keeps the trigger that asked first, so reading the trigger meant a forced build was
+            // skipped for exactly the parts an import had already asked for - most of them, most of the hour.
+            if (!request.forced() && isAlreadyPublished(part, prepared)) {
+                builds.skipped(build.id(), clock.instant());
+                metrics.skipped(site.id(), trigger);
+                log.info("{} was asked for and its content is exactly what is published, so the site generator "
+                         + "was not started ({}).", part.key(), build.id());
+                return null;
+            }
+            BuiltSite generated = siteBuilder.generate(prepared);
             // The seam: the numbers of this run exist now, the site is still on local disk, and the page that
             // prints them was written at the start of the run. So they are written into the output before the
             // upload, and the page fetches them - see DocumentationStatus.
             siteBuilder.describeRun(generated, DocumentationStatus.of(build.id(), generatedAt,
-                    elapsed(startedAt).toMillis(), generated, peak));
-            PublishedSite published = publication.publish(prefixOf(site, build.id()), generated.directory());
+                    elapsed(startedAt).toMillis(), generated));
+            PublishedSite published = publication.publish(whereToPublish(site, build.id()),
+                    generated.directory());
             builds.succeeded(build.id(), published.prefix(), generated.pageCount(), published.sizeInBytes(),
-                    generated.docusaurusMillis(), peak, clock.instant());
-            return new Published(generated, published, peak);
+                    generated.docusaurusMillis(), prepared.digest(), clock.instant());
+            return new Published(generated, published);
         } catch (RuntimeException e) {
             if (stopping) {
                 // Not a failure: this instance asked the generator to stop. Recorded apart from one, because
                 // the alarm is on failures and a deployment landing on a build must not page anybody.
-                recordAbort(site, build, trigger, e, startedAt);
+                recordAbort(site, build, request, e, startedAt);
             } else {
-                // On the row and in the prose of the reason, from one reading: a build killed for want of
-                // memory exits with a number, and 'how close did it come' belongs beside that number - as a
-                // column an operator can compare, and as a sentence in the reason they read first.
-                ContainerMemory.Peak peak = memory.peak().orElse(null);
-                builds.failed(build.id(), e.getMessage() + memoryClause(peak, ". "), peak, clock.instant());
-                log.error("The documentation site {} ({}) could not be published; the site published before it "
-                          + "is still being served.", site.id(), build.id(), e);
-                metrics.failed(site.id(), trigger, elapsed(startedAt));
+                builds.failed(build.id(), e.getMessage(), clock.instant());
+                log.error("{} ({}) could not be published; what was published before it is still being served.",
+                        part.key(), build.id(), e);
+                // Failed either way on the row - there is one way for a build to end badly. Counted apart,
+                // because a build that ran out of time is not put right the way a broken one is: see
+                // BuildMetrics.timedOut.
+                if (e instanceof SiteBuildTimeoutException) {
+                    metrics.timedOut(site.id(), trigger, elapsed(startedAt));
+                } else {
+                    metrics.failed(site.id(), trigger, elapsed(startedAt));
+                }
             }
             return null;
         } finally {
@@ -326,31 +732,50 @@ public class DocumentationBuildRunner {
     }
 
     /**
-     * What a successful build produced, where it went, and what its container held - the last of these read
-     * once, so that everything reporting this build reports the same number.
-     */
-    private record Published(BuiltSite generated, PublishedSite published, ContainerMemory.Peak peak) {
+    /** What a successful build produced, and where it went. */
+    private record Published(BuiltSite generated, PublishedSite published) {
     }
 
     /**
      * What follows a publication: what it produced, and the sites it superseded. None of it can undo the
      * publication, and none of it is worth failing a build that has already succeeded.
      */
-    private void afterPublishing(Site site, DocumentationBuild build, BuildTrigger trigger, Published result,
-                                 long startedAt) {
+    private void afterPublishing(Site site, SitePart part, DocumentationBuild build, BuildTrigger trigger,
+                                 Published result, long startedAt) {
         BuiltSite generated = result.generated();
         try {
-            log.info("The documentation site {} ({}) is published: {} pages, {} bytes, {} of which was the site "
-                     + "generator{}.", site.id(), build.id(), generated.pageCount(),
-                    result.published().sizeInBytes(), Duration.ofMillis(generated.docusaurusMillis()),
-                    memoryClause(result.peak(), ", "));
+            log.info("{} ({}) is published: {} pages, {} bytes, {} of which was the site generator.",
+                    part.key(), build.id(), generated.pageCount(), result.published().sizeInBytes(),
+                    Duration.ofMillis(generated.docusaurusMillis()));
             metrics.succeeded(site.id(), trigger, elapsed(startedAt), generated);
-            removeSitesBeyondRetention(site);
+            // Here rather than beside the build timer: only a build that really generated says anything about
+            // what its part costs, and this is the one path a published build takes.
+            metrics.partBuilt(part.key(), elapsed(startedAt));
+            removePublicationsBeyondRetention(part);
         } catch (RuntimeException e) {
-            log.warn("The documentation site {} ({}) is published, but what follows a publication did not all "
-                     + "run. The site is served; the next build tidies up after this one.",
-                    site.id(), build.id(), e);
+            log.warn("{} ({}) is published, but what follows a publication did not all run. It is served; the "
+                     + "next build tidies up after this one.", part.key(), build.id(), e);
         }
+    }
+
+    /**
+     * Whether the content just written is exactly what is being served.
+     * <p>
+     * Both halves matter. The digest says the pages would be the same, and the prefix says the files of that
+     * publication are still there - a publication whose objects the retention has removed has to be built
+     * again however unchanged its content is.
+     * <p>
+     * <b>A build somebody asked for is never skipped</b> (see the caller): the reason to ask for one by hand is
+     * that something outside the content changed - the site template while it is being worked on, most of all -
+     * and an operator who forces a publication and is told nothing happened would have no way to get one.
+     */
+    private boolean isAlreadyPublished(SitePart part, PreparedPart prepared) {
+        Optional<DocumentationBuild> published = builds.published(part.key());
+        return published
+                .filter(build -> build.objectPrefix() != null)
+                .map(DocumentationBuild::contentDigest)
+                .filter(digest -> digest.equals(prepared.digest()))
+                .isPresent();
     }
 
     /**
@@ -366,8 +791,9 @@ public class DocumentationBuildRunner {
      * writes none of them, and a build left running is recovered from its row either way. They are here to make
      * the ordinary stop quiet and immediate rather than to be relied on.
      */
-    private void recordAbort(Site site, DocumentationBuild build, BuildTrigger trigger, RuntimeException cause,
-                             long startedAt) {
+    private void recordAbort(Site site, DocumentationBuild build, BuildRequest request,
+                             RuntimeException cause, long startedAt) {
+        BuildTrigger trigger = request.trigger();
         // Cleared for the duration of the bookkeeping and restored afterwards: an interrupt makes the connection
         // pool refuse to hand out a connection, and these three writes are worth more than the promptness.
         boolean interrupted = Thread.interrupted();
@@ -376,8 +802,13 @@ public class DocumentationBuildRunner {
                      + "stopping; it has been asked for again.", build.id(), site.id());
             whileStopping("record the build as aborted",
                     () -> builds.aborted(build.id(), cause.getMessage(), clock.instant()));
+            // With the publication it belonged to: a deployment landing on a publication must not take that
+            // part out of it, or the publication would read as complete while one of its parts is still owed.
+            // And with its force, so that a publication somebody asked for by hand is not quietly turned into
+            // one the digest may skip by a deployment landing on it.
             whileStopping("ask for the build again",
-                    () -> requests.request(site.id(), trigger, clock.instant()));
+                    () -> requests.request(PartKey.of(build.site(), build.part()), trigger, clock.instant(),
+                            request.publication(), request.forced()));
             whileStopping("remove what the build had already uploaded",
                     () -> publication.delete(prefixOf(site, build.id())));
             metrics.aborted(site.id(), trigger, elapsed(startedAt));
@@ -402,11 +833,11 @@ public class DocumentationBuildRunner {
     }
 
     /**
-     * Removes what is past the retention, and only after the new site is the published one - so a reader is
-     * never left without a site while the old one is being deleted.
+     * Removes what is past the retention of this part, and only after the new publication is the current one -
+     * so a reader is never left without a page while the old one is being deleted.
      */
-    private void removeSitesBeyondRetention(Site site) {
-        List<String> obsolete = builds.prefixesBeyondRetention(site.id(), properties.getRetention());
+    private void removePublicationsBeyondRetention(SitePart part) {
+        List<String> obsolete = builds.prefixesBeyondRetention(part.key(), properties.getRetention());
         for (String prefix : obsolete) {
             try {
                 publication.delete(prefix);
@@ -421,43 +852,16 @@ public class DocumentationBuildRunner {
     }
 
     /**
-     * What the container held while this build ran, as a clause to append - and nothing at all where that
-     * cannot be read, which is every platform but Linux and every kernel without a high-water mark.
-     * <p>
-     * It is the number a container is sized from: a build is a child process whose bundler allocates outside
-     * any heap this service can see, so the JVM's own meters say nothing about it. Reported in megabytes
-     * against the limit, because what an operator does with it is compare the two.
-     *
-     * @param separator what joins it to the sentence before it - the line and the failure reason differ
+     * Where a part is published: its own files under the site and the build that produced them - a build id is
+     * used once, so nothing that is being read is ever written to - and its shared files under the one prefix
+     * every part of the site writes to.
      */
-    private static String memoryClause(ContainerMemory.Peak peak, String separator) {
-        if (peak == null) {
-            return "";
-        }
-        String at = peak.exact() ? "peak " : "peak at most ";
-        if (peak.limitBytes() <= 0) {
-            return separator + at + megabytes(peak.usedBytes()) + " in the container";
-        }
-        return separator + at + megabytes(peak.usedBytes()) + " of " + megabytes(peak.limitBytes())
-               + " (" + percent(peak) + "%) in the container";
+    private static PartPublication whereToPublish(Site site, long buildId) {
+        return new PartPublication(prefixOf(site, buildId), SharedAssets.prefixOf(site.id()));
     }
 
     /**
-     * How much of the container the build held, rounded rather than truncated - the same arithmetic the page
-     * does in the browser, so that the log line and the page agree on the number.
-     */
-    private static long percent(ContainerMemory.Peak peak) {
-        return Math.round(peak.usedBytes() * 100.0 / peak.limitBytes());
-    }
-
-    /** Megabytes, rounded, as the page in the browser writes them too. */
-    private static String megabytes(long bytes) {
-        return Math.round(bytes / (1024.0 * 1024.0)) + "MB";
-    }
-
-    /**
-     * Where a site is published: under the site, and below it the build that produced it. A build id is used
-     * once, so nothing that is being read is ever written to.
+     * Where the files of one build lie: under the site, and below it the build that produced them.
      */
     private static String prefixOf(Site site, long buildId) {
         return site.id() + "/" + buildId;

@@ -199,11 +199,13 @@ public class DocumentationUploadService {
 
     private void askForABuild(DocumentationUpload upload) {
         try {
-            buildTrigger.requestBecauseOfUpload(upload.descriptor().site());
+            buildTrigger.requestBecauseOfUpload(upload.descriptor().site(), upload.descriptor().system());
         } catch (RuntimeException e) {
-            log.error("The upload {} ({}) is stored, but a build of the site {} could not be asked for. The "
-                      + "site is published on its next schedule, or when this upload is repeated.",
-                    upload.uploadId(), upload.id(), upload.descriptor().site(), e);
+            log.error("The upload {} ({}) is stored, but a build of the documentation of {} on the site {} "
+                      + "could not be asked for. It is published by the next architecture import, or when "
+                      + "this upload is repeated.",
+                    upload.uploadId(), upload.id(), upload.descriptor().system(),
+                    upload.descriptor().site(), e);
         }
     }
 

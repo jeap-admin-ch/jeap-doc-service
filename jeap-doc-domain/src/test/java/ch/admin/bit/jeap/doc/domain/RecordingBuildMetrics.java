@@ -6,6 +6,7 @@ import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * What the domain reports about its builds, kept rather than measured.
@@ -16,8 +17,11 @@ import java.util.List;
  */
 public class RecordingBuildMetrics implements BuildMetrics {
 
-    public final List<String> results = new ArrayList<>();
-    public final List<String> abandoned = new ArrayList<>();
+    // Synchronized: a build pass runs several parts at once, and each of them reports what it did.
+    public final List<String> results = java.util.Collections.synchronizedList(new ArrayList<>());
+    public final List<String> abandoned = java.util.Collections.synchronizedList(new ArrayList<>());
+    /** One entry per run of a trigger: the site, what asked, and how many parts it asked for. */
+    public final List<String> triggered = java.util.Collections.synchronizedList(new ArrayList<>());
 
     @Override
     public void succeeded(String site, BuildTrigger trigger, Duration duration, BuiltSite generated) {
@@ -32,6 +36,51 @@ public class RecordingBuildMetrics implements BuildMetrics {
     @Override
     public void aborted(String site, BuildTrigger trigger, Duration duration) {
         results.add("aborted:" + site + ":" + trigger);
+    }
+
+    @Override
+    public void timedOut(String site, BuildTrigger trigger, Duration duration) {
+        results.add("timed-out:" + site + ":" + trigger);
+    }
+
+    @Override
+    public void skipped(String site, BuildTrigger trigger) {
+        results.add("skipped:" + site + ":" + trigger);
+    }
+
+    @Override
+    public void triggered(String site, BuildTrigger trigger, int parts) {
+        triggered.add(site + ":" + trigger + ":" + parts);
+    }
+
+    /** Every value the number of running builds took, in order - so a test can see the slots fill and empty. */
+    public final List<Integer> slotsBusy = java.util.Collections.synchronizedList(new ArrayList<>());
+
+    /** Parts left to another instance, and parts whose build threw - counted as they are settled. */
+    public final AtomicInteger contended = new AtomicInteger();
+    public final AtomicInteger broken = new AtomicInteger();
+
+    @Override
+    public void contended() {
+        contended.incrementAndGet();
+    }
+
+    @Override
+    public void broken() {
+        broken.incrementAndGet();
+    }
+
+    @Override
+    public void slotsBusy(int busy) {
+        slotsBusy.add(busy);
+    }
+
+    /** One entry per part whose site generator really ran - the skipped ones are not in here. */
+    public final List<String> partsBuilt = java.util.Collections.synchronizedList(new ArrayList<>());
+
+    @Override
+    public void partBuilt(ch.admin.bit.jeap.doc.domain.PartKey part, Duration duration) {
+        partsBuilt.add(part.toString());
     }
 
     @Override

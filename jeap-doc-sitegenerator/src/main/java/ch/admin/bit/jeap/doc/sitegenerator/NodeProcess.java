@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
+import ch.admin.bit.jeap.doc.domain.port.SiteBuildTimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -15,10 +16,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Runs Node as a child process of the service, under close control.
@@ -46,20 +47,17 @@ public class NodeProcess {
      */
     static final int KEPT_LOG_LINES = 1024;
 
-    /**
-     * What Docusaurus prefixes its performance log with. Its logger is switched on by {@code DOCUSAURUS_PERF_LOGGER}
-     * - a variable Docusaurus itself calls private, so the lines are recognised and passed on, never parsed.
-     */
-    static final String PERF_PREFIX = "[PERF]";
-
     private final BuildProperties properties;
 
     /**
-     * What is running right now, so that it can be destroyed from another thread. One reference is enough: an
-     * instance runs one build at a time - the runner's task is a fixed delay and is never re-entered - and the
-     * startup check has finished before any build starts.
+     * What is running right now, so that it can be destroyed from another thread.
+     * <p>
+     * A set rather than one reference: an instance builds up to
+     * {@code jeap.doc.build.max-concurrent-parts} parts of a site at a time, and a stop has to end all of
+     * them. Adding a process to it before checking {@link #aborted} is what closes the race with a stop that
+     * lands between starting a child and publishing it here.
      */
-    private final AtomicReference<Process> current = new AtomicReference<>();
+    private final Set<Process> current = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /** Set by {@link #abort()}, so that the destroyed process is reported as given up on rather than as failed. */
     private final AtomicBoolean aborted = new AtomicBoolean();
@@ -89,7 +87,7 @@ public class NodeProcess {
         scrubEnvironment(builder.environment());
 
         Process process = start(builder, command);
-        current.set(process);
+        current.add(process);
         if (aborted.get()) {
             // The abort landed between starting the process and publishing it here, so it destroyed nothing.
             // Without this the child would outlive the instance that was told to stop.
@@ -107,11 +105,12 @@ public class NodeProcess {
         // process tree is destroyed, and this thread is only ever waited on for a couple of seconds. A
         // non-daemon one parked in that read would stop the JVM exiting at all.
         Thread reader = Thread.ofPlatform().daemon(true).name("site-generator-output")
-                .start(() -> readOutput(process, tail, properties.isPerfLog()));
+                .start(() -> readOutput(process, tail));
         try {
             if (!process.waitFor(properties.getTimeout().toMillis(), TimeUnit.MILLISECONDS)) {
                 destroy(process);
-                throw new SiteBuildException(("The site generator did not finish within %s. Its last output was:%n%s")
+                throw new SiteBuildTimeoutException(("The site generator did not finish within %s. Its last "
+                                                     + "output was:%n%s")
                         .formatted(properties.getTimeout(), lastOutput(tail, reader)));
             }
             if (aborted.get()) {
@@ -129,7 +128,7 @@ public class NodeProcess {
             Thread.currentThread().interrupt();
             throw new SiteBuildException("The site generator was interrupted.", e);
         } finally {
-            current.compareAndSet(process, null);
+            current.remove(process);
         }
     }
 
@@ -143,10 +142,11 @@ public class NodeProcess {
      */
     public void abort() {
         aborted.set(true);
-        Process running = current.getAndSet(null);
-        if (running != null) {
-            log.info("Giving up on the site generator: this instance is stopping.");
-            destroy(running);
+        java.util.List<Process> running = java.util.List.copyOf(current);
+        current.clear();
+        if (!running.isEmpty()) {
+            log.info("Giving up on {} site generator run(s): this instance is stopping.", running.size());
+            running.forEach(NodeProcess::destroy);
         }
     }
 
@@ -224,18 +224,20 @@ public class NodeProcess {
         }
     }
 
-    private static void readOutput(Process process, OutputTail tail, boolean perfLog) {
+    /**
+     * Pumps the generator's output into the log at <b>debug</b>, and into the tail whatever the level.
+     * <p>
+     * Debug for all of it, the performance lines included. A build writes hundreds of lines and a publication
+     * is dozens of builds, so at info the generator's own output is most of what an instance logs - and none
+     * of it is what an operator reads to answer a question. What a run cost is on the build record and in
+     * {@code jeap.doc.build.step}; what a failure was is in the tail, which is kept regardless of the level.
+     */
+    private static void readOutput(Process process, OutputTail tail) {
         try (BufferedReader output = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = output.readLine()) != null) {
-                if (perfLog && line.startsWith(PERF_PREFIX)) {
-                    // The performance log is what was asked for; the rest of the generator's output is noise
-                    // until a build fails, and is kept for that in the tail.
-                    log.info("[site generator] {}", line);
-                } else {
-                    log.debug("[site generator] {}", line);
-                }
+                log.debug("[site generator] {}", line);
                 tail.add(line);
             }
         } catch (IOException e) {

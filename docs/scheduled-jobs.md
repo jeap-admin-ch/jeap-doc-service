@@ -7,9 +7,8 @@ configuration of a running service.
 
 | Job                                                            | Property                                   | Default           | What it does                                                                                                                                                                                                                                                                |
 |----------------------------------------------------------------|--------------------------------------------|-------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [Build poll](generation.md)                                    | `jeap.doc.build.poll-interval`             | `PT30S`           | Looks whether a build has been asked for and publishes **at most one site** per tick per instance                                                                                                                                                                           |
-| [Publication schedule](generation.md), per site                | `jeap.doc.sites.<id>.publication-schedule` | `0 5 6-20 * * *`  | Asks for a build of that site. Hourly at five past, through the working day. **Empty means never**: the site is then published only when something is uploaded to it                                                                                                        |
-| [Architecture import](architecture-import.md), per environment | `jeap.doc.archrepo.import.cron`            | `0 45 5-19 * * *` | Imports the architecture model, the OpenAPI specifications, the database schemas and the Avro schemas of the message type versions of one environment. Hourly at a quarter to, so a fresh model stands in front of the publication at five past. **Empty means never**      |
+| [Build poll](generation.md)                                    | `jeap.doc.build.poll-interval`             | `PT30S`           | Asks this instance to look whether a build has been asked for. What it finds it builds in a **pass** - every slot full until nothing is owed - so this is the latency of an **idle** instance and not the pace of a queue. A trigger asks for a pass at once as well, unless `jeap.doc.build.pick-up-on-trigger` is off |
+| [Architecture import](architecture-import.md), per environment | `jeap.doc.archrepo.import.cron`            | `0 45 5-19 * * *` | Imports the architecture model, the OpenAPI specifications, the database schemas and the Avro schemas of the message type versions of one environment, and **asks for every part of every site documenting it to be published**. Hourly. There is no separate publication schedule: this is it. **Empty means never**      |
 | [Architecture import catch-up](architecture-import.md)         | `jeap.doc.archrepo.import.on-startup`      | `true`            | Once, after the service is up: imports every environment and kind that has **never** been imported, so the first build after a deployment finds a model                                                                                                                     |
 | [Upload housekeeping](uploads.md)                              | `jeap.doc.upload.housekeeping.cron`        | `0 30 2 * * *`    | Removes uploads last received more than `jeap.doc.upload.housekeeping.retention` (`P14D`) ago, whatever state they are in. **The database only** - the bundles are expired by a lifecycle rule of the bucket. `jeap.doc.upload.housekeeping.enabled: false` switches it off |
 | [Build history housekeeping](generation.md)                    | `jeap.doc.build.history-cron`              | `0 45 2 * * *`    | Removes the record of builds that finished more than `jeap.doc.build.history-retention` (`P90D`) ago - **except the published build of each site**, which is what says which site is served                                                                                 |
@@ -22,8 +21,8 @@ time is enough.
 
 | Job                          | Thread                                                          | Lock                                                                                                                   |
 |------------------------------|-----------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| Build poll                   | The scheduler pool, `spring.task.scheduling.pool.size` (4)      | `documentationBuild-<site>`, leased for `jeap.doc.build.lock-lease` (`PT2M`)                                           |
-| Publication schedule         | The scheduler pool                                              | none - it only sets the site's request flag, and a burst of triggers during a build produces exactly one follow-up run |
+| Build poll                   | The scheduler pool, `spring.task.scheduling.pool.size` (4) - and it only asks for a pass | none - it takes no lock and returns within a millisecond |
+| Build pass                   | `documentation-build-pickup`: **one thread**, plus one per slot while it builds | `documentationBuild-<site>/<part>` per part, leased for `jeap.doc.build.lock-lease` (`PT2M`) |
 | Architecture import          | `architectureImportTaskExecutor`: **one thread**, bounded queue | `architectureImport-<environment>-<kind>`, leased for `jeap.doc.archrepo.import.lock-lease` (`PT15M`)                  |
 | Architecture import catch-up | The same executor                                               | The same locks                                                                                                         |
 | Upload housekeeping          | The scheduler pool                                              | `documentationUploadHousekeeping`, leased for 30 minutes                                                               |
@@ -31,30 +30,30 @@ time is enough.
 
 Three things follow from that table, and each of them is deliberate:
 
-- **An import never runs on a scheduler thread.** The cron only hands the environment to the import executor
-  and returns within a millisecond. An import takes minutes, the cron fires for every environment in the same
-  second, and the scheduler pool is what the build poll and every site's publication trigger run on - imports
-  running inline would hold all of them, and a build asked for at a quarter to would be looked for when the
-  last import ended.
+- **Neither an import nor a build pass runs on a scheduler thread.** Both only hand the work over and return
+  within a millisecond. An import takes minutes and the cron fires for every environment in the same second; a
+  pass takes as long as the parts it builds. Either of them running inline would hold the scheduler threads
+  that every other job of this service is on, and a build asked for at a quarter to would be looked for when
+  the last import ended.
 - **Every job is kept to one instance by a lock in the database**, timed by the database rather than by the
   instances, which do not share a clock. A lease says how long a lock survives an instance that dies holding
   it and **not** how long the work may take: it is extended while the work runs.
-- **An instance that does not get a lock does not queue.** A build request stays standing and the next poll
-  tries again 30 seconds later; a housekeeping job skips the night; an import skips the hour, because another
-  instance is importing into the same database and what it stores is what this instance's builds read either
-  way.
+- **An instance that does not get a lock does not queue.** A pass that finds a part's lock held takes the next
+  part instead, and leaves that one to the instance building it - the request stays standing either way. A
+  housekeeping job skips the night; an import skips the hour, because another instance is importing into the
+  same database and what it stores is what this instance's builds read either way.
 
 ## Which of them may overlap
 
-The build lock is per **site**, the import lock is per **environment and kind**, and the housekeeping locks are
+The build lock is per **part**, the import lock is per **environment and kind**, and the housekeeping locks are
 one each. So nothing stops these from running at the same moment - on two threads of one instance, or on two
 instances:
 
 |                                                      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 |------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | A build and an import of an environment it documents | **Allowed, and it has to be.** A build reads the architecture model out of this service's own database and makes no call to the architecture repository at all, so an import can neither slow a build down nor fail one. What keeps it safe is that the landscape is read as one snapshot of the database, and that a build generates from the model as it stood when it started - see [reading a landscape while one is being written](architecture-import.md#reading-a-landscape-while-one-is-being-written) |
-| Builds of two different sites                        | Allowed, on two instances. One instance builds one site per tick: a build is a process that wants a core, and three pending sites must not become three of them in one container                                                                                                                                                                                                                                                                                                                               |
-| Two builds of the same site                          | Only where a lock lease was lost while the build carried on. Harmless: each build publishes under its own identifier and the newest successful one wins                                                                                                                                                                                                                                                                                                                                                        |
+| Builds of two different parts                        | Allowed, and it is the point. One instance builds `jeap.doc.build.max-concurrent-parts` at a time - a build is a process that wants a core, so fifty pending parts must not become fifty of them in one container - and the other instances build other parts at the same time                                                                                                                                                                                                                                  |
+| Two builds of the same part                          | Only where a lock lease was lost while the build carried on. Harmless: each build publishes under its own identifier and the newest successful one wins                                                                                                                                                                                                                                                                                                                                                        |
 | The nightly jobs and anything else                   | Allowed. Neither touches what a build or an import reads: uploads that have not been generated from in a fortnight, and build records that are not the published one                                                                                                                                                                                                                                                                                                                                           |
 
 An import that is still running when the instance starts stopping **gives up** - it is asked between two
@@ -81,7 +80,11 @@ goes on being served either way:
 | Gauge                                                   | Says                                                                              |
 |---------------------------------------------------------|-----------------------------------------------------------------------------------|
 | `jeap_doc_architecture_import_last_success_age_seconds` | Nothing has been imported for that long - or never has been, which reads as `NaN` |
-| `jeap_doc_build_last_success_age_seconds`               | No site has been published for that long                                          |
+| `jeap_doc_build_last_check_age_seconds`                 | Nothing has gone through any site's parts for that long                           |
+
+**Not `jeap_doc_build_last_success_age_seconds`** for the second one. A part whose content has not moved is
+never generated, so a site nobody changes goes days without a publication and is nonetheless being looked at
+every hour; the gauge to alarm on is the one that counts a part found already current as a check.
 
 Both, and what to alarm on, are in [Observability](observability.md).
 

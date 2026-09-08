@@ -28,35 +28,34 @@ class MemoryReadingsTest {
 
     @Test
     void parseCgroupV2_thenEveryFieldIsRead() {
-        CgroupMemory memory = MemoryReadings.parseCgroupV2("2841575424\n", "4294967296\n", "2925895680\n",
+        CgroupMemory memory = MemoryReadings.parseCgroupV2("2841575424\n", "4294967296\n",
                 "low 0\nhigh 0\nmax 3\noom 1\noom_kill 1\n");
 
-        assertThat(memory).isEqualTo(new CgroupMemory(2841575424L, 4294967296L, 2925895680L, 1));
+        assertThat(memory).isEqualTo(new CgroupMemory(2841575424L, 4294967296L, 1));
     }
 
-    /** No limit reads as {@code max}, and an older kernel has neither {@code memory.peak} nor the events. */
+    /** No limit reads as {@code max}, and an older kernel has no events file. */
     @Test
     void parseCgroupV2_whenThereIsNoLimitAndTheOptionalFilesAreAbsent_thenTheyAreNotKnown() {
-        CgroupMemory memory = MemoryReadings.parseCgroupV2("1000\n", "max\n", null, null);
+        CgroupMemory memory = MemoryReadings.parseCgroupV2("1000\n", "max\n", null);
 
-        assertThat(memory).isEqualTo(new CgroupMemory(1000, -1, -1, -1));
+        assertThat(memory).isEqualTo(new CgroupMemory(1000, -1, -1));
     }
 
     @Test
     void parseCgroupV1_thenEveryFieldIsRead() {
-        CgroupMemory memory = MemoryReadings.parseCgroupV1("2841575424\n", "4294967296\n", "2925895680\n",
+        CgroupMemory memory = MemoryReadings.parseCgroupV1("2841575424\n", "4294967296\n",
                 "oom_kill_disable 0\nunder_oom 0\noom_kill 2\n");
 
-        assertThat(memory).isEqualTo(new CgroupMemory(2841575424L, 4294967296L, 2925895680L, 2));
+        assertThat(memory).isEqualTo(new CgroupMemory(2841575424L, 4294967296L, 2));
     }
 
     /** cgroup v1 writes its page counter maximum where there is no limit - a number, not a word. */
     @Test
     void parseCgroupV1_whenThereIsNoLimit_thenTheSentinelReadsAsNone() {
-        CgroupMemory memory = MemoryReadings.parseCgroupV1("1000\n", "9223372036854771712\n", null, null);
+        CgroupMemory memory = MemoryReadings.parseCgroupV1("1000\n", "9223372036854771712\n", null);
 
         assertThat(memory.limitBytes()).isEqualTo(-1);
-        assertThat(memory.peakBytes()).isEqualTo(-1);
     }
 
     /**
@@ -66,8 +65,8 @@ class MemoryReadingsTest {
      */
     @Test
     void limitOf_whenTheCgroupNamesNoLimit_thenTheTotalTheJvmSeesStandsIn() {
-        CgroupMemory withLimit = new CgroupMemory(1000, 4096, -1, -1);
-        CgroupMemory withoutLimit = new CgroupMemory(1000, -1, -1, -1);
+        CgroupMemory withLimit = new CgroupMemory(1000, 4096, -1);
+        CgroupMemory withoutLimit = new CgroupMemory(1000, -1, -1);
         HostMemory host = new HostMemory(16384, 4096);
 
         assertThat(MemoryReadings.limitOf(withLimit, host)).isEqualTo(4096);
@@ -125,29 +124,6 @@ class MemoryReadingsTest {
         assertThat(source.cgroup()).map(CgroupMemory::limitBytes).contains(4294967296L);
         assertThat(source.cgroup()).map(CgroupMemory::currentBytes).contains(2841575424L);
         assertThat(source.host()).isPresent();
-    }
-
-    /**
-     * Writing to the high-water mark resets it, on the kernels that allow it - and where the write is refused
-     * that is an answer rather than a fault, because the caller then compares against where the mark stood.
-     */
-    @Test
-    void resetPeak_whenTheKernelTakesTheWrite_thenItSaysSo() throws IOException {
-        fakeCgroupV2();
-        Files.writeString(root.resolve("sys/fs/cgroup/memory.peak"), "2925895680\n", StandardCharsets.UTF_8);
-        MemoryReadings.MemorySource source = MemoryReadings.sourceFor(MemoryReadings.availability("Linux", root));
-
-        assertThat(source.resetPeak()).isTrue();
-        assertThat(source.cgroup()).map(CgroupMemory::peakBytes).contains(0L);
-    }
-
-    @Test
-    void resetPeak_whenThereIsNoHighWaterMarkToWrite_thenItIsRefusedRatherThanThrown() throws IOException {
-        fakeCgroupV2();
-        Files.createDirectory(root.resolve("sys/fs/cgroup/memory.peak"));
-        MemoryReadings.MemorySource source = MemoryReadings.sourceFor(MemoryReadings.availability("Linux", root));
-
-        assertThat(source.resetPeak()).isFalse();
     }
 
     @Test

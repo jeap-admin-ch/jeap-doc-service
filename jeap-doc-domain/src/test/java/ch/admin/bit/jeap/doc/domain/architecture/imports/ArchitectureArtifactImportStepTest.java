@@ -470,12 +470,6 @@ class ArchitectureArtifactImportStepTest {
         }
 
         @Override
-        public List<ArchitectureArtifact> findAll(String environment, ArchitectureImportKind kind,
-                                                  String system) {
-            return stored.values().stream().filter(a -> a.system().equalsIgnoreCase(system)).toList();
-        }
-
-        @Override
         public void store(ArchitectureArtifact artifact) {
             if (failing) {
                 throw new IllegalStateException("The database went away.");

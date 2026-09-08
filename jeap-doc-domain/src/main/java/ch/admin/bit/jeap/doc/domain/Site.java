@@ -18,7 +18,6 @@ import java.util.Optional;
  * @param favicon             where the site's favicon comes from, or null for the one the template ships
  * @param colorScheme         the colour scheme of the template this site uses
  * @param environments        the environments of this site, in the order the switcher shows them
- * @param publicationSchedule the cron expression the site is regenerated on, or null for never
  * @param publishOnUpload     whether an upload for this site asks for a build
  * @param architectureModelRequired whether this site may only be published once the architecture model of
  *                            its environments has been imported
@@ -31,7 +30,6 @@ public record Site(
         String favicon,
         String colorScheme,
         List<SiteEnvironment> environments,
-        String publicationSchedule,
         boolean publishOnUpload,
         boolean architectureModelRequired) {
 
@@ -98,10 +96,4 @@ public record Site(
                         "The site %s has no latest environment.".formatted(id)));
     }
 
-    /**
-     * Whether this site is regenerated on a schedule at all.
-     */
-    public Optional<String> schedule() {
-        return Optional.ofNullable(publicationSchedule).filter(cron -> !cron.isBlank());
-    }
 }

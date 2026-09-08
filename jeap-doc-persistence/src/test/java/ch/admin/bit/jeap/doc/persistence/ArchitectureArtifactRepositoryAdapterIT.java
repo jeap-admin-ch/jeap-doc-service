@@ -149,15 +149,22 @@ class ArchitectureArtifactRepositoryAdapterIT extends PostgresTestContainerBase 
         assertThat(artifacts.findRefs("empty", KIND)).isEmpty();
     }
 
+    /**
+     * A lookup addresses one artifact, so a second component of the same system and a same-named component of
+     * another system are both somebody else's row. <b>That is the only read of content there is</b> - a build
+     * loops over the components rather than asking for a system's worth, because a specification may be eight
+     * megabytes.
+     */
     @Test
-    void findAll_thenTheArtifactsOfOneSystemComeBack() {
-        artifacts.store(artifact("by-system", "Orders", "orders-payment-scs", "a"));
-        artifacts.store(artifact("by-system", "Orders", "orders-basket-scs", "b"));
-        artifacts.store(artifact("by-system", "Shipping", "shipping-dispatch-scs", "c"));
+    void find_thenOnlyTheArtifactOfThatSystemAndComponentComesBack() {
+        artifacts.store(artifact("by-component", "Orders", "orders-payment-scs", "a"));
+        artifacts.store(artifact("by-component", "Orders", "orders-basket-scs", "b"));
+        artifacts.store(artifact("by-component", "Shipping", "orders-payment-scs", "c"));
 
-        assertThat(artifacts.findAll("by-system", KIND, "Orders"))
-                .extracting(ArchitectureArtifact::component)
-                .containsExactly("orders-basket-scs", "orders-payment-scs");
+        assertThat(artifacts.find("by-component", KIND, "Orders", "orders-payment-scs")).get()
+                .satisfies(stored -> assertThat(new String(stored.content(), StandardCharsets.UTF_8))
+                        .isEqualTo("a"));
+        assertThat(artifacts.find("by-component", KIND, "Orders", "orders-dispatch-scs")).isEmpty();
     }
 
     /**
@@ -225,14 +232,13 @@ class ArchitectureArtifactRepositoryAdapterIT extends PostgresTestContainerBase 
                         .isEqualTo("second"));
     }
 
-    /** And a build that reads a system's artifacts finds them under the model's spelling of the name. */
+    /** And a build finds an artifact under the model's spelling of the two names, whatever case that is. */
     @Test
-    void findAll_whenTheModelSpellsTheSystemDifferently_thenTheArtifactsAreStillFound() {
+    void find_whenTheModelSpellsTheNamesDifferently_thenTheArtifactIsStillFound() {
         artifacts.store(artifact("folding-read", "orders", "orders-payment-scs", "a"));
 
-        assertThat(artifacts.findAll("folding-read", KIND, "ORDERS"))
-                .extracting(ArchitectureArtifact::component)
-                .containsExactly("orders-payment-scs");
+        assertThat(artifacts.find("folding-read", KIND, "ORDERS", "Orders-Payment-SCS")).get()
+                .satisfies(stored -> assertThat(stored.component()).isEqualTo("orders-payment-scs"));
     }
 
     @Test

@@ -1,9 +1,15 @@
 package ch.admin.bit.jeap.doc.template.arc42;
 
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSchema;
 import ch.admin.bit.jeap.doc.domain.architecture.RelationKind;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaColumn;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaForeignKey;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaTable;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ComponentContext;
 import ch.admin.bit.jeap.doc.domain.architecture.view.SystemContext;
 import ch.admin.bit.jeap.doc.domain.architecture.view.WhiteboxView;
+import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 
@@ -33,13 +39,18 @@ import java.util.Set;
  * <p>
  * <b>A label is capped.</b> The engine lays a label out by recursion and overflows the browser's stack at
  * about sixty lines, so an arrow carrying every message type of a busy system is not a large diagram but no
- * diagram at all. Above {@link GenerationContext#maxEdgeLabels()} names an arrow shows their count, and the
+ * diagram at all. Above {@link DiagramLimits#maxEdgeLabels()} names an arrow shows their count, and the
  * page's table names every one of them.
  */
 final class PlantUmlViews {
 
     /** The fence language, which the site's diagram plugin picks up. */
     static final String LANGUAGE = "plantuml";
+
+    private static final String START_UML = "@startuml\n";
+
+    /** The layout a star-shaped view is laid out with - see the class comment. */
+    private static final String LEFT_TO_RIGHT = "left to right direction\n";
 
     private static final String END_UML = "@enduml";
 
@@ -73,7 +84,7 @@ final class PlantUmlViews {
 
     /** The system in the middle, its neighbours around it, one arrow per kind and direction. */
     static Diagram contextView(SystemContext context, GenerationContext generation) {
-        StringBuilder uml = new StringBuilder("@startuml\nleft to right direction\n").append(SPACING);
+        StringBuilder uml = new StringBuilder(START_UML).append(LEFT_TO_RIGHT).append(SPACING);
         Aliases aliases = new Aliases();
         component(uml, aliases, context.system().name(), systemLinkOf(context.system().name(), generation), true);
         for (String neighbour : context.drawn()) {
@@ -84,7 +95,7 @@ final class PlantUmlViews {
         for (SystemContext.ContextEdge edge : context.edges()) {
             if (isDrawn(context, edge.from()) && isDrawn(context, edge.to())) {
                 summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
-                        generation.maxEdgeLabels());
+                        generation.limits().maxEdgeLabels());
             }
         }
         return new Diagram(uml.append(END_UML).toString(), summarized);
@@ -102,20 +113,20 @@ final class PlantUmlViews {
      * subject of the context view, and of {@link #whiteboxView} next to this one.
      */
     static Diagram internalView(WhiteboxView view, String systemSlug, GenerationContext generation) {
-        StringBuilder uml = new StringBuilder("@startuml\n").append(SPACING);
+        StringBuilder uml = new StringBuilder(START_UML).append(SPACING);
         Aliases aliases = new Aliases();
         systemPackage(uml, aliases, view, systemSlug, generation);
         boolean summarized = false;
         for (WhiteboxView.Edge edge : view.internal()) {
             summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
-                    generation.maxEdgeLabels());
+                    generation.limits().maxEdgeLabels());
         }
         return new Diagram(uml.append(END_UML).toString(), summarized);
     }
 
     /** The components inside the system, and every other system as a single box outside it. */
     static Diagram whiteboxView(WhiteboxView view, String systemSlug, GenerationContext generation) {
-        StringBuilder uml = new StringBuilder("@startuml\n").append(SPACING);
+        StringBuilder uml = new StringBuilder(START_UML).append(SPACING);
         Aliases aliases = new Aliases();
         systemPackage(uml, aliases, view, systemSlug, generation);
         for (String neighbour : view.drawnNeighbours()) {
@@ -124,16 +135,157 @@ final class PlantUmlViews {
         boolean summarized = false;
         for (WhiteboxView.Edge edge : view.internal()) {
             summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
-                    generation.maxEdgeLabels());
+                    generation.limits().maxEdgeLabels());
         }
         for (WhiteboxView.Edge edge : view.external()) {
             // An arrow to a neighbour the diagram left out would point at nothing; the table still lists it.
             if (view.isDrawnNeighbour(view.neighbourOf(edge))) {
                 summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
-                        generation.maxEdgeLabels());
+                        generation.limits().maxEdgeLabels());
             }
         }
         return new Diagram(uml.append(END_UML).toString(), summarized);
+    }
+
+    /**
+     * One component in the middle, the siblings it exchanges something with inside the system's package, and
+     * every other system as a single box outside it.
+     * <p>
+     * Laid out left to right, like the system context view: the shape is the same star of one box with its
+     * counterparts around it.
+     */
+    static Diagram componentContextView(ComponentContext context, String systemSlug,
+                                        GenerationContext generation) {
+        StringBuilder uml = new StringBuilder(START_UML).append(LEFT_TO_RIGHT).append(SPACING);
+        Aliases aliases = new Aliases();
+        uml.append("package ").append(quoted(context.system().name())).append(" {\n");
+        uml.append("  ");
+        component(uml, aliases, context.component().name(),
+                componentLinkOf(systemSlug, context.component().slug(), generation), true);
+        for (String sibling : context.drawnSiblings()) {
+            uml.append("  ");
+            component(uml, aliases, sibling, siblingLinkOf(context, sibling, systemSlug, generation), false);
+        }
+        uml.append("}\n");
+        for (String system : context.drawnSystems()) {
+            component(uml, aliases, system, systemLinkOf(system, generation), false);
+        }
+        boolean summarized = false;
+        for (ComponentContext.Edge edge : context.edges()) {
+            // Only the edges between boxes the diagram has; the page's table carries all of them.
+            if (context.isDrawn(edge.from()) && context.isDrawn(edge.to())) {
+                summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
+                        generation.limits().maxEdgeLabels());
+            }
+        }
+        return new Diagram(uml.append(END_UML).toString(), summarized);
+    }
+
+    /**
+     * The entity relationship diagram of one database schema: an entity per table, its primary key columns
+     * above the separator, and one arrow per foreign key.
+     * <p>
+     * <b>Bounded by the number of tables</b>, like every other diagram here. What it leaves out is in the
+     * list of tables on the page below it.
+     * <p>
+     * An arrow is only drawn between two tables the diagram has. A foreign key into a table that was cut, or
+     * into a machinery table, would point at nothing - and an arrow that reaches one is drawn with the
+     * <b>table's</b> spelling of its name rather than the foreign key's, which need not agree with it.
+     * <b>A key into a shard finds the family that shard was collapsed into</b>, or collapsing a schema would
+     * drop every arrow in it; both are {@link DocumentedSchema#drawnEntityNameOf}'s doing.
+     */
+    static Diagram databaseSchema(DocumentedSchema schema) {
+        List<SchemaTable> drawn = schema.drawn();
+        StringBuilder uml = new StringBuilder(START_UML).append(SPACING);
+        for (SchemaTable table : drawn) {
+            entity(uml, table);
+        }
+        for (SchemaTable table : drawn) {
+            for (SchemaForeignKey key : table.foreignKeys()) {
+                String referenced = schema.drawnEntityNameOf(key.referencedTableName());
+                if (referenced != null) {
+                    uml.append(quoted(table.name())).append(" }o--|| ").append(quoted(referenced));
+                    if (!key.columnNames().isEmpty()) {
+                        uml.append(" : ").append(escaped(String.join(", ", key.columnNames())));
+                    }
+                    uml.append('\n');
+                }
+            }
+        }
+        // An arrow here carries column names, never a list that could need summarizing.
+        return new Diagram(uml.append(END_UML).toString(), false);
+    }
+
+    /** One table as an entity: the primary key columns, a separator, then the rest. */
+    private static void entity(StringBuilder uml, SchemaTable table) {
+        List<SchemaColumn> keyColumns = table.keyColumns();
+        List<SchemaColumn> otherColumns = table.otherColumns();
+        uml.append("entity ").append(quoted(table.name())).append(" {\n");
+        for (SchemaColumn column : keyColumns) {
+            columnLine(uml, table, column, true);
+        }
+        if (!keyColumns.isEmpty() && !otherColumns.isEmpty()) {
+            uml.append("  --\n");
+        }
+        for (SchemaColumn column : otherColumns) {
+            columnLine(uml, table, column, false);
+        }
+        uml.append("}\n");
+    }
+
+    /**
+     * One column: {@code *} where it is not nullable, then its name, its type and the keys it belongs to.
+     * <p>
+     * <b>No {@code {field}} marker, and none is needed.</b> PlantUML tells a field from a method by whether
+     * the line has parentheses, which a column type usually has - {@code numeric(12,2)}, {@code text[]} - but
+     * that heuristic is a {@code class} member's and not an {@code entity}'s: every member of an entity is a
+     * field, drawn where it was declared. Measured in a browser against the site's own renderer; the
+     * assertion that says so is in {@code SiteTemplateBrowserIT}.
+     * <p>
+     * The name and the type come out of somebody's database, and nothing about Markdown reaches into a fence,
+     * so both go through {@link #escaped}.
+     * <p>
+     * <b>A nullable column's name stands at the start of its line</b>, where PlantUML reads several
+     * characters as something else entirely: {@code '} is a comment, so the column would silently vanish from
+     * the diagram; {@code --} is a separator; {@code }} ends the entity and takes every column after it with
+     * it. So a name that begins with one of them is introduced by the {@code {field}} marker, which says
+     * <i>what follows is a field</i> and moves the name off the start of the line. Only then - the marker is
+     * not otherwise needed, see above.
+     */
+    private static void columnLine(StringBuilder uml, SchemaTable table, SchemaColumn column,
+                                   boolean primaryKey) {
+        String name = escaped(column.name());
+        uml.append(column.nullable() ? "    " : "  * ");
+        if (!name.isEmpty() && LINE_START_HAZARDS.indexOf(name.charAt(0)) >= 0) {
+            uml.append("{field} ");
+        }
+        uml.append(name);
+        if (column.type() != null && !column.type().isBlank()) {
+            uml.append(" : ").append(escaped(column.type()));
+        }
+        if (primaryKey) {
+            uml.append(" <<PK>>");
+        }
+        if (table.isForeignKeyColumn(column.name())) {
+            uml.append(" <<FK>>");
+        }
+        uml.append('\n');
+    }
+
+    /** Where a sibling's page is, or null when the model has no component of that name in the system. */
+    private static String siblingLinkOf(ComponentContext context, String sibling, String systemSlug,
+                                        GenerationContext generation) {
+        return context.system().components().stream()
+                .filter(candidate -> candidate.name().equalsIgnoreCase(sibling))
+                .findFirst()
+                .map(candidate -> componentLinkOf(systemSlug, candidate.slug(), generation))
+                .orElse(null);
+    }
+
+    private static String componentLinkOf(String systemSlug, String componentSlug,
+                                          GenerationContext generation) {
+        return generation.diagramLink(DocumentationPaths.component(systemSlug,
+                Arc42Template.SYSTEM_SEGMENT, Arc42Chapters.BUILDING_BLOCK_VIEW, componentSlug));
     }
 
     /** The package of the system, with a box per component. Every component, whatever their number. */
@@ -145,9 +297,7 @@ final class PlantUmlViews {
             // Not bolded: inside the package box every component is the subject, so bolding all of them says
             // nothing. What each box carries instead is a link to its own page.
             component(uml, aliases, component.name(),
-                    generation.diagramLink(DocumentationPaths.component(systemSlug,
-                            Arc42Template.SYSTEM_SEGMENT, Arc42Chapters.BUILDING_BLOCK_VIEW,
-                            component.slug())), false);
+                    componentLinkOf(systemSlug, component.slug(), generation), false);
         }
         uml.append("}\n");
     }
@@ -254,18 +404,37 @@ final class PlantUmlViews {
     /**
      * PlantUML escaping, which is not Markdown escaping.
      * <p>
-     * A quote ends a label early and a newline ends the statement. Square brackets go too: PlantUML reads
-     * {@code [[...]]} as a link <b>inside a label as well as outside one</b>, so a name containing them would
-     * put a link of somebody else's choosing on the diagram. A diagram that fails to parse renders as an error
-     * box, and the build does not notice either way.
+     * A quote ends a label early and a newline ends the statement. Doubled square brackets go too: PlantUML
+     * reads {@code [[...]]} as a link <b>inside a label as well as outside one</b>, so a name containing them
+     * would put a link of somebody else's choosing on the diagram. A diagram that fails to parse renders as
+     * an error box, and the build does not notice either way.
+     * <p>
+     * <b>Only the doubled ones.</b> A single bracket opens no link, and a column type is where this shows:
+     * {@code text[]} is an array of text and has to keep saying so. Replacing the pairs left to right leaves
+     * no {@code [[} behind - three in a row become {@code (([} - so nothing that could open a link survives.
+     * <p>
+     * <b>A quote becomes a typographic one and not an apostrophe.</b> An ASCII {@code '} is PlantUML's own
+     * line comment, so mapping a quote onto one put the comment introducer into every name that carried a
+     * quote - and {@code /'} opens a block comment that runs to the next {@code '/} from anywhere in a line,
+     * which is why that pair is broken up here rather than only at the start of a line. Where a name begins
+     * with one, {@link #columnLine} is what keeps it off the start of its line.
      */
     private static String escaped(String value) {
-        return value.replace("\"", "'")
-                .replace("[", "(")
-                .replace("]", ")")
+        return value.replace("\"", "\u2019")
+                .replace("/'", "/(")
+                .replace("[[", "((")
+                .replace("]]", "))")
                 .replace("\r", "")
                 .replace("\n", "\\n");
     }
+
+    /**
+     * What PlantUML reads as something other than a name when it stands at the start of a line: its line
+     * comment, a separator between an entity's fields, the brace that ends the entity, and the visibility
+     * modifiers. A name is not allowed to mean any of them.
+     */
+    private static final String LINE_START_HAZARDS = "'/-.=_}*+#~";
+
 
     /**
      * Where a system's page is, or null when this run does not document it.

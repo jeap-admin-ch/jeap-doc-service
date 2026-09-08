@@ -28,7 +28,7 @@ public final class ArchitectureModelFixture {
         return new DocumentedComponent(name, name.toLowerCase(Locale.ROOT), "Handles " + name,
                 ComponentType.BACKEND_SERVICE,
                 new Team("Team Blue", null, null, null), "DEPLOYMENT_LOG",
-                ZonedDateTime.parse("2026-08-27T04:00:00Z"), List.of(), null, null);
+                ZonedDateTime.parse("2026-08-27T04:00:00Z"), List.of(), null, null, null);
     }
 
     /** An event published by a component of the producing system and consumed by one of the consuming one. */

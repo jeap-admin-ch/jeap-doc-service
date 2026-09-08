@@ -36,3 +36,6 @@ jeap:
       # the upload tests leave build requests behind. Without a poll interval longer than the suite the runner
       # would pick one up and start a real site generator against the empty node_modules of the fixture below.
       poll-interval: PT1H
+      # And nothing may start a pass behind a test's back either: these tests trigger builds and then assert
+      # what that produced, so a pass on the pickup thread would be a second builder of the same parts.
+      pick-up-on-trigger: false

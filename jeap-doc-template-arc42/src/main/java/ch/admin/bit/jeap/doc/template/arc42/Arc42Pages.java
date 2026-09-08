@@ -5,6 +5,7 @@ import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.markdown.CategoryFile;
 import ch.admin.bit.jeap.doc.markdown.FrontMatter;
+import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.markdown.Md;
 
@@ -48,6 +49,18 @@ final class Arc42Pages {
      * The sentence at the foot of a generated page: <i>the source is recognizable on every page</i>, written
      * for a reader rather than for a machine.
      */
+    /**
+     * The note under a diagram that left something out, choosing between the singular and the plural.
+     * <p>
+     * <b>Every one of these notes has to choose.</b> A bound of forty or a hundred is crossed one thing at a
+     * time, so the first page that ever shows one of them is about exactly one - and "1 of the 2 tables are
+     * left out" is what a reader sees where nothing chose. The three notes say different things, so what is
+     * shared here is the rule rather than the sentence.
+     */
+    static Markdown leftOut(int truncated, String whenOne, String whenSeveral) {
+        return Md.text(truncated == 1 ? whenOne : whenSeveral);
+    }
+
     static MarkdownWriter provenance(MarkdownWriter page, GenerationContext context) {
         // Two timestamps, because they answer two different questions now that the model is imported on a
         // schedule of its own: how current the content is, and when the page was last written.
@@ -67,10 +80,20 @@ final class Arc42Pages {
         Files.writeString(directory.resolve(fileName), page.text(), StandardCharsets.UTF_8);
     }
 
-    /** Writes the {@code _category_.json} that names a folder and places it in the navigation. */
-    static void writeCategory(Path directory, String label, int position) throws IOException {
+    /**
+     * Writes the {@code _category_.json} that names a folder, places it in the navigation and says whether it
+     * starts open.
+     * <p>
+     * <b>Open down to the pages of a chapter, and no further.</b> A reader lands on a system and has to be
+     * able to see what is documented about it without clicking twelve times; below that, a system of thirty
+     * components expanded to every page of each of them is a sidebar nobody can use. So the chapters and the
+     * building block view's own subtree are open, and a component's arc42 tree inside it is not.
+     */
+    static void writeCategory(Path directory, String label, int position, boolean expanded)
+            throws IOException {
         Files.createDirectories(directory);
-        Files.writeString(directory.resolve(CategoryFile.NAME), CategoryFile.of(label, position),
+        Files.writeString(directory.resolve(CategoryFile.NAME),
+                expanded ? CategoryFile.expanded(label, position) : CategoryFile.of(label, position),
                 StandardCharsets.UTF_8);
     }
 
@@ -85,7 +108,7 @@ final class Arc42Pages {
     static Path chapterDirectory(StructureTemplate template, Path structureDirectory, StructureChapter chapter)
             throws IOException {
         Path directory = structureDirectory.resolve(chapter.folder());
-        writeCategory(directory, chapter.label(), template.positionOf(chapter));
+        writeCategory(directory, chapter.label(), template.positionOf(chapter), true);
         return directory;
     }
 }

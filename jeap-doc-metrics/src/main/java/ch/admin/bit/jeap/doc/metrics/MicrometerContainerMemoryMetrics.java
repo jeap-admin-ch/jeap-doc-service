@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.metrics;
 
-import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import ch.admin.bit.jeap.doc.metrics.MemoryReadings.CgroupMemory;
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
@@ -20,6 +19,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * scrape interval of whoever reads it, which is also where a peak belongs -
  * {@code max_over_time(jeap_doc_container_memory_used_bytes[15m])} is the highest a build got.
  * <p>
+ * <b>The gauges, and nothing per build.</b> This used to reset the kernel's high-water mark around each build
+ * and put the result on the build's row - which was only ever right while one build ran at a time. With
+ * {@code max-concurrent-parts} above one, each of the overlapping builds wiped what the others had
+ * accumulated, so the row published a confidently exact number that was the peak since the last reset. The
+ * series above answers the question the row was asked, over whatever window is wanted, and no build has to
+ * claim a number that is not its own.
+ * <p>
  * This is the doc service's own memory concern rather than a general one, because of what a build is: the site
  * generator is a child process whose bundler allocates natively, so <b>the JVM meters say nothing about the
  * largest thing this service does</b> and only the container's own numbers do.
@@ -30,7 +36,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @Slf4j
 @Component
-public class MicrometerContainerMemoryMetrics implements ContainerMemory, MeterBinder {
+public class MicrometerContainerMemoryMetrics implements MeterBinder {
 
     static final String USED = "jeap.doc.container.memory.used";
     static final String LIMIT = "jeap.doc.container.memory.limit";
@@ -83,34 +89,6 @@ public class MicrometerContainerMemoryMetrics implements ContainerMemory, MeterB
                 .description("Processes the kernel has killed in this container for want of memory")
                 .register(registry);
         log.info("The memory of the container is measured from its cgroup ({}).", availability.layout());
-    }
-
-    /**
-     * The peak of one build. The kernel keeps the high-water mark either way; resetting it, where the kernel
-     * allows that, is what makes the answer this build's own rather than an upper bound.
-     */
-    @Override
-    public Measurement measure() {
-        if (!availability.isKnown()) {
-            return Measurement.NONE;
-        }
-        boolean reset = source.resetPeak();
-        long before = reset ? 0 : read().map(CgroupMemory::peakBytes).orElse(-1L);
-        return () -> peakSince(before);
-    }
-
-    private Optional<Peak> peakSince(long before) {
-        Optional<CgroupMemory> cgroup = read();
-        if (cgroup.isEmpty() || cgroup.get().peakBytes() < 0 || before < 0) {
-            // No high-water mark on this kernel, or the reading before the build failed: there is nothing to
-            // attribute to this build, and a current usage read after it has ended is not a peak.
-            return Optional.empty();
-        }
-        long peak = cgroup.get().peakBytes();
-        long limit = MemoryReadings.limitOf(cgroup.get(), source.host().orElse(null));
-        // Where the mark could not be reset and this build stayed below an earlier one, the mark is still that
-        // earlier build's. All this build is known to have done is stay under it.
-        return Optional.of(new Peak(Math.max(peak, before), limit, peak > before));
     }
 
     /** The count of kills, or the last one that could be read - never backwards, never {@code NaN}. */

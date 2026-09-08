@@ -15,7 +15,7 @@ The doc service authorizes against **semantic roles**, which requires
 ## A site is nobody's system
 
 The two `sites` roles carry no tenant part, and that is the point. The upload role is granted per system so that
-a pipeline can only change its own system's documentation - while a build regenerates the whole site, with the
+a pipeline can only change its own system's documentation - while a build regenerates a whole part of it, with the
 documentation of every system on it. Granting it through a system's tenant would hand each pipeline a lever over
 everybody else's documentation, so administering a site is its own resource, granted to whoever operates the
 instance rather than to the pipelines that fill it.
@@ -71,7 +71,7 @@ site, so they are readable by anyone who can reach it. What they may carry is de
 | The schedules and their next occurrence                               | The object prefix a site is published under, and the bucket |
 | How many systems, components and messages a model contributed         | Any database name, host or credential                       |
 | When a model was imported and when the repository was last read       | The URL of the architecture repository                      |
-| What a run produced and cost: pages, bytes, duration, memory peak     | **Why an import or a build failed**                         |
+| What a run produced and cost: pages, bytes, duration                  | **Why an import or a build failed**                         |
 
 The last row is the one to keep in mind when adding a field. A failure reason is built from what an upstream
 answered: it quotes hosts, paths and occasionally an error body. **That an import failed is publishable; why it

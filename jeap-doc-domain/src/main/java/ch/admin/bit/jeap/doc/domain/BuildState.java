@@ -40,7 +40,18 @@ public enum BuildState {
      * it. Kept apart from {@link #ABANDONED} because that is a verdict passed later, by another run, on an
      * instance that vanished - this one is known at the time, by the instance itself.
      */
-    ABORTED;
+    ABORTED,
+
+    /**
+     * The part's content turned out to be exactly what is already published, so the site generator was never
+     * started. Nothing was published and nothing is wrong: the publication that was being served goes on being
+     * served, and it is the right one.
+     * <p>
+     * <b>It is the ordinary outcome.</b> Every import asks for every part, and on a landscape where one system
+     * moved that is one build that publishes and the rest of them skipped - which is what makes asking for the
+     * whole site affordable, and what makes this state worth counting.
+     */
+    SKIPPED;
 
     /**
      * Whether a build in this state is over, whichever way it went.

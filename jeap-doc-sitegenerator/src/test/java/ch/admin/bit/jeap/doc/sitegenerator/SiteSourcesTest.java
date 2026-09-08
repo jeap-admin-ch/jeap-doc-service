@@ -6,6 +6,8 @@ import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.PublicationProperties;
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.PartKey;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
@@ -27,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.stream.StreamSupport;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -74,7 +77,8 @@ class SiteSourcesTest {
         siteProperties.getSites().put("governance", new SiteProperties.Site());
         sources = new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
                 NoArchitectureModel.systemPages(new SiteUrls(publication, "")),
-                new DocumentationSites(siteProperties), buildProperties,
+                new DocumentationSites(siteProperties),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), buildProperties,
                 TestProvenance.of(siteProperties, NoArchitectureModel.INSTANCE,
                         new StructureTemplates(List.of())),
                 new AboutThisDocumentation());
@@ -86,14 +90,71 @@ class SiteSourcesTest {
      */
     @Test
     void write_thenSiteJsonSaysWhetherTheStaticGenerationMayUseWorkerThreads() throws IOException {
-        sources.write(1L, siteOf("default"), content, GENERATED_AT);
+        sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
         assertThat(siteJson().path("ssgWorkerThreads").asBoolean())
                 .describedAs("off unless an instance asks for it").isFalse();
 
         buildProperties.setSsgWorkerThreads(true);
-        sources.write(1L, siteOf("default"), content, GENERATED_AT);
+        sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
 
         assertThat(siteJson().path("ssgWorkerThreads").asBoolean()).isTrue();
+    }
+
+    /**
+     * <b>The page describing the documentation says when the import fires next, in minutes from now.</b> That
+     * moves with the clock rather than with the documentation, so a digest over the content as written would
+     * differ on every run and the part carrying that page could never be skipped. It is handed to the digest
+     * as a volatile value, exactly as the page printed it.
+     */
+    @Test
+    void write_thenWhenTheImportFiresNextIsHandedToTheDigestAsVolatile() throws IOException {
+        SiteSources documented = sourcesReadingAModel();
+
+        WrittenContent written =
+                documented.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
+
+        String page = Files.readString(content.resolve("prod").resolve("about-this-documentation.md"),
+                StandardCharsets.UTF_8);
+        assertThat(written.volatileTimestamps())
+                .filteredOn(volatileText -> volatileText.contains("(in "))
+                .describedAs("as the schedule row prints it, so that replacing it leaves nothing behind")
+                .singleElement()
+                .satisfies(printed -> assertThat(page).contains(printed));
+    }
+
+    /** The same sources over an environment whose architecture model is configured, which is what has a schedule. */
+    private SiteSources sourcesReadingAModel() {
+        PublicationProperties publication = new PublicationProperties();
+        publication.setUrl("https://doc.example.ch");
+        SiteProperties siteProperties = new SiteProperties();
+        siteProperties.getSites().put("default", new SiteProperties.Site());
+        ArchitectureModelSource configured = new NoArchitectureModel() {
+            @Override
+            public boolean isConfiguredFor(String environment) {
+                return true;
+            }
+        };
+        return new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
+                NoArchitectureModel.systemPages(new SiteUrls(publication, "")),
+                new DocumentationSites(siteProperties),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), buildProperties,
+                TestProvenance.of(siteProperties, configured, new StructureTemplates(List.of())),
+                new AboutThisDocumentation());
+    }
+
+    /** A generator whose landscape is one system, read by the one environment named. */
+    private static SiteSources sourcesReadingOneModelIn(String modelled) {
+        PublicationProperties publication = new PublicationProperties();
+        publication.setUrl("https://doc.example.ch");
+        SiteUrls urls = new SiteUrls(publication, "");
+        return new SiteSources(urls, new DefaultResourceLoader(),
+                new SystemPages(new OneSystemIn(modelled), NoMessageSchemas.INSTANCE,
+                        NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                        new StructureTemplates(List.of()), new GeneratorProperties(),
+                        new ArchitectureImportProperties(), BuildMetrics.NONE, urls),
+                new DocumentationSites(new SiteProperties()),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), new BuildProperties(),
+                TestProvenance.of(new OneSystemIn(modelled)), new AboutThisDocumentation());
     }
 
     private JsonNode siteJson() throws IOException {
@@ -106,7 +167,7 @@ class SiteSourcesTest {
      */
     @Test
     void write_whenNoArchitectureModelIsRead_thenTheRootPageCountsNoSystems() throws IOException {
-        sources.write(1L, siteOf("default"), content, GENERATED_AT);
+        sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
 
         String page = Files.readString(content.resolve("prod").resolve("index.md"), StandardCharsets.UTF_8);
         assertThat(page).doesNotContain("| Systems |");
@@ -125,17 +186,25 @@ class SiteSourcesTest {
         PublicationProperties publication = new PublicationProperties();
         publication.setUrl("https://doc.example.ch");
         SiteUrls urls = new SiteUrls(publication, "");
-        SiteSources withOneModel = new SiteSources(urls, new DefaultResourceLoader(),
-                new SystemPages(new OneSystemIn(modelled), NoMessageSchemas.INSTANCE, new StructureTemplates(List.of()),
-                        new GeneratorProperties(), new ArchitectureImportProperties(), BuildMetrics.NONE, urls),
-                new DocumentationSites(new SiteProperties()), new BuildProperties(),
-                TestProvenance.of(new OneSystemIn(modelled)), new AboutThisDocumentation());
+        SiteSources withOneModel = sourcesReadingOneModelIn(modelled);
 
-        Map<String, EnvironmentModel> models = withOneModel.write(1L, site, content, GENERATED_AT);
+        Map<String, EnvironmentModel> models =
+                withOneModel.write(1L, site, wholeSiteOf(site), content, GENERATED_AT).models();
 
         assertThat(models).containsOnlyKeys(modelled);
-        assertThat(models.get(modelled).systems()).isEqualTo(1);
-        assertThat(sources.write(1L, site, content, GENERATED_AT))
+        assertThat(models.get(modelled).systemCount()).isEqualTo(1);
+        // And the systems themselves reach environments.json, which is the only thing that can name them for
+        // the shell's sidebar: each of them is built as a part of its own.
+        JsonNode environments = JSON.readTree(content.resolve("environments.json").toFile())
+                .get("environments");
+        JsonNode modelledEnvironment = StreamSupport.stream(environments.spliterator(), false)
+                .filter(environment -> environment.get("id").asText().equals(modelled))
+                .findFirst().orElseThrow();
+        assertThat(modelledEnvironment.get("systems")).hasSize(1);
+        assertThat(modelledEnvironment.get("systems").get(0).get("label").asText()).isEqualTo("orders");
+        assertThat(modelledEnvironment.get("systems").get(0).get("path").asText())
+                .isEqualTo("/systems/orders/");
+        assertThat(sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT).models())
                 .describedAs("with no architecture repository at all, no environment reports a count")
                 .isEmpty();
     }
@@ -144,7 +213,7 @@ class SiteSourcesTest {
     void write_thenEachEnvironmentGetsARootPageWithNothingLeftToSubstitute() throws IOException {
         Site site = siteOf("default");
 
-        sources.write(1L, site, content, GENERATED_AT);
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
         for (SiteEnvironment environment : site.environments()) {
             String page = Files.readString(content.resolve(environment.id()).resolve("index.md"),
@@ -167,7 +236,7 @@ class SiteSourcesTest {
     void write_thenOnlyTheLatestEnvironmentExplainsWhatItCarries() throws IOException {
         Site site = siteOf("default");
 
-        sources.write(1L, site, content, GENERATED_AT);
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
         String latest = Files.readString(content.resolve("dev").resolve("index.md"), StandardCharsets.UTF_8);
         String other = Files.readString(content.resolve("prod").resolve("index.md"), StandardCharsets.UTF_8);
@@ -178,7 +247,7 @@ class SiteSourcesTest {
 
     @Test
     void write_thenSiteJsonSaysWhatTheTemplateReads() throws IOException {
-        sources.write(1L, siteOf("governance"), content, GENERATED_AT);
+        sources.write(1L, siteOf("governance"), wholeSiteOf(siteOf("governance")), content, GENERATED_AT);
 
         JsonNode site = JSON.readTree(content.resolve("site.json").toFile());
         assertThat(site.get("id").asText()).isEqualTo("governance");
@@ -206,7 +275,7 @@ class SiteSourcesTest {
      */
     @Test
     void write_thenTheGeneratedTimestampIsAlsoWrittenInAFormAReaderCanRead() throws IOException {
-        sources.write(1L, siteOf("default"), content, GENERATED_AT);
+        sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
 
         JsonNode site = JSON.readTree(content.resolve("site.json").toFile());
         String display = site.get("generatedAtDisplay").asText();
@@ -231,7 +300,7 @@ class SiteSourcesTest {
 
     @Test
     void write_thenEnvironmentsJsonCarriesEveryEnvironmentInOrder() throws IOException {
-        sources.write(1L, siteOf("default"), content, GENERATED_AT);
+        sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
 
         JsonNode environments = JSON.readTree(content.resolve("environments.json").toFile()).get("environments");
         assertThat(environments).hasSize(4);
@@ -244,12 +313,50 @@ class SiteSourcesTest {
     }
 
     /**
+     * Per environment, because a part's way out of itself links to the systems index of the environment the
+     * reader is in. Site-wide it was only ever the main environment's answer, and a reader in the dev tree
+     * clicking "All systems" landed in the main one - and where no environment has an index, a link to one is
+     * a 404 that no build catches, because {@code pathname://} is outside the broken-link check.
+     */
+    @Test
+    void write_thenEnvironmentsJsonSaysWhichOfThemHasASystemsIndex() throws IOException {
+        Site site = siteOf("default");
+        String modelled = site.environments().getFirst().id();
+        SiteSources withOneModel = sourcesReadingOneModelIn(modelled);
+
+        withOneModel.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
+
+        JsonNode environments = JSON.readTree(content.resolve("environments.json").toFile())
+                .get("environments");
+        assertThat(environments.get(0).get("id").asText()).isEqualTo(modelled);
+        assertThat(environments.get(0).get("hasSystems").asBoolean())
+                .describedAs("the one environment whose landscape has a system in it").isTrue();
+        assertThat(environments.get(3).get("hasSystems").asBoolean())
+                .describedAs("and an environment that reads no model has no index either").isFalse();
+    }
+
+    /** With no architecture repository at all, no environment has a systems index. */
+    @Test
+    void write_whenNoArchitectureModelIsRead_thenNoEnvironmentHasASystemsIndex() throws IOException {
+        Site site = siteOf("default");
+
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
+
+        JsonNode environments = JSON.readTree(content.resolve("environments.json").toFile())
+                .get("environments");
+        for (JsonNode environment : environments) {
+            assertThat(environment.get("hasSystems").asBoolean())
+                    .describedAs("hasSystems of %s", environment.get("id").asText()).isFalse();
+        }
+    }
+
+    /**
      * A site that brings no branding leaves the fields null, and the template falls back to its own mark. A
      * name pointing at a file nothing wrote would be a broken image on every page.
      */
     @Test
     void write_whenTheSiteBringsNoBranding_thenNoBrandingIsNamedAndNoneIsWritten() throws IOException {
-        sources.write(1L, siteOf("default"), content, GENERATED_AT);
+        sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
 
         JsonNode site = JSON.readTree(content.resolve("site.json").toFile());
         assertThat(site.get("logo").isNull()).isTrue();
@@ -261,9 +368,9 @@ class SiteSourcesTest {
     void write_whenTheSiteBringsOnlyALogo_thenTheFaviconPointsAtTheFileThatWasWritten() throws IOException {
         Path logo = Files.writeString(content.resolveSibling("mark.svg"), "<svg/>", StandardCharsets.UTF_8);
         Site site = new Site("default", "Documentation", null, logo.toUri().toString(), logo.toUri().toString(),
-                "jeap", environments(), null, true, true);
+                "jeap", environments(), true, true);
 
-        sources.write(1L, site, content, GENERATED_AT);
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
         JsonNode description = JSON.readTree(content.resolve("site.json").toFile());
         assertThat(description.get("logo").asText()).isEqualTo("branding/logo.svg");
@@ -282,9 +389,9 @@ class SiteSourcesTest {
     @Test
     void write_whenTheTitleContainsYamlPunctuation_thenTheFrontMatterIsStillValid() throws IOException {
         Site site = new Site("default", "jEAP: Documentation", null, null, null, "jeap", environments(),
-                null, true, true);
+                true, true);
 
-        sources.write(1L, site, content, GENERATED_AT);
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
         String page = Files.readString(content.resolve("prod").resolve("index.md"), StandardCharsets.UTF_8);
         assertThat(page).contains("title: \"jEAP: Documentation\"");
@@ -294,9 +401,9 @@ class SiteSourcesTest {
 
     @Test
     void write_whenTheSiteBringsABlankLogo_thenNoBrandingIsNamed() throws IOException {
-        Site site = new Site("default", "Documentation", null, "  ", "  ", "jeap", environments(), null, true, true);
+        Site site = new Site("default", "Documentation", null, "  ", "  ", "jeap", environments(), true, true);
 
-        sources.write(1L, site, content, GENERATED_AT);
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
         JsonNode description = JSON.readTree(content.resolve("site.json").toFile());
         // A name with no file behind it would be truthy in the template and would skip its own default, so
@@ -314,9 +421,9 @@ class SiteSourcesTest {
     @Test
     void write_whenTheTitleAndTaglineCarryMarkup_thenTheyLandOnThePageAsText() throws IOException {
         Site site = new Site("default", "<script>alert(1)</script>", "Everything about {jme} & more", null, null,
-                "jeap", environments(), null, true, true);
+                "jeap", environments(), true, true);
 
-        sources.write(1L, site, content, GENERATED_AT);
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
         String page = Files.readString(content.resolve("prod").resolve("index.md"), StandardCharsets.UTF_8);
         assertThat(bodyOf(page))
@@ -335,10 +442,10 @@ class SiteSourcesTest {
      */
     @Test
     void write_whenTheTitleNamesAnotherPlaceholder_thenItIsNotSubstituted() throws IOException {
-        Site site = new Site("default", "{{tagline}}", "the tagline", null, null, "jeap", environments(), null,
+        Site site = new Site("default", "{{tagline}}", "the tagline", null, null, "jeap", environments(),
                 true, true);
 
-        sources.write(1L, site, content, GENERATED_AT);
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
         String page = Files.readString(content.resolve("prod").resolve("index.md"), StandardCharsets.UTF_8);
         assertThat(page)
@@ -357,7 +464,7 @@ class SiteSourcesTest {
     }
 
     private static Site siteOf(String id) {
-        return new Site(id, "Documentation", null, null, null, "jeap", environments(), null, true, true);
+        return new Site(id, "Documentation", null, null, null, "jeap", environments(), true, true);
     }
 
     private static List<SiteEnvironment> environments() {
@@ -381,6 +488,12 @@ class SiteSourcesTest {
         }
 
         @Override
+        public java.util.List<String> systemSlugsOf(String environment) {
+            return read(environment).model().systems().stream()
+                    .map(ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem::slug).sorted().toList();
+        }
+
+        @Override
         public ArchitectureSnapshot read(String environment) {
             return new ArchitectureSnapshot(
                     ArchitectureModel.of(List.of(new DocumentedSystem("orders", "orders", null, List.of(), null,
@@ -393,4 +506,48 @@ class SiteSourcesTest {
             return Optional.of(GENERATED_AT);
         }
     }
+
+    /**
+     * The part that carries the whole site: every environment and every system of it. It is what a site cut
+     * into one part looks like, and what these cases are about - which pages exist, not which part they are
+     * in.
+     */
+    private static SitePart wholeSiteOf(Site site) {
+        return new SitePart(PartKey.shellOf(site.id()), "the site itself", "", true,
+                site.environments().stream().map(SiteEnvironment::id).toList(), List.of());
+    }
+
+    /**
+     * A model source that knows no system, so a site has one part: its shell. What the parts of a site are is
+     * SystemSitePartitionTest's business; here they only have to exist.
+     */
+    private static final ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource NO_MODEL =
+            new ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource() {
+
+                @Override
+                public boolean isConfiguredFor(String environment) {
+                    return false;
+                }
+
+                @Override
+                public java.util.Optional<String> sourceUrlOf(String environment) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public java.util.Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(
+                        String environment) {
+                    return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot.empty();
+                }
+
+                @Override
+                public java.util.List<String> systemSlugsOf(String environment) {
+                    return java.util.List.of();
+                }
+            };
 }

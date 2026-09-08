@@ -17,6 +17,7 @@ import java.time.Instant;
  * when the site will be built.
  *
  * @param site                  the site a build was asked for
+ * @param part                  the part of it
  * @param requested             whether this ask created the request, rather than joining one already pending
  * @param trigger               what asked for the request that now stands, null once it has been claimed
  * @param pendingSince          when that request was made, null once it has been claimed
@@ -25,14 +26,16 @@ import java.time.Instant;
 @Schema(description = "What became of an ask for a build")
 record BuildRequestedDto(
         String site,
+        String part,
         boolean requested,
         BuildTrigger trigger,
         Instant pendingSince,
         long picksUpWithinSeconds) {
 
-    static BuildRequestedDto of(String site, BuildRequestOutcome outcome, Duration pollInterval) {
+    static BuildRequestedDto of(ch.admin.bit.jeap.doc.domain.PartKey part, BuildRequestOutcome outcome,
+                                Duration pollInterval) {
         BuildRequest request = outcome.request();
-        return new BuildRequestedDto(site, outcome.created(),
+        return new BuildRequestedDto(part.site(), part.part(), outcome.created(),
                 request == null ? null : request.trigger(),
                 request == null ? null : request.requestedAt(),
                 pollInterval.toSeconds());

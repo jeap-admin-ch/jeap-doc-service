@@ -4,6 +4,7 @@ import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.PublicationProperties;
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
@@ -20,11 +21,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
-import java.util.stream.Stream;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,75 +59,12 @@ class DocusaurusSiteBuilderIT {
         urls = new SiteUrls(publication, "/docs");
         resourceLoader = new org.springframework.core.io.DefaultResourceLoader();
         sources = new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
-                new DocumentationSites(new SiteProperties()), properties,
+                new DocumentationSites(new SiteProperties()),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), properties,
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation());
         builder = builderWriting(sources);
     }
 
-
-    /**
-     * Every environment has a search index of its own, holding that environment and nothing else.
-     * <p>
-     * Two things are asserted at once here, and both have been wrong before. That an environment is indexed at
-     * all: two independently sensible settings once left the index empty - the banner puts a {@code noindex}
-     * meta on every page of a non-main environment, which the search plugin reads as "unlisted" and skips, and
-     * the plugin drops the site's front page unless the main environment is the first route base path it is
-     * given, so the result was a search bar on every page that found nothing, and nothing failed. And that the
-     * indexes are separate: the environments hold the same pages, so one index over all of them answers every
-     * query with the same page once per environment.
-     * <p>
-     * The main environment is the one served at the site root. It is not one of the configured search paths but
-     * what is left when none of them matched, so its index is the file with no environment in its name.
-     */
-    @Test
-    void generate_thenEachEnvironmentHasASearchIndexOfItsOwn() throws Exception {
-        Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
-
-        BuiltSite built = builder.generate(6, site, GENERATED_AT);
-
-        for (SiteEnvironment environment : site.environments()) {
-            // The tree's own route, so a hit actually leads somewhere - the main environment is at the root.
-            String route = environment.main() ? "/docs/" : "/docs/" + environment.id() + "/";
-            String index = searchIndexOf(built, environment);
-            assertThat(index)
-                    .describedAs("the search index of %s should hold its own root page", environment.id())
-                    .contains("\"u\":\"" + route + "\"");
-            for (SiteEnvironment other : site.environments()) {
-                if (other.main() || other.id().equals(environment.id())) {
-                    // The main environment's route is a prefix of every other one, so it cannot be looked for
-                    // by its route; that it holds only itself is what the three assertions below add up to.
-                    continue;
-                }
-                assertThat(index)
-                        .describedAs("the search index of %s should not hold pages of %s",
-                                environment.id(), other.id())
-                        .doesNotContain("\"u\":\"/docs/" + other.id() + "/");
-            }
-        }
-    }
-
-    /**
-     * The index file of one environment. The plugin names the main environment's - the one it knows as the
-     * leftover of every configured path - without an environment in it at all.
-     */
-    private static String searchIndexOf(BuiltSite built, SiteEnvironment environment) throws IOException {
-        String infix = environment.main() ? "" : "-" + environment.id();
-        List<Path> written;
-        try (Stream<Path> files = Files.walk(built.directory())) {
-            written = files.filter(file -> file.getFileName().toString().startsWith("search-index")).toList();
-        }
-        Path index = written.stream()
-                // The exact name: `hashed: true` puts the hash in the query rather than in the file name, and a
-                // pattern tolerating one here would make the main environment's lookup - whose infix is empty -
-                // match another environment's file as well.
-                .filter(file -> file.getFileName().toString().equals("search-index" + infix + ".json"))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("No search index was written for the environment "
-                        + environment.id() + "; the build produced "
-                        + written.stream().map(built.directory()::relativize).map(Path::toString)
-                                .sorted().toList()));
-        return Files.readString(index, StandardCharsets.UTF_8);
-    }
 
     /**
      * Links have to survive the environment prefixing, in both of the shapes a documentation page uses them.
@@ -142,30 +78,24 @@ class DocusaurusSiteBuilderIT {
     void generate_whenPagesLinkToEachOther_thenTheLinksResolveInEveryEnvironment() throws Exception {
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
 
-        BuiltSite built = builderWriting(new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
-                new DocumentationSites(new SiteProperties()), properties,
-                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation()) {
-            @Override
-            public Map<String, EnvironmentModel> write(long buildId, Site written, Path content,
-                                                       Instant generatedAt) throws IOException {
-                Map<String, EnvironmentModel> models = super.write(buildId, written, content, generatedAt);
-                for (SiteEnvironment environment : written.environments()) {
-                    Path tree = content.resolve(environment.id());
-                    Files.writeString(tree.resolve("other.md"), """
-                            # The other page
+        DocusaurusSiteBuilder linking = builderWriting(sourcesAlsoWriting((written, content) -> {
+            for (SiteEnvironment environment : written.environments()) {
+                Path tree = content.resolve(environment.id());
+                Files.writeString(tree.resolve("other.md"), """
+                        # The other page
 
-                            Back to [the front page](/).
-                            """, StandardCharsets.UTF_8);
-                    Files.writeString(tree.resolve("linking.md"), """
-                            # Linking
+                        Back to [the front page](/).
+                        """, StandardCharsets.UTF_8);
+                Files.writeString(tree.resolve("linking.md"), """
+                        # Linking
 
-                            A relative link to [the other page](./other.md), and a root-relative one to
-                            [the front page](/).
-                            """, StandardCharsets.UTF_8);
-                }
-                return models;
+                        A relative link to [the other page](./other.md), and a root-relative one to
+                        [the front page](/).
+                        """, StandardCharsets.UTF_8);
             }
-        }).generate(7, site, GENERATED_AT);
+        }));
+
+        BuiltSite built = linking.generate(linking.prepare(7, site, wholeSiteOf(site), GENERATED_AT));
 
         // The build not throwing is half of it - a link that resolved to nothing would have failed it. The
         // other half is that the prefixing did not double up, which only the emitted href shows.
@@ -205,16 +135,196 @@ class DocusaurusSiteBuilderIT {
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
         properties.setSsgWorkerThreads(true);
 
-        BuiltSite built = builderWriting(sources).generate(9, site, GENERATED_AT);
+        DocusaurusSiteBuilder workers = builderWriting(sources);
+
+        BuiltSite built = workers.generate(workers.prepare(9, site, wholeSiteOf(site), GENERATED_AT));
 
         assertThat(built.directory().resolve("index.html")).isRegularFile();
         assertThat(built.directory().resolve("dev/index.html")).isRegularFile();
         assertThat(built.pageCount()).isPositive();
     }
 
+    /**
+     * A real Docusaurus build of a part that carries <b>one system</b>, in every environment of the site.
+     * <p>
+     * Every other case here builds the shell, and the shell exercises none of what the split added: the
+     * per-system mount, the {@code partTree} of the docs options, the way out of a part, and the filter that
+     * keeps an environment without content out of the build. A part is what an instance really builds
+     * fifty-one times per publication, so it is built here once.
+     */
+    @Test
+    void generate_whenThePartCarriesOneSystem_thenItIsMountedWhereTheWholeSiteWouldHavePutIt()
+            throws Exception {
+        Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
+        DocusaurusSiteBuilder ofOneSystem = builderWriting(sourcesReadingALandscape());
+
+        BuiltSite built = ofOneSystem.generate(
+                ofOneSystem.prepare(11, site, systemPartOf(site, "orders"), GENERATED_AT));
+
+        // The same URLs the system would have had in a site built whole - which is the point of the split.
+        assertThat(built.directory().resolve("systems/orders/index.html")).isRegularFile();
+        assertThat(built.directory().resolve("dev/systems/orders/index.html")).isRegularFile();
+        // And nothing above the system: the systems index and the root page are the shell's pages.
+        assertThat(built.directory().resolve("index.html")).doesNotExist();
+
+        // The way out of the part, carrying the prefix of the environment the reader is in. Built without
+        // that prefix, a reader in the dev tree landed in the main environment's index - and `pathname://` is
+        // outside onBrokenLinks, so no build would ever have said so. The protocol is a build-time marker:
+        // what reaches the page is a plain anchor, which is the whole reason it leaves the check.
+        String inProduction = Files.readString(built.directory().resolve("systems/orders/index.html"),
+                StandardCharsets.UTF_8);
+        assertThat(inProduction).contains("All systems")
+                .containsPattern("href=\"?" + Pattern.quote("/docs/systems/") + "[\"> ]");
+        String inDevelopment = Files.readString(built.directory().resolve("dev/systems/orders/index.html"),
+                StandardCharsets.UTF_8);
+        assertThat(inDevelopment).contains("All systems")
+                .describedAs("the sidebar's way out carries the environment the reader is in")
+                .containsPattern("href=\"?" + Pattern.quote("/docs/dev/systems/") + "[\"> ]");
+        // What prefixing twice would have produced. The main environment's index is on this page too - the
+        // footer of the site links to it from every tree, which is what a footer is - so its absence is not
+        // what says the sidebar got the environment right; the href above is.
+        assertThat(inDevelopment).doesNotContain("/docs/dev/dev/");
+    }
+
+    /**
+     * <b>The assumption the shared-asset scheme rests on</b>, and nothing asserted it: two parts of one site
+     * emit byte-identical files for every shared name.
+     * <p>
+     * They are published to one prefix of the site, written by every part build, so a build overwriting
+     * another's file has to be writing what was already there. Where it is not, the last part to finish
+     * decides what the whole site loads - which is a site that renders differently depending on the order its
+     * parts happened to build in, and nothing about the builds would look wrong.
+     */
+    @Test
+    void generate_whenTwoPartsOfOneSiteAreBuilt_thenTheirSharedFilesAreTheSameBytes() throws Exception {
+        Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
+        DocusaurusSiteBuilder ofALandscape = builderWriting(sourcesReadingALandscape());
+
+        BuiltSite shell = ofALandscape.generate(
+                ofALandscape.prepare(12, site, wholeSiteOf(site), GENERATED_AT));
+        Map<String, byte[]> sharedOfShell = sharedFilesOf(shell);
+        BuiltSite ofOneSystem = ofALandscape.generate(
+                ofALandscape.prepare(13, site, systemPartOf(site, "orders"), GENERATED_AT));
+        Map<String, byte[]> sharedOfPart = sharedFilesOf(ofOneSystem);
+
+        assertThat(sharedOfShell).describedAs("the shell emits shared files at all").isNotEmpty();
+        assertThat(sharedOfPart).describedAs("and so does a part").isNotEmpty();
+        for (String name : sharedOfShell.keySet()) {
+            if (sharedOfPart.containsKey(name)) {
+                assertThat(sharedOfPart.get(name))
+                        .describedAs("the shared file %s, which both parts publish to one prefix", name)
+                        .isEqualTo(sharedOfShell.get(name));
+            }
+        }
+    }
+
+    /** The files of a build that go to the site's shared prefix, by their path within the site. */
+    private static Map<String, byte[]> sharedFilesOf(BuiltSite built) throws IOException {
+        Map<String, byte[]> shared = new java.util.LinkedHashMap<>();
+        try (java.util.stream.Stream<Path> files = Files.walk(built.directory())) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                String path = built.directory().relativize(file).toString().replace('\\', '/');
+                if (ch.admin.bit.jeap.doc.domain.SharedAssets.holds(path)) {
+                    shared.put(path, Files.readAllBytes(file));
+                }
+            }
+        }
+        return shared;
+    }
+
+    /** The part carrying one system, in every environment of the site - what the partition produces. */
+    private static SitePart systemPartOf(Site site, String slug) {
+        return new SitePart(ch.admin.bit.jeap.doc.domain.PartKey.of(site.id(), "system-" + slug),
+                "the system " + slug, "systems/" + slug, true,
+                site.environments().stream().map(SiteEnvironment::id).toList(),
+                site.environments().stream()
+                        .map(environment -> environment.routePrefix() + "/systems/" + slug + "/").toList());
+    }
+
+    /** Sources whose landscape has one system in it, read by every environment. */
+    private SiteSources sourcesReadingALandscape() {
+        return new SiteSources(urls, resourceLoader,
+                new SystemPages(OneSystemEverywhere.INSTANCE, NoMessageSchemas.INSTANCE,
+                        NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                        new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
+                        new GeneratorProperties(),
+                        new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
+                        ch.admin.bit.jeap.doc.domain.port.BuildMetrics.NONE, urls),
+                new DocumentationSites(new SiteProperties()),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(OneSystemEverywhere.INSTANCE), properties,
+                TestProvenance.of(OneSystemEverywhere.INSTANCE), new AboutThisDocumentation());
+    }
+
+    /** A landscape of one system, read by every environment of the site. */
+    private static final class OneSystemEverywhere
+            implements ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource {
+
+        private static final OneSystemEverywhere INSTANCE = new OneSystemEverywhere();
+
+        @Override
+        public boolean isConfiguredFor(String environment) {
+            return true;
+        }
+
+        @Override
+        public java.util.Optional<String> sourceUrlOf(String environment) {
+            return java.util.Optional.of("https://archrepo.example.com/archrepo");
+        }
+
+        @Override
+        public java.util.List<String> systemSlugsOf(String environment) {
+            return java.util.List.of("orders");
+        }
+
+        @Override
+        public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(String environment) {
+            return new ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot(
+                    ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel.of(java.util.List.of(
+                            new ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem("orders", "orders",
+                                    "The orders system.", java.util.List.of(), null, java.util.List.of(),
+                                    java.util.List.of(), java.util.List.of()))),
+                    GENERATED_AT.minusSeconds(900));
+        }
+
+        @Override
+        public java.util.Optional<Instant> lastSuccessfulImportAt(String environment) {
+            return java.util.Optional.of(GENERATED_AT.minusSeconds(900));
+        }
+    }
+
     private DocusaurusSiteBuilder builderWriting(SiteSources writing) {
         return new DocusaurusSiteBuilder(properties, new BuildWorkspaces(properties), new SiteTemplate(),
                 new NodeProcess(properties), writing);
+    }
+
+    /**
+     * The generator's own sources, plus a page or two written beside them - so that a page reaches the site
+     * generator exactly the way a page of real documentation does.
+     */
+    private SiteSources sourcesAlsoWriting(ExtraPages extra) {
+        return new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
+                new DocumentationSites(new SiteProperties()),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), properties,
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation()) {
+            @Override
+            public WrittenContent write(long buildId, Site written, SitePart part, Path content,
+                                        Instant generatedAt) throws IOException {
+                WrittenContent sources = super.write(buildId, written, part, content, generatedAt);
+                extra.writeInto(written, content);
+                return sources;
+            }
+        };
+    }
+
+    /** Pages a test writes into the content of a build, beside the ones the generator writes. */
+    private interface ExtraPages {
+        void writeInto(Site site, Path content) throws IOException;
+    }
+
+    /** The part that carries the whole site: every environment and every system of it. */
+    private static SitePart wholeSiteOf(Site site) {
+        return new SitePart(ch.admin.bit.jeap.doc.domain.PartKey.shellOf(site.id()), "the site itself", "",
+                true, site.environments().stream().map(SiteEnvironment::id).toList(), java.util.List.of());
     }
 
     @Test
@@ -227,7 +337,7 @@ class DocusaurusSiteBuilderIT {
 
         BuiltSite built;
         try {
-            built = builder.generate(1, site, GENERATED_AT);
+            built = builder.generate(builder.prepare(1, site, wholeSiteOf(site), GENERATED_AT));
         } finally {
             nodeLog.detachAppender(logged);
         }
@@ -238,9 +348,6 @@ class DocusaurusSiteBuilderIT {
         assertThat(built.directory().resolve("ref/index.html")).isRegularFile();
         assertThat(built.directory().resolve("abn/index.html")).isRegularFile();
 
-        // Offline search, as in the jEAP documentation.
-        assertThat(built.directory().resolve("search-index.json")).isRegularFile();
-
         assertThat(built.pageCount()).isPositive();
         assertThat(built.sizeInBytes()).isPositive();
         assertThat(built.docusaurusMillis()).isPositive();
@@ -250,7 +357,7 @@ class DocusaurusSiteBuilderIT {
     void generate_thenTheEnvironmentSwitcherIsOnThePage() throws Exception {
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
 
-        BuiltSite built = builder.generate(2, site, GENERATED_AT);
+        BuiltSite built = builder.generate(builder.prepare(2, site, wholeSiteOf(site), GENERATED_AT));
 
         String page = Files.readString(built.directory().resolve("index.html"), StandardCharsets.UTF_8);
         assertThat(page).contains("Switch environment").contains("PROD").contains("DEV");
@@ -269,13 +376,7 @@ class DocusaurusSiteBuilderIT {
 
         // A page beside the ones the doc service writes, so that the fences reach the generator the same way a
         // page of real documentation will.
-        BuiltSite built = builderWriting(new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
-                new DocumentationSites(new SiteProperties()), properties,
-                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation()) {
-            @Override
-            public Map<String, EnvironmentModel> write(long buildId, Site written, Path content,
-                                                       Instant generatedAt) throws IOException {
-                Map<String, EnvironmentModel> models = super.write(buildId, written, content, generatedAt);
+        DocusaurusSiteBuilder diagrams = builderWriting(sourcesAlsoWriting((written, content) ->
                 Files.writeString(content.resolve("prod/diagrams.md"), """
                         # Diagrams
 
@@ -288,10 +389,9 @@ class DocusaurusSiteBuilderIT {
                         ```dot
                         digraph { upload -> build }
                         ```
-                        """, StandardCharsets.UTF_8);
-                return models;
-            }
-        }).generate(3, site, GENERATED_AT);
+                        """, StandardCharsets.UTF_8)));
+
+        BuiltSite built = diagrams.generate(diagrams.prepare(3, site, wholeSiteOf(site), GENERATED_AT));
 
         String page = Files.readString(built.directory().resolve("diagrams/index.html"), StandardCharsets.UTF_8);
         // Whether the attribute value is quoted is the HTML minifier's business, not the plugin's.
@@ -326,7 +426,7 @@ class DocusaurusSiteBuilderIT {
         siteProperties.setSites(java.util.Map.of(Site.DEFAULT_SITE, configured));
         Site site = new DocumentationSites(siteProperties).find(Site.DEFAULT_SITE).orElseThrow();
 
-        BuiltSite built = builder.generate(5, site, GENERATED_AT);
+        BuiltSite built = builder.generate(builder.prepare(5, site, wholeSiteOf(site), GENERATED_AT));
 
         // The site's own mark is published under its own path - the generator names it after what it is, not
         // after the file it came from.
@@ -347,10 +447,44 @@ class DocusaurusSiteBuilderIT {
     void generate_thenTheWorkspaceIsNamedAfterTheBuildAndCanBeDiscarded() {
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
 
-        builder.generate(4, site, GENERATED_AT);
+        builder.generate(builder.prepare(4, site, wholeSiteOf(site), GENERATED_AT));
         assertThat(workspaceRoot.resolve("4")).isDirectory();
 
         builder.discard(4);
         assertThat(workspaceRoot.resolve("4")).doesNotExist();
     }
+
+    /**
+     * A model source that knows no system, so a site has one part: its shell. What the parts of a site are is
+     * SystemSitePartitionTest's business; here they only have to exist.
+     */
+    private static final ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource NO_MODEL =
+            new ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource() {
+
+                @Override
+                public boolean isConfiguredFor(String environment) {
+                    return false;
+                }
+
+                @Override
+                public java.util.Optional<String> sourceUrlOf(String environment) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public java.util.Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(
+                        String environment) {
+                    return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot.empty();
+                }
+
+                @Override
+                public java.util.List<String> systemSlugsOf(String environment) {
+                    return java.util.List.of();
+                }
+            };
 }

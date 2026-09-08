@@ -8,6 +8,7 @@ import ch.admin.bit.jeap.doc.domain.DocumentationProvenance;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 
 import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -86,6 +87,12 @@ public class SiteSources {
     private final DocumentationSites sites;
 
     /**
+     * Which parts a site has - asked for one reason only: a link into another part cannot be checked by this
+     * part's build, and telling the two apart needs the other parts' prefixes. See {@link CrossPartLinks}.
+     */
+    private final ch.admin.bit.jeap.doc.domain.SitePartition partition;
+
+    /**
      * What the build is configured to do, for the settings the site template has to know about - the worker
      * threads of the static generation. It travels in {@code site.json} rather than in the child's environment,
      * which is built from nothing on purpose.
@@ -98,43 +105,118 @@ public class SiteSources {
     private final AboutThisDocumentation aboutThisDocumentation;
 
     /**
-     * Writes the site into the given content directory, and answers what each environment's architecture model
-     * contributed - only the environments that read one, because one that reads none has nothing to say about
-     * that, and a zero would say the landscape is empty.
+     * Writes one part of a site into the given content directory, and answers what it took to write.
+     * <p>
+     * What a part contains follows from what it carries. A part that carries whole environment trees writes
+     * the site's own pages into each of them - the root page, the systems index and the page about the
+     * documentation; a part that carries one subtree writes that subtree and nothing else. Which of the two it
+     * is, and which environments, is the partition's answer and not this class's.
+     * <p>
+     * <b>The links that leave the part are rewritten last.</b> Docusaurus checks every link against the routes
+     * of its own build, and a link into another part is not one of them - see {@link CrossPartLinks}.
      */
-    public Map<String, EnvironmentModel> write(long buildId, Site site, Path contentDirectory,
-                                               Instant generatedAt) throws IOException {
+    public WrittenContent write(long buildId, Site site, SitePart part, Path contentDirectory,
+                                Instant generatedAt) throws IOException {
         Files.createDirectories(contentDirectory);
-        writeJson(contentDirectory, "environments.json", environmentsOf(site));
         writeBranding(site, contentDirectory);
-        boolean mainHasSystems = false;
+        String volatileSchedule = null;
         Map<String, EnvironmentModel> models = new LinkedHashMap<>();
         for (SiteEnvironment environment : site.environments()) {
+            if (!part.carries(environment.id())) {
+                continue;
+            }
             Path directory = contentDirectory.resolve(environment.id());
             // The systems first, so the root page can say whether there are any.
-            Optional<EnvironmentModel> model = systemPages.write(site, environment, directory, generatedAt);
-            writeRootPage(site, environment, contentDirectory, generatedAt, model);
+            Optional<EnvironmentModel> model =
+                    systemPages.write(site, environment, part, directory, generatedAt);
+            if (part.carriesWholeEnvironments()) {
+                writeRootPage(site, environment, contentDirectory, generatedAt, model);
+            }
             model.ifPresent(counts -> models.put(environment.id(), counts));
-            if (environment.main() && model.map(EnvironmentModel::systems).orElse(0) > 0) {
-                mainHasSystems = true;
+        }
+        if (part.carriesWholeEnvironments()) {
+            // After the loop, because the page prints what every environment's model contributed and the loop
+            // is what counted it. One page per tree - see AboutThisDocumentation.
+            volatileSchedule = writeAboutThisDocumentation(buildId, site, part, contentDirectory, generatedAt,
+                    models);
+        }
+        // Last, both of them, because they record which environments have a systems page: the footer links to
+        // the main one's and a part's sidebar links to its own, and a link to a page that was not written
+        // fails the whole build - or, being a `pathname://` one, quietly answers 404.
+        writeJson(contentDirectory, "environments.json", environmentsOf(site, models));
+        writeJson(contentDirectory, "site.json", descriptionOf(site, part, generatedAt,
+                site.environments().stream()
+                        .anyMatch(environment -> environment.main() && hasSystems(models, environment.id()))));
+        CrossPartLinks.rewrite(contentDirectory, part, otherPartsOf(site, part), linkPrefixesOf(site));
+        log.debug("Wrote the content of {} - {} - into {}.", part.key(), part.documents(), contentDirectory);
+        return new WrittenContent(models, volatileTextOf(buildId, generatedAt, models, volatileSchedule));
+    }
+
+    /**
+     * What this run wrote that says <i>this run</i> rather than what the documentation contains, and that the
+     * digest of the content therefore has to ignore: when the build ran, when the model of each environment
+     * was imported, and which build it was.
+     * <p>
+     * Each in the form it was written in - an instant in the front matter, a readable time in the provenance of
+     * every page, the build's identifier as the page about the documentation prints it, and when the import
+     * fires next as that page's schedule row prints it. Two runs over documentation nobody changed differ in
+     * exactly these, and in nothing else.
+     * <p>
+     * The last of them moves with the clock rather than with the schedule - it is printed as <i>in 15
+     * minutes</i> - so without it the part carrying that page could never be skipped.
+     */
+    private static java.util.Set<String> volatileTextOf(long buildId, Instant generatedAt,
+                                                        Map<String, EnvironmentModel> models,
+                                                        String volatileSchedule) {
+        java.util.Set<String> written = new java.util.LinkedHashSet<>();
+        if (volatileSchedule != null) {
+            written.add(volatileSchedule);
+        }
+        written.add(generatedAt.toString());
+        written.add(DisplayTime.of(generatedAt));
+        // As the page prints it, in code quotes: the bare number would match a count somewhere on a page.
+        written.add("`" + buildId + "`");
+        for (EnvironmentModel model : models.values()) {
+            if (model.importedAt() != null) {
+                written.add(model.importedAt().toString());
+                written.add(DisplayTime.of(model.importedAt()));
             }
         }
-        // After the loop, because the page prints what every environment's model contributed and the loop is
-        // what counted it. One page per tree - see AboutThisDocumentation.
-        writeAboutThisDocumentation(buildId, site, contentDirectory, generatedAt, models);
-        // Last, because it records whether the main environment has a systems page: the footer links to it,
-        // and a link to a page that was not written fails the whole build.
-        writeJson(contentDirectory, "site.json", descriptionOf(site, generatedAt, mainHasSystems));
-        log.debug("Wrote the sources of the site {} with {} environments into {}.",
-                site.id(), site.environments().size(), contentDirectory);
-        return models;
+        return written;
+    }
+
+    /**
+     * The other parts of this site, so that a link into one of them can be told from a link to a page of this
+     * part's own. It is asked once per build, and the partition answers it from the slugs of the landscape.
+     */
+    private List<SitePart> otherPartsOf(Site site, SitePart part) {
+        return partition.partsOf(site).stream()
+                .filter(other -> !other.key().equals(part.key()))
+                .toList();
+    }
+
+    /** What a path of each environment has to carry in front of it to be an absolute URL of this site. */
+    private Map<String, CrossPartLinks.EnvironmentLinks> linkPrefixesOf(Site site) {
+        Map<String, CrossPartLinks.EnvironmentLinks> prefixes = new LinkedHashMap<>();
+        for (SiteEnvironment environment : site.environments()) {
+            // Both halves, because the pass needs both: the route prefix to compare a page's link against the
+            // paths a part owns, and the link prefix to write it absolute.
+            prefixes.put(environment.id(), new CrossPartLinks.EnvironmentLinks(environment.routePrefix(),
+                    diagramLinkPrefixOf(site, environment)));
+        }
+        return prefixes;
+    }
+
+    /** What a link inside a diagram, and a link that leaves a part, has to start with. */
+    private String diagramLinkPrefixOf(Site site, SiteEnvironment environment) {
+        return urls.baseUrl(site) + (environment.main() ? "" : environment.id() + "/");
     }
 
     /**
      * The environments, as the site generator reads them: what the switcher shows and which tree is served at
      * the root.
      */
-    private static Map<String, Object> environmentsOf(Site site) {
+    private static Map<String, Object> environmentsOf(Site site, Map<String, EnvironmentModel> models) {
         List<Map<String, Object>> environments = site.environments().stream()
                 .map(environment -> {
                     Map<String, Object> values = new LinkedHashMap<>();
@@ -144,6 +226,14 @@ public class SiteSources {
                     values.put("order", environment.order());
                     values.put("main", environment.main());
                     values.put("latest", environment.latest());
+                    // Whether the shell wrote a systems index into this environment's tree, which is what a
+                    // part's way out of itself links to. The whole landscape's count and not this part's: the
+                    // index is the shell's page and lists every system, whichever part is being built.
+                    values.put("hasSystems", hasSystems(models, environment.id()));
+                    // The systems of this environment, so that the shell's sidebar can list them.
+                    // They are built as other parts, so their pages are in no tree the shell's build
+                    // can see - the run that read the landscape is the only thing that can name them.
+                    values.put("systems", systemsOf(models, environment.id()));
                     return values;
                 })
                 .toList();
@@ -151,10 +241,40 @@ public class SiteSources {
     }
 
     /**
+     * Whether an environment's tree has a systems index.
+     * <p>
+     * Both halves matter: an environment that reads no architecture model contributes no model at all, and one
+     * whose landscape reports no system writes no index either - an empty index would say the landscape is
+     * empty rather than that it was not read.
+     */
+    /** One entry per system of an environment: what it is called, and where its tree is served. */
+    private static List<Map<String, Object>> systemsOf(Map<String, EnvironmentModel> models,
+                                                      String environment) {
+        EnvironmentModel model = models.get(environment);
+        if (model == null) {
+            return List.of();
+        }
+        return model.systems().stream()
+                .<Map<String, Object>>map(system -> {
+                    Map<String, Object> values = new LinkedHashMap<>();
+                    values.put("label", system.label());
+                    values.put("path", system.path());
+                    return values;
+                })
+                .toList();
+    }
+
+    private static boolean hasSystems(Map<String, EnvironmentModel> models, String environment) {
+        EnvironmentModel model = models.get(environment);
+        return model != null && !model.systems().isEmpty();
+    }
+
+    /**
      * What the site is, as the site generator reads it - including where it is published, which the generated
      * site needs for its sitemap and its metadata.
      */
-    private Map<String, Object> descriptionOf(Site site, Instant generatedAt, boolean mainHasSystems) {
+    private Map<String, Object> descriptionOf(Site site, SitePart part, Instant generatedAt,
+                                              boolean mainHasSystems) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", site.id());
         values.put("title", site.title());
@@ -174,8 +294,25 @@ public class SiteSources {
         // service and read by the template, because Docusaurus has no environment variable for it.
         values.put("ssgWorkerThreads", buildProperties.isSsgWorkerThreads());
         values.put("sites", siblingSites());
+        // Which part of the site this is, so the template knows where to mount its content and which of the
+        // site's links it may check. Everything else in this file is the same for every part.
+        values.put("part", partOf(part));
         values.put("generatedAt", generatedAt.toString());
         values.put("generatedAtDisplay", DisplayTime.of(generatedAt));
+        return values;
+    }
+
+    /**
+     * The part being written, as the site template reads it: where its content is mounted, which environments
+     * it carries, and whether it owns the site's own pages - which decides whether the navbar and the footer
+     * may link to them as routes of this build or have to leave the check.
+     */
+    private static Map<String, Object> partOf(SitePart part) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("id", part.id());
+        values.put("shell", part.isShell());
+        values.put("tree", part.tree());
+        values.put("environments", part.environments());
         return values;
     }
 
@@ -256,8 +393,12 @@ public class SiteSources {
      * that is not configured, and only a configured site is ever built, so this says what went wrong instead of
      * pretending to carry on.
      */
-    private void writeAboutThisDocumentation(long buildId, Site site, Path contentDirectory,
-                                             Instant generatedAt, Map<String, EnvironmentModel> models)
+    /**
+     * Writes the page describing the documentation into every environment this part carries, and answers the
+     * one thing on it that moves with the clock: when the import fires next, as the page prints it.
+     */
+    private String writeAboutThisDocumentation(long buildId, Site site, SitePart part, Path contentDirectory,
+                                               Instant generatedAt, Map<String, EnvironmentModel> models)
             throws IOException {
         DocumentationFacts facts = provenance.of(site.id(), DocServiceVersion.get(), generatedAt)
                 .orElseThrow(() -> new SiteBuildException(
@@ -268,9 +409,13 @@ public class SiteSources {
         // the run writes beside the site once it knows them.
         String statusUrl = urls.url() + urls.baseUrl(site) + AboutThisDocumentation.STATUS_FILE;
         for (SiteEnvironment environment : site.environments()) {
-            aboutThisDocumentation.write(facts, environment, models, buildId, statusUrl,
-                    contentDirectory.resolve(environment.id()));
+            if (part.carries(environment.id())) {
+                aboutThisDocumentation.write(facts, environment, models, buildId, statusUrl,
+                        contentDirectory.resolve(environment.id()));
+            }
         }
+        return facts.schedules().importAt() == null ? null
+                : AboutThisDocumentation.whenItFiresNext(facts.schedules().importAt(), generatedAt);
     }
 
     /**
@@ -314,7 +459,7 @@ public class SiteSources {
 
     /** What the root page says about this tree: where to start, or that nothing has been published yet. */
     private static String contentsOf(Optional<EnvironmentModel> model) {
-        if (model.map(EnvironmentModel::systems).orElse(0) == 0) {
+        if (model.map(EnvironmentModel::systemCount).orElse(0) == 0) {
             return "Nothing has been published into it yet: the documentation of the systems, their components "
                    + "and their libraries arrives as the pipelines of those repositories upload it, and as the "
                    + "architecture model is read.";
@@ -330,7 +475,7 @@ public class SiteSources {
      * would say the landscape is empty rather than that it was never looked at.
      */
     private static String systemsRowOf(Optional<EnvironmentModel> model) {
-        return model.map(counts -> "| Systems | " + counts.systems() + " |\n").orElse("");
+        return model.map(counts -> "| Systems | " + counts.systemCount() + " |\n").orElse("");
     }
 
     /**

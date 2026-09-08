@@ -31,6 +31,7 @@ public class DocumentationBuildHousekeeping {
 
     private final DocumentationBuildRepository builds;
     private final DocumentationSites sites;
+    private final SitePartition partition;
     private final BuildProperties properties;
     /** How long the lock of this nightly job survives an instance that dies holding it. */
     private static final Duration HOUSEKEEPING_LEASE = Duration.ofMinutes(30);
@@ -52,7 +53,12 @@ public class DocumentationBuildHousekeeping {
         Instant finishedBefore = clock.instant().minus(properties.getHistoryRetention());
         Set<Long> published = new LinkedHashSet<>();
         for (Site site : sites.all()) {
-            builds.published(site.id()).map(DocumentationBuild::id).ifPresent(published::add);
+            // Every part's own publication, and not just the newest of the site: the newest successful build
+            // of a part *is* what is served for it, so a part that is rarely rebuilt would otherwise lose the
+            // row that says what is being served and start answering that it has never been generated.
+            for (PartKey part : partition.partsOf(site).stream().map(SitePart::key).toList()) {
+                builds.published(part).map(DocumentationBuild::id).ifPresent(published::add);
+            }
         }
         int removed = builds.deleteFinishedBefore(finishedBefore, published);
         if (removed > 0) {

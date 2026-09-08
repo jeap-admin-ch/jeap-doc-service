@@ -1,9 +1,11 @@
 package ch.admin.bit.jeap.doc.domain.architecture.imports;
 
+import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemTopology;
 import ch.admin.bit.jeap.doc.domain.Slugs;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics;
@@ -25,6 +27,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,6 +66,18 @@ public class ArchitectureModelImportStep implements ArchitectureImportStep {
     private final ArchitectureModelRepository models;
     private final ArchitectureImportRepository imports;
     private final ArchitectureImportMetrics metrics;
+
+    /**
+     * <b>The import is a trigger.</b> A landscape that moved is documentation that is out of date, and this is
+     * what publishes it minutes later rather than at some later pass.
+     * <p>
+     * <b>Every part of the site, and not the ones it moved.</b> Which systems a landscape changed is a
+     * question this variant does not ask: a part whose content hashes to what is published is not generated,
+     * so the price of not asking is the content of every part rather than a site rebuilt - and the asking
+     * would be more machinery than the rebuilding.
+     */
+    private final DocumentationBuildTrigger buildTrigger;
+
     private final Clock clock;
 
     @Override
@@ -90,14 +106,21 @@ public class ArchitectureModelImportStep implements ArchitectureImportStep {
                         environment, fetched.model().systems().size());
                 return recordOutcome(environment, before, startedAt, ImportOutcome.UNCHANGED, null);
             }
+            // The landscape first, then the row that says the repository was read, then the builds. The middle
+            // one is the key the landscape a build reads is held under - see StoredArchitectureModel - so a
+            // build must not be asked for until it has moved, or the first part to start would hold the
+            // landscape this import replaced.
             models.replace(environment, fetched.model(), startedAt);
             log.info("Imported the architecture model of the environment {}: {} systems, {} components, "
                      + "{} messages ({}).", environment, fetched.model().systems().size(),
                     countOf(fetched.model(), system -> system.components().size()),
                     countOf(fetched.model(), system -> system.messages().size()),
                     Duration.between(startedAt, clock.instant()));
-            return recordOutcome(environment, before.withContentHash(fetched.contentHash()), startedAt,
-                    ImportOutcome.REPLACED, null, fetched.model().systems().size());
+            ImportOutcome outcome = recordOutcome(environment,
+                    before.withContentHash(fetched.contentHash()), startedAt, ImportOutcome.REPLACED, null,
+                    fetched.model().systems().size());
+            askForTheDocumentation(environment);
+            return outcome;
         } catch (ImpossibleNameException e) {
             // The one thing here that somebody has to act on: it will not fix itself, and renaming it in the
             // architecture repository is what resolves it.
@@ -115,6 +138,30 @@ public class ArchitectureModelImportStep implements ArchitectureImportStep {
             log.error("The architecture model of the environment {} could not be stored. {}",
                     environment, LANDSCAPE_IS_KEPT, e);
             return recordOutcome(environment, before, startedAt, ImportOutcome.FAILED, e.getMessage());
+        }
+    }
+
+    /**
+     * Asks for the documentation of this environment to be published, and says how many parts that was.
+     * <p>
+     * <b>After the landscape is stored and after the state row that says so</b>, so that a build claimed a
+     * moment later reads the landscape this import wrote rather than the one it replaced - the state row is
+     * what the landscape a build reads is held under.
+     * <p>
+     * Every part, because which of them the landscape changed is not asked: a part is one system, and a part
+     * whose content has not moved is not generated. A failure here does not fail the import - the landscape is
+     * stored, and the next import publishes it.
+     */
+    private void askForTheDocumentation(String environment) {
+        try {
+            int parts = buildTrigger.requestBecauseTheModelWasImported(environment);
+            if (parts > 0) {
+                log.info("The import of the environment {} asked for {} part(s) of the documentation to be "
+                         + "built.", environment, parts);
+            }
+        } catch (RuntimeException e) {
+            log.warn("The architecture model of the environment {} was imported, but the documentation it "
+                     + "changes could not be asked for. The next import publishes it.", environment, e);
         }
     }
 

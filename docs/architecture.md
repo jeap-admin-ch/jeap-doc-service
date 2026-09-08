@@ -47,7 +47,7 @@ flowchart LR
 | `jeap-doc-persistence`      | driven adapter     | Spring Data JPA on PostgreSQL (the uploads, the builds, the architecture model and what is replicated beside it), and the Flyway migrations |
 | `jeap-doc-objectstorage`    | driven adapter     | S3 over the jEAP object storage starter, and the startup check of the bucket                                          |
 | `jeap-doc-sitegenerator`    | driven adapter     | Produces the site: the build workspace, what the site template reads, the site template itself, the generator process |
-| `jeap-doc-archrepo`         | driven adapter     | The client of the architecture repository's `/docs-api`, behind the three upstream ports of [the import](architecture-import.md) |
+| `jeap-doc-archrepo`         | driven adapter     | Everything about the architecture repository: the client of its `/docs-api` behind the three upstream ports of [the import](architecture-import.md), and the reading of a replicated artifact behind `ArchitectureArtifactContent` |
 | `jeap-doc-metrics`          | driven adapter     | The Micrometer meters behind the `UploadMetrics`, `BuildMetrics` and `ArchitectureImportMetrics` ports, and the `ContainerMemory` reading |
 | `jeap-doc-site`             | resources          | The site generator's own application - no Java. Read from the classpath, never from a directory beside the jar        |
 | `jeap-doc-web`              | driving adapter    | The Spring Boot application: REST API, OpenAPI, security, and the documentation it serves                             |
@@ -85,7 +85,11 @@ because nothing outside the replication has any use for them.
   documentation domain**, not about how something is stored, measured, serialised or coordinated.
 - **Serialisation formats belong to whoever reads them.** What the site template reads is written by
   `jeap-doc-sitegenerator`, because the format is a contract between the generator and the template, not a fact
-  about documentation.
+  about documentation. And the formats of an upstream's payloads belong to the adapter of that upstream: a
+  component's database schema and its OpenAPI specification are read in `jeap-doc-archrepo`, behind
+  `ArchitectureArtifactContent`, and reach the generator as records of this service's own model. **A structure
+  template may not hold a JSON mapper either** - the chapters and the rules are read from the web layer as
+  well, and everything on a template's POM travels there with them.
 - **Where Jackson is needed it is Jackson 3** - the `tools.jackson` group and packages, never
   `com.fasterxml.jackson`. Its exceptions are unchecked.
 - An adapter module depends on the domain, never on another adapter.
@@ -127,15 +131,23 @@ What that means for a pipeline - the states, the retries and what is not checked
 
 The other half runs on its own: nothing calls it, and it calls nothing back.
 
-1. Something asks for a site to be published - an upload, or its schedule. Both leave a **request**, at most one
-   per site.
-2. `jeap-doc-domain` takes the request under a lock named after the site, writes what the site contains into a
-   workspace, and hands that workspace to the site generator port.
+**A site is published as several builds, one per part**, because one build of a whole landscape no longer fits -
+see [Generating the documentation](generation.md). A part is a set of whole URL subtrees of the site: a part per
+system, and a shell part for the site's own pages. Which parts a site has is one implementation of
+`SitePartition` and nothing else knows the axis.
+
+1. Something asks for a **part** to be published - an upload of that system's documents, the architecture import
+   finding that system's model changed, a walk over the site, or an operator. All of them leave a **request**,
+   at most one per part.
+2. `jeap-doc-domain` takes the request under a lock named after the part, writes what that part contains into a
+   workspace, and **hashes it**: content that is what is already published is not generated at all.
 3. `jeap-doc-sitegenerator` installs the site template **over** that content and runs the generator as a child
    process. The technology - Docusaurus, Node - lives in this module and nowhere else.
-4. `jeap-doc-objectstorage` writes the output under the identifier of the build, and **one row** in
-   `documentation_build` then makes it the site that is served.
-5. `jeap-doc-web` serves that site to a browser, reading the row and the objects.
+4. `jeap-doc-objectstorage` writes the output under the identifier of the build - and the files every part
+   emits identically under one prefix of the site - and **one row** in `documentation_build` then makes it what
+   is served for that part.
+5. `jeap-doc-web` serves the site to a browser: a path is answered out of the publication of the part that owns
+   it, reading the rows and the objects.
 
 **Generating and serving are separate, and neither is optional.** They share a database and a bucket and nothing
 else: the generator's only output is objects plus a row, and the web server's only input is that row. That is

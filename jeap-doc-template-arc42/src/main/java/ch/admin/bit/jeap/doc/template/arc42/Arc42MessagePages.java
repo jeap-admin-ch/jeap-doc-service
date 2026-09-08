@@ -67,7 +67,9 @@ final class Arc42MessagePages {
             return false;
         }
         Path directory = buildingBlockDirectory.resolve(group);
-        Arc42Pages.writeCategory(directory, kind.plural(), position);
+        // Under the building block view, so open with it: what a system publishes and consumes is one
+        // of the three things a reader looks for about it.
+        Arc42Pages.writeCategory(directory, kind.plural(), position, true);
         writeIndex(system, kind, group, messages, context, directory);
         for (DocumentedMessage message : messages) {
             writeMessage(system, message, context, directory);

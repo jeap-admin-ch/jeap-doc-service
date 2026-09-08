@@ -6,16 +6,20 @@ import java.util.Optional;
 /**
  * The object storage the generated sites are published to and served from.
  * <p>
- * A site is written under the identifier of the build that produced it and is referenced only once it is
- * complete, so publishing never touches the site being read: the switch is one row in the database, and that is
+ * A part is written under the identifier of the build that produced it and is referenced only once it is
+ * complete, so publishing never touches what is being read: the switch is one row in the database, and that is
  * the only part of publishing that has to be - and can be - atomic.
+ * <p>
+ * The exception is the shared files - see {@link ch.admin.bit.jeap.doc.domain.SharedAssets}. They go to one
+ * prefix per site, written by every part build, and what lands there is the same bytes under the same name.
  */
 public interface SitePublicationStorage {
 
     /**
-     * Writes a generated site under the given prefix, and reports how much was written.
+     * Writes a generated part, its own files under its own prefix and its shared files under the site's, and
+     * reports how much was written altogether.
      */
-    PublishedSite publish(String prefix, Path directory);
+    PublishedSite publish(PartPublication where, Path directory);
 
     /**
      * Reads one file of a published site, if it is there.

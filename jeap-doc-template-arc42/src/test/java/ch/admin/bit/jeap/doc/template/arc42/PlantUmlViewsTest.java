@@ -2,12 +2,19 @@ package ch.admin.bit.jeap.doc.template.arc42;
 
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
+import ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchema;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSchema;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.RelationKind;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaColumn;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaForeignKey;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaTable;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ComponentContext;
 import ch.admin.bit.jeap.doc.domain.architecture.view.SystemContext;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
 import ch.admin.bit.jeap.doc.domain.architecture.view.WhiteboxView;
+import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +33,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PlantUmlViewsTest {
 
     private static final Instant GENERATED_AT = Instant.parse("2026-08-28T06:05:02Z");
+
+    /** The bounds the shipped defaults set. A case that is about a bound overrides the one it is about. */
+    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200);
 
     @Test
     void contextView_drawsTheSystemItsNeighboursAndTheArrowsBetweenThem() {
@@ -275,7 +285,8 @@ class PlantUmlViewsTest {
     void whenTheCapIsZero_thenEvenOneNameIsCounted() {
         ArchitectureModel model = busy(1);
         GenerationContext generation = new GenerationContext(model, "prod", "https://archrepo",
-                GENERATED_AT.minusSeconds(900), GENERATED_AT, 100, 0, "/docs/prod/");
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200),
+                "/docs/prod/");
 
         String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, busySystem(1), 60), "orders",
                 generation).source();
@@ -304,7 +315,7 @@ class PlantUmlViewsTest {
         assertThat(sources).allSatisfy(uml -> assertThat(uml.lines().toList()).allSatisfy(line -> {
             int labelLines = line.contains(" : ") ? line.split("\\\\n", -1).length : 0;
             assertThat(labelLines).describedAs("label lines on: %s", line)
-                    .isLessThanOrEqualTo(generation.maxEdgeLabels());
+                    .isLessThanOrEqualTo(generation.limits().maxEdgeLabels());
         }));
     }
 
@@ -381,7 +392,7 @@ class PlantUmlViewsTest {
 
     private static GenerationContext generation(ArchitectureModel model) {
         return new GenerationContext(model, "prod", "https://archrepo", GENERATED_AT.minusSeconds(900), GENERATED_AT,
-                100, 4, "/docs/prod/");
+                LIMITS, "/docs/prod/");
     }
 
     private static DocumentedSystem orders() {
@@ -402,6 +413,387 @@ class PlantUmlViewsTest {
 
     private static DocumentedComponent component(String name) {
         return new DocumentedComponent(name, name, null, ComponentType.BACKEND_SERVICE, null, null, null,
-                List.of(), null, null);
+                List.of(), null, null, null);
+    }
+
+    // The two diagrams a component's pages carry. Nothing about Markdown reaches inside a fence, so
+    // everything a fence needs it carries itself: its own escaping, and links that already hold the base URL.
+
+    @Test
+    void componentContextView_drawsTheComponentInItsSystemAndTheOthersOutside() {
+        ArchitectureModel model = componentLandscape();
+
+        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders",
+                generation(model)).source();
+
+        assertThat(uml).startsWith("@startuml").endsWith("@enduml");
+        assertThat(uml).contains("left to right direction");
+        assertThat(uml).describedAs("the component and its sibling inside the system's package")
+                .contains("package \"orders\" {")
+                .contains("component \"orders-intake\"")
+                .contains("component \"orders-risk\"");
+        assertThat(uml).describedAs("and the other system outside it, as one box")
+                .contains("component \"shipping\"")
+                .doesNotContain("shipping-gateway");
+        assertThat(uml).describedAs("a message is a solid arrow and a REST call a dotted one")
+                .contains("-->")
+                .contains("..>");
+    }
+
+    /**
+     * PlantUML reads a colour as the end of a declaration, so a link after one is a syntax error - and a
+     * diagram that does not parse renders as an error box that fails no build.
+     */
+    @Test
+    void componentContextView_theComponentInTheMiddleCarriesItsLinkBeforeItsColour() {
+        ArchitectureModel model = componentLandscape();
+
+        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders",
+                generation(model)).source();
+
+        assertThat(uml).contains("component \"orders-intake\" as c_orders_intake "
+                                 + "[[/docs/prod/systems/orders/system-architecture/building-block-view/"
+                                 + "components/orders-intake/]] #line.bold");
+    }
+
+    /** Every box is a link, and a fenced one carries the base URL and the environment prefix already. */
+    @Test
+    void componentContextView_everyBoxLinksToThePageOfWhatItDraws() {
+        ArchitectureModel model = componentLandscape();
+
+        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders",
+                generation(model)).source();
+
+        assertThat(uml).contains("[[/docs/prod/systems/orders/system-architecture/building-block-view/"
+                                 + "components/orders-risk/]]");
+        assertThat(uml).contains("[[/docs/prod/systems/shipping/]]");
+    }
+
+    /** An arrow to a box the diagram left out would point at nothing; the page's table still lists it. */
+    @Test
+    void componentContextView_drawsNoArrowToACounterpartItLeftOut() {
+        ArchitectureModel model = componentLandscape();
+
+        String uml = PlantUmlViews.componentContextView(componentContext(model, 0, 0), "orders",
+                generation(model)).source();
+
+        assertThat(uml).doesNotContain("orders-risk").doesNotContain("shipping");
+        assertThat(uml).describedAs("and no arrow at all, because both ends of every edge are gone")
+                .doesNotContain("-->").doesNotContain("..>");
+    }
+
+    /** The cap on an arrow's names applies here too: it is the one method every arrow goes through. */
+    @Test
+    void componentContextView_countsTheNamesOnAnArrowThatCarriesTooMany() {
+        ArchitectureModel model = componentLandscape();
+        GenerationContext capped = new GenerationContext(model, "prod", "https://archrepo",
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200),
+                "/docs/prod/");
+
+        PlantUmlViews.Diagram diagram =
+                PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders", capped);
+
+        assertThat(diagram.labelsSummarized()).isTrue();
+        assertThat(diagram.source()).contains(" : 1 Event");
+    }
+
+    /** A name inside a fence escapes itself: PlantUML reads {@code [[...]]} as a link inside a label too. */
+    @Test
+    void componentContextView_escapesTheNamesInsideTheFence() {
+        DocumentedComponent hostile = new DocumentedComponent("orders[[https://evil.example/x]]",
+                "orders-intake", null, ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null,
+                null);
+        DocumentedSystem system = new DocumentedSystem("orders\"", "orders", null, List.of(), null,
+                List.of(hostile), List.of(), List.of());
+        ArchitectureModel model = ArchitectureModel.of(List.of(system));
+
+        String uml = PlantUmlViews.componentContextView(
+                ComponentContext.of(model, system, hostile, 60, 60), "orders", generation(model)).source();
+
+        assertThat(uml).contains("package \"orders\u2019\" {")
+                .contains("component \"orders((https://evil.example/x))\"")
+                .doesNotContain("[[https://evil.example/x]]");
+    }
+
+    @Test
+    void databaseSchema_drawsAnEntityPerTableWithItsKeysAndOneArrowPerForeignKey() {
+        String uml = PlantUmlViews.databaseSchema(documented(schema(), generation(landscape()))).source();
+
+        assertThat(uml).startsWith("@startuml").endsWith("@enduml");
+        assertThat(uml).contains("""
+                entity "orders_order" {
+                  * id : uuid <<PK>>
+                  --
+                    party_id : uuid <<FK>>
+                  * total : numeric(12,2)
+                }
+                """);
+        assertThat(uml).describedAs("one arrow per foreign key, naming the columns it is made of")
+                .contains("\"orders_order\" }o--|| \"orders_party\" : party_id");
+    }
+
+    /**
+     * <b>An array type keeps its brackets.</b> The escaping in the fence replaces only a <i>doubled</i>
+     * bracket, which is the pair PlantUML reads as a link: replacing every one of them turned
+     * {@code text[]} into {@code text()} on the page, which is a different type.
+     */
+    @Test
+    void databaseSchema_whenAColumnIsAnArray_thenItsTypeStillSaysSo() {
+        DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(new SchemaTable("orders_order",
+                List.of(new SchemaColumn("id", "uuid", false),
+                        new SchemaColumn("total", "numeric(12,2)", true),
+                        new SchemaColumn("tags", "text[]", true)),
+                List.of("id"), List.of())));
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).contains("tags : text[]").contains("total : numeric(12,2)");
+    }
+
+    /**
+     * A table whose columns are all in the primary key gets no separator. A {@code --} just before the
+     * closing brace is a syntax error, which renders as an error box and fails no build.
+     */
+    @Test
+    void databaseSchema_whenATableIsNothingButItsKey_thenThereIsNoSeparator() {
+        DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(new SchemaTable("orders_party",
+                List.of(new SchemaColumn("id", "uuid", false)), List.of("id"), List.of())));
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).contains("""
+                entity "orders_party" {
+                  * id : uuid <<PK>>
+                }
+                """);
+        assertThat(uml).doesNotContain("--\n}");
+    }
+
+    /** And a table with no key at all is drawn without one, rather than starting with a separator. */
+    @Test
+    void databaseSchema_whenATableHasNoPrimaryKey_thenItIsDrawnWithoutOne() {
+        DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(new SchemaTable("orders_log",
+                List.of(new SchemaColumn("line", "text", true)), List.of(), List.of())));
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).contains("""
+                entity "orders_log" {
+                    line : text
+                }
+                """);
+    }
+
+    /**
+     * <b>An arrow into a shard has to reach the entity its family became.</b> Matched on the name it was
+     * declared with, every arrow of a partitioned schema would be dropped as pointing at nothing drawn -
+     * which is the collapse silently taking the relations off the diagram.
+     */
+    @Test
+    void databaseSchema_whenAKeyPointsIntoAShard_thenTheArrowReachesTheCollapsedEntity() {
+        List<SchemaTable> tables = new ArrayList<>();
+        for (int suffix = 1; suffix <= 5; suffix++) {
+            tables.add(new SchemaTable("doc_meta_" + suffix,
+                    List.of(new SchemaColumn("id", "uuid", false)), List.of("id"), List.of()));
+        }
+        tables.add(new SchemaTable("doc_root", List.of(new SchemaColumn("meta_id", "uuid", false)),
+                List.of(), List.of(new SchemaForeignKey("fk_meta", List.of("meta_id"), "DOC_META_3",
+                List.of("id")))));
+        DatabaseSchema schema = new DatabaseSchema("docs_db", "1", tables);
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).describedAs("the family is one entity, quoted so that the star is a name")
+                .contains("entity \"doc_meta_*\" {");
+        assertThat(uml).contains("\"doc_root\" }o--|| \"doc_meta_*\" : meta_id");
+        assertThat(uml).describedAs("and no shard is drawn on its own")
+                .doesNotContain("entity \"doc_meta_3\"");
+    }
+
+    /** A key into a family the diagram had no room for still points at nothing. */
+    @Test
+    void databaseSchema_whenTheCollapsedFamilyIsNotDrawn_thenNoArrowPointsAtIt() {
+        List<SchemaTable> tables = new ArrayList<>();
+        for (int suffix = 1; suffix <= 5; suffix++) {
+            tables.add(new SchemaTable("zzz_meta_" + suffix,
+                    List.of(new SchemaColumn("id", "uuid", false)), List.of("id"), List.of()));
+        }
+        tables.add(new SchemaTable("doc_root", List.of(new SchemaColumn("meta_id", "uuid", false)),
+                List.of(), List.of()));
+        GenerationContext narrow = new GenerationContext(landscape(), "prod", "https://archrepo",
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200),
+                "/docs/prod/");
+
+        String uml = PlantUmlViews.databaseSchema(
+                documented(new DatabaseSchema("docs_db", "1", tables), narrow)).source();
+
+        assertThat(uml).contains("entity \"doc_root\"").doesNotContain("zzz_meta");
+        assertThat(uml).doesNotContain("}o--||");
+    }
+
+    /**
+     * The diagram is bounded by the number of tables, and an arrow into one it left out would point at
+     * nothing. The page's list of tables carries all of them either way.
+     */
+    @Test
+    void databaseSchema_whenItLeavesATableOut_thenNoArrowPointsAtIt() {
+        GenerationContext narrow = new GenerationContext(landscape(), "prod", "https://archrepo",
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200),
+                "/docs/prod/");
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema(), narrow)).source();
+
+        assertThat(uml).describedAs("the referenced table is the one kept")
+                .contains("entity \"orders_party\"")
+                .doesNotContain("entity \"orders_order\"");
+        assertThat(uml).doesNotContain("}o--||");
+    }
+
+    /**
+     * A foreign key naming its target in another case points at the box that was drawn, under the spelling it
+     * was drawn with. The two spellings come from one export of one upstream, but nothing guarantees a
+     * database spells a constraint's target the way it spells the table - and a PlantUML code is
+     * case-sensitive, so an arrow drawn with the key's spelling grows a second, empty box beside the real
+     * table and leaves that table with no arrow into it.
+     */
+    @Test
+    void databaseSchema_whenAForeignKeySpellsItsTargetInAnotherCase_thenTheArrowPointsAtTheDrawnEntity() {
+        DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(
+                new SchemaTable("orders_order", List.of(new SchemaColumn("party_id", "uuid", true)),
+                        List.of(), List.of(new SchemaForeignKey("fk", List.of("party_id"), "ORDERS_PARTY",
+                                List.of("id")))),
+                new SchemaTable("orders_party", List.of(new SchemaColumn("id", "uuid", false)),
+                        List.of("id"), List.of())));
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).contains("\"orders_order\" }o--|| \"orders_party\" : party_id");
+        assertThat(uml).describedAs("no second box under the key's spelling")
+                .doesNotContain("\"ORDERS_PARTY\"");
+    }
+
+    /**
+     * PlantUML reads an {@code '} at the start of a line as a comment, so a nullable column whose name begins
+     * with one used to vanish from the diagram - and a {@code }} would have ended the entity early, taking
+     * every column after it. The {@code {field}} marker moves the name off the start of the line.
+     */
+    @Test
+    void databaseSchema_whenAColumnNameStartsWithSomethingPlantUmlReads_thenItIsStillAField() {
+        DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(new SchemaTable("orders_order",
+                List.of(new SchemaColumn("'foo", "text", true), new SchemaColumn("--bar", "text", true),
+                        new SchemaColumn("}baz", "text", true), new SchemaColumn("plain", "text", true)),
+                List.of(), List.of())));
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).contains("    {field} 'foo : text")
+                .contains("    {field} --bar : text")
+                .contains("    {field} }baz : text")
+                .describedAs("and only where it is needed").contains("    plain : text");
+    }
+
+    /**
+     * A quote becomes a typographic one rather than an apostrophe, which is PlantUML's line comment - and
+     * {@code /'} opens a block comment from anywhere in a line, so that pair is broken up too.
+     */
+    @Test
+    void databaseSchema_whenANameCarriesAQuote_thenItIsNotTurnedIntoAComment() {
+        DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(new SchemaTable("orders_order",
+                List.of(new SchemaColumn("say \"hi\"", "text", true),
+                        new SchemaColumn("block /' comment", "text", true)),
+                List.of(), List.of())));
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).contains("say \u2019hi\u2019 : text").contains("block /( comment : text");
+        assertThat(uml).describedAs("nothing that opens a PlantUML comment").doesNotContain("/'");
+    }
+
+    /** The machinery of a schema is on no diagram, and no arrow into it is drawn either. */
+    @Test
+    void databaseSchema_drawsNeitherTheMachineryTablesNorTheArrowsIntoThem() {
+        DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(
+                new SchemaTable("orders_order", List.of(new SchemaColumn("lock_name", "varchar", true)),
+                        List.of(), List.of(new SchemaForeignKey("fk", List.of("lock_name"), "shedlock",
+                                List.of("name")))),
+                new SchemaTable("shedlock", List.of(new SchemaColumn("name", "varchar", false)),
+                        List.of("name"), List.of())));
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).contains("entity \"orders_order\"").doesNotContain("entity \"shedlock\"");
+        assertThat(uml).doesNotContain("}o--||");
+    }
+
+    /** A column name and a type come out of somebody's database, so both escape themselves in the fence. */
+    @Test
+    void databaseSchema_escapesTheTableAndColumnNamesInsideTheFence() {
+        DatabaseSchema schema = new DatabaseSchema("orders_db", "1", List.of(new SchemaTable(
+                "orders[[https://evil.example/x]]",
+                List.of(new SchemaColumn("id\"", "uuid\n[[x]]", false)), List.of("id\""), List.of())));
+
+        String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
+
+        assertThat(uml).contains("entity \"orders((https://evil.example/x))\"")
+                .contains("* id\u2019 : uuid\\n((x))")
+                .doesNotContain("[[");
+    }
+
+    /** Two runs over one schema and one landscape produce identical bytes. */
+    @Test
+    void theTwoNewDiagramsAreTheSameOverTwoRuns() {
+        ArchitectureModel model = componentLandscape();
+        GenerationContext generation = generation(model);
+
+        assertThat(PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders", generation)
+                .source())
+                .isEqualTo(PlantUmlViews.componentContextView(componentContext(model, 60, 60), "orders",
+                        generation).source());
+        assertThat(PlantUmlViews.databaseSchema(documented(schema(), generation)).source())
+                .isEqualTo(PlantUmlViews.databaseSchema(documented(schema(), generation)).source());
+    }
+
+    /** The derived view the page builds, so that these tests exercise what a render really passes in. */
+    private static DocumentedSchema documented(DatabaseSchema schema, GenerationContext generation) {
+        return DocumentedSchema.of(schema, generation.limits().maxSchemaTableDiagram(),
+                generation.limits().maxSchemaTableList());
+    }
+
+    private static ComponentContext componentContext(ArchitectureModel model, int maxSiblings,
+                                                     int maxSystems) {
+        DocumentedSystem system = model.find("orders").orElseThrow();
+        DocumentedComponent intake = system.components().stream()
+                .filter(component -> component.name().equals("orders-intake"))
+                .findFirst().orElseThrow();
+        return ComponentContext.of(model, system, intake, maxSiblings, maxSystems);
+    }
+
+    /**
+     * A system of two components that exchange an event, one of which also calls another system's API. So
+     * both halves of a component context view have something in them.
+     */
+    private static ArchitectureModel componentLandscape() {
+        DocumentedSystem orders = new DocumentedSystem("orders", "orders", null, List.of(), null,
+                List.of(component("orders-intake"), component("orders-risk")),
+                List.of(new SystemRelation(RelationKind.EVENT, "orders", "orders-risk", "orders",
+                                "orders-intake", "OrdersPaymentAcceptedEvent", null, null, null),
+                        new SystemRelation(RelationKind.REST_API, "orders", "orders-intake", "shipping",
+                                "shipping-gateway", null, "GET", "/api/shipments", null)),
+                List.of());
+        return ArchitectureModel.of(List.of(orders, other("shipping")));
+    }
+
+    /** A schema of two tables, one referencing the other, and the machinery beside them. */
+    private static DatabaseSchema schema() {
+        SchemaTable order = new SchemaTable("orders_order",
+                List.of(new SchemaColumn("id", "uuid", false),
+                        new SchemaColumn("party_id", "uuid", true),
+                        new SchemaColumn("total", "numeric(12,2)", false)),
+                List.of("id"),
+                List.of(new SchemaForeignKey("fk_order_party", List.of("party_id"), "orders_party",
+                        List.of("id"))));
+        SchemaTable party = new SchemaTable("orders_party",
+                List.of(new SchemaColumn("id", "uuid", false)), List.of("id"), List.of());
+        return new DatabaseSchema("orders_db", "1.2.3", List.of(order, party));
     }
 }

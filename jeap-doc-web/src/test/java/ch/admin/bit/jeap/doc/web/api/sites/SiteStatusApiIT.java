@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.sites;
 
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
+import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
@@ -43,7 +44,6 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
                 .andExpect(jsonPath("$[*].site").value(hasItems(Site.DEFAULT_SITE, SITE)))
                 .andExpect(jsonPath("$[?(@.site == 'default')].title").value(hasItems("Documentation")))
                 .andExpect(jsonPath("$[?(@.site == 'default')].publishOnUpload").value(hasItems(true)))
-                .andExpect(jsonPath("$[?(@.site == 'default')].publicationSchedule").isNotEmpty())
                 .andExpect(jsonPath("$[?(@.site == 'default')].environments[*]").value(hasItems("dev", "prod")));
     }
 
@@ -54,10 +54,12 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
     @Test
     void site_whenTheNewestBuildFailed_thenPublishedAndLastBuildDisagree() throws Exception {
         Instant now = Instant.now();
-        DocumentationBuild succeeded = builds.start(SITE, BuildTrigger.SCHEDULE, INSTANCE, now);
-        builds.succeeded(succeeded.id(), SITE + "/" + succeeded.id(), 12, 4096, 3000, null, now.plusSeconds(30));
-        DocumentationBuild failed = builds.start(SITE, BuildTrigger.MANUAL, INSTANCE, now.plusSeconds(60));
-        builds.failed(failed.id(), "npm exited with 1", null, now.plusSeconds(70));
+        DocumentationBuild succeeded = builds.start(PartKey.shellOf(SITE), BuildTrigger.IMPORT, INSTANCE, now, null);
+        builds.succeeded(succeeded.id(), SITE + "/" + succeeded.id(), 12, 4096, 3000, "digest",
+                now.plusSeconds(30));
+        DocumentationBuild failed =
+                builds.start(PartKey.shellOf(SITE), BuildTrigger.MANUAL, INSTANCE, now.plusSeconds(60), null);
+        builds.failed(failed.id(), "npm exited with 1", now.plusSeconds(70));
 
         mockMvc.perform(get(SiteApiPaths.SITE, SITE).with(readRole()))
                 .andExpect(status().isOk())
@@ -78,7 +80,7 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
     @Test
     void site_whenABuildIsRunning_thenItIsOnTheStatusWithTheInstanceRunningIt() throws Exception {
         Instant now = Instant.now();
-        DocumentationBuild running = builds.start(SITE, BuildTrigger.MANUAL, INSTANCE, now);
+        DocumentationBuild running = builds.start(PartKey.shellOf(SITE), BuildTrigger.MANUAL, INSTANCE, now, null);
         try {
             mockMvc.perform(get(SiteApiPaths.SITE, SITE).with(readRole()))
                     .andExpect(status().isOk())
@@ -89,7 +91,7 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
                     .andExpect(jsonPath("$.running[0].state").value("RUNNING"))
                     .andExpect(jsonPath("$.running[0].finishedAt").doesNotExist());
         } finally {
-            builds.failed(running.id(), "ended by the test", null, now.plusSeconds(1));
+            builds.failed(running.id(), "ended by the test", now.plusSeconds(1));
         }
     }
 

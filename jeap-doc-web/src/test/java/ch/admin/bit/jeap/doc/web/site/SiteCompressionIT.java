@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.web.site;
 
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
+import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
@@ -44,14 +45,15 @@ class SiteCompressionIT extends DocServiceIntegrationTestBase {
 
     @BeforeEach
     void publishACompressiblePage(@org.junit.jupiter.api.io.TempDir Path site) throws IOException {
-        DocumentationBuild build = builds.start(Site.DEFAULT_SITE, BuildTrigger.SCHEDULE, "test", Instant.now());
+        DocumentationBuild build = builds.start(PartKey.shellOf(Site.DEFAULT_SITE), BuildTrigger.IMPORT, "test", Instant.now(), null);
         // Comfortably above the 1KB floor, and the kind of repetitive markup a documentation page is made of.
         Files.writeString(site.resolve("index.html"),
                 "<html><body>" + "<p>The documentation of the system.</p>".repeat(200) + "</body></html>",
                 StandardCharsets.UTF_8);
         String prefix = Site.DEFAULT_SITE + "/" + build.id();
-        publication.publish(prefix, site);
-        builds.succeeded(build.id(), prefix, 1, 8192, 10, null, Instant.now());
+        publication.publish(new ch.admin.bit.jeap.doc.domain.port.PartPublication(prefix,
+                ch.admin.bit.jeap.doc.domain.SharedAssets.prefixOf(Site.DEFAULT_SITE)), site);
+        builds.succeeded(build.id(), prefix, 1, 8192, 10, "digest", Instant.now());
     }
 
     @Test

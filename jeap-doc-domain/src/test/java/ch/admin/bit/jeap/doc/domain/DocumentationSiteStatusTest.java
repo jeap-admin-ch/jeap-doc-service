@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -46,7 +47,6 @@ class DocumentationSiteStatusTest {
     @BeforeEach
     void setUp() {
         SiteProperties.Site governance = new SiteProperties.Site();
-        governance.setPublicationSchedule(null);
         governance.setPublishOnUpload(false);
         Map<String, SiteProperties.Site> sites = new LinkedHashMap<>();
         sites.put(Site.DEFAULT_SITE, new SiteProperties.Site());
@@ -56,7 +56,7 @@ class DocumentationSiteStatusTest {
         status = new DocumentationSiteStatus(new DocumentationSites(properties), builds, requests);
         lenient().when(requests.pending()).thenReturn(List.of());
         lenient().when(builds.running()).thenReturn(List.of());
-        lenient().when(builds.published(anyString())).thenReturn(Optional.empty());
+        lenient().when(builds.published(any())).thenReturn(Optional.empty());
         lenient().when(builds.recent(anyString(), anyInt())).thenReturn(List.of());
     }
 
@@ -92,9 +92,9 @@ class DocumentationSiteStatusTest {
      */
     @Test
     void of_whenTheNewestBuildFailed_thenPublishedAndLastBuildDisagree() {
-        DocumentationBuild succeeded = build(41, BuildState.SUCCEEDED, BuildTrigger.SCHEDULE);
+        DocumentationBuild succeeded = build(41, BuildState.SUCCEEDED, BuildTrigger.IMPORT);
         DocumentationBuild failed = build(42, BuildState.FAILED, BuildTrigger.UPLOAD);
-        when(builds.published(Site.DEFAULT_SITE)).thenReturn(Optional.of(succeeded));
+        when(builds.published(PartKey.shellOf(Site.DEFAULT_SITE))).thenReturn(Optional.of(succeeded));
         when(builds.recent(Site.DEFAULT_SITE, 1)).thenReturn(List.of(failed));
 
         SiteStatus siteStatus = status.of(Site.DEFAULT_SITE).orElseThrow();
@@ -107,8 +107,9 @@ class DocumentationSiteStatusTest {
     @Test
     void of_whenABuildIsPending_thenWhenItWasAskedForAndByWhat() {
         when(requests.pending()).thenReturn(List.of(
-                new BuildRequest(OTHER_SITE, NOW.minusSeconds(20), BuildTrigger.SCHEDULE),
-                new BuildRequest(Site.DEFAULT_SITE, NOW.minusSeconds(45), BuildTrigger.MANUAL)));
+                new BuildRequest(PartKey.shellOf(OTHER_SITE), NOW.minusSeconds(20), BuildTrigger.IMPORT, null, false),
+                new BuildRequest(PartKey.shellOf(Site.DEFAULT_SITE), NOW.minusSeconds(45), BuildTrigger.MANUAL, null,
+                        true)));
 
         SiteStatus siteStatus = status.of(Site.DEFAULT_SITE).orElseThrow();
 
@@ -125,8 +126,8 @@ class DocumentationSiteStatusTest {
     void of_whenTwoBuildsOfTheSiteAreRunning_thenBothAreShown() {
         when(builds.running()).thenReturn(List.of(
                 build(51, BuildState.RUNNING, BuildTrigger.MANUAL),
-                build(52, BuildState.RUNNING, BuildTrigger.SCHEDULE),
-                new DocumentationBuild(53L, OTHER_SITE, BuildTrigger.UPLOAD, BuildState.RUNNING, NOW, null,
+                build(52, BuildState.RUNNING, BuildTrigger.IMPORT),
+                new DocumentationBuild(53L, OTHER_SITE, SitePart.SHELL, BuildTrigger.UPLOAD, BuildState.RUNNING, NOW, null,
                         "doc-service-2", null, 0, 0, 0, null, null)));
 
         assertThat(status.of(Site.DEFAULT_SITE).orElseThrow().running())
@@ -136,7 +137,7 @@ class DocumentationSiteStatusTest {
     @Test
     void all_thenTheRunningBuildsAreSortedOntoTheSiteTheyBelongTo() {
         when(builds.running()).thenReturn(List.of(
-                new DocumentationBuild(61L, OTHER_SITE, BuildTrigger.MANUAL, BuildState.RUNNING, NOW, null,
+                new DocumentationBuild(61L, OTHER_SITE, SitePart.SHELL, BuildTrigger.MANUAL, BuildState.RUNNING, NOW, null,
                         "doc-service-1", null, 0, 0, 0, null, null)));
 
         assertThat(status.all()).filteredOn(siteStatus -> siteStatus.site().id().equals(OTHER_SITE))
@@ -148,9 +149,8 @@ class DocumentationSiteStatusTest {
     }
 
     private static DocumentationBuild build(long id, BuildState state, BuildTrigger trigger) {
-        return new DocumentationBuild(id, Site.DEFAULT_SITE, trigger, state, NOW.minusSeconds(120),
+        return new DocumentationBuild(id, Site.DEFAULT_SITE, SitePart.SHELL, trigger, state, NOW.minusSeconds(120),
                 state == BuildState.RUNNING ? null : NOW.minusSeconds(60), "doc-service-1",
-                state == BuildState.SUCCEEDED ? Site.DEFAULT_SITE + "/" + id : null, 0, 0, 0,
-                null, null);
+                state == BuildState.SUCCEEDED ? Site.DEFAULT_SITE + "/" + id : null, 0, 0, 0, null, null);
     }
 }

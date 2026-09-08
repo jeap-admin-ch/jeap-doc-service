@@ -14,7 +14,7 @@ public final class CategoryFile {
     private CategoryFile() {
     }
 
-    /** A category with a label and a position among its siblings. */
+    /** A category with a label and a position among its siblings, collapsed until a reader opens it. */
     public static String of(String label, int position) {
         return """
                 {
@@ -24,11 +24,59 @@ public final class CategoryFile {
                 """.formatted(Scalars.quoted(label), position);
     }
 
-    /** A category whose position comes from the number prefix of its folder. */
+    /** A category whose position comes from the number prefix of its folder, collapsed. */
     public static String of(String label) {
         return """
                 {
                   "label": %s
+                }
+                """.formatted(Scalars.quoted(label));
+    }
+
+    /**
+     * The same, open when the page is first shown.
+     * <p>
+     * <b>What a reader sees without clicking is the shape of the documentation.</b> Collapsed, a system's
+     * sidebar is a list of twelve chapter names and says nothing about what is in them - and a reader who
+     * does not already know arc42 cannot tell which one holds the thing they came for. The site is configured
+     * with {@code autoCollapseCategories: false}, so what is opened here stays open while the reader moves
+     * around.
+     */
+    public static String expanded(String label, int position) {
+        return """
+                {
+                  "label": %s,
+                  "position": %d,
+                  "collapsed": false
+                }
+                """.formatted(Scalars.quoted(label), position);
+    }
+
+    /**
+     * A category the site template can find among the others, by a custom property rather than by its label.
+     * <p>
+     * Docusaurus passes {@code customProps} through onto the sidebar item, so the template can recognise one
+     * category out of a generated tree. A label would be the other way to recognise it - and a label is
+     * exactly what someone changes.
+     */
+    public static String marked(String label, int position, String property) {
+        return """
+                {
+                  "label": %s,
+                  "position": %d,
+                  "customProps": {
+                    %s: true
+                  }
+                }
+                """.formatted(Scalars.quoted(label), position, Scalars.quoted(property));
+    }
+
+    /** As {@link #expanded(String, int)}, with the position coming from the folder's number prefix. */
+    public static String expanded(String label) {
+        return """
+                {
+                  "label": %s,
+                  "collapsed": false
                 }
                 """.formatted(Scalars.quoted(label));
     }

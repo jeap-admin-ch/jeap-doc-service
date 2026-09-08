@@ -122,6 +122,11 @@ category file, so the navigation reads the same whichever version of it is insta
 
 The generator writes into four of them. The other eight are there for what a team uploads.
 
+**A component carries the same twelve chapters one level down**, under a segment of its own, and the generator
+writes into the same four of them. Which of a component's chapters exist depends on what the architecture
+repository knows about it: chapters 1, 3 and 6 can always be written, and chapter 5 appears when there is a
+database schema, a REST API or a message contract to put in it.
+
 ### Where a page is served
 
 ```text
@@ -139,6 +144,25 @@ The generator writes into four of them. The other eight are there for what a tea
 /systems/orders/system-architecture/runtime-view/                               6. Runtime View
 ```
 
+And below one component, `orders-foo-bar-service` above:
+
+```text
+.../components/orders-foo-bar-service/                                          the component, in the system's tree
+.../components/orders-foo-bar-service/component-architecture/                   arc42 for the component
+.../component-architecture/intro/                                               1. Introduction and Goals
+.../component-architecture/context-and-scope/                                   3. Context and Scope
+.../component-architecture/context-and-scope/context-view/                      the component context view
+.../component-architecture/building-block-view/                                 5. Building Block View
+.../component-architecture/building-block-view/database-schema/                 the entity relationship diagram
+.../component-architecture/building-block-view/rest-api/                        the API by group, and the Swagger link
+.../component-architecture/building-block-view/messages/                        what it produces and consumes
+.../component-architecture/runtime-view/                                        6. Runtime View
+```
+
+The component's context view is served at `context-view` and not at `component-context-view`: the path already
+carries the component and `component-architecture`, so the prefix would say the word a third time. The heading
+and the navigation label are *Component Context View* all the same.
+
 ### Three rules, and an upload has to keep them too
 
 - **The chapter folder carries its arc42 number, the URL does not.** A chapter is the folder
@@ -149,7 +173,9 @@ The generator writes into four of them. The other eight are there for what a tea
 - **A chapter with nothing in it does not exist.** The generator creates the four it has something to say about.
   A gap in the numbering means a chapter has not been written, not that it is empty.
 - **A component lives inside the building block view.** A component is one of the blocks, so its documentation
-  sits where the decomposition is described, next to the events and commands that flow between them.
+  sits where the decomposition is described, next to the events and commands that flow between them. Its own
+  chapters hang **below** its page rather than beside it, so a reader who followed a link into the subtree is
+  still inside the component.
 
 ### Diagrams
 
@@ -159,6 +185,24 @@ diagram stays searchable and readable as text.
 A fence is the one place the Markdown escaping cannot help, because nothing inside it is Markdown. Names that
 come from the architecture model are escaped for PlantUML instead, and a box only links to a page when the model
 says that page exists.
+
+**Every diagram is bounded, and every reduction says so.** The diagram engine lays a diagram out by
+recursion, so an unbounded one is not a large picture but no picture at all in the reader's browser. A diagram
+that had to leave something out says how much, and the table below it carries what it left out - see
+[the generator's properties](configuration.md#the-architecture-model).
+
+The database schema page is the one exception, and it is measured rather than a matter of taste: a component
+that publishes 6583 tables gave it 33 527 rows of columns and an hour and a half of build time, so its list is
+bounded too. Where that applies the page says how many entries it did not write and links the published
+schema, which carries all of them.
+
+| Diagram                       | Bounded by                                | The page still carries      |
+|-------------------------------|-------------------------------------------|-----------------------------|
+| System context view           | `max-diagram-nodes` other systems         | every relation              |
+| Whitebox view                 | `max-diagram-nodes` other systems         | every component, every relation |
+| Component context view        | `max-context-components` siblings, and `max-diagram-nodes` other systems | every relation |
+| Entity relationship diagram   | `max-schema-table-diagram` entries               | `max-schema-table-list` entries, with their columns |
+| Any arrow of any of them      | `max-edge-labels` names, then their count | the names, in the table     |
 
 ## Adding a template
 

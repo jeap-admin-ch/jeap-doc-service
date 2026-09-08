@@ -28,7 +28,6 @@ class DescribeRunTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Instant GENERATED_AT = Instant.parse("2026-09-03T07:30:00Z");
-    private static final long GB = 1024L * 1024 * 1024;
 
     @TempDir
     Path output;
@@ -47,9 +46,9 @@ class DescribeRunTest {
         assertThat(written.get("sizeInBytes").asLong()).isEqualTo(184_320L);
         assertThat(written.get("generatedInMillis").asLong()).isEqualTo(92_000L);
         assertThat(written.get("generatorMillis").asLong()).isEqualTo(62_000L);
-        assertThat(written.get("memoryPeakBytes").asLong()).isEqualTo(11 * GB);
-        assertThat(written.get("memoryLimitBytes").asLong()).isEqualTo(16 * GB);
-        assertThat(written.get("memoryPeakExact").asBoolean()).isTrue();
+        assertThat(written.propertyNames())
+                .describedAs("the per-build memory peak is gone; what the container does is a series")
+                .doesNotContain("memoryPeakBytes", "memoryLimitBytes", "memoryPeakExact");
     }
 
     /** Read by a browser, so the moment is text a browser parses rather than a count of milliseconds. */
@@ -59,22 +58,6 @@ class DescribeRunTest {
 
         assertThat(Files.readString(output.resolve(AboutThisDocumentation.STATUS_FILE)))
                 .contains("2026-09-03T07:30:00Z");
-    }
-
-    /**
-     * A container whose memory cannot be read leaves the three values out, and the page then shows the rows it
-     * does have rather than a row saying null.
-     */
-    @Test
-    void describeRun_whenTheContainerCouldNotBeMeasured_thenTheMemoryIsAbsentRatherThanZero()
-            throws IOException {
-        builder.describeRun(built(), DocumentationStatus.of(4711L, GENERATED_AT, 92_000L, built(), null));
-
-        JsonNode written = JSON.readTree(
-                Files.readString(output.resolve(AboutThisDocumentation.STATUS_FILE)));
-        assertThat(written.get("memoryPeakBytes").isNull()).isTrue();
-        assertThat(written.get("memoryLimitBytes").isNull()).isTrue();
-        assertThat(written.get("memoryPeakExact").isNull()).isTrue();
     }
 
     /**
@@ -94,7 +77,6 @@ class DescribeRunTest {
     }
 
     private DocumentationStatus status() {
-        return DocumentationStatus.of(4711L, GENERATED_AT, 92_000L, built(),
-                new ch.admin.bit.jeap.doc.domain.port.ContainerMemory.Peak(11 * GB, 16 * GB, true));
+        return DocumentationStatus.of(4711L, GENERATED_AT, 92_000L, built());
     }
 }

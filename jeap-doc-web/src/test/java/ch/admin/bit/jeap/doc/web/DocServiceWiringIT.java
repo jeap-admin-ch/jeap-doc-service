@@ -2,7 +2,6 @@ package ch.admin.bit.jeap.doc.web;
 
 import ch.admin.bit.jeap.doc.domain.port.MessageSchemaUpstream;
 import ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository;
-import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadService;
@@ -85,8 +84,8 @@ class DocServiceWiringIT extends DocServiceIntegrationTestBase {
             String name = resource.getFilename().substring(0,
                     resource.getFilename().length() - ".class".length());
             if (name.indexOf('$') >= 0) {
-                // A nested type is part of what a port says, not a port: ContainerMemory.Measurement is the
-                // reading one of them returns, and nothing binds an adapter to it.
+                // A nested type is part of what a port says, not a port: what a port answers with is nested
+                // inside it, and nothing binds an adapter to that.
                 continue;
             }
             Class<?> candidate = Class.forName(packageName + "." + name);
@@ -142,6 +141,12 @@ class DocServiceWiringIT extends DocServiceIntegrationTestBase {
                 .describedAs("the staleness gauge of the default site")
                 .isNotNull();
         assertThat(registry.find("jeap.doc.build.request.age").tag("site", Site.DEFAULT_SITE).gauge()).isNotNull();
+        // Untagged, and the one meter here that reports configuration rather than a measurement: it is what a
+        // rule divides a build's duration by, so it has to be there in the real context and not only in the
+        // adapter's own test - the adapter reads it from a bean of another module.
+        assertThat(registry.find("jeap.doc.build.timeout").gauge())
+                .describedAs("the build budget the headroom rules divide by")
+                .isNotNull();
     }
 
     /**
@@ -175,7 +180,7 @@ class DocServiceWiringIT extends DocServiceIntegrationTestBase {
         DocumentationBuildRequestRepository requests = context.getBean(DocumentationBuildRequestRepository.class);
         DocumentationBuildTrigger trigger = context.getBean(DocumentationBuildTrigger.class);
 
-        trigger.requestBecauseOfUpload(Site.DEFAULT_SITE);
+        trigger.requestBecauseOfUpload(Site.DEFAULT_SITE, "orders");
 
         assertThat(requests.pendingSince(Site.DEFAULT_SITE))
                 .describedAs("the request should have reached the database")

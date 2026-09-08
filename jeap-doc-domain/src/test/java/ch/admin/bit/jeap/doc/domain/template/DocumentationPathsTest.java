@@ -77,4 +77,57 @@ class DocumentationPathsTest {
                 .isEqualTo("/systems/orders/system-architecture/building-block-view/components/"
                            + "orders-intake/");
     }
+
+    /**
+     * A component carries the same structure one level down, under a segment of its own. Its pages hang
+     * below the component's page rather than beside it, so a reader who followed a link into the subtree is
+     * still inside the component.
+     */
+    @Test
+    void aComponentsStructureHangsBelowItsOwnPage() {
+        DocumentationPaths.ComponentPaths paths = componentPaths();
+
+        assertThat(paths.componentRoot())
+                .isEqualTo("/systems/orders/system-architecture/building-block-view/components/orders-intake/");
+        assertThat(paths.structure()).isEqualTo(paths.componentRoot() + "component-architecture/");
+    }
+
+    /**
+     * As in the system's tree, the chapter number is in the folder and not in the URL. The site generator
+     * strips the prefix, so a link carrying it would point at a page that does not exist.
+     */
+    @Test
+    void aComponentsChapterAppearsWithoutItsNumber() {
+        DocumentationPaths.ComponentPaths paths = componentPaths();
+
+        assertThat(paths.chapter(BUILDING_BLOCK_VIEW))
+                .isEqualTo("/systems/orders/system-architecture/building-block-view/components/orders-intake/"
+                           + "component-architecture/building-block-view/")
+                .doesNotContain("5-");
+    }
+
+    @Test
+    void aPageOfAComponentSitsInsideItsChapter() {
+        DocumentationPaths.ComponentPaths paths = componentPaths();
+
+        assertThat(paths.page(BUILDING_BLOCK_VIEW, "rest-api"))
+                .isEqualTo("/systems/orders/system-architecture/building-block-view/components/orders-intake/"
+                           + "component-architecture/building-block-view/rest-api/");
+    }
+
+    /**
+     * The same template is <i>System Architecture</i> below a system and <i>Component Architecture</i>
+     * below a component, and a path holds both without them colliding.
+     */
+    @Test
+    void theStructureBelowAComponentIsNotTheOneBelowTheSystem() {
+        assertThat(componentPaths().structure())
+                .contains("/system-architecture/")
+                .contains("/component-architecture/");
+    }
+
+    private static DocumentationPaths.ComponentPaths componentPaths() {
+        return DocumentationPaths.componentPaths("orders", "system-architecture", BUILDING_BLOCK_VIEW,
+                "orders-intake", "component-architecture");
+    }
 }

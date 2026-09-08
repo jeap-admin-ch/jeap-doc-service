@@ -24,7 +24,6 @@ class DocumentationSitesTest {
         assertThat(site.environments()).extracting(SiteEnvironment::id).containsExactly("dev", "ref", "abn", "prod");
         assertThat(site.mainEnvironment().id()).isEqualTo("prod");
         assertThat(site.latestEnvironment().id()).isEqualTo("dev");
-        assertThat(site.schedule()).contains("0 5 6-20 * * *");
         assertThat(site.publishOnUpload()).isTrue();
     }
 
@@ -162,14 +161,6 @@ class DocumentationSitesTest {
 
         assertThat(new DocumentationSites(properties).find("governance").orElseThrow().environments())
                 .extracting(SiteEnvironment::id).containsExactly("dev", "prod");
-    }
-
-    @Test
-    void construct_whenNoScheduleConfigured_thenTheSiteIsPublishedOnUploadOnly() {
-        SiteProperties properties = properties(Map.of("governance",
-                site(configured -> configured.setPublicationSchedule(null))));
-
-        assertThat(new DocumentationSites(properties).find("governance").orElseThrow().schedule()).isEmpty();
     }
 
     @Test

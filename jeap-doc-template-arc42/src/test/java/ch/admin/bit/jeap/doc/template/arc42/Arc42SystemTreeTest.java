@@ -13,6 +13,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
 import ch.admin.bit.jeap.doc.domain.architecture.RelationKind;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
+import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,13 @@ class Arc42SystemTreeTest {
     private static final Instant GENERATED_AT = Instant.parse("2026-08-28T06:05:02Z");
     private static final Instant MODEL_IMPORTED_AT = Instant.parse("2026-08-28T05:50:00Z");
 
+    /**
+     * The bounds the shipped defaults set: a hundred neighbouring systems, four names on an arrow, forty
+     * sibling components on a component's context view and a hundred tables on an entity relationship
+     * diagram. A case that is about a bound overrides the one it is about.
+     */
+    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200);
+
     @TempDir
     Path content;
 
@@ -57,7 +65,7 @@ class Arc42SystemTreeTest {
         // A context path and an environment prefix, because that is what a deployment looks like and what a
         // diagram's own links have to carry - a Markdown link gets both added for it, a fenced one does not.
         context = new GenerationContext(model, "dev", "https://archrepo.example.com/archrepo",
-                MODEL_IMPORTED_AT, GENERATED_AT, 100, 4, "/docs/dev/");
+                MODEL_IMPORTED_AT, GENERATED_AT, LIMITS, "/docs/dev/");
         systemDirectory = content.resolve("systems").resolve("orders");
     }
 
@@ -65,11 +73,16 @@ class Arc42SystemTreeTest {
         template.writeSystem(orders, context, systemDirectory);
     }
 
+    /**
+     * The system's own tree. What a component hangs below its page is the subject of
+     * {@link Arc42ComponentTreeTest}, and is left out here so that this list stays the URL layout of a
+     * system - the two are asserted separately for the same reason they are written by two classes.
+     */
     @Test
     void theTreeIsTheOneTheUrlLayoutPromises() throws IOException {
         generate();
 
-        assertThat(filesUnder(systemDirectory)).containsExactlyInAnyOrder(
+        assertThat(filesOfTheSystemsOwnTree()).containsExactlyInAnyOrder(
                 "system-architecture/_category_.json",
                 "system-architecture/index.md",
                 "system-architecture/1-intro/_category_.json",
@@ -121,15 +134,49 @@ class Arc42SystemTreeTest {
         generate();
 
         assertThat(read("system-architecture/5-building-block-view/_category_.json"))
+                .describedAs("open when the page is first shown - a reader has to see what is documented "
+                             + "about a system without clicking twelve times")
                 .isEqualTo("""
                         {
                           "label": "5. Building Block View",
-                          "position": 5
+                          "position": 5,
+                          "collapsed": false
                         }
                         """);
         assertThat(read("system-architecture/_category_.json")).contains("\"label\": \"System Architecture\"");
         assertThat(read("system-architecture/5-building-block-view/events/_category_.json"))
                 .contains("\"label\": \"Events\"", "\"position\": 3");
+    }
+
+    /**
+     * <b>How far the sidebar is open, in one place.</b> It is a judgement about readability rather than a
+     * rule the code implies, so it is worth a test that says the whole of it: open down to the pages of a
+     * chapter, and closed below that.
+     * <p>
+     * The line to hold is the last one. A system of thirty components, each expanded to its own twelve
+     * chapters, is a sidebar nobody can use - and that is what the next person widening this will produce.
+     */
+    @Test
+    void theSidebarIsOpenDownToTheChaptersPagesAndNoFurther() throws IOException {
+        generate();
+
+        assertThat(read("system-architecture/_category_.json"))
+                .describedAs("the way into a system's documentation").contains("\"collapsed\": false");
+        assertThat(read("system-architecture/1-intro/_category_.json")).contains("\"collapsed\": false");
+        assertThat(read("system-architecture/5-building-block-view/_category_.json"))
+                .contains("\"collapsed\": false");
+        assertThat(read("system-architecture/5-building-block-view/components/_category_.json"))
+                .describedAs("the components of the system, and the components themselves")
+                .contains("\"collapsed\": false");
+        assertThat(read("system-architecture/5-building-block-view/components/orders-intake/_category_.json"))
+                .contains("\"collapsed\": false");
+        assertThat(read("system-architecture/5-building-block-view/events/_category_.json"))
+                .describedAs("what the system publishes and consumes").contains("\"collapsed\": false");
+
+        assertThat(read("system-architecture/5-building-block-view/components/orders-intake/"
+                        + "component-architecture/_category_.json"))
+                .describedAs("and here it stops: a component's own arc42 tree is the level below")
+                .doesNotContain("collapsed");
     }
 
     @Test
@@ -266,13 +313,13 @@ class Arc42SystemTreeTest {
     void whenNothingFlowsInsideTheSystem_thenOnlyTheDiagramWithTheNeighboursIsDrawn() throws IOException {
         DocumentedSystem lonely = new DocumentedSystem("lonely", "lonely", null, List.of(), null,
                 List.of(new DocumentedComponent("lonely-service", "lonely-service", null,
-                        ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null)),
+                        ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null)),
                 List.of(new SystemRelation(RelationKind.EVENT, "shipping", "shipping-gateway", "lonely",
                         "lonely-service", "LonelyEvent", null, null, null)),
                 List.of());
         GenerationContext landscape = new GenerationContext(
                 ArchitectureModel.of(List.of(lonely, shipping())), "dev",
-                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, 100, 4,
+                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
         template.writeSystem(lonely, landscape, content.resolve("systems").resolve("lonely"));
@@ -291,8 +338,8 @@ class Arc42SystemTreeTest {
     @Test
     void aDiagramShowsACountWhereAnArrowCarriesMoreNamesThanItCanLabel() throws IOException {
         GenerationContext capped = new GenerationContext(context.model(), "dev",
-                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, 100, 0,
-                "/docs/dev/");
+                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
+                new DiagramLimits(100, 0, 40, 100, 200), "/docs/dev/");
 
         template.writeSystem(orders, capped, systemDirectory);
 
@@ -300,11 +347,18 @@ class Arc42SystemTreeTest {
                 .contains(" : 1 Event");
     }
 
-    /** The picture is cut, the facts are not: the page says how many neighbours it left out. */
+    /**
+     * The picture is cut, the facts are not: the page says <b>how many</b> neighbours it left out.
+     * <p>
+     * The number, not only the note. A format string concatenated in front of the literal
+     * {@code .formatted(...)} is applied to only leaves the specifier on the page - which is what happened,
+     * and what no assertion on the title alone could see.
+     */
     @Test
-    void theWhiteboxViewSaysWhenItLeavesANeighbourOut() throws IOException {
+    void theDiagramsSayWhenTheyLeaveANeighbourOut() throws IOException {
         GenerationContext narrow = new GenerationContext(context.model(), "dev",
-                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, 1, 4, "/docs/dev/");
+                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
+                new DiagramLimits(1, 4, 40, 100, 200), "/docs/dev/");
         DocumentedSystem crowded = new DocumentedSystem("orders", "orders", null, List.of(), null,
                 orders.components(),
                 List.of(new SystemRelation(RelationKind.EVENT, "shipping", "shipping-gateway", "orders",
@@ -315,14 +369,55 @@ class Arc42SystemTreeTest {
         GenerationContext landscape = new GenerationContext(
                 ArchitectureModel.of(List.of(crowded, shipping(), new DocumentedSystem("zulu", "zulu", null,
                         List.of(), null, List.of(), List.of(), List.of()))),
-                "dev", narrow.archRepoUrl(), MODEL_IMPORTED_AT, GENERATED_AT, 1, 4, "/docs/dev/");
+                "dev", narrow.archRepoUrl(), MODEL_IMPORTED_AT, GENERATED_AT,
+                new DiagramLimits(1, 4, 40, 100, 200), "/docs/dev/");
 
         template.writeSystem(crowded, landscape, systemDirectory);
 
         String page = read("system-architecture/5-building-block-view/whitebox-view.md");
         assertThat(page).contains(":::note[Not every neighbour is drawn]");
+        assertThat(page).describedAs("how many were left out, and not the format specifier for it")
+                .contains("One further system exchanges something with this one")
+                .doesNotContain("%d");
+        assertThat(page).describedAs("the count and the sentence agree - a bound is reached one system at "
+                                    + "a time, so the singular is the case a reader meets first")
+                .doesNotContain("1 further systems");
         assertThat(page).describedAs("the relation of the neighbour left out is still in the table")
                 .contains("`OrdersOtherEvent`");
+
+        // The context view is bounded by the same number and says so in its own words.
+        String contextView = read("system-architecture/3-context-and-scope/system-context-view.md");
+        assertThat(contextView).contains(":::note[Not every neighbour is drawn]")
+                .contains("One further system exchanges something with this one")
+                .doesNotContain("%d");
+    }
+
+    /** And with more than one left out the sentence is plural again, which is the other half of the rule. */
+    @Test
+    void theDiagramsSayHowManyNeighboursTheyLeaveOut() throws IOException {
+        DocumentedSystem crowded = new DocumentedSystem("orders", "orders", null, List.of(), null,
+                orders.components(),
+                List.of(new SystemRelation(RelationKind.EVENT, "shipping", "shipping-gateway", "orders",
+                                "orders-intake", "OrdersPaymentAcceptedEvent", null, null, null),
+                        new SystemRelation(RelationKind.EVENT, "yankee", "yankee-service", "orders",
+                                "orders-intake", "OrdersOtherEvent", null, null, null),
+                        new SystemRelation(RelationKind.EVENT, "zulu", "zulu-service", "orders",
+                                "orders-intake", "OrdersThirdEvent", null, null, null)),
+                List.of());
+        GenerationContext landscape = new GenerationContext(
+                ArchitectureModel.of(List.of(crowded, shipping(),
+                        new DocumentedSystem("yankee", "yankee", null, List.of(), null, List.of(), List.of(),
+                                List.of()),
+                        new DocumentedSystem("zulu", "zulu", null, List.of(), null, List.of(), List.of(),
+                                List.of()))),
+                "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
+                new DiagramLimits(1, 4, 40, 100, 200), "/docs/dev/");
+
+        template.writeSystem(crowded, landscape, systemDirectory);
+
+        assertThat(read("system-architecture/5-building-block-view/whitebox-view.md"))
+                .contains("2 further systems exchange something with this one")
+                .doesNotContain("%d");
     }
 
     @Test
@@ -441,9 +536,9 @@ class Arc42SystemTreeTest {
     @Test
     void aContractLinksTheComponentOfTheSystemItNames_andIsNotGuessedAtWithoutOne() throws IOException {
         DocumentedComponent alphaWorker = new DocumentedComponent("shared-worker", "shared-worker", null,
-                ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null);
+                ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null);
         DocumentedComponent betaWorker = new DocumentedComponent("shared-worker", "shared-worker", null,
-                ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null);
+                ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null);
         DocumentedSystem alpha = new DocumentedSystem("alpha", "alpha", null, List.of(), null,
                 List.of(alphaWorker), List.of(),
                 List.of(new DocumentedMessage("AlphaThingDoneEvent", "alpha-thing-done-event",
@@ -458,10 +553,10 @@ class Arc42SystemTreeTest {
                                         "alpha-topic", List.of("1.0.0"))))));
         DocumentedSystem beta = new DocumentedSystem("beta", "beta", null, List.of("Beta-Alias"), null,
                 List.of(betaWorker, new DocumentedComponent("lonely-worker", "lonely-worker", null,
-                        ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null)),
+                        ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null)),
                 List.of(), List.of());
         GenerationContext twoSystems = new GenerationContext(ArchitectureModel.of(List.of(alpha, beta)),
-                "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, 100, 4,
+                "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
         template.writeSystem(alpha, twoSystems, content.resolve("systems").resolve("alpha"));
@@ -516,7 +611,7 @@ class Arc42SystemTreeTest {
         DocumentedSystem empty = new DocumentedSystem("lonely", "lonely", null, List.of(), null,
                 List.of(), List.of(), List.of());
         GenerationContext emptyContext = new GenerationContext(ArchitectureModel.of(List.of(empty)), "dev",
-                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, 100, 4,
+                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
         template.writeSystem(empty, emptyContext, content.resolve("systems").resolve("lonely"));
@@ -546,7 +641,7 @@ class Arc42SystemTreeTest {
                         "internal", "quiet-topic", "A command, and no event.", null, null, List.of(DocumentedMessageVersion.of("1.0.0")),
                         List.of())));
         GenerationContext quietContext = new GenerationContext(ArchitectureModel.of(List.of(quiet)),
-                "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, 100, 4,
+                "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
         template.writeSystem(quiet, quietContext, content.resolve("systems").resolve("quiet"));
@@ -565,7 +660,7 @@ class Arc42SystemTreeTest {
                 List.of(new DocumentedMessage("NamedThingHappenedEvent", "named-thing-happened", MessageKind.EVENT,
                         "internal", "named-topic", null, null, null, List.of(), List.of())));
         GenerationContext namedContext = new GenerationContext(ArchitectureModel.of(List.of(named)),
-                "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, 100, 4,
+                "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
         template.writeSystem(named, namedContext, content.resolve("systems").resolve("named"));
@@ -613,7 +708,7 @@ class Arc42SystemTreeTest {
         String escaped = "\\:::danger A \\<script\\>alert(1)\\</script\\> and \\*stars\\* &amp; \\[brackets\\]";
         orders = withDescriptions(orders, hostile);
         context = new GenerationContext(ArchitectureModel.of(List.of(orders, shipping())), "dev",
-                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, 100, 4, "/docs/dev/");
+                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS, "/docs/dev/");
 
         generate();
 
@@ -649,7 +744,7 @@ class Arc42SystemTreeTest {
                         .map(component -> new DocumentedComponent(component.name(), component.slug(),
                                 description, component.type(), component.team(), component.importer(),
                                 component.lastSeen(), component.restApis(), component.openApi(),
-                                component.databaseSchema()))
+                                component.databaseSchema(), null))
                         .toList(),
                 system.relations(),
                 system.messages().stream()
@@ -689,6 +784,34 @@ class Arc42SystemTreeTest {
         }
     }
 
+    /**
+     * Every component of the system carries its own structure, and the component's page links to it. The link
+     * is written after the subtree and only because it exists - one to a page nothing wrote fails the build of
+     * every site of the environment.
+     */
+    @Test
+    void everyComponentCarriesItsOwnStructureAndItsPageLinksToIt() throws IOException {
+        generate();
+
+        for (String component : List.of("orders-intake", "orders-risk")) {
+            String structure = "5-building-block-view/components/" + component + "/component-architecture/";
+            assertThat(systemDirectory.resolve("system-architecture/" + structure + "index.md"))
+                    .describedAs("the structure below %s", component).isRegularFile();
+            assertThat(read("system-architecture/5-building-block-view/components/" + component + "/index.md"))
+                    .describedAs("the page of %s links to it", component)
+                    .contains("## Documentation")
+                    .contains("/systems/orders/system-architecture/building-block-view/components/"
+                              + component + "/component-architecture/");
+        }
+    }
+
+    /** The system's own tree, without what the components hang below their pages. */
+    private List<String> filesOfTheSystemsOwnTree() throws IOException {
+        return filesUnder(systemDirectory).stream()
+                .filter(file -> !file.contains("/component-architecture/"))
+                .toList();
+    }
+
     private List<String> filesUnder(Path directory) throws IOException {
         try (Stream<Path> files = Files.walk(directory)) {
             return files.filter(Files::isRegularFile)
@@ -701,12 +824,12 @@ class Arc42SystemTreeTest {
     private static DocumentedSystem orders() {
         DocumentedComponent intake = new DocumentedComponent("orders-intake", "orders-intake",
                 "Takes payments in", ComponentType.BACKEND_SERVICE, new Team("Team Blue", "blue@example.com", null, null),
-                "DEPLOYMENT_LOG", ZonedDateTime.parse("2026-01-01T00:00:00Z"), List.of(), null, null);
+                "DEPLOYMENT_LOG", ZonedDateTime.parse("2026-01-01T00:00:00Z"), List.of(), null, null, null);
         // A second component, and a relation between the two: the whitebox page draws the decomposition on
         // its own as well as with the systems around it, and one component cannot show that.
         DocumentedComponent risk = new DocumentedComponent("orders-risk", "orders-risk", "Scores an order",
                 ComponentType.BACKEND_SERVICE, new Team("Team Blue", "blue@example.com", null, null),
-                "DEPLOYMENT_LOG", ZonedDateTime.parse("2026-08-27T04:00:00Z"), List.of(), null, null);
+                "DEPLOYMENT_LOG", ZonedDateTime.parse("2026-08-27T04:00:00Z"), List.of(), null, null, null);
         SystemRelation event = new SystemRelation(RelationKind.EVENT, "shipping", "shipping-gateway", "orders",
                 "orders-intake", "OrdersPaymentAcceptedEvent", null, null, null);
         SystemRelation internal = new SystemRelation(RelationKind.EVENT, "orders", "orders-risk", "orders",
@@ -740,7 +863,7 @@ class Arc42SystemTreeTest {
     private static DocumentedSystem shipping() {
         return new DocumentedSystem("shipping", "shipping", "Sends the goods out", List.of(), null,
                 List.of(new DocumentedComponent("shipping-gateway", "shipping-gateway", null,
-                        ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null)),
+                        ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null)),
                 List.of(new SystemRelation(RelationKind.EVENT, "orders", "orders-intake", "shipping",
                         "shipping-gateway", "ShippingArrangedEvent", null, null, null)),
                 List.of());

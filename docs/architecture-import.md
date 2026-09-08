@@ -73,7 +73,7 @@ body for any zero-length `200`. A landscape that really has none answers with an
 
 ## Reading a landscape while one is being written
 
-A build and an import can run at the same moment, and nothing stops them: the build lock is per site and the
+A build and an import can run at the same moment, and nothing stops them: the build lock is per part and the
 import lock is per environment. So the read has to survive the write.
 
 **A landscape is read out of one snapshot of the database**, at repeatable read. That is not a precaution, it is
@@ -98,6 +98,23 @@ What is **not** guaranteed, and does not need to be, is that a build sees an imp
 build reads the landscape at its start and then spends minutes generating; a site published from the model of
 twenty minutes ago is exactly what an hourly schedule means.
 
+### The landscape is read once per import, not once per build
+
+A part carries one system and every environment of its site, and a build of it reads the **whole** landscape of
+each of those environments - a system's context view cannot be computed from that system alone. A site of fifty
+parts over four environments therefore read the same four landscapes two hundred times, which was about a third
+of what a full publication cost.
+
+So a landscape is held between builds, keyed on **when that environment was last read successfully**. An import
+moves that whether or not it changed anything, so everything held is dropped by the import that could have
+changed it, and reading the key is one row. A stale answer is not possible, and it rests on the order the
+import writes in: the landscape, then the state row, then the build requests. The import step says so where it
+does it, and a test asserts the order.
+
+Held per environment, so what it costs is one landscape each for as long as the imports keep succeeding.
+`jeap.doc.archrepo.import.cache-landscape` switches it off. `jeap.doc.build.model.read` still times what each
+build paid, so a hit is a sample near zero and the timer's count is how often a landscape was really read.
+
 ## The artifacts: one at a time, over the entity tags
 
 1. The index, asked conditionally - but **only after a run that stored or confirmed everything in its list**.
@@ -118,6 +135,12 @@ is left where it is, with a warning naming it, and the run carries on with the r
 is a defect upstream rather than something to render. The limit bounds what one answer costs in **memory** as
 well as what is stored: nothing past it is read off the wire, so the advertised length is checked before the
 body and an answer that advertises none is bounded all the same. It bounds a message schema the same way.
+
+**And it bounds a build, because a generation run reads one artifact at a time.** It asks for the artifact of
+one component and one kind, parses it and keeps only what a page shows before asking for the next; a read that
+answered a whole system's would put a component count's multiple of this limit live at once, on top of the
+architecture model the build holds until the site generator has finished. There is deliberately no way to read
+more than one artifact's content in one call.
 
 **A redirect is not followed.** The origin of a content URL is checked before it is fetched, and a followed hop
 would make that check hold for the first request only - a `302` from an on-origin path would have the body of
@@ -296,6 +319,13 @@ until a run gets through its whole list, which is what makes a replication that 
 A run cut short by a **deployment** counts as `partial` for the same reason, and reads the same way. That is
 deliberate: an instance that is stopping imported no less than an instance that ran out of time, and the age
 gauge should go on rising until an instance gets through the whole landscape.
+
+## Bringing an import forward
+
+A correction made in the architecture repository is invisible to the documentation until the next scheduled
+import, because a build reads what was stored. `POST /api/architecture/imports` asks for every environment to
+be imported now, and `POST /api/architecture/environments/{environment}/imports` for one of them - answered
+`202`, run on the import thread, not durable. See [the API](api.md#asking-for-the-architecture-repository-to-be-imported).
 
 ## Related
 

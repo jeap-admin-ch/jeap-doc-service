@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.domain;
 
-import ch.admin.bit.jeap.doc.domain.port.ContainerMemory;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -15,6 +14,7 @@ import java.time.Instant;
  *
  * @param id               the identifier of the build, and the prefix its site is published under
  * @param site             the site that was built
+ * @param part             the part of that site this build produced - see {@link SitePart}
  * @param trigger          what asked for this run
  * @param state            where the build stands
  * @param startedAt        when it started
@@ -24,14 +24,14 @@ import java.time.Instant;
  * @param pageCount        how many pages it produced
  * @param sizeInBytes      how large the published site is
  * @param docusaurusMillis how much of the run was the Docusaurus build itself
- * @param memoryPeak       what the run did to the memory of its container, or null where that cannot be read.
- *                         It is the kernel's own high-water mark rather than a sample, and it is the number a
- *                         container is sized from - almost none of a build is the JVM
  * @param failureReason    what went wrong, null unless it failed
+ * @param contentDigest    what the generated content of this part hashed to, null unless it succeeded. A build
+ *                         whose content hashes to this is not run again
  */
 public record DocumentationBuild(
         Long id,
         String site,
+        String part,
         BuildTrigger trigger,
         BuildState state,
         Instant startedAt,
@@ -41,8 +41,8 @@ public record DocumentationBuild(
         int pageCount,
         long sizeInBytes,
         long docusaurusMillis,
-        ContainerMemory.Peak memoryPeak,
-        String failureReason) {
+        String failureReason,
+        String contentDigest) {
 
     /**
      * How long the build took, or how long it has been running.
@@ -57,7 +57,13 @@ public record DocumentationBuild(
      * still {@code RUNNING}, and what it is handed back should say what is now true.
      */
     public DocumentationBuild abandonedAt(Instant finishedAt) {
-        return new DocumentationBuild(id, site, trigger, BuildState.ABANDONED, startedAt, finishedAt, instance,
-                objectPrefix, pageCount, sizeInBytes, docusaurusMillis, memoryPeak, failureReason);
+        return new DocumentationBuild(id, site, part, trigger, BuildState.ABANDONED, startedAt, finishedAt,
+                instance, objectPrefix, pageCount, sizeInBytes, docusaurusMillis, failureReason,
+                contentDigest);
+    }
+
+    /** What this build is called where a site and a part have to read as one name: a log line, a lock. */
+    public String qualifiedName() {
+        return site + "/" + part;
     }
 }

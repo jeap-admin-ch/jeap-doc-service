@@ -283,7 +283,7 @@ class ArchitectureModelRepositoryAdapterIT extends PostgresTestContainerBase {
             DocumentedComponent component = new DocumentedComponent(slug + "-scs", slug + "-scs", null,
                     ComponentType.SELF_CONTAINED_SYSTEM, null, null, null,
                     List.of(new RestApiOperation("GET", "/api/a"), new RestApiOperation("POST", "/api/a")),
-                    null, null);
+                    null, null, null);
             DocumentedMessage message = new DocumentedMessage(name + "PaidEvent", slug + "-paid-event",
                     MessageKind.EVENT, null, "topic", null, null, null,
                     List.of(DocumentedMessageVersion.of("1.0.0"), DocumentedMessageVersion.of("2.0.0")),
@@ -312,7 +312,7 @@ class ArchitectureModelRepositoryAdapterIT extends PostgresTestContainerBase {
 
     private static DocumentedComponent component(String name, Team team) {
         return new DocumentedComponent(name, name, null, ComponentType.SELF_CONTAINED_SYSTEM, team, null, null,
-                List.of(), null, null);
+                List.of(), null, null, null);
     }
 
     private static DocumentedSystem fullSystem() {
@@ -325,7 +325,7 @@ class ArchitectureModelRepositoryAdapterIT extends PostgresTestContainerBase {
                         new RestApiOperation("POST", "/api/payments")),
                 new OpenApiReference("2.1.0", "https://orders.example.org", "/docs-api/openapi",
                         "https://orders.example.org/swagger"),
-                new DatabaseSchemaReference("14", "/docs-api/database-schema"));
+                new DatabaseSchemaReference("14", "/docs-api/database-schema"), null);
         DocumentedMessage accepted = new DocumentedMessage("OrdersPaymentAcceptedEvent",
                 "orders-payment-accepted-event", MessageKind.EVENT,
                 "PUBLIC", "orders.payment", "The payment went through", "https://registry.example.org/descriptor",

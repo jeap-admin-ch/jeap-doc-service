@@ -90,7 +90,7 @@ class AboutThisDocumentationTest {
         DocumentationFacts facts = new DocumentationFacts(
                 new DocumentationFacts.Service("1.2.3", GENERATED_AT), site(),
                 List.of(environmentFacts()),
-                new DocumentationFacts.Schedules(null, null, null, null));
+                new DocumentationFacts.Schedules(null, null));
 
         page.write(facts, new SiteEnvironment("prod", "PROD", "Production", 1, true, false),
                 Map.of("prod", EnvironmentModel.empty(null)), 1L, STATUS_URL, directory);
@@ -111,7 +111,7 @@ class AboutThisDocumentationTest {
                 new DocumentationFacts.Service("1.2.3", GENERATED_AT), site(),
                 List.of(new DocumentationFacts.EnvironmentFacts("prod", "Production", true, false, true,
                         Instant.parse("2026-09-03T04:00:00Z"), ImportOutcome.FAILED, Duration.ofHours(2))),
-                new DocumentationFacts.Schedules(null, null, null, null));
+                new DocumentationFacts.Schedules(null, null));
 
         String written = write(facts, 1L);
 
@@ -129,42 +129,49 @@ class AboutThisDocumentationTest {
                 new DocumentationFacts.Service("1.2.3", GENERATED_AT), site(),
                 List.of(new DocumentationFacts.EnvironmentFacts("prod", "Production", true, false, true,
                         GENERATED_AT.minus(Duration.ofMinutes(20)), ImportOutcome.FAILED, Duration.ofHours(2))),
-                new DocumentationFacts.Schedules(null, null, null, null));
+                new DocumentationFacts.Schedules(null, null));
 
         String written = write(facts, 1L);
 
         assertThat(written).contains("; the last run did not read it").doesNotContain("not read since");
     }
 
+    /**
+     * One schedule, because there is one: the import reads the landscape and asks for every part of the site,
+     * so what a reader wants to know about is when that runs next.
+     */
     @Test
-    void write_thenTheSchedulesSayWhenTheDocumentationChangesNext() throws IOException {
+    void write_thenTheScheduleSaysWhenTheDocumentationChangesNext() throws IOException {
         String written = write(facts(), 1L);
 
         assertThat(written)
-                .contains("`0 5 6-20 * * *`")
-                .contains("in 35 minutes")
-                .contains("`0 45 5-19 * * *`");
+                .contains("`0 45 5-19 * * *`")
+                .contains("in 15 minutes")
+                .doesNotContain("`0 5 6-20 * * *`");
     }
 
-    /** A site published only on upload has no schedule, and the page says that rather than nothing. */
+    /**
+     * A site no architecture repository feeds is published when something is uploaded to it, and the page says
+     * that rather than leaving the cell empty.
+     */
     @Test
-    void write_whenTheSiteHasNoPublicationSchedule_thenItSaysSoRatherThanLeavingTheCellEmpty()
+    void write_whenNoImportFeedsTheSite_thenItSaysSoRatherThanLeavingTheCellEmpty()
             throws IOException {
         DocumentationFacts facts = new DocumentationFacts(
                 new DocumentationFacts.Service("1.2.3", GENERATED_AT), site(),
                 List.of(environmentFacts()),
-                new DocumentationFacts.Schedules(null, null, null, null));
+                new DocumentationFacts.Schedules(null, null));
 
         String written = write(facts, 1L);
 
-        assertThat(written).contains("*only when something is uploaded to it*");
+        assertThat(written).contains("*only when something is uploaded to this site*");
     }
 
     @Test
     void write_whenTheVersionCannotBeRead_thenThePageSaysNothingAboutIt() throws IOException {
         DocumentationFacts facts = new DocumentationFacts(
                 new DocumentationFacts.Service(null, GENERATED_AT), site(), List.of(environmentFacts()),
-                new DocumentationFacts.Schedules(null, null, null, null));
+                new DocumentationFacts.Schedules(null, null));
 
         String written = write(facts, 1L);
 
@@ -181,9 +188,16 @@ class AboutThisDocumentationTest {
         assertThat(AboutThisDocumentation.spellOut(Duration.ofMinutes(-5))).isEqualTo("in a moment");
     }
 
+    /** Two systems, because what this page says about them is their number. */
+    private static java.util.List<EnvironmentModel.DocumentedSystemEntry> twoSystems() {
+        return java.util.List.of(
+                new EnvironmentModel.DocumentedSystemEntry("orders", "/systems/orders/"),
+                new EnvironmentModel.DocumentedSystemEntry("shipping", "/systems/shipping/"));
+    }
+
     private String write(DocumentationFacts facts, long buildId) throws IOException {
         page.write(facts, new SiteEnvironment("prod", "PROD", "Production", 1, true, false),
-                Map.of("prod", new EnvironmentModel(2, 5, 9, IMPORTED_AT)), buildId, STATUS_URL, directory);
+                Map.of("prod", new EnvironmentModel(twoSystems(), 5, 9, IMPORTED_AT)), buildId, STATUS_URL, directory);
         return Files.readString(directory.resolve(AboutThisDocumentation.FILE_NAME), StandardCharsets.UTF_8);
     }
 
@@ -194,8 +208,8 @@ class AboutThisDocumentationTest {
                 List.of(environmentFacts(),
                         new DocumentationFacts.EnvironmentFacts("dev", "Development", false, true, false,
                                 null, null, Duration.ofHours(2))),
-                new DocumentationFacts.Schedules("0 5 6-20 * * *", GENERATED_AT.plus(Duration.ofMinutes(35)),
-                        "0 45 5-19 * * *", GENERATED_AT.plus(Duration.ofMinutes(15))));
+                new DocumentationFacts.Schedules("0 45 5-19 * * *",
+                        GENERATED_AT.plus(Duration.ofMinutes(15))));
     }
 
     /**
@@ -210,8 +224,8 @@ class AboutThisDocumentationTest {
                 new DocumentationFacts.SiteFacts("default", "Platform Documentation",
                         List.of("System Architecture"), true, false, 3),
                 all.environments(),
-                new DocumentationFacts.Schedules(null, null, "0 45 5-19 * * *",
-                        GENERATED_AT.plus(Duration.ofMinutes(15))));
+                // No import feeds it either, so the row falls back to what does publish it.
+                new DocumentationFacts.Schedules(null, null));
 
         String written = write(facts, 4711L);
 
@@ -244,8 +258,7 @@ class AboutThisDocumentationTest {
                 new DocumentationFacts.SiteFacts("default", "Platform Documentation", List.of(), false, true, 3),
                 List.of(new DocumentationFacts.EnvironmentFacts("prod", "Production", true, true, false,
                         null, null, Duration.ofHours(2))),
-                new DocumentationFacts.Schedules("0 5 6-20 * * *", GENERATED_AT.plus(Duration.ofMinutes(35)),
-                        null, null));
+                new DocumentationFacts.Schedules(null, null));
 
         String written = write(facts, 4711L);
 

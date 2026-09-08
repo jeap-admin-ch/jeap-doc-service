@@ -46,13 +46,6 @@ class ArchitectureArtifactRepositoryAdapter implements ArchitectureArtifactRepos
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public List<ArchitectureArtifact> findAll(String environment, ArchitectureImportKind kind, String system) {
-        return artifacts.findAllOfSystem(environment, kind.name(), system).stream()
-                .map(ArchitectureArtifactRepositoryAdapter::artifact).toList();
-    }
-
-    @Override
     @Transactional
     public void store(ArchitectureArtifact artifact) {
         ArchitectureArtifactEntity entity = artifacts

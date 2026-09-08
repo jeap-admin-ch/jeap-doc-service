@@ -65,6 +65,17 @@ class ArchitectureModelRepositoryAdapter implements ArchitectureModelRepository 
     private final ArchitectureArtifactRepository artifacts;
 
     /**
+     * The slugs alone, out of one statement. No snapshot isolation: there is nothing here to tear - a slug
+     * either belongs to the landscape being replaced or to the one replacing it, and a part that appears one
+     * poll later is a part built one poll later.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> systemSlugsOf(String environment) {
+        return systems.findSlugsByEnvironment(environment);
+    }
+
+    /**
      * <b>At repeatable read, and that is the whole point of this method.</b>
      * <p>
      * The ten statements below read one table each, every one of them keyed by the identifiers the statement
@@ -355,7 +366,10 @@ class ArchitectureModelRepositoryAdapter implements ArchitectureModelRepository 
                 ? null : new DatabaseSchemaReference(row.getDbSchemaVersion(), row.getDbSchemaContentUrl());
         return new DocumentedComponent(row.getName(), row.getSlug(), row.getDescription(),
                 storedEnum(ComponentType.class, row.getType(), ComponentType.UNKNOWN), teamsById.get(row.getTeamId()), row.getImporter(), lastSeen,
-                restApisByComponent.getOrDefault(row.getId(), List.of()), openApi, schema);
+                restApisByComponent.getOrDefault(row.getId(), List.of()), openApi, schema,
+                // The artifacts are replicated separately and joined per system while the pages of that
+                // system are written; the landscape read does not carry them.
+                null);
     }
 
     /**

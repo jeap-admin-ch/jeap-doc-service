@@ -65,7 +65,7 @@ final class Arc42SystemPages {
     static void write(Arc42Template template, DocumentedSystem system, GenerationContext context,
                       Path systemDirectory) throws IOException {
         Path structure = systemDirectory.resolve(SYSTEM_SEGMENT);
-        Arc42Pages.writeCategory(structure, template.systemLabel(), 1);
+        Arc42Pages.writeCategory(structure, template.systemLabel(), 1, true);
         writeStructureLandingPage(template, system, context, structure);
         writeIntroduction(template, system, context, structure);
         writeContextAndScope(template, system, context, structure);
@@ -144,7 +144,7 @@ final class Arc42SystemPages {
     private static void writeContextAndScope(Arc42Template template, DocumentedSystem system, GenerationContext context, Path structure)
             throws IOException {
         Path directory = Arc42Pages.chapterDirectory(template, structure, CONTEXT_AND_SCOPE);
-        SystemContext systemContext = SystemContext.of(context.model(), system, context.maxDiagramNodes());
+        SystemContext systemContext = SystemContext.of(context.model(), system, context.limits().maxDiagramNodes());
 
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(CONTEXT_AND_SCOPE.label(), 0, context))
@@ -167,10 +167,8 @@ final class Arc42SystemPages {
             PlantUmlViews.Diagram diagram = PlantUmlViews.contextView(systemContext, context);
             view.fence(PlantUmlViews.LANGUAGE, diagram.source());
             if (systemContext.truncated() > 0) {
-                view.admonition("note", "Not every neighbour is drawn", Md.text(
-                        "%d further systems exchange something with this one and are left out of the diagram "
-                        + "so that it stays readable. The table below lists every one of them."
-                                .formatted(systemContext.truncated())));
+                view.admonition("note", "Not every neighbour is drawn",
+                        neighboursLeftOut(systemContext.truncated(), "table"));
             }
             view.heading(2, NEIGHBOURS_LABEL);
             view.table(List.of("From", "To", "Kind", "What travels"), systemContext.edges().stream()
@@ -192,7 +190,7 @@ final class Arc42SystemPages {
     private static void writeBuildingBlockView(Arc42Template template, DocumentedSystem system, GenerationContext context, Path structure)
             throws IOException {
         Path directory = Arc42Pages.chapterDirectory(template, structure, BUILDING_BLOCK_VIEW);
-        WhiteboxView whitebox = WhiteboxView.of(context.model(), system, context.maxDiagramNodes());
+        WhiteboxView whitebox = WhiteboxView.of(context.model(), system, context.limits().maxDiagramNodes());
 
         // The message groups are written before the listing that links to them, and the listing goes by what
         // they answer: a system defines no events, or no commands, more often than not, and a link to a
@@ -227,7 +225,7 @@ final class Arc42SystemPages {
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         writeWhiteboxView(system, context, whitebox, directory);
-        writeComponents(system, context, directory);
+        writeComponents(template, system, context, directory);
     }
 
     /**
@@ -266,10 +264,8 @@ final class Arc42SystemPages {
                            + "single box. A solid arrow is a message, a dotted one a REST call.");
             page.fence(PlantUmlViews.LANGUAGE, withNeighbours.source());
             if (whitebox.truncated() > 0) {
-                page.admonition("note", "Not every neighbour is drawn", Md.text(
-                        "%d further systems exchange something with this one and are left out of the diagram "
-                        + "so that it stays readable. The table of relations below lists every one of them."
-                                .formatted(whitebox.truncated())));
+                page.admonition("note", "Not every neighbour is drawn",
+                        neighboursLeftOut(whitebox.truncated(), "table of relations"));
             }
 
             page.heading(2, COMPONENTS_LABEL);
@@ -345,18 +341,18 @@ final class Arc42SystemPages {
         return kind == MessageKind.COMMAND ? Arc42MessagePages.COMMANDS : Arc42MessagePages.EVENTS;
     }
 
-    /** The root page of a component, and where its own arc42 tree will hang later. */
-    private static void writeComponents(DocumentedSystem system, GenerationContext context, Path buildingBlock)
-            throws IOException {
+    /** The root page of a component, and its own arc42 tree below it. */
+    private static void writeComponents(Arc42Template template, DocumentedSystem system,
+                                        GenerationContext context, Path buildingBlock) throws IOException {
         if (system.components().isEmpty()) {
             return;
         }
         Path components = buildingBlock.resolve(DocumentationPaths.COMPONENTS_SEGMENT);
-        Arc42Pages.writeCategory(components, COMPONENTS_LABEL, 2);
+        Arc42Pages.writeCategory(components, COMPONENTS_LABEL, 2, true);
         writeComponentIndex(system, context, components);
         for (DocumentedComponent component : system.components()) {
             Path directory = components.resolve(component.slug());
-            Arc42Pages.writeCategory(directory, component.name(), 0);
+            Arc42Pages.writeCategory(directory, component.name(), 0, true);
             MarkdownWriter page = new MarkdownWriter()
                     .frontMatter(Arc42Pages.generated(component.name(), 0, context)
                             .put("description", component.description()))
@@ -386,6 +382,15 @@ final class Arc42SystemPages {
                         + "something that no longer exists.",
                         Md.code(component.lastSeen().toInstant().toString())));
             }
+
+            // The subtree first and the link to it after, the way a system's landing page is written: a link
+            // to a page nothing wrote fails the build of every site of the environment.
+            Arc42ComponentPages.write(template, system, component, context, directory);
+            page.heading(2, "Documentation");
+            page.bulletList(List.of(Md.link(
+                    Arc42ComponentPages.pathsOf(template, system, component).structure(),
+                    template.componentLabel())));
+
             Arc42Pages.provenance(page, context);
             Arc42Pages.write(directory, Arc42Pages.INDEX, page);
         }
@@ -449,6 +454,24 @@ final class Arc42SystemPages {
             return Md.text(team.name());
         }
         return Md.linkOrCode("mailto:" + team.contactAddress(), team.name());
+    }
+
+    /**
+     * The note under a diagram that left neighbours out, written by both of the two diagrams that can leave
+     * one out.
+     * <p>
+     * Agreeing with the count - see {@link Arc42Pages#leftOut}, which is where that rule lives and which the
+     * two notes on a component's pages go through as well.
+     *
+     * @param table what the page calls the list below the diagram
+     */
+    private static Markdown neighboursLeftOut(int truncated, String table) {
+        return Arc42Pages.leftOut(truncated,
+                ("One further system exchanges something with this one and is left out of the diagram so "
+                 + "that it stays readable. The %s below names it.").formatted(table),
+                ("%d further systems exchange something with this one and are left out of the diagram so "
+                 + "that it stays readable. The %s below lists every one of them.")
+                        .formatted(truncated, table));
     }
 
     /** A system name, linked when this run documents it. A link to a missing page fails the site build. */

@@ -2,7 +2,9 @@ package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
+import ch.admin.bit.jeap.doc.domain.port.PreparedPart;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationStatus;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuilder;
@@ -23,11 +25,15 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Generates the documentation site with Docusaurus, as a child process of the service.
+ * Generates one part of a documentation site with Docusaurus, as a child process of the service.
  * <p>
  * The order of a run is the point of this class: the workspace is created, the generated content is written into
  * it, <b>the site template is installed over that content</b> and only then is the generator started. Nothing
  * that was generated can be part of the application that runs.
+ * <p>
+ * And it is two steps rather than one. Writing a part's content is seconds and generating its site is minutes,
+ * so the content is written and hashed first: a part whose content is what is already published needs no
+ * generator run at all, which is what makes a part per system affordable.
  */
 @Slf4j
 @Component
@@ -48,6 +54,15 @@ public class DocusaurusSiteBuilder implements SiteBuilder {
      */
     static final String BUILD_COMMAND = "build";
 
+    /**
+     * What each environment of a prepared part contributed, until that build is over.
+     * <p>
+     * It is read once, by the build that prepared it, and removed with the workspace. Held here rather than on
+     * {@link PreparedPart} because it is the site generator's own bookkeeping - the domain hands the prepared
+     * part back to be generated and has no use for the counts on the way.
+     */
+    private final Map<Long, Map<String, EnvironmentModel>> preparedModels = new java.util.concurrent.ConcurrentHashMap<>();
+
     private final BuildProperties properties;
     private final BuildWorkspaces workspaces;
     private final SiteTemplate template;
@@ -60,19 +75,29 @@ public class DocusaurusSiteBuilder implements SiteBuilder {
     }
 
     @Override
-    public BuiltSite generate(long buildId, Site site, Instant generatedAt) {
+    public PreparedPart prepare(long buildId, Site site, SitePart part, Instant generatedAt) {
         try {
             Path workspace = workspaces.create(buildId);
+            WrittenContent written = write(buildId, site, part, workspace, generatedAt);
+            String digest = ContentDigest.of(workspace.resolve(SiteTemplate.CONTENT_DIRECTORY),
+                    written.volatileTimestamps(), DocServiceVersion.get());
+            preparedModels.put(buildId, written.models());
+            return new PreparedPart(buildId, part, workspace, digest);
+        } catch (IOException e) {
+            throw new SiteBuildException("The build workspace could not be prepared: " + e.getMessage(), e);
+        }
+    }
 
-            // 1. the generated content, into the one directory the generator may write into
-            Map<String, EnvironmentModel> models =
-                    sources.write(buildId, site, workspace.resolve(SiteTemplate.CONTENT_DIRECTORY), generatedAt);
+    @Override
+    public BuiltSite generate(PreparedPart prepared) {
+        try {
+            Path workspace = prepared.workspace();
 
-            // 2. the application, over the top of it
+            // The application, over the top of the content that is already there.
             template.installInto(workspace);
             linkDependencies(workspace);
 
-            // 3. the site generator itself
+            // And then the site generator itself.
             long start = System.nanoTime();
             node.run(workspace, DOCUSAURUS_CLI, BUILD_COMMAND, "--out-dir", OUTPUT_DIRECTORY);
             long docusaurusMillis = (System.nanoTime() - start) / 1_000_000;
@@ -82,14 +107,33 @@ public class DocusaurusSiteBuilder implements SiteBuilder {
                 throw new SiteBuildException("The site generator finished without producing " + OUTPUT_DIRECTORY);
             }
             return new BuiltSite(output, countPages(output), sizeOf(output), docusaurusMillis,
-                    systemsPerEnvironment(models));
+                    systemsPerEnvironment(preparedModels.getOrDefault(prepared.buildId(), Map.of())));
         } catch (IOException e) {
-            throw new SiteBuildException("The build workspace could not be prepared: " + e.getMessage(), e);
+            throw new SiteBuildException("The site template could not be installed: " + e.getMessage(), e);
+        }
+    }
+
+    private WrittenContent write(long buildId, Site site, SitePart part, Path workspace, Instant generatedAt)
+            throws IOException {
+        return sources.write(buildId, site, part, workspace.resolve(SiteTemplate.CONTENT_DIRECTORY),
+                generatedAt);
+    }
+
+    /** Removes a scratch directory, and says so rather than failing an answer that has already been given. */
+    private void discard(Path scratch) {
+        if (scratch == null) {
+            return;
+        }
+        try {
+            org.springframework.util.FileSystemUtils.deleteRecursively(scratch);
+        } catch (IOException e) {
+            log.warn("The scratch directory {} could not be removed.", scratch, e);
         }
     }
 
     @Override
     public void discard(long buildId) {
+        preparedModels.remove(buildId);
         workspaces.discard(buildId);
     }
 
@@ -141,7 +185,7 @@ public class DocusaurusSiteBuilder implements SiteBuilder {
      */
     private static Map<String, Integer> systemsPerEnvironment(Map<String, EnvironmentModel> models) {
         Map<String, Integer> systems = new java.util.LinkedHashMap<>();
-        models.forEach((environment, model) -> systems.put(environment, model.systems()));
+        models.forEach((environment, model) -> systems.put(environment, model.systemCount()));
         return systems;
     }
 

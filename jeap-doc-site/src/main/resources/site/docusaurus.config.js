@@ -40,19 +40,133 @@ if (!mainEnvironment) {
 const routePrefixOf = (environment) => (environment.main ? '' : `/${environment.id}`);
 
 /**
- * The environments in the order the search plugin wants them: the main one first, because the plugin skips the
- * site's front page unless the first route base path it is given is the empty one.
+ * Which part of the site this build is.
+ *
+ * A site is published as several Docusaurus builds - a part per system, and a shell part for the site's own
+ * pages - and each of them mounts its content where that content belongs in the site's URLs. The generator
+ * writes this into `site.json`; the fallback is one part carrying the whole site, which is what `npm start`
+ * runs against the fixture.
  */
-const searchOrder = [mainEnvironment, ...environments.filter((environment) => !environment.main)];
+const part = site.part || {
+    id: 'shell',
+    shell: true,
+    tree: '',
+    environments: environments.map((environment) => environment.id),
+};
+
+/** The path within an environment's tree that this part carries: '' for a whole tree. */
+const partTree = part.tree ? `/${part.tree}` : '';
 
 /**
- * The documentation options of one environment. Every environment is a docs plugin instance reading its own
- * composed tree: they are peers, and the main environment is served at the site root so its URLs stay stable.
+ * The environments this part actually has content for. The switcher still offers every one of them.
+ *
+ * Filtered by whether the generator wrote anything, and not only by what the part carries: an environment
+ * that reads no architecture model has no tree at all, and a system that is not deployed on a stage has none
+ * in that stage's tree. A docs plugin instance pointed at a directory that is not there is a build that fails
+ * for a legitimate state of the landscape.
+ */
+const carriedEnvironments = environments
+    .filter((environment) => part.environments.includes(environment.id))
+    .filter((environment) => fs.existsSync(path.join(CONTENT_DIR, environment.id + partTree)));
+if (carriedEnvironments.length === 0) {
+    throw new Error(
+        `The part ${part.id} has no content: none of the environments it carries (${part.environments}) has a ` +
+        `directory ${partTree || '/'} under ${CONTENT_DIR}. The site generator writes them before the build.`);
+}
+
+/**
+ * A link to a page of the site that this part may not own.
+ *
+ * Docusaurus checks every link against the routes of its own build, and with `onBrokenLinks: 'throw'` a link
+ * into another part's routes would fail the build. `pathname://` renders a plain anchor and leaves the check,
+ * which is what the environment switcher has always done. The shell part owns these pages, so there the links
+ * stay checked - and that is where a broken one would be a defect.
+ */
+function siteLink(label, path) {
+    return part.shell
+        ? {label, to: path}
+        // target: '_self' because `pathname://` is a protocol and Docusaurus reads any protocol as "not this
+        // site", adding target="_blank" - so a footer link to another part of the same site opened a new tab.
+        // The footer's link item passes an item's own extra keys through to Link, so this is enough there.
+        : {label, href: `pathname://${site.baseUrl.replace(/\/$/, '')}${path}`, target: '_self'};
+}
+
+/**
+ * The way out of a part that carries one subtree of the site: a link back to the systems index of the
+ * environment the reader is in.
+ *
+ * <b>Per environment, and not once for the part.</b> `sidebars.js` is one module shared by every docs
+ * instance of a part, so a sidebar built there cannot know which environment a reader is browsing: someone in
+ * the dev tree of a system clicked "All systems" and landed in the main environment's index, which is exactly
+ * the failure `plugins/remark-env-links` exists to prevent. Here the environment is in scope.
+ *
+ * Only where that environment has a systems index at all. The shell writes one when the environment's
+ * landscape has a system in it, and `pathname://` is outside `onBrokenLinks`, so a link to one nobody wrote
+ * is a 404 no build could have caught.
+ */
+function escapePointOf(environment) {
+    if (part.shell || !environment.hasSystems) {
+        return [];
+    }
+    return [{
+        type: 'link',
+        label: 'All systems',
+        href: `pathname://${site.baseUrl.replace(/\/$/, '')}${routePrefixOf(environment)}/systems/`,
+    }];
+}
+
+/**
+ * One sidebar link per system of an environment, for the shell part's own sidebar.
+ *
+ * A reader landing on the root page sees the site's own pages and a "Systems" category holding nothing but
+ * its own index - because **every system is built as a part of its own**, so its pages are in no tree this
+ * build can see. The generator therefore names them in `environments.json`, and they are hung here as
+ * unchecked links, the way the escape point out of a part is.
+ */
+function systemLinksOf(environment) {
+    return (environment.systems || []).map((system) => ({
+        type: 'link',
+        label: system.label,
+        href: `pathname://${site.baseUrl.replace(/\/$/, '')}${routePrefixOf(environment)}${system.path}`,
+    }));
+}
+
+/**
+ * The sidebar of a part, with the systems listed after the shell's systems index.
+ *
+ * Only the shell has one. A part that carries a single system has no systems index in its tree at all, and
+ * its way out is `escapePointOf`.
+ *
+ * **Found by the custom property the generator writes into its `_category_.json`**, not by its label - a
+ * label is exactly what someone changes. The category holds only its own index page, so what is added to it
+ * is everything under it.
+ */
+function withSystemsListed(environment, items) {
+    if (!part.shell) {
+        return items;
+    }
+    const links = systemLinksOf(environment);
+    if (links.length === 0) {
+        return items;
+    }
+    return items.map((item) => (item.type === 'category' && item.customProps && item.customProps.systemsIndex
+        ? {...item, collapsed: false, items: [...item.items, ...links]}
+        : item));
+}
+
+/**
+ * The documentation options of one environment of this part. Every environment is a docs plugin instance
+ * reading its own composed tree: they are peers, and the main environment is served at the site root so its
+ * URLs stay stable.
  */
 function docsOptions(environment) {
     return {
-        path: `content/${environment.id}`,
-        routeBasePath: routePrefixOf(environment) || '/',
+        id: environment.id,
+        path: `content/${environment.id}${partTree}`,
+        // Where this part's content belongs in the site's URLs: the environment's own prefix, and below it the
+        // subtree the part carries. A part per system is mounted at /dev/systems/orders, and its pages then
+        // have the URLs they would have had in a site built whole.
+        routeBasePath: `${routePrefixOf(environment)}${partTree}` || '/',
         sidebarPath: require.resolve('./sidebars.js'),
         breadcrumbs: true,
         // The trees are generated, so "last updated" would say when the generator ran rather than when anyone
@@ -64,6 +178,12 @@ function docsOptions(environment) {
         // second time would produce /dev/dev/other and fail the build, since onBrokenLinks is 'throw'.
         beforeDefaultRemarkPlugins: [
             [require('./plugins/remark-env-links'), {prefix: routePrefixOf(environment)}],
+        ],
+        // The folder layout the generator writes is the information architecture, so the items themselves are
+        // the default generator's - what is added is the way out of a part, which needs this environment.
+        sidebarItemsGenerator: async ({defaultSidebarItemsGenerator, ...args}) => [
+            ...escapePointOf(environment),
+            ...withSystemsListed(environment, await defaultSidebarItemsGenerator(args)),
         ],
     };
 }
@@ -79,13 +199,13 @@ const footerLinks = [
     {
         title: 'Documentation',
         items: [
-            {label: 'Root Page', to: '/'},
+            siteLink('Root Page', '/'),
             // Only when the main environment has a systems page - a footer link to one that was not written
             // fails the whole build, since onBrokenLinks is 'throw'.
-            ...(site.hasSystems ? [{label: 'Systems', to: '/systems/'}] : []),
+            ...(site.hasSystems ? [siteLink('Systems', '/systems/')] : []),
             // Unconditional: unlike the systems tree, this page is written into every environment tree of
             // every site, so the link can never point at a page nobody wrote.
-            {label: 'About This Documentation', to: '/about-this-documentation/'},
+            siteLink('About This Documentation', '/about-this-documentation/'),
         ],
     },
     ...(Array.isArray(site.sites) && site.sites.length > 1
@@ -97,12 +217,12 @@ const footerLinks = [
         }]
         : []),
     {
-        // One link per environment, to its own root. Every environment has a root page, so these never break;
-        // and each is an internal `to`, resolved against the environment's route base path.
+        // One link per environment, to its own root. Every environment has a root page, so these never break -
+        // and they are the shell part's pages, so a part that is not the shell links them without the check.
         title: 'Environments',
         items: [...environments]
             .sort((one, other) => (one.order || 0) - (other.order || 0))
-            .map((environment) => ({label: environment.label, to: `${routePrefixOf(environment)}/`})),
+            .map((environment) => siteLink(environment.label, `${routePrefixOf(environment)}/`)),
     },
 ];
 
@@ -198,57 +318,11 @@ const config = {
     plugins: [
         // Renders ```plantuml and ```dot fences in the reader's browser - no PlantUML server, no images.
         '@matfsw/docusaurus-plantuml-plugin',
-        // Offline search, indexed at build time and served statically, as in the jEAP documentation.
-        [
-            '@easyops-cn/docusaurus-search-local',
-            {
-                hashed: true,
-                language: ['en'],
-                indexDocs: true,
-                indexBlog: false,
-                indexPages: false,
-                // The `noindex` meta the banner puts on every page of a non-main environment is aimed at web
-                // crawlers, not at the site's own search. Without this the plugin treats those pages as
-                // unlisted and indexes none of them - the DEV, REF and ABN trees would offer a search bar
-                // that finds nothing at all.
-                forceIgnoreNoIndex: true,
-                // One docs instance per environment, so every route base path has to be listed - and so does
-                // every source directory, which is what `hashed: true` hashes the index filename from.
-                //
-                // The main environment comes first, and that is not cosmetic: the plugin skips the site's
-                // front page unless the first entry is the empty route base path, and the front page is a
-                // real page here.
-                // '/' for the main environment, which the plugin normalises to the empty base path - it
-                // rejects an empty string outright, so this is how the site root is expressed.
-                docsRouteBasePath: searchOrder.map((environment) => routePrefixOf(environment) || '/'),
-                docsDir: searchOrder.map((environment) => `content/${environment.id}`),
-                // One index per environment, so a reader searches the tree they are in rather than being
-                // offered the same page once per environment. The plugin sorts each page into the bucket of
-                // the first path it matches and skips the leftover bucket for it, and the navbar picks the
-                // bucket from the URL - so this needs nothing from the reader.
-                //
-                // The main environment is deliberately not in this list. It is served at the site root, so its
-                // pages match none of these paths and fall into the leftover bucket, which is then exactly the
-                // main environment. The paths are relative to the base URL and carry no leading slash.
-                //
-                // The two options this pairs with are left at their defaults on purpose, and each of them
-                // would undo this quietly:
-                //   useAllContextsWithNoSearchContext would put every page into the leftover bucket as well,
-                //     and the main environment would be back to one hit per environment;
-                //   hideSearchBarWithNoSearchContext would stop the leftover bucket being written at all, and
-                //     the main environment would have no search box.
-                searchContextByPaths: searchOrder
-                    .filter((environment) => !environment.main)
-                    .map((environment) => ({label: environment.label, path: environment.id})),
-                highlightSearchTermsOnTargetPage: true,
-                searchBarShortcut: true,
-                searchBarPosition: 'auto',
-            },
-        ],
-        // One docs instance per non-main environment; the main one is the preset's instance below.
-        ...environments
-            .filter((environment) => !environment.main)
-            .map((environment) => ['@docusaurus/plugin-content-docs', {id: environment.id, ...docsOptions(environment)}]),
+        // One docs instance per environment this part carries. All of them are plugin instances and none is
+        // the preset's: a part may carry any set of environments, and the preset's instance would be a
+        // special case among them that has to be picked and named.
+        ...carriedEnvironments
+            .map((environment) => ['@docusaurus/plugin-content-docs', docsOptions(environment)]),
     ],
 
     themes: ['@docusaurus/theme-mermaid'],
@@ -258,8 +332,8 @@ const config = {
             'classic',
             /** @type {import('@docusaurus/preset-classic').Options} */
             ({
-                // Docs-only: the documentation tree is the site.
-                docs: docsOptions(mainEnvironment),
+                // Docs-only, and every docs instance is a plugin of its own above - see the plugins list.
+                docs: false,
                 blog: false,
                 pages: false,
                 theme: {
@@ -268,18 +342,13 @@ const config = {
                         require.resolve(`./src/css/schemes/${colorScheme}.css`),
                     ],
                 },
-                sitemap: {
-                    // Read from the tree rather than from the file's own timestamps: the content is generated,
-                    // so a modification time says when the generator ran.
-                    lastmod: null,
-                    changefreq: null,
-                    priority: null,
-                    // Only the main environment. Every page of the others carries `noindex`, so submitting
-                    // them would spend a crawler's budget on pages it is then told to discard.
-                    ignorePatterns: environments
-                        .filter((environment) => !environment.main)
-                        .map((environment) => `/${environment.id}/**`),
-                },
+                // No sitemap. A site is built one part at a time and the plugin writes `sitemap.xml` at the
+                // root of the build that ran, so every part emitted one of its own and only the shell's was
+                // ever served - a sitemap naming the environment root pages, the systems index and the about
+                // pages, and none of the documentation. A shell-only sitemap that claims to be the site's is
+                // worse than none, and the alternative is a sitemap index the shell would have to write from
+                // what the other parts emitted, which is machinery for a crawler hint.
+                sitemap: false,
             }),
         ],
     ],
@@ -305,6 +374,10 @@ const config = {
                 title: site.title,
                 logo: {
                     alt: site.title,
+                    // The site's front page belongs to the shell part; every other part links it unchecked.
+                    // With target, or the logo of a system's part opens the front page in a new tab - the
+                    // navbar logo takes one of its own, which Logo passes to Link.
+                    ...(part.shell ? {} : {href: `pathname://${site.baseUrl}`, target: '_self'}),
                     src: site.logo || 'img/logo.svg',
                     width: 28,
                     height: 28,

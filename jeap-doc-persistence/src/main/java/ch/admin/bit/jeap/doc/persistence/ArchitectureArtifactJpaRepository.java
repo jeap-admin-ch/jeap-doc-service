@@ -36,16 +36,6 @@ interface ArchitectureArtifactJpaRepository extends JpaRepository<ArchitectureAr
                                                  @Param("systemName") String systemName,
                                                  @Param("componentName") String componentName);
 
-    /** Every artifact of one system, for the generation run that documents it. */
-    @Query("""
-            select a from ArchitectureArtifactEntity a
-            where a.environment = :environment and a.kind = :kind
-              and lower(a.systemName) = lower(:systemName)
-            order by a.componentName asc""")
-    List<ArchitectureArtifactEntity> findAllOfSystem(@Param("environment") String environment,
-                                                     @Param("kind") String kind,
-                                                     @Param("systemName") String systemName);
-
     long countByEnvironmentAndKind(String environment, String kind);
 
     @Modifying

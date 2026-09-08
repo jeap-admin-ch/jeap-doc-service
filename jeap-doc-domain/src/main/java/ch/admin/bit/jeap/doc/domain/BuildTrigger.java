@@ -12,14 +12,16 @@ public enum BuildTrigger {
     UPLOAD,
 
     /**
-     * The site's publication schedule came round.
+     * The architecture import stored a landscape. It asks for every part of the site, and the parts whose
+     * content has not moved are skipped rather than generated - so this is what publishes the documentation
+     * hourly, and what most builds are triggered by.
      */
-    SCHEDULE,
+    IMPORT,
 
     /**
-     * Somebody asked for the site over the administration API. Kept apart from {@link #SCHEDULE} because *why
-     * did this run* is the first question about an unexpected build, and a run somebody asked for is the one
-     * answer that needs no further investigation.
+     * Somebody asked for the site over the administration API. Kept apart from {@link #IMPORT} because *why did
+     * this run* is the first question about an unexpected build, and a run somebody asked for is the one answer
+     * that needs no further investigation.
      */
     MANUAL,
 

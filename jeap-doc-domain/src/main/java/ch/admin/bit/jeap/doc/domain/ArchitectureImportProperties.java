@@ -70,6 +70,24 @@ public class ArchitectureImportProperties {
     private Duration staleAfter = Duration.ofHours(2);
 
     /**
+     * Whether the landscape a build reads is held between builds, instead of read from the database for each of
+     * them.
+     * <p>
+     * <b>What it is for.</b> A build reads the <i>whole</i> landscape of every environment its part carries -
+     * a system's context view cannot be computed from that system alone - so a site of fifty parts over four
+     * environments read the same four landscapes two hundred times, and that was about a third of a full
+     * publication.
+     * <p>
+     * <b>Why a stale answer is impossible.</b> What is held is keyed on when the architecture repository of that
+     * environment was last read successfully. An import moves that, whether or not it changed anything, so
+     * everything held is dropped by the import that could have changed it; and reading the key is one row.
+     * <p>
+     * On by default. What it costs is one landscape per environment held for as long as the imports keep
+     * succeeding - switch it off if that memory is worth more than the reads.
+     */
+    private boolean cacheLandscape = true;
+
+    /**
      * The largest artifact that is replicated. One bigger than this is left where it is, with a warning naming
      * it, rather than stored - a runaway generated specification is not worth a row nobody can render.
      * <p>

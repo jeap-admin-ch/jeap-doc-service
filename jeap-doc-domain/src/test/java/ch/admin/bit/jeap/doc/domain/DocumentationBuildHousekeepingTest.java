@@ -31,7 +31,7 @@ class DocumentationBuildHousekeepingTest {
     @Test
     void removeOldBuilds_thenTheRecordsOlderThanTheRetentionGo() {
         DocumentationBuildHousekeeping housekeeping = housekeeping(new SiteProperties());
-        when(builds.published(Site.DEFAULT_SITE)).thenReturn(Optional.empty());
+        when(builds.published(PartKey.shellOf(Site.DEFAULT_SITE))).thenReturn(Optional.empty());
         when(builds.deleteFinishedBefore(any(), anySet())).thenReturn(3);
 
         housekeeping.removeOldBuilds();
@@ -52,8 +52,8 @@ class DocumentationBuildHousekeepingTest {
         sites.put(Site.DEFAULT_SITE, new SiteProperties.Site());
         sites.put("governance", new SiteProperties.Site());
         properties.setSites(sites);
-        when(builds.published(Site.DEFAULT_SITE)).thenReturn(Optional.of(build(11L)));
-        when(builds.published("governance")).thenReturn(Optional.of(build(22L)));
+        when(builds.published(PartKey.shellOf(Site.DEFAULT_SITE))).thenReturn(Optional.of(build(11L)));
+        when(builds.published(PartKey.shellOf("governance"))).thenReturn(Optional.of(build(22L)));
 
         housekeeping(properties).removeOldBuilds();
 
@@ -64,7 +64,7 @@ class DocumentationBuildHousekeepingTest {
 
     @Test
     void removeOldBuilds_whenASiteHasNeverBeenPublished_thenItContributesNothingToKeep() {
-        when(builds.published(Site.DEFAULT_SITE)).thenReturn(Optional.empty());
+        when(builds.published(PartKey.shellOf(Site.DEFAULT_SITE))).thenReturn(Optional.empty());
 
         housekeeping(new SiteProperties()).removeOldBuilds();
 
@@ -75,11 +75,12 @@ class DocumentationBuildHousekeepingTest {
 
     private DocumentationBuildHousekeeping housekeeping(SiteProperties properties) {
         return new DocumentationBuildHousekeeping(builds, new DocumentationSites(properties),
-                new BuildProperties(), Clock.fixed(NOW, ZoneOffset.UTC), new DirectExclusiveWork());
+                new SystemSitePartition(new NoArchitectureModel()), new BuildProperties(),
+                Clock.fixed(NOW, ZoneOffset.UTC), new DirectExclusiveWork());
     }
 
     private static DocumentationBuild build(long id) {
-        return new DocumentationBuild(id, Site.DEFAULT_SITE, BuildTrigger.SCHEDULE, BuildState.SUCCEEDED,
-                NOW, NOW, "test", "default/" + id, 1, 1, 1, null, null);
+        return new DocumentationBuild(id, Site.DEFAULT_SITE, SitePart.SHELL, BuildTrigger.IMPORT,
+                BuildState.SUCCEEDED, NOW, NOW, "test", "default/" + id, 1, 1, 1, null, "digest");
     }
 }

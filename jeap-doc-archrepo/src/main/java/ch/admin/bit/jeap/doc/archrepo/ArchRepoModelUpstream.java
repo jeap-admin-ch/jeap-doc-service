@@ -174,7 +174,9 @@ class ArchRepoModelUpstream implements ArchitectureModelUpstream {
                         .orElse(null),
                 Optional.ofNullable(component.databaseSchema())
                         .map(schema -> new DatabaseSchemaReference(schema.schemaVersion(), schema.contentUrl()))
-                        .orElse(null));
+                        .orElse(null),
+                // The artifacts themselves are replicated by their own import step, not by this one.
+                null);
     }
 
     private static SystemRelation relationOf(DocsApiDtos.RelationDto relation) {

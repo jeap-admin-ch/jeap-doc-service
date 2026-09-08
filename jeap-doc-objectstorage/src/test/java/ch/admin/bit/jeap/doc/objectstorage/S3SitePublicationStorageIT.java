@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.objectstorage;
 
+import ch.admin.bit.jeap.doc.domain.port.PartPublication;
 import ch.admin.bit.jeap.doc.domain.port.PublishedSite;
 import ch.admin.bit.jeap.doc.domain.port.StoredObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +27,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class S3SitePublicationStorageIT extends RustFsTestContainerBase {
 
+    /** Where the files every part of a site emits identically go - see {@code SharedAssets}. */
+    private static final String SHARED_PREFIX = "default/shared";
+
     @TempDir
     Path site;
 
@@ -51,16 +55,43 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
         write(site.resolve("index.html"), "<h1>home</h1>");
         write(site.resolve("assets").resolve("main.js"), "console.log('hi')");
 
-        PublishedSite published = storage.publish("default/42", site);
+        PublishedSite published = storage.publish(under("default/42"), site);
 
         assertThat(published.prefix()).isEqualTo("default/42");
-        assertThat(published.fileCount()).isEqualTo(pages + 2);
+        // The part's own files: the pages and the root page, and *not* the shared bundle beside them. Every
+        // part build writes the same assets/** to one prefix of the site, so counting them here made the size
+        // of a fifty-two-part site fifty-one extra copies of that bundle.
+        assertThat(published.fileCount()).isEqualTo(pages + 1);
         assertThat(published.sizeInBytes()).isPositive();
 
         assertThat(read("default/42", "index.html")).isEqualTo("<h1>home</h1>");
         assertThat(read("default/42", "docs/page-0/index.html")).isEqualTo("<h1>page 0</h1>");
         assertThat(read("default/42", "docs/page-119/index.html")).isEqualTo("<h1>page 119</h1>");
-        assertThat(read("default/42", "assets/main.js")).isEqualTo("console.log('hi')");
+        // ...and the bundle under the site's shared prefix rather than under this build's, which is what lets
+        // two parts of one site be served under one base URL - see SharedAssets.
+        assertThat(read(SHARED_PREFIX, "assets/main.js")).isEqualTo("console.log('hi')");
+        assertThat(storage.open("default/42", "assets/main.js"))
+                .describedAs("a shared file is published once for the site, not once per part")
+                .isEmpty();
+    }
+
+    /**
+     * The split between what belongs to one part and what belongs to the whole site, which is the one thing a
+     * publication does that a plain upload of a directory does not.
+     */
+    @Test
+    void publish_thenTheSharedFilesGoToTheSitesPrefixAndTheRestToThePartsOwn() throws IOException {
+        write(site.resolve("index.html"), "<h1>home</h1>");
+        write(site.resolve("systems").resolve("orders").resolve("index.html"), "<h1>orders</h1>");
+        write(site.resolve("assets").resolve("js").resolve("main.a1b2c3.js"), "console.log('hi')");
+        write(site.resolve("img").resolve("logo.svg"), "<svg/>");
+
+        storage.publish(under("default/43"), site);
+
+        assertThat(read("default/43", "index.html")).isEqualTo("<h1>home</h1>");
+        assertThat(read("default/43", "systems/orders/index.html")).isEqualTo("<h1>orders</h1>");
+        assertThat(read(SHARED_PREFIX, "assets/js/main.a1b2c3.js")).isEqualTo("console.log('hi')");
+        assertThat(read(SHARED_PREFIX, "img/logo.svg")).isEqualTo("<svg/>");
     }
 
     @Test
@@ -69,7 +100,7 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
         write(site.resolve("styles.css"), "body{}");
         write(site.resolve("logo.svg"), "<svg/>");
 
-        storage.publish("default/43", site);
+        storage.publish(under("default/43"), site);
 
         assertThat(open("default/43", "index.html").contentType()).isEqualTo("text/html;charset=UTF-8");
         assertThat(open("default/43", "styles.css").contentType()).isEqualTo("text/css;charset=UTF-8");
@@ -87,7 +118,7 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
         assertThat(unreadable.toFile().setReadable(false)).isTrue();
 
         try {
-            assertThatThrownBy(() -> storage.publish("default/44", site)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> storage.publish(under("default/44"), site)).isInstanceOf(RuntimeException.class);
         } finally {
             assertThat(unreadable.toFile().setReadable(true)).isTrue();
         }
@@ -95,7 +126,7 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
 
     @Test
     void publish_whenThereIsNothingToPublish_thenItIsAnEmptySiteAndNotAFailure() {
-        PublishedSite published = storage.publish("default/45", site);
+        PublishedSite published = storage.publish(under("default/45"), site);
 
         assertThat(published.fileCount()).isZero();
         assertThat(published.sizeInBytes()).isZero();
@@ -109,9 +140,9 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
     @Test
     void delete_thenTheWholeSiteIsGoneAndTheSitesWhoseIdItIsAPrefixOfAreNot() throws IOException {
         write(site.resolve("index.html"), "<h1>home</h1>");
-        storage.publish("default/4", site);
-        storage.publish("default/46", site);
-        storage.publish("default/47", site);
+        storage.publish(under("default/4"), site);
+        storage.publish(under("default/46"), site);
+        storage.publish(under("default/47"), site);
 
         storage.delete("default/4");
 
@@ -133,7 +164,7 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
         write(site.resolve("index.html"), "<h1>home</h1>");
         properties.setSitePrefix("/somewhere/else/");
 
-        storage.publish("default/48", site);
+        storage.publish(under("default/48"), site);
 
         assertThat(keysUnder("somewhere/else/default/48")).contains("somewhere/else/default/48/index.html");
     }
@@ -146,7 +177,7 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
     @Test
     void exists_thenItAnswersWithoutOpeningAnything() throws IOException {
         write(site.resolve("index.html"), "<h1>home</h1>");
-        storage.publish("default/60", site);
+        storage.publish(under("default/60"), site);
 
         assertThat(storage.exists("default/60", "index.html")).isTrue();
         assertThat(storage.exists("default/60", "nothing-here.html")).isFalse();
@@ -160,7 +191,7 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
     @Test
     void exists_whenAskedManyTimes_thenItDoesNotRunOutOfConnections() throws IOException {
         write(site.resolve("index.html"), "<h1>home</h1>");
-        storage.publish("default/61", site);
+        storage.publish(under("default/61"), site);
 
         for (int attempt = 0; attempt < 200; attempt++) {
             assertThat(storage.exists("default/61", "index.html")).isTrue();
@@ -189,5 +220,13 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
     private static void write(Path file, String content) throws IOException {
         Files.createDirectories(file.getParent());
         Files.writeString(file, content, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Where a part is published: its own prefix, and the site's shared one for the files every part emits
+     * identically. What the split means is asserted in the test that has both.
+     */
+    private static PartPublication under(String prefix) {
+        return new PartPublication(prefix, SHARED_PREFIX);
     }
 }

@@ -98,12 +98,12 @@ public record DocumentationFacts(
      * When the documentation changes next. A cron expression and, where it is one this service can read, the
      * moment it fires - both in the time zone of the service.
      *
-     * @param publication    when the site is regenerated, or null for never on a schedule
-     * @param publicationAt  the next publication, or null where there is no schedule
-     * @param import_        when the architecture repository is imported, or null for never
-     * @param importAt       the next import, or null where there is no schedule
+     * @param import_   when the architecture repository is imported, or null for never. It is also when the
+     *                  documentation is published: an import asks for every part of every site documenting
+     *                  the environment it read
+     * @param importAt  the next import, or null where there is no schedule
      */
-    public record Schedules(String publication, Instant publicationAt, String import_, Instant importAt) {
+    public record Schedules(String import_, Instant importAt) {
     }
 
 }

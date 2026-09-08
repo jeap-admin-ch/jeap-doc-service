@@ -5,6 +5,8 @@ import ch.admin.bit.jeap.doc.domain.BuildState;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildRunner;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
+import ch.admin.bit.jeap.doc.domain.DocumentationParts;
+import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportJob;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
@@ -28,6 +30,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
 import java.util.Optional;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
@@ -64,7 +67,12 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
      * runner builds at most one site per tick and the classes of this module share a database, so a round can
      * be spent on somebody else's site.
      */
-    private static final int ROUNDS_UNTIL_SERVED = 5;
+    /**
+     * How many ticks a site is given to be served. It is per <b>part</b>: a tick builds at most one part, a
+     * site of a shell and two systems is three of them, and the classes of this module share a database - so a
+     * tick may serve another class's request before it reaches this one.
+     */
+    private static final int ROUNDS_UNTIL_SERVED = 12;
 
     /** How long the model is asked for, and how long between two attempts - see the method below. */
     private static final java.time.Duration IMPORT_BUDGET = java.time.Duration.ofSeconds(60);
@@ -94,6 +102,12 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
 
     @Autowired
     private ArchitectureModelSource architectureModel;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private DocumentationParts parts;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository requests;
 
     @BeforeAll
     static void startArchRepo() {
@@ -134,24 +148,48 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
     @BeforeEach
     void stubTheLandscape() {
         ARCH_REPO.resetAll();
-        // The two artifact indexes, empty: this test is about the pages generated from the model, and nothing
-        // renders a specification or a schema yet. They are stubbed all the same, because an import runs every
-        // kind and a missing index is a failure rather than an empty one - an architecture repository too old
-        // to serve it must not look like one that publishes nothing.
-        stub("/docs-api/openapi-specs", "{\"artifacts\": []}");
-        stub("/docs-api/database-schemas", "{\"artifacts\": []}");
+        // The two artifact indexes, each offering the one artifact of orders-intake, and the content
+        // resources they point at. This is the only test that runs the whole path of an artifact: index,
+        // conditional fetch, storage, join, render, serve.
+        stub("/docs-api/openapi-specs", """
+                {"artifacts": [
+                  {"system": "orders", "component": "orders-intake", "version": "2.4.0",
+                   "etag": "\\"sha256:spec\\"", "lastModifiedAt": "2026-08-12T05:31:00Z",
+                   "contentUrl": "/docs-api/systems/orders/components/orders-intake/openapi"}
+                ]}""");
+        stub("/docs-api/database-schemas", """
+                {"artifacts": [
+                  {"system": "orders", "component": "orders-intake", "version": "1.2.3",
+                   "etag": "\\"sha256:schema\\"", "lastModifiedAt": "2026-08-12T05:31:00Z",
+                   "contentUrl": "/docs-api/systems/orders/components/orders-intake/database-schema"}
+                ]}""");
+        // With the entity tag the index announced. What is stored is addressed by it, and an artifact
+        // arriving without one is not replicated at all.
+        tagged("/docs-api/systems/orders/components/orders-intake/openapi", "\"sha256:spec\"", OPENAPI_SPEC);
+        tagged("/docs-api/systems/orders/components/orders-intake/database-schema", "\"sha256:schema\"",
+                DATABASE_SCHEMA);
         stub("/docs-api/systems", """
                 {"systems": [
                   {"name": "orders", "description": "Takes orders and follows them through",
                    "team": {"name": "Team Blue", "contactAddress": "blue@example.com"}},
-                  {"name": "shipping", "description": "Sends the goods out"}
+                  {"name": "shipping", "description": "Sends the goods out"},
+                  {"name": "tariffs", "description": "Knows what things cost"}
                 ]}""");
+        // Two components: one the architecture repository knows everything about, and one it knows only the
+        // name of.
         stub("/docs-api/systems/orders", """
                 {"name": "orders", "description": "Takes orders and follows them through",
                  "team": {"name": "Team Blue", "contactAddress": "blue@example.com"},
                  "components": [
                    {"name": "orders-intake", "description": "Takes payments in",
-                    "type": "BACKEND_SERVICE", "importer": "DEPLOYMENT_LOG"}
+                    "type": "BACKEND_SERVICE", "importer": "DEPLOYMENT_LOG",
+                    "restApis": [{"method": "GET", "path": "/api/orders"}],
+                    "openApi": {"version": "2.4.0", "serverUrl": "https://orders.example.ch/api",
+                                "contentUrl": "/docs-api/systems/orders/components/orders-intake/openapi",
+                                "swaggerUrl": "https://archrepo.example.com/swagger-ui/index.html"},
+                    "databaseSchema": {"schemaVersion": "1.2.3",
+                                       "contentUrl": "/docs-api/systems/orders/components/orders-intake/database-schema"}},
+                   {"name": "orders-quiet", "type": "BACKEND_SERVICE", "importer": "DEPLOYMENT_LOG"}
                  ],
                  "relations": [
                    {"type": "EVENT_RELATION", "consumerSystem": "shipping", "consumer": "shipping-gateway",
@@ -171,6 +209,13 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
                  "components": [{"name": "shipping-gateway", "type": "BACKEND_SERVICE"}],
                  "relations": []}""");
         stub("/docs-api/systems/shipping/messages", "{\"messages\": []}");
+        // A system that exchanges nothing with anything: it is what says that a landscape change is not
+        // republished across the whole site - see the import tests below.
+        stub("/docs-api/systems/tariffs", """
+                {"name": "tariffs", "description": "Knows what things cost",
+                 "components": [{"name": "tariffs-table", "type": "BACKEND_SERVICE"}],
+                 "relations": []}""");
+        stub("/docs-api/systems/tariffs/messages", "{\"messages\": []}");
     }
 
     /**
@@ -258,6 +303,16 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
             /systems/orders/system-architecture/runtime-view/                                             | Runtime View
             /systems/orders/system-architecture/runtime-view/system-reactions/                            | System Reactions
             /systems/shipping/                                                                            | Sends the goods out
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/                                    | Component Architecture
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/intro/                              | Introduction and Goals
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/context-and-scope/                  | Context and Scope
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/context-and-scope/context-view/     | Component Context View
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/building-block-view/                | Building Block View
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/building-block-view/database-schema/| Database Schema
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/building-block-view/rest-api/       | REST API
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/building-block-view/messages/       | Messages
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/runtime-view/                       | Runtime View
+            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/runtime-view/component-reactions/   | Component Reactions
             """)
     void everyGeneratedPageIsServed(String path, String marker) throws Exception {
         build();
@@ -304,6 +359,105 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
                 .contains("DEPLOYMENT_LOG");
     }
 
+    /** Where a component's own tree hangs, and the link on its page that a reader follows to reach it. */
+    private static final String COMPONENT_TREE =
+            "/systems/orders/system-architecture/building-block-view/components/orders-intake/"
+            + "component-architecture/";
+
+    /**
+     * The component's page links into its own tree. The link is written only because the subtree exists; one
+     * to a page nothing wrote would have failed this build instead of serving it.
+     */
+    @Test
+    void theComponentPageLinksIntoItsOwnDocumentation() throws Exception {
+        build();
+
+        assertThat(page("/systems/orders/system-architecture/building-block-view/components/orders-intake/"))
+                .contains("Component Architecture")
+                .contains(COMPONENT_TREE);
+    }
+
+    /**
+     * The entity relationship diagram of a really replicated schema. A fence that reaches the page but not
+     * the plugin renders as text and the build is green either way, so only a fetch of the built page shows
+     * which happened.
+     */
+    @Test
+    void theDatabaseSchemaIsReplicatedAndRenderedAsADiagram() throws Exception {
+        build();
+
+        String view = page(COMPONENT_TREE + "building-block-view/database-schema/");
+        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml");
+        // Only .png: the site's own logo is an .svg on every page. That the diagram figure itself carries no
+        // image at all is asserted in DocusaurusSiteBuilderIT, where the figure is.
+        assertThat(view).doesNotContain(".png");
+        assertThat(view).describedAs("the schema the architecture repository served, not a placeholder")
+                .contains("orders_order")
+                .contains("orders_party")
+                .contains("1.2.3");
+        assertThat(view).describedAs("and the machinery of the schema is named rather than silently dropped")
+                .contains("flyway_schema_history")
+                .doesNotContain("%d");
+    }
+
+    /** The component's own context diagram, which is drawn from different data than the system's two. */
+    @Test
+    void theComponentContextDiagramIsRenderedByThePluginRatherThanAsAnImage() throws Exception {
+        build();
+
+        String view = page(COMPONENT_TREE + "context-and-scope/context-view/");
+        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml");
+        assertThat(view).doesNotContain(".png");
+        assertThat(view).contains("orders-intake").contains("shipping");
+    }
+
+    /**
+     * The REST API page is an overview and a link, not a rendered specification: a table per group, and the
+     * deep link into the architecture repository's own Swagger UI.
+     */
+    @Test
+    void theRestApiOverviewIsGroupedByTagAndLinksToTheSwaggerUi() throws Exception {
+        build();
+
+        String view = page(COMPONENT_TREE + "building-block-view/rest-api/");
+        assertThat(view).contains("Orders").contains("Everything about an order")
+                .contains("/api/orders").contains("List the orders");
+        assertThat(view).describedAs("a tag the specification declares and nothing uses is not a group")
+                .doesNotContain("Nobody uses this tag");
+        assertThat(view).contains("https://archrepo.example.com/swagger-ui/index.html");
+    }
+
+    /**
+     * A message is documented once, below the system that defines it. The component's page links to it
+     * instead of repeating it.
+     */
+    @Test
+    void theComponentsMessagesLinkIntoTheSystemsOwnMessagePages() throws Exception {
+        build();
+
+        assertThat(page(COMPONENT_TREE + "building-block-view/messages/"))
+                .contains("OrdersPaymentAcceptedEvent")
+                .contains("/systems/orders/system-architecture/building-block-view/events/"
+                          + "orders-payment-accepted-event/");
+    }
+
+    /**
+     * A component the architecture repository knows only the name of gets three chapters and no empty
+     * folder.
+     */
+    @Test
+    void aComponentWithNothingToDecomposeHasNoBuildingBlockView() throws Exception {
+        build();
+
+        String quiet = "/systems/orders/system-architecture/building-block-view/components/orders-quiet/"
+                       + "component-architecture/";
+        assertThat(page(quiet)).contains("Component Architecture");
+        assertThat(page(quiet + "context-and-scope/context-view/"))
+                .describedAs("a component that exchanges nothing says so rather than drawing an empty box")
+                .contains("records no relation");
+        mockMvc.perform(get(quiet + "building-block-view/")).andExpect(status().isNotFound());
+    }
+
     /**
      * The runtime view is the one page generated empty on purpose, so it has to say what it is waiting for.
      */
@@ -340,6 +494,72 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
     }
 
     /**
+     * <b>The import is a trigger, and it asks for the whole site.</b>
+     * <p>
+     * Which of its systems moved is not asked: a part is one system, and a part whose content has not moved is
+     * not generated - so what an import costs is the content of every part rather than a site rebuilt. This is
+     * the trigger half of that; that an unchanged part is skipped is asserted where a build really runs.
+     */
+    @Test
+    void whenTheLandscapeChanges_thenEveryPartOfTheSiteIsAskedFor() throws Exception {
+        build();
+        landscapeIsUpToDate();
+
+        // A component appears in tariffs, which exchanges nothing with anything - and the whole site is asked
+        // for all the same.
+        stub("/docs-api/systems/tariffs", """
+                {"name": "tariffs", "description": "Knows what things cost",
+                 "components": [{"name": "tariffs-table", "type": "BACKEND_SERVICE"},
+                                {"name": "tariffs-import", "type": "BACKEND_SERVICE"}],
+                 "relations": []}""");
+        importJob.importEnvironment("prod");
+
+        assertThat(owedParts())
+                .containsExactlyInAnyOrder("shell", "system-orders", "system-shipping", "system-tariffs");
+    }
+
+    /**
+     * A landscape that gains a system asks for that system's part too - it did not exist before the import,
+     * and the parts of a site are read from the landscape it stored.
+     */
+    @Test
+    void whenTheLandscapeGainsASystem_thenItsPartIsAskedForAsWell() throws Exception {
+        build();
+        landscapeIsUpToDate();
+
+        stub("/docs-api/systems", """
+                {"systems": [
+                  {"name": "orders", "description": "Takes orders and follows them through",
+                   "team": {"name": "Team Blue", "contactAddress": "blue@example.com"}},
+                  {"name": "shipping", "description": "Sends the goods out"},
+                  {"name": "tariffs", "description": "Knows what things cost"},
+                  {"name": "returns", "description": "Takes the goods back"}
+                ]}""");
+        stub("/docs-api/systems/returns", """
+                {"name": "returns", "description": "Takes the goods back",
+                 "components": [{"name": "returns-desk", "type": "BACKEND_SERVICE"}],
+                 "relations": []}""");
+        stub("/docs-api/systems/returns/messages", "{\"messages\": []}");
+        importJob.importEnvironment("prod");
+
+        assertThat(owedParts()).contains("system-returns");
+    }
+
+    /**
+     * An import that finds the landscape it already had asks for nothing at all. It is what keeps a site from
+     * being rebuilt hourly for no reason, which is what publishing it in parts is for.
+     */
+    @Test
+    void whenTheImportedLandscapeIsUnchanged_thenNothingIsAskedFor() throws Exception {
+        build();
+        landscapeIsUpToDate();
+
+        importJob.importEnvironment("prod");
+
+        assertThat(owedParts()).isEmpty();
+    }
+
+    /**
      * The point of importing the architecture model rather than reading it during a build: an architecture
      * repository that is down or being deployed cannot stop a site from being published. What the site then
      * shows is the model as of the last successful import.
@@ -353,13 +573,13 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
                 .willReturn(aResponse().withStatus(503)));
         // The import fails and leaves the stored landscape alone; the build that follows reads that landscape.
         importJob.importEnvironment("prod");
-        long publishedBefore = builds.published(Site.DEFAULT_SITE).map(DocumentationBuild::id).orElse(-1L);
+        long publishedBefore = publishedShell().map(DocumentationBuild::id).orElse(-1L);
         tickUntilTheSiteIsPublishedAgain();
 
         // The newest build of any state, not builds.published(...) - that one *is* "the newest SUCCEEDED
         // build", so asserting it succeeded says nothing at all, on the one test that is about a build not
         // failing. A build that failed would leave the older publication in place and go unnoticed here.
-        assertThat(builds.recent(Site.DEFAULT_SITE, 1)).singleElement()
+        assertThat(builds.recentOf(PartKey.shellOf(Site.DEFAULT_SITE), 1)).singleElement()
                 .describedAs("a broken architecture repository does not fail a build any more")
                 .satisfies(newest -> {
                     assertThat(newest.state()).isEqualTo(BuildState.SUCCEEDED);
@@ -380,11 +600,11 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
      * remaining tick with nothing to build.
      */
     private long tickUntilTheSiteIsPublishedAgain() {
-        long before = builds.published(Site.DEFAULT_SITE).map(DocumentationBuild::id).orElse(-1L);
+        long before = publishedShell().map(DocumentationBuild::id).orElse(-1L);
         for (int tick = 0; tick < 5; tick++) {
-            trigger.requestBecauseAnOperatorAsked(Site.DEFAULT_SITE);
+            trigger.requestBecauseAnOperatorAsked(PartKey.shellOf(Site.DEFAULT_SITE));
             runner.runOnce();
-            Optional<DocumentationBuild> published = builds.published(Site.DEFAULT_SITE);
+            Optional<DocumentationBuild> published = publishedShell();
             if (published.isPresent() && published.get().id() != before) {
                 return published.get().id();
             }
@@ -412,10 +632,12 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
         importUntilTheModelIsStored();
         int status = 0;
         for (int round = 0; round < ROUNDS_UNTIL_SERVED; round++) {
-            trigger.requestBecauseAnOperatorAsked(site);
+            // Every part, because a site is published as several builds now: the shell carries the site's own
+            // pages and one part carries each system, and a tick builds at most one of them.
+            trigger.requestEveryPart(site);
             runner.runOnce();
             status = mockMvc.perform(get(probe)).andReturn().getResponse().getStatus();
-            if (status == 200) {
+            if (status == 200 && everyPartIsPublished(site)) {
                 return;
             }
         }
@@ -427,7 +649,22 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
                         imports.state("prod", ArchitectureImportKind.MODEL),
                         architectureModel.isConfiguredFor("prod"),
                         architectureModel.lastSuccessfulImportAt("prod"),
-                        site, builds.published(site)));
+                        site, builds.publishedPartsOf(site)));
+    }
+
+    /**
+     * Whether every part of the site has a publication. A site whose shell is published answers its front page
+     * while a system's part is still owed a build, so the probe alone is not enough to say the documentation is
+     * there.
+     * <p>
+     * <b>Asked of the parts this context has, and not by counting published rows.</b> The test classes of
+     * this module share a database, and one of them writes a succeeded build row for a part of a site this
+     * context configures without it - so a count of rows never equals the number of parts, and the loop above
+     * spent its twelve rounds and failed with everything actually in place.
+     */
+    private boolean everyPartIsPublished(String site) {
+        List<DocumentationParts.PartState> expected = parts.of(site).orElseThrow();
+        return !expected.isEmpty() && expected.stream().allMatch(part -> part.published() != null);
     }
 
     /**
@@ -479,9 +716,84 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
         defaultSiteBuilt = true;
     }
 
+    /** What is published for the site's shell part - its front page, its systems index, its own pages. */
+    private Optional<DocumentationBuild> publishedShell() {
+        return builds.published(PartKey.shellOf(Site.DEFAULT_SITE));
+    }
+
+    /** Which parts of the default site are owed a build right now. */
+    private java.util.List<String> owedParts() {
+        return requests.pending().stream()
+                .filter(request -> request.site().equals(Site.DEFAULT_SITE))
+                .map(request -> request.part().part())
+                .toList();
+    }
+
+    /**
+     * Imports whatever the architecture repository answers now, and forgets what that asked for.
+     * <p>
+     * The cases above then change one system and import again, so what is owed afterwards is that change
+     * alone - whichever order the cases run in, and whatever the case before it left in the stubs.
+     */
+    private void landscapeIsUpToDate() {
+        importJob.importEnvironment("prod");
+        drainRequests();
+    }
+
+    /**
+     * Takes whatever is pending, so that what a case asks for afterwards is what that case set off. The
+     * classes of this module share a database, and a request another one left behind would read as this one's.
+     */
+    private void drainRequests() {
+        requests.pending().forEach(request -> requests.claim(request.part()));
+    }
+
     private String page(String path) throws Exception {
         return mockMvc.perform(get(path)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString();
+    }
+
+    /**
+     * The specification of {@code orders-intake}, as a build pushed it and the architecture repository serves
+     * it. Two tags, one of which nothing uses, and a deprecated operation - so that what the page does with
+     * each of them is visible on a real build.
+     */
+    private static final String OPENAPI_SPEC = """
+            { "openapi": "3.0.1",
+              "info": { "title": "Orders API", "version": "2.4.0" },
+              "servers": [ { "url": "https://orders.example.ch/api" } ],
+              "tags": [ { "name": "Orders", "description": "Everything about an order" },
+                        { "name": "Reports", "description": "Nobody uses this tag" } ],
+              "paths": {
+                "/api/orders": { "get": { "summary": "List the orders", "tags": ["Orders"] } },
+                "/api/orders/{id}": { "get": { "summary": "One order", "tags": ["Orders"],
+                                               "deprecated": true } },
+                "/api/health": { "get": { "summary": "Is it up" } }
+              } }""";
+
+    /** And its database schema, including the two machinery tables that are documented nowhere. */
+    private static final String DATABASE_SCHEMA = """
+            { "name": "orders_db", "version": "1.2.3",
+              "tables": [
+                { "name": "orders_order",
+                  "columns": [ { "name": "id", "type": "uuid", "nullable": false },
+                               { "name": "party_id", "type": "uuid", "nullable": true } ],
+                  "primaryKey": { "name": "pk_orders_order", "columnNames": ["id"] },
+                  "foreignKeys": [ { "name": "fk_order_party", "columnNames": ["party_id"],
+                                     "referencedTableName": "orders_party",
+                                     "referencedColumnNames": ["id"] } ] },
+                { "name": "orders_party",
+                  "columns": [ { "name": "id", "type": "uuid", "nullable": false } ],
+                  "primaryKey": { "name": "pk_orders_party", "columnNames": ["id"] } },
+                { "name": "flyway_schema_history",
+                  "columns": [ { "name": "installed_rank", "type": "integer", "nullable": false } ] }
+              ] }""";
+
+    /** A content resource with the entity tag its index announced, which is what makes it replicable. */
+    private static void tagged(String path, String etag, String body) {
+        ARCH_REPO.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(urlEqualTo(path))
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+                        .withHeader("ETag", etag).withBody(body)));
     }
 
     private static void stub(String path, String body) {

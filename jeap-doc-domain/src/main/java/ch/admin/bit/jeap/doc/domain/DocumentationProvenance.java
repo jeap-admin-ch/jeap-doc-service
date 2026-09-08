@@ -76,19 +76,15 @@ public class DocumentationProvenance {
     }
 
     /**
-     * The schedules of this site: its own publication schedule, and the import that feeds it.
-     * <p>
-     * The import schedule is instance-wide rather than per site, and it belongs on every site's page all the
-     * same: what a reader wants to know is when the content changes, and for a site with an architecture
-     * repository that is the import as much as the publication.
+     * What a reader wants to know is when the content changes, and that is the import: it asks for every part
+     * of every site documenting the environment it read, so a site has no publication schedule of its own.
+     * The import schedule is instance-wide rather than per site, and it belongs on every site's page.
      */
     private DocumentationFacts.Schedules schedulesOf(Site site) {
-        String publication = site.schedule().orElse(null);
         String importCron = importProperties.getCron();
         boolean anyEnvironmentReadsAModel = site.environments().stream()
                 .anyMatch(environment -> architectureModel.isConfiguredFor(environment.id()));
         return new DocumentationFacts.Schedules(
-                publication, NextOccurrence.of(publication, clock).orElse(null),
                 anyEnvironmentReadsAModel ? importCron : null,
                 anyEnvironmentReadsAModel ? NextOccurrence.of(importCron, clock).orElse(null) : null);
     }

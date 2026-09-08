@@ -133,8 +133,6 @@ class DocumentationProvenanceTest {
     void of_thenTheSchedulesAndWhenTheyFireNext() {
         DocumentationFacts facts = provenance.of(Site.DEFAULT_SITE, null, NOW).orElseThrow();
 
-        assertThat(facts.schedules().publication()).isEqualTo("0 5 6-20 * * *");
-        assertThat(facts.schedules().publicationAt()).isEqualTo(Instant.parse("2026-09-03T08:05:00Z"));
         assertThat(facts.schedules().import_()).isEqualTo("0 45 5-19 * * *");
         assertThat(facts.schedules().importAt()).isEqualTo(Instant.parse("2026-09-03T07:45:00Z"));
     }
@@ -152,7 +150,6 @@ class DocumentationProvenanceTest {
 
         assertThat(facts.schedules().import_()).isNull();
         assertThat(facts.schedules().importAt()).isNull();
-        assertThat(facts.schedules().publication()).isNotNull();
     }
 
     /**
@@ -187,8 +184,7 @@ class DocumentationProvenanceTest {
                 + "EnvironmentFacts[id=prod, label=Production, main=true, latest=false, modelConfigured=true, "
                 + "lastImportAt=2026-09-03T06:30:00Z, lastImportOutcome=FAILED, staleAfter=PT2H]"
                 + "], "
-                + "schedules=Schedules[publication=0 5 6-20 * * *, publicationAt=2026-09-03T08:05:00Z, "
-                + "import_=0 45 5-19 * * *, importAt=2026-09-03T07:45:00Z]]");
+                + "schedules=Schedules[import_=0 45 5-19 * * *, importAt=2026-09-03T07:45:00Z]]");
     }
 
     /**
@@ -229,6 +225,11 @@ class DocumentationProvenanceTest {
         @Override
         public ArchitectureSnapshot read(String environment) {
             return ArchitectureSnapshot.empty();
+        }
+
+        @Override
+        public java.util.List<String> systemSlugsOf(String environment) {
+            return java.util.List.of();
         }
     }
 

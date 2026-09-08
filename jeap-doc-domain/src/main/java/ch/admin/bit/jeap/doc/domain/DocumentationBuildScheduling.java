@@ -9,27 +9,19 @@ import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 import java.time.Duration;
 
 /**
- * Puts every documentation site on the schedule it configures.
+ * Runs the two jobs of the build: picking up what has been asked for, and forgetting what is over.
  * <p>
- * One task per site, registered while the service starts: the sites are configured rather than discovered, so
- * there is nothing to enumerate later and no default task standing in for sites it has never heard of. A site
- * that configures no schedule is published only when something is uploaded to it, which is a legitimate thing to
- * want and needs no separate flag - a schedule that is not there is a schedule that does not run.
- * <p>
- * The schedules are logged at startup, so <i>why is this site not updating</i> is answered by the first lines of
- * the log rather than by reading the configuration of a running service.
- * <p>
- * The runner that serves the requests is registered here too, on a fixed delay: asking for a build and running
- * it are two things, and everything that wants a site rebuilt goes through the request.
+ * <b>A site has no publication schedule of its own.</b> What publishes it hourly is the architecture import,
+ * which asks for every part of every site documenting the environment it imported; a site with no architecture
+ * repository behind it is published when something is uploaded to it. One schedule rather than two, and no way
+ * for the two to disagree about how often a site is rebuilt.
  */
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
 class DocumentationBuildScheduling implements SchedulingConfigurer {
 
-    private final DocumentationSites sites;
-    private final DocumentationBuildTrigger trigger;
-    private final DocumentationBuildRunner runner;
+    private final DocumentationBuildPickup pickup;
     private final DocumentationBuildHousekeeping housekeeping;
     private final BuildProperties properties;
 
@@ -64,19 +56,13 @@ class DocumentationBuildScheduling implements SchedulingConfigurer {
                                              + "serving from their publication cache.")
                     .formatted(properties.getRetention(), MINIMUM_RETENTION));
         }
-        registrar.addFixedDelayTask(runner::runOnce, properties.getPollInterval());
-        log.info("Documentation builds are picked up every {}.", properties.getPollInterval());
+        // The pass runs on the pickup's own thread and this task only asks for one, so a build that takes
+        // minutes does not hold the scheduler thread that the architecture import and the clean-up share.
+        registrar.addFixedDelayTask(pickup::poll, properties.getPollInterval());
+        log.info("Documentation builds are picked up every {}, and {}.", properties.getPollInterval(),
+                properties.isPickUpOnTrigger() ? "as soon as one is asked for" : "only then");
         registrar.addCronTask(housekeeping::removeOldBuilds, properties.getHistoryCron());
         log.info("The record of builds that finished more than {} ago is removed on the schedule '{}'.",
                 properties.getHistoryRetention(), properties.getHistoryCron());
-        for (Site site : sites.all()) {
-            site.schedule().ifPresentOrElse(
-                    cron -> {
-                        registrar.addCronTask(() -> trigger.requestBecauseOfSchedule(site.id()), cron);
-                        log.info("The documentation site {} is published on the schedule '{}'.", site.id(), cron);
-                    },
-                    () -> log.info("The documentation site {} is published only when something is uploaded to "
-                                   + "it: it configures no publication schedule.", site.id()));
-        }
     }
 }

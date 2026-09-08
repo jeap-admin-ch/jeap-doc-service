@@ -30,8 +30,11 @@ public interface MessageSchemaRepository {
      * <b>Per system, and that is deliberate.</b> A landscape's renderings together are far more text than a
      * build has any reason to hold while the site generator runs, and unlike the model these rows need no
      * consistent snapshot: a version is one self-contained row, replaced whole or not at all, so there is
-     * nothing for a concurrent import to tear. It is the shape {@link ArchitectureArtifactRepository#findAll} was written for, and the two
-     * should stay twins - though that one has no reader yet, and this one does.
+     * nothing for a concurrent import to tear.
+     * <p>
+     * <b>Per system and not per message type</b>, unlike {@link ArchitectureArtifactRepository#find}, because
+     * an Avro schema is small and a system has many message types where it has few components. The bound the
+     * two share is what one read may put in memory at once, not the shape of the read.
      */
     List<MessageVersionSchemas> findAll(String environment, String system);
 

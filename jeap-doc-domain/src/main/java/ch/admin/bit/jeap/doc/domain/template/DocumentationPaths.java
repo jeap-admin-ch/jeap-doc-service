@@ -72,4 +72,44 @@ public final class DocumentationPaths {
                                    String componentName) {
         return page(systemSlug, structureSegment, chapter, COMPONENTS_SEGMENT, componentName);
     }
+
+    /**
+     * The paths of the structure below one component.
+     *
+     * @param componentStructureSegment the template's segment below a component, which is not the one it uses
+     *                                  below a system - see {@link StructureTemplate#componentPathSegment()}
+     */
+    public static ComponentPaths componentPaths(String systemSlug, String structureSegment,
+                                                StructureChapter chapter, String componentSlug,
+                                                String componentStructureSegment) {
+        return new ComponentPaths(component(systemSlug, structureSegment, chapter, componentSlug),
+                componentStructureSegment);
+    }
+
+    /**
+     * Where the pages of one component are served.
+     * <p>
+     * Addressing one takes six values, four of which are the same for every page of the component. They are
+     * fixed here so that a caller passes only the chapter and the page.
+     *
+     * @param componentRoot    the component's own page, which the subtree hangs below
+     * @param structureSegment the segment of the structure below the component
+     */
+    public record ComponentPaths(String componentRoot, String structureSegment) {
+
+        /** The landing page of the structure, {@code …/components/orders-intake/component-architecture/}. */
+        public String structure() {
+            return componentRoot + structureSegment + "/";
+        }
+
+        /** A chapter of it. The URL segment, so without the number prefix. */
+        public String chapter(StructureChapter chapter) {
+            return structure() + chapter.urlSegment() + "/";
+        }
+
+        /** A page inside a chapter, {@code …/component-architecture/building-block-view/rest-api/}. */
+        public String page(StructureChapter chapter, String page) {
+            return chapter(chapter) + page + "/";
+        }
+    }
 }

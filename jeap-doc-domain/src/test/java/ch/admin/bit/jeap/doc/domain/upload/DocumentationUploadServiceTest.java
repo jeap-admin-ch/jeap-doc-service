@@ -269,7 +269,7 @@ class DocumentationUploadServiceTest {
 
         service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
 
-        verify(buildTrigger).requestBecauseOfUpload(Site.DEFAULT_SITE);
+        verify(buildTrigger).requestBecauseOfUpload(eq(Site.DEFAULT_SITE), anyString());
         assertThat(metrics.results).containsExactly("stored:COMPONENT_DOCS:" + BUNDLE.length);
     }
 
@@ -287,7 +287,7 @@ class DocumentationUploadServiceTest {
 
         verify(uploadRepository, never()).save(any());
         verifyNoInteractions(bundleStorage);
-        verify(buildTrigger).requestBecauseOfUpload(Site.DEFAULT_SITE);
+        verify(buildTrigger).requestBecauseOfUpload(eq(Site.DEFAULT_SITE), anyString());
         assertThat(metrics.results).containsExactly("repeated:COMPONENT_DOCS");
     }
 
@@ -303,7 +303,7 @@ class DocumentationUploadServiceTest {
         when(bundleStorage.store(eq(42L), eq(1), any(), anyLong())).thenReturn(STORED);
         when(uploadRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         org.mockito.Mockito.doThrow(new IllegalStateException("the database went away"))
-                .when(buildTrigger).requestBecauseOfUpload(anyString());
+                .when(buildTrigger).requestBecauseOfUpload(anyString(), anyString());
 
         UploadReceipt receipt = service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
 
@@ -318,7 +318,7 @@ class DocumentationUploadServiceTest {
         assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle(), BUNDLE.length))
                 .isInstanceOf(InvalidUploadException.class);
 
-        verify(buildTrigger, never()).requestBecauseOfUpload(anyString());
+        verify(buildTrigger, never()).requestBecauseOfUpload(anyString(), anyString());
         assertThat(metrics.results).containsExactly("failed:COMPONENT_DOCS:UNKNOWN_SITE");
     }
 

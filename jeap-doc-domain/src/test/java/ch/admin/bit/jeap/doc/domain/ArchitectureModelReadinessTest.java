@@ -75,7 +75,7 @@ class ArchitectureModelReadinessTest {
             declared.add(new SiteEnvironment(environments[index], environments[index], environments[index],
                     index, index == 0, index == 0));
         }
-        return new Site(Site.DEFAULT_SITE, "Documentation", null, null, null, "classic", declared, null, true,
+        return new Site(Site.DEFAULT_SITE, "Documentation", null, null, null, "classic", declared, true,
                 architectureModelRequired);
     }
 
@@ -100,6 +100,11 @@ class ArchitectureModelReadinessTest {
         @Override
         public ArchitectureSnapshot read(String environment) {
             return ArchitectureSnapshot.empty();
+        }
+
+        @Override
+        public java.util.List<String> systemSlugsOf(String environment) {
+            return java.util.List.of();
         }
     }
 }

@@ -29,6 +29,14 @@ public interface ArchitectureModelRepository {
     ArchitectureSnapshot read(String environment);
 
     /**
+     * The slugs of the systems stored for one environment, sorted.
+     * <p>
+     * What the parts of a site are made of - see {@link ch.admin.bit.jeap.doc.domain.SitePartition}. It is a
+     * projection and not a landscape: a part per system is asked for far more often than a model is read.
+     */
+    java.util.List<String> systemSlugsOf(String environment);
+
+    /**
      * Replaces everything stored for one environment with the given landscape, in one transaction.
      *
      * @param importedAt when the landscape was read from the architecture repository, which every generated

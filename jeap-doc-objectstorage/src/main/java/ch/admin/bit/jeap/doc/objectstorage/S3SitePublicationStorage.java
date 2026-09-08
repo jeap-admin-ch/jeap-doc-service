@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.objectstorage;
 
+import ch.admin.bit.jeap.doc.domain.port.PartPublication;
 import ch.admin.bit.jeap.doc.domain.port.PublishedSite;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
 import ch.admin.bit.jeap.doc.domain.port.StoredObject;
@@ -74,9 +75,16 @@ class S3SitePublicationStorage implements SitePublicationStorage {
      * park on the pool instead of on the network, and this way the number of threads says what is happening.
      */
     @Override
-    public PublishedSite publish(String prefix, Path directory) {
+    public PublishedSite publish(PartPublication where, Path directory) {
+        String prefix = where.prefix();
         List<Path> files = filesOf(directory);
-        long size = files.stream().mapToLong(S3SitePublicationStorage::sizeOf).sum();
+        // The part's own files, and not the shared ones beside them. Every part build writes the same
+        // assets/** and img/** to one prefix of the site, so counting them per part made the size of a
+        // fifty-two-part site fifty-one copies of that bundle too large - and it is the row of one part.
+        List<Path> ownFiles = files.stream()
+                .filter(file -> !where.isShared(directory.relativize(file).toString().replace('\\', '/')))
+                .toList();
+        long size = ownFiles.stream().mapToLong(S3SitePublicationStorage::sizeOf).sum();
         try (ExecutorService uploads = Executors.newFixedThreadPool(
                 Math.min(properties.getPublicationConcurrency(), Math.max(files.size(), 1)),
                 runnable -> {
@@ -86,19 +94,23 @@ class S3SitePublicationStorage implements SitePublicationStorage {
                 })) {
             List<Callable<Void>> tasks = files.stream()
                     .map(file -> (Callable<Void>) () -> {
-                        put(prefix, directory, file);
+                        put(where, directory, file);
                         return null;
                     })
                     .toList();
             List<Future<Void>> pending = tasks.stream().map(uploads::submit).toList();
             awaitAll(pending, prefix);
         }
-        log.info("Published {} files ({} bytes) under {}.", files.size(), size, prefix);
-        return new PublishedSite(prefix, files.size(), size);
+        log.info("Published {} files ({} bytes) under {}, and {} shared file(s) of the site beside them.",
+                ownFiles.size(), size, prefix, files.size() - ownFiles.size());
+        return new PublishedSite(prefix, ownFiles.size(), size);
     }
 
-    private void put(String prefix, Path directory, Path file) {
-        String key = keyOf(prefix, directory.relativize(file).toString().replace('\\', '/'));
+    private void put(PartPublication where, Path directory, Path file) {
+        String path = directory.relativize(file).toString().replace('\\', '/');
+        // The shared files of a site go to one prefix, written by every part build: the same bytes under the
+        // same name, so one build overwriting another's file writes what was already there.
+        String key = keyOf(where.prefixOf(path), path);
         s3Client.putObject(PutObjectRequest.builder()
                 .bucket(properties.getBucket())
                 .key(key)

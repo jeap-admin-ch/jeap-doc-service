@@ -43,9 +43,23 @@ public class BuildProperties {
     private boolean keepWorkspace = false;
 
     /**
-     * How often an instance looks whether a build has been asked for.
+     * How often an <b>idle</b> instance looks whether a build has been asked for.
+     * <p>
+     * It is not what decides how fast a queue of parts drains: a pass builds what is owed and reads again after
+     * every build, so the poll interval only bounds how long an instance that has nothing to do takes to notice
+     * that it has. Shortening it buys latency on the instance that did not receive the trigger, and queries.
      */
     private Duration pollInterval = Duration.ofSeconds(30);
+
+    /**
+     * Whether a trigger starts a build pass at once, instead of leaving it to the next poll.
+     * <p>
+     * On by default: the instance that took an upload knows there is work, and waiting a poll interval to look
+     * is latency for nothing. It is <b>advisory either way</b> - a wake-up that is lost costs nothing, because
+     * the request stands and the next poll serves it - so switching it off only makes a build wait, and is what
+     * the tests of this service run with so that a case asserts what it set off itself.
+     */
+    private boolean pickUpOnTrigger = true;
 
     /**
      * How long a build may take before it is given up on.
@@ -107,6 +121,24 @@ public class BuildProperties {
      * big site seconds, not minutes.
      */
     private boolean perfLog = true;
+
+    /**
+     * How many parts of the documentation one instance builds at a time.
+     * <p>
+     * A site is published as one build per part, and a full round of a large landscape is a great many of them:
+     * built one after another they cost the fixed ten seconds of a Docusaurus start each, and the cores of the
+     * container sit idle in between. Built at once they do not - at the price of holding several builds' memory
+     * together, which is the number that decides whether a build survives at all.
+     * <p>
+     * This is how many run <b>at once</b>, and not how many a pass builds: a pass fills a slot again as soon as
+     * the build in it is done, and goes on until nothing is owed. Even at one, the parts are built one after
+     * another within the same pass.
+     * <p>
+     * So it is a memory decision, not a parallelism one. Three is what a container sized for one large build
+     * has room for when the parts are systems; raise it only against the memory a build is measured to hold -
+     * {@code jeap_doc_container_memory_used_bytes} - and never past the cores.
+     */
+    private int maxConcurrentParts = 3;
 
     /**
      * Whether the site generator writes the pages of a site from a pool of worker threads.

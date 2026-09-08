@@ -19,9 +19,19 @@ public final class SiteApiPaths {
     public static final String SITE = SITES + "/{site}";
 
     /**
-     * The builds of one site.
+     * The builds of one site - every part of it.
      */
     public static final String BUILDS = SITE + "/builds";
+
+    /**
+     * The parts one site is published as. A site is generated as several Docusaurus builds, and this is where
+     * an operator sees them: what each carries, what is published for it and whether it is owed a build.
+     */
+    public static final String PARTS = SITE + "/parts";
+
+    /** The builds of one part. There is no resource for the part itself: the index above carries them all. */
+    public static final String PART_BUILDS = PARTS + "/{part}/builds";
+
 
     private SiteApiPaths() {
     }
