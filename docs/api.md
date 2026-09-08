@@ -18,6 +18,7 @@ UI at `/swagger-ui.html`; both are switched off unless the instance sets `jeap.s
 | `GET`  | `/api/sites`                                          | `<system-name>_@sites_#read`              | `200`        | The state of every configured site - [Reading the state of the sites](#reading-the-state-of-the-sites)     |
 | `GET`  | `/api/sites/{site}`                                   | `<system-name>_@sites_#read`              | `200`        | The state of one site - [Reading the state of the sites](#reading-the-state-of-the-sites)                   |
 | `GET`  | `/api/sites/{site}/parts`                             | `<system-name>_@sites_#read`              | `200`        | The parts of a site and their state - [Reading the parts](#reading-the-parts)                               |
+| `DELETE` | `/api/sites/{site}/parts/{part}`                    | `<system-name>_@sites_#admin`             | `204`        | Removes a part the site no longer has - [Removing a part the site no longer has](#removing-a-part-the-site-no-longer-has) |
 | `GET`  | `/api/sites/{site}/parts/{part}/builds`               | `<system-name>_@sites_#read`              | `200`        | The builds of one part - [Reading the parts](#reading-the-parts)                                            |
 | `GET`  | `/api/sites/{site}/builds`                            | `<system-name>_@sites_#read`              | `200`        | The builds of a site, newest first - [Reading the builds](#reading-the-builds)                              |
 | `GET`  | `/api/sites/{site}/builds/{buildId}`                  | `<system-name>_@sites_#read`              | `200`        | One build - [Reading the builds](#reading-the-builds)                                                       |
@@ -425,6 +426,31 @@ GET /api/sites/{site}/parts/{part}/builds?limit=20
 ```
 
 is the build history of one part, in the shape [the builds](#reading-the-builds) answer with.
+
+### Removing a part the site no longer has
+
+```
+DELETE /api/sites/{site}/parts/{part}
+```
+
+Removes what a part the site no longer has is still publishing: its objects and its build records. Answers `204`
+with no body.
+
+A part exists because the site's partition says so, and on the system axis that is read from the architecture
+model - so a decommissioned system takes its part with it, and nothing else follows on its own. No build is
+asked for, none runs, and the site would go on serving that system's pages while its index no longer lists them.
+The nightly clean-up removes such a part after `jeap.doc.build.departed-part-retention`; this is how to have it
+happen today.
+
+| Answer | When                                                                       |
+|--------|----------------------------------------------------------------------------|
+| `204`  | It is gone - the objects and the records both                              |
+| `409`  | **The site still has that part**, so it is not removed                      |
+| `404`  | No such site, or nothing was ever published or recorded for that part      |
+
+The `409` is the point of the endpoint rather than an edge of it: only a part the partition no longer produces
+can be removed, so a mistyped part cannot take a live system's documentation off the site. To remove a system's
+documentation deliberately, take the system out of the architecture repository first.
 
 ### Reading the state of the sites
 

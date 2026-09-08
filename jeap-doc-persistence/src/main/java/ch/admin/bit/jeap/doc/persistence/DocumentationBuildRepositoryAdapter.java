@@ -257,6 +257,12 @@ class DocumentationBuildRepositoryAdapter implements DocumentationBuildRepositor
 
     @Override
     @Transactional
+    public int forgetPart(PartKey part) {
+        return builds.deletePart(part.site(), part.part());
+    }
+
+    @Override
+    @Transactional
     public void forgetObjectPrefix(String objectPrefix) {
         builds.forgetObjectPrefix(objectPrefix);
     }

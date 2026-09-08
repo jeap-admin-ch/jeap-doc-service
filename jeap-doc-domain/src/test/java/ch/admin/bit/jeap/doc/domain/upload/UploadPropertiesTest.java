@@ -33,6 +33,31 @@ class UploadPropertiesTest {
                 .hasMessageContaining("jeap.doc.upload.validation.max-paths");
     }
 
+    /**
+     * A bound so high that it bounds nothing stops the startup too. The limit on the request body is derived
+     * from this one, so a value above the ceiling would leave both meaningless on an endpoint every pipeline
+     * can reach.
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {UploadProperties.MAX_PATHS_CEILING + 1, 100_000_000})
+    void aValidationThatMayCarryAnyNumberOfPaths_stopsTheStartup(int paths) {
+        UploadProperties properties = new UploadProperties();
+        properties.getValidation().setMaxPaths(paths);
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.upload.validation.max-paths");
+    }
+
+    /** The ceiling itself is a value an instance may configure. */
+    @Test
+    void theHighestPathCountAnInstanceMayConfigure_isAccepted() {
+        UploadProperties properties = new UploadProperties();
+        properties.getValidation().setMaxPaths(UploadProperties.MAX_PATHS_CEILING);
+
+        assertThatCode(properties::check).doesNotThrowAnyException();
+    }
+
     /** A report that may carry no finding could not say what is wrong, which is a typo rather than a choice. */
     @ParameterizedTest
     @ValueSource(ints = {0, -1})

@@ -24,13 +24,6 @@ const HEADING_ID = 'the-publication-you-are-reading';
 /** Marks what this module inserted, so that a second visit replaces it instead of adding another. */
 const MARKER = 'data-jeap-doc-publication';
 
-const MEGABYTE = 1024 * 1024;
-
-function megabytes(bytes) {
-    // Rounded, and the Java side rounds too - the log line of a build and this table are read side by side.
-    return `${Math.round(bytes / MEGABYTE)} MB`;
-}
-
 function spellOutDuration(millis) {
     const seconds = Math.round(millis / 1000);
     if (seconds < 60) {
@@ -42,17 +35,19 @@ function spellOutDuration(millis) {
 }
 
 /**
- * The rows to show, in the order they read: what came out, then what it cost.
+ * The rows to show: what the run that wrote this page cost.
  *
  * No memory row. It used to print the container's high-water mark around this build, which was only ever this
  * build's own while one build ran at a time - with several parts building at once each of them reset what the
  * others had accumulated. What the container does is a series to query
  * (`jeap.doc.container.memory.used`), not a number for a page to claim.
+ *
+ * No page count and no size either, and for the same kind of reason. A site is built one part at a time, and
+ * only the part carrying this page publishes its numbers where this can fetch them - so those two would be one
+ * part's while reading as the whole site's. A duration is honest as one part's: this page belongs to that build.
  */
 function rowsOf(status) {
     return [
-        ['Pages', String(status.pageCount)],
-        ['Size', megabytes(status.sizeInBytes)],
         ['Generated in', spellOutDuration(status.generatedInMillis)],
         ['Of which the site generator', spellOutDuration(status.generatorMillis)],
     ];
@@ -78,13 +73,11 @@ function tableOf(status) {
 /**
  * Whether the file held what this expects: an object with the numbers on it, rather than any valid JSON.
  *
- * Every number the table formats is checked, not just the first. `megabytes` and `spellOutDuration` do
- * arithmetic and would put `NaN MB` and `NaN s` on a published page, which is worse than the sentence the page
- * already carries without them.
+ * Every number the table formats is checked, not just the first. `spellOutDuration` does arithmetic and would
+ * put `NaN s` on a published page, which is worse than the sentence the page already carries without them.
  */
 function isStatus(status) {
     return typeof status === 'object' && status !== null && !Array.isArray(status)
-        && isNumber(status.pageCount) && isNumber(status.sizeInBytes)
         && isNumber(status.generatedInMillis) && isNumber(status.generatorMillis);
 }
 

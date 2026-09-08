@@ -341,6 +341,44 @@ class ComponentContextTest {
         });
     }
 
+    /**
+     * A relation naming only this component's own system is no counterpart, so it is drawn nowhere.
+     * <p>
+     * Drawn, it would be a box for the system this component is already inside - and both are keyed on the
+     * system alone, so PlantUML would be handed one alias twice and render an error box without failing the
+     * build. {@code PlantUmlViewsTest} holds the other half of that rule.
+     */
+    @Test
+    void of_whenARelationNamesOnlyTheOwnSystem_thenThereIsNoBoxForIt() {
+        DocumentedSystem orders = orders(List.of(
+                new SystemRelation(RelationKind.EVENT, "orders", "orders-intake", "orders", null,
+                        "OrdersCleared", null, null, null)));
+
+        ComponentContext context = ComponentContext.of(model(orders), orders, intakeOf(orders), NO_LIMIT,
+                NO_LIMIT);
+
+        assertThat(context.drawnWholeSystems()).describedAs("no whole box for the component's own system")
+                .isEmpty();
+        assertThat(context.isEmpty()).describedAs("and nothing to draw at all").isTrue();
+    }
+
+    /** The same end, on a system named by one of its aliases rather than by its name. */
+    @Test
+    void of_whenARelationNamesTheOwnSystemByAnAlias_thenThereIsNoBoxForIt() {
+        DocumentedSystem named = system("orders", List.of(component("orders-intake")),
+                List.of(new SystemRelation(RelationKind.EVENT, "orders", "orders-intake", "ORD", null,
+                        "OrdersCleared", null, null, null)),
+                List.of());
+        DocumentedSystem orders = new DocumentedSystem(named.name(), named.slug(), named.description(),
+                List.of("ORD"), named.team(), named.components(), named.relations(), named.messages());
+
+        ComponentContext context = ComponentContext.of(model(orders), orders, intakeOf(orders), NO_LIMIT,
+                NO_LIMIT);
+
+        assertThat(context.drawnWholeSystems()).isEmpty();
+        assertThat(context.isEmpty()).isTrue();
+    }
+
     /** A component that exchanges nothing says so, which is a fact worth reading on its page. */
     @Test
     void of_anIsolatedComponentHasNoEdgeAtAll() {

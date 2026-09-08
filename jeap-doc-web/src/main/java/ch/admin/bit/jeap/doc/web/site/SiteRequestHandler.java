@@ -99,8 +99,8 @@ public class SiteRequestHandler implements HttpRequestHandler {
             return;
         }
         // The site is recorded as published and its own front page is not there. That is not a wrong URL - the
-        // objects are gone, expired by the bucket's lifecycle rule after a site went too long without a
-        // successful build - and answering 404 would send an operator looking for a typo.
+        // objects are gone, removed out of step with the row it is still recorded in - and answering 404 would
+        // send an operator looking for a typo.
         if (sitePath.isSiteRoot()) {
             NotGeneratedYetResponse.writeTo(siteId, response);
             return;

@@ -29,8 +29,15 @@ public final class SiteApiPaths {
      */
     public static final String PARTS = SITE + "/parts";
 
-    /** The builds of one part. There is no resource for the part itself: the index above carries them all. */
-    public static final String PART_BUILDS = PARTS + "/{part}/builds";
+    /**
+     * One part of a site. There is nothing to read here - the index above carries every part - but a part the
+     * site no longer has can be removed, which is what takes a decommissioned system's documentation off the
+     * site without waiting out {@code jeap.doc.build.departed-part-retention}.
+     */
+    public static final String PART = PARTS + "/{part}";
+
+    /** The builds of one part. */
+    public static final String PART_BUILDS = PART + "/builds";
 
     /** One build of a site, by the identifier the history and the log lines name it with. */
     public static final String BUILD = BUILDS + "/{buildId}";

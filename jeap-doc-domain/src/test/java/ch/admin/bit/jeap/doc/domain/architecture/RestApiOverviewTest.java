@@ -81,7 +81,8 @@ class RestApiOverviewTest {
                 operation("GET", "/api/orders/{id}", "Orders"),
                 operation("GET", "/api/orders", "Orders")), Map.of());
 
-        assertThat(overview.groups().getFirst().operations()).extracting(ApiOperation::label)
+        assertThat(overview.groups().getFirst().operations())
+                .extracting(operation -> operation.method() + " " + operation.path())
                 .containsExactly("GET /api/orders", "POST /api/orders", "GET /api/orders/{id}");
     }
 
@@ -106,15 +107,6 @@ class RestApiOverviewTest {
         assertThat(overview.isEmpty()).isTrue();
         assertThat(overview.version()).isEqualTo("2.4.0");
         assertThat(overview.serverUrl()).isEqualTo("https://orders.example.ch/api");
-    }
-
-    /** An operation whose method the specification did not name still has a label: its path. */
-    @Test
-    void anOperationWithoutAMethodIsLabelledByItsPath() {
-        assertThat(new ApiOperation(null, "/api/orders", null, false, List.of()).label())
-                .isEqualTo("/api/orders");
-        assertThat(new ApiOperation("", "/api/orders", null, false, List.of()).label())
-                .isEqualTo("/api/orders");
     }
 
     /** Two runs over one specification produce the same overview, whatever order the paths arrived in. */

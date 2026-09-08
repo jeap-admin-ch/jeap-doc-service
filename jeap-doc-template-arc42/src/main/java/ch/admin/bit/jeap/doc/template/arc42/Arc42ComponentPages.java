@@ -296,8 +296,11 @@ final class Arc42ComponentPages {
     /**
      * The entity relationship diagram, and the list of tables with their columns below it.
      * <p>
-     * <b>The diagram is bounded and the list is not</b>, so a schema too large to draw still gives a reader
-     * a page they can use.
+     * <b>Both are bounded, and each bound says so on the page.</b> The list too, because one component's
+     * schema of 6583 tables gave the page 33 527 rows of columns and an hour and a half of build time. Tables
+     * that share a name pattern and a shape are collapsed into one entry before either bound applies, which
+     * is what keeps the bound on the list from ever reaching almost every schema. The diagram is drawn from
+     * the entries the list carries.
      * <p>
      * <b>Written as soon as the model says the component has a schema</b>, replicated or not, the way the
      * REST API page is. Between an architecture import and the replication - a new component, or one a run
@@ -766,8 +769,7 @@ final class Arc42ComponentPages {
     }
 
     /**
-     * Where a message is documented. <b>A link, with no fallback</b>, unlike {@link #endLink} and
-     * {@link #systemLink}.
+     * Where a message is documented. <b>A link, with no fallback</b>, unlike {@link #endLink}.
      * <p>
      * It needs none: the rows come from {@link #messagesOf}, which filters {@code system.messages()}, and
      * {@code Arc42MessagePages} writes a page for every one of those in the same run. Widen the source and
@@ -836,12 +838,6 @@ final class Arc42ComponentPages {
     }
 
     /**
-     * Where an end of an arrow is documented: a component of this system, or another system as a whole.
-     * <p>
-     * Resolved through the model rather than lower-cased into a path. The ends come from relations and are
-     * free text, so a name the model does not carry gets no link instead of a broken one.
-     */
-    /**
      * One end of a relation, linked to its own page where this run writes one.
      * <p>
      * A counterpart of another system is named with the system it belongs to, because two systems may each
@@ -884,15 +880,6 @@ final class Arc42ComponentPages {
                    + "for them: {}. The table below carries their relations.").formatted(unplaced);
         page.admonition("note", "Not every counterpart can be placed", Md.sentence(pattern,
                 Md.joinWith(", ", context.unplaced().stream().map(node -> Md.code(node.label())).toList())));
-    }
-
-    /** A system name, linked when this run documents it. A link to a missing page fails the site build. */
-    private static Markdown systemLink(String name, GenerationContext context) {
-        return context.model().systems().stream()
-                .filter(documented -> documented.name().equalsIgnoreCase(name))
-                .findFirst()
-                .map(documented -> Md.link(DocumentationPaths.system(documented.slug()), documented.name()))
-                .orElseGet(() -> Md.code(name));
     }
 
     private static Markdown teamOf(Team team) {

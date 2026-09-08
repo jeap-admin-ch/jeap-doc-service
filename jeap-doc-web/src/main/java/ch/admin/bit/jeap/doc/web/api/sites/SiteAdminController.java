@@ -2,11 +2,12 @@ package ch.admin.bit.jeap.doc.web.api.sites;
 
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.BuildRequestOutcome;
+import ch.admin.bit.jeap.doc.domain.DepartedParts;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationParts;
 import ch.admin.bit.jeap.doc.domain.DocumentationSiteStatus;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
-import ch.admin.bit.jeap.doc.domain.PartKey;
+import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.web.api.Roles;
 import io.swagger.v3.oas.annotations.Operation;
@@ -18,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -61,6 +63,7 @@ class SiteAdminController {
     private final DocumentationSiteStatus status;
     private final DocumentationParts parts;
     private final DocumentationBuildTrigger trigger;
+    private final DepartedParts departedParts;
     private final BuildProperties buildProperties;
     private final Clock clock;
 
@@ -102,6 +105,36 @@ class SiteAdminController {
                 outcome.created() ? "was put on the queue" : "joined a request already pending");
         return ResponseEntity.accepted()
                 .body(BuildRequestedDto.of(configured.key(), outcome, buildProperties.getPollInterval()));
+    }
+
+    @Operation(summary = "Remove a part the site no longer has",
+            description = "Removes what a part that is no longer produced by this site's partition is still "
+                          + "publishing: its objects and its build records. It is what takes a decommissioned "
+                          + "system's documentation off the site today rather than after "
+                          + "jeap.doc.build.departed-part-retention, which is when the nightly clean-up would "
+                          + "do it. A part the site still has is refused: this never removes live "
+                          + "documentation.")
+    @DeleteMapping(path = SiteApiPaths.PART, produces = "application/json")
+    @PreAuthorize(Roles.HAS_SITES_ADMIN_ROLE)
+    public ResponseEntity<Void> removePart(
+            @Parameter(description = "Identifier of the site") @PathVariable String site,
+            @Parameter(description = "Identifier of the part") @PathVariable String part,
+            Authentication caller) {
+        Site configured = sites.find(site).orElseThrow(() -> unknownSite(site));
+        DepartedParts.Removal removal = departedParts.removeNow(configured, part);
+        return switch (removal) {
+            case REMOVED -> {
+                log.info("The part {} of the documentation site {}, which that site no longer has, was removed "
+                         + "over the API by {}.", withoutLineBreaks(part), site, nameOf(caller));
+                yield ResponseEntity.noContent().build();
+            }
+            // 409 and not 403: what refuses it is the state of the site rather than the caller's grants, and an
+            // operator has to be able to tell "you may not" from "this system is still in the model".
+            case STILL_A_PART -> throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    ("The documentation site %s still has the part %s, so it is not removed. Only a part the "
+                     + "site no longer produces can be.").formatted(site, part));
+            case NOTHING_TO_REMOVE -> throw unknownPart(site, part);
+        };
     }
 
     @Operation(summary = "Read the parts of a site",
@@ -212,6 +245,11 @@ class SiteAdminController {
      * breaks all the same - a log entry may never be made to look like two.
      */
     private static String nameOf(Authentication caller) {
-        return caller == null ? "?" : LINE_BREAK.matcher(caller.getName()).replaceAll("_");
+        return caller == null ? "?" : withoutLineBreaks(caller.getName());
+    }
+
+    /** A log entry may never be made to look like two, whatever a path or a token carried. */
+    private static String withoutLineBreaks(String value) {
+        return value == null ? "?" : LINE_BREAK.matcher(value).replaceAll("_");
     }
 }

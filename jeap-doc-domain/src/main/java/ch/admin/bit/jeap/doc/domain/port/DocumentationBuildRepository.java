@@ -182,4 +182,16 @@ public interface DocumentationBuildRepository {
      * set from anything but the build rows can get it wrong.
      */
     int deleteFinishedBefore(Instant finishedBefore);
+
+    /**
+     * Removes every build record of one part, and reports how many there were.
+     * <p>
+     * For a part that has left the site: the axis was re-cut, or the system the part documented is no longer
+     * in the architecture model. {@link #deleteFinishedBefore} spares the newest succeeded row of every part
+     * whatever its age, which is what keeps a part nobody rebuilds served - so a part that will never be
+     * rebuilt again needs somebody to say so, and this is that.
+     * <p>
+     * The objects it published are removed first. This is what makes the site stop offering it.
+     */
+    int forgetPart(PartKey part);
 }

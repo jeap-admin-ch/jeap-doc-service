@@ -191,6 +191,16 @@ public class BuildProperties {
     private String historyCron = "0 45 2 * * *";
 
     /**
+     * How long a part the site no longer has keeps what it published, before the nightly clean-up removes it.
+     * <p>
+     * A system leaves the architecture model and its part stops being produced - so nothing asks for it, nothing
+     * rebuilds it, and its objects and its pages would otherwise stay for ever. Long, and deliberately: a
+     * decommissioned system's documentation is worth a quarter of a year, and a landscape that goes briefly
+     * wrong must not take a live system's site with it.
+     */
+    private Duration departedPartRetention = Duration.ofDays(90);
+
+    /**
      * When to ask for the sites nothing else publishes, in the time zone of the service. Every four hours
      * during the working day by default; {@code "-"} switches it off.
      * <p>

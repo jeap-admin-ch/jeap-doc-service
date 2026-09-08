@@ -312,13 +312,16 @@ public class DocumentationBuildRunner {
         }
 
         /**
-         * The next candidate, or null when there is nothing left. Reading what is owed again happens here, and
-         * at most once per call: a pass that found nothing new and has nothing running is over.
+         * The next candidate, or null when there is nothing left.
+         * <p>
+         * <b>What is owed is read again for every candidate</b>, and not only once the queue has run dry. A
+         * pass lasts minutes, and the point of reading again is that an upload arriving during one is served
+         * by it rather than by the next - which a refill on an empty queue does not give: a part asked for
+         * after the queue was filled would wait out the whole pass. One read per build started is nothing
+         * beside a build.
          */
         private Buildable nextCandidate() {
-            if (queue.isEmpty()) {
-                refill();
-            }
+            refill();
             return queue.poll();
         }
 
@@ -770,9 +773,28 @@ public class DocumentationBuildRunner {
             } else {
                 metrics.failed(site.id(), trigger, elapsed(startedAt));
             }
+            removeWhatTheBuildUploaded(site, build);
         } catch (RuntimeException whileRecording) {
             log.warn("{} ({}) ended badly, and recording that failed too.", part.key(), build.id(),
                     whileRecording);
+        }
+    }
+
+    /**
+     * Removes what a failed build had already put in the object storage.
+     * <p>
+     * A build uploads before it is recorded as succeeded, so a failure in between leaves a whole part's output
+     * behind. Nothing else would ever remove it: the retention only offers prefixes of successful builds, and
+     * the bucket expires nothing under the published sites. The prefix is named after the build id, this build
+     * never became the published one, and nothing references it - so deleting it is safe whatever the failure
+     * was, including a failure before the first object was written.
+     */
+    private void removeWhatTheBuildUploaded(Site site, DocumentationBuild build) {
+        try {
+            publication.delete(prefixOf(site, build.id()));
+        } catch (RuntimeException e) {
+            log.warn("What the failed build {} had already uploaded could not be removed. It is served to "
+                     + "nobody; it has to be removed by hand.", build.id(), e);
         }
     }
 
@@ -832,9 +854,9 @@ public class DocumentationBuildRunner {
      * <p>
      * The terminal state first: it is what stops the row reading as running and lets the workspace be swept.
      * Then the request, so that another instance runs the build within a poll interval instead of the site
-     * waiting for its next upload or schedule. The objects last, because that step is the slow one and the
-     * bucket's lifecycle rule is its fallback - nothing else will ever reference them, since the retention only
-     * ever deletes what a successful build published.
+     * waiting for its next upload or schedule. The objects last, because that step is the slow one - and it has
+     * no fallback: the bucket expires nothing under the published sites, and the retention only ever offers what
+     * a successful build published.
      * <p>
      * Each step is guarded on its own. None of them is what makes this correct: an instance that is killed
      * writes none of them, and a build left running is recovered from its row either way. They are here to make
@@ -893,8 +915,8 @@ public class DocumentationBuildRunner {
                 // Recorded, so the retention does not offer this prefix again on every build from now on.
                 builds.forgetObjectPrefix(prefix);
             } catch (RuntimeException e) {
-                // Nothing is broken by a site that stays: it costs storage, and the lifecycle rule of the bucket
-                // is the fallback for what the service never gets to delete.
+                // Nothing is broken by a site that stays: it costs storage until the next build of this part,
+                // which is offered the same prefix again because it is only forgotten once it is gone.
                 log.warn("The superseded site under {} could not be removed.", prefix, e);
             }
         }

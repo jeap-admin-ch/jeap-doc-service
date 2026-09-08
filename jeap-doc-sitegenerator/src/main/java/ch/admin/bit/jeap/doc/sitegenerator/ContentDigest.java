@@ -69,6 +69,9 @@ final class ContentDigest {
                      String generatorVersion) {
         MessageDigest digest = sha256();
         digest.update(bytesOf("generator:" + generatorVersion));
+        // Delimited like every other field: a version ending in one more character and a first path starting
+        // with one fewer would otherwise hash alike.
+        digest.update(FIELD_END);
         for (Path file : filesOf(contentDirectory)) {
             // The path as well as the content: a page that moved is a site that changed, and two files whose
             // contents were swapped would otherwise hash to what they did before.

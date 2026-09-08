@@ -11,7 +11,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A site is published as one build per system, several at a time, and only where the content digest moved.
 - A component context view names the components it exchanges something with, each inside the system that owns it.
 - An upload's structure can be checked before it is sent: `POST /api/uploads/docs/validation`.
-- What is true only now - the imports, the schedules - is served live beside the site instead of frozen into a page.
+
+### Removed
+
+- **The About page no longer shows a page count or a size.** Every part writes those numbers, and only the part carrying that page publishes them where the page can fetch them - so both read as the whole site's while being one part's.
 
 ### Dependencies
 - **@matfsw/docusaurus-plantuml-plugin**: 1.7.1 → 1.8.1 (minor), with **@plantuml/core** 1.2026.7 → 1.2026.8. An instance has to rebuild its site image: the startup check refuses a `node_modules` installed from a different lockfile.

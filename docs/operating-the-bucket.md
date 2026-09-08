@@ -1,9 +1,9 @@
 # Operating the bucket
 
-The doc service keeps three kinds of thing in one bucket, and they have three different lifetimes. Two of them
-are removed by the service itself; a lifecycle configuration is the fallback for what it never gets to remove -
-an instance killed at the wrong moment, a run that never reached its clean-up - and it is the only clean-up that
-keeps working when the service does not.
+The doc service keeps three kinds of thing in one bucket, and they have three different lifetimes. The uploaded
+bundles are expired by a lifecycle rule; the published sites are removed by the service and by nothing else, and
+there is deliberately **no age rule over them at all** - see below. So on that prefix there is no fallback for
+what the service never gets to remove, and the little that escapes it has to be removed by hand.
 
 **It is provisioned with the bucket, not by the service.** This page says what to provision.
 
@@ -12,8 +12,8 @@ keeps working when the service does not.
 | Prefix     | What it is                                | Removed by                                                                                                                                                   |
 |------------|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `uploads/` | The bundles as they arrived               | The bucket. The service removes the *record* of an upload after `jeap.doc.upload.housekeeping.retention`; the bundle it points at has to outlive that record |
-| `sites/<site>/<build>/` | The generated parts of a site, one prefix per build | The service, down to `jeap.doc.build.retention` per part, after every successful build |
-| `sites/<site>/shared/`  | The files every part of a site emits identically - the bundles, the site's images and its branding. Written by whichever part build finds them changed or missing; one that is already stored with the same bytes is not written again | Nothing yet: they are overwritten by every build that emits them, and a name nothing references any more is a small leak. See [Generating the documentation](generation.md) |
+| `sites/<site>/<build>/` | The generated parts of a site, one prefix per build | The service, down to `jeap.doc.build.retention` per part, after every successful build. A build that *fails* removes its own prefix; one whose instance is killed cannot, and leaves it behind |
+| `sites/<site>/shared/`  | The files every part of a site emits identically - the bundles, the site's images and its branding. Written by whichever part build finds them changed or missing; one that is already stored with the same bytes is not written again | **Nothing.** See [The shared prefix grows](#the-shared-prefix-grows) below |
 
 `uploads` is `jeap.doc.storage.upload-prefix` and `sites` is `jeap.doc.storage.site-prefix`, and an instance
 may set either to something else - which is why the rules below name a tag rather than a prefix.
@@ -59,6 +59,26 @@ uploads and noncurrent versions - because neither is addressed by anything.
 **Nothing under `sites/` is a source of truth**, so nothing is *lost* either way: a generated site is derived
 from the site template and the architecture model. The cost of getting this wrong is a site that is offline
 until somebody notices and forces a publication, not data.
+
+## The shared prefix grows
+
+`sites/<site>/shared/` is written by every part build and removed by nothing. The fixed names - the site's images
+and its branding - are overwritten in place and cost nothing over time. What accumulates are the **content-hashed
+bundles** of the site template: a new version of the template emits new names, and the names of the version before
+it stay behind for ever.
+
+So the prefix grows by roughly one template's worth of assets - a few megabytes - **per release of the site
+template that changes them**, not per build and not per part. On a site released a handful of times a year that
+is small enough to leave alone, which is why nothing removes it.
+
+**It is cleaned up by hand**, and the safe moment is well after a release, when every part of the site has been
+rebuilt at least once on the new template:
+
+1. list `sites/<site>/shared/`, and
+2. delete the hashed names no page of the current publication references.
+
+An age rule cannot do this - the newest publication of a part that never changes is as old as that part, and
+references the bundles of the template it was built with.
 
 ## The rule that must not be written
 

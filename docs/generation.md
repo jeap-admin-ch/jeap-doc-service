@@ -631,6 +631,29 @@ Old rows are removed nightly, after `jeap.doc.build.history-retention` - **excep
 part**, which is kept whatever its age. A part that is only ever built when something is uploaded to it would
 otherwise lose the row that says it is published at all, and start answering that it has never been generated.
 
+### A part the site no longer has
+
+That exception has a cost: a part which will never be built again keeps its row, its objects and its pages for
+ever. On the system axis that is what a **decommissioned system** looks like - the model no longer names it, the
+partition stops producing its part, nothing asks for a build, and the site goes on serving its pages while the
+systems index no longer lists them. Nothing else would clear it: the retention only ever offers what a
+successful build published, and nothing under the published sites is expired by age (see
+[Operating the bucket](operating-the-bucket.md)).
+
+So a second nightly sweep, on the same schedule, removes what such a part is still publishing - its objects
+first, then its records. It is **slow on purpose and guarded twice**:
+
+- a part is removed only once it has published nothing for `jeap.doc.build.departed-part-retention`, which is
+  ninety days by default, and
+- **a site whose partition produces nothing but the shell is left alone entirely.** An import that failed and
+  stored an empty landscape would otherwise read as every system of that site having been decommissioned at
+  once.
+
+Together, a landscape that goes wrong has to stay wrong for a quarter of a year before anything is deleted. An
+operator who knows a system is gone need not wait:
+`DELETE /api/sites/{site}/parts/{part}` does it today, and refuses with `409` for a part the site still has -
+see [the API](api.md#removing-a-part-the-site-no-longer-has).
+
 ## How a site is published without a gap
 
 The object storage has no transaction to borrow, so the design does not ask it for one:
@@ -646,10 +669,14 @@ The object storage has no transaction to borrow, so the design does not ask it f
 
 A reader therefore sees the whole previous publication of a part or the whole new one, never a mixture and
 never a gap. Across parts they do see a mixture, and that is deliberate: a part is published when it changes, so
-the systems of a site have different ages, and every generated page says which import its content came from. A build
-that fails, or an instance that dies at any point, leaves the site published before it exactly as it was; the
-worst it costs is objects nothing references, which the retention removes on the next run and the bucket's
-lifecycle rule removes if there is no next run - see [Operating the bucket](operating-the-bucket.md).
+the systems of a site have different ages, and every generated page says which import its content came from.
+
+A build that fails leaves the site published before it exactly as it was, and **removes what it had already
+uploaded**: the prefix is named after the build id, so nothing references it and nothing else would ever remove
+it - the retention only ever offers what a successful build published, and the bucket expires nothing under the
+published sites (see [Operating the bucket](operating-the-bucket.md)). An instance that is *killed* writes
+nothing at all, so what it had uploaded does stay. Those objects are served to nobody; they have to be removed by
+hand.
 
 ## The build workspace
 

@@ -19,6 +19,9 @@ import java.time.Duration;
  * A site no import publishes - one whose environments have no architecture repository - is reconciled on
  * {@code jeap.doc.build.reconcile-cron} instead, so that a template or generator change reaches it without
  * somebody uploading to it.
+ * <p>
+ * The nightly clean-up is two jobs, because a build record and a publication are removed for different reasons:
+ * one forgets what finished long ago, the other removes what a part the site no longer has is still serving.
  */
 @Slf4j
 @Configuration
@@ -27,6 +30,7 @@ class DocumentationBuildScheduling implements SchedulingConfigurer {
 
     private final DocumentationBuildPickup pickup;
     private final DocumentationBuildHousekeeping housekeeping;
+    private final DepartedParts departedParts;
     private final DocumentationBuildTrigger trigger;
     private final BuildProperties properties;
 
@@ -82,6 +86,11 @@ class DocumentationBuildScheduling implements SchedulingConfigurer {
         registrar.addCronTask(housekeeping::removeOldBuilds, properties.getHistoryCron());
         log.info("The record of builds that finished more than {} ago is removed on the schedule '{}'.",
                 properties.getHistoryRetention(), properties.getHistoryCron());
+        // On the same schedule, because both are about what the service has no use for any more - and both are
+        // one instance's work on a quiet night rather than something a build waits for.
+        registrar.addCronTask(departedParts::removeWhatIsGone, properties.getHistoryCron());
+        log.info("What a part its site no longer has published is removed after {}, on the same schedule.",
+                properties.getDepartedPartRetention());
         registerReconcile(registrar);
     }
 

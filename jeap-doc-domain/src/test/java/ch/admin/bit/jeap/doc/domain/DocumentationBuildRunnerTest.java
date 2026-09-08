@@ -333,6 +333,38 @@ class DocumentationBuildRunnerTest {
         assertThat(metrics.results).containsExactly("failed:" + SITE + ":UPLOAD");
     }
 
+    /**
+     * <b>A build that fails takes its objects with it.</b> The upload runs before the row says SUCCEEDED, so a
+     * failure in between leaves a whole part's output behind - and nothing else would ever remove it: the
+     * retention only offers prefixes of successful builds, and nothing under the published sites is expired by
+     * age. The row is what makes this safe: this build never became the published one, so the prefix named
+     * after its identifier is referenced by nothing.
+     */
+    @Test
+    void runOnce_whenPublishingFails_thenWhatTheBuildHadUploadedIsRemoved() {
+        pending(SITE);
+        when(publication.publish(any(), any())).thenThrow(new IllegalStateException("the bucket said no"));
+
+        assertThat(runner.runOnce()).isTrue();
+
+        InOrder order = inOrder(builds, publication);
+        order.verify(builds).failed(eq(7L), anyString(), any());
+        order.verify(publication).delete(SITE + "/7");
+    }
+
+    /** Losing the objects of a failed build must not lose the record that it failed. */
+    @Test
+    void runOnce_whenPublishingFailsAndSoDoesTheCleanUp_thenTheFailureIsStillRecorded() {
+        pending(SITE);
+        when(publication.publish(any(), any())).thenThrow(new IllegalStateException("the bucket said no"));
+        doThrow(new IllegalStateException("and it said no again")).when(publication).delete(SITE + "/7");
+
+        assertThat(runner.runOnce()).isTrue();
+
+        verify(builds).failed(eq(7L), eq("the bucket said no"), any());
+        assertThat(metrics.results).containsExactly("failed:" + SITE + ":UPLOAD");
+    }
+
     @Test
     void runOnce_thenABuildOfThisSiteThatLostItsLeaseIsGivenUpOnFirst() {
         pending(SITE);

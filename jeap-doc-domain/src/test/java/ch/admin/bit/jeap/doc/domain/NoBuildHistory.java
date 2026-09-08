@@ -121,6 +121,12 @@ public class NoBuildHistory implements DocumentationBuildRepository {
     }
 
     @Override
+    public int forgetPart(PartKey part) {
+        // There is no history to forget.
+        return 0;
+    }
+
+    @Override
     public Set<Long> runningIds() {
         return Set.of();
     }

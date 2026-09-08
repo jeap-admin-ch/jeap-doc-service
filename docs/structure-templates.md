@@ -198,14 +198,15 @@ that had to leave something out says how much, and the table below it carries wh
 
 The database schema page is the one exception, and it is measured rather than a matter of taste: a component
 that publishes 6583 tables gave it 33 527 rows of columns and an hour and a half of build time, so its list is
-bounded too. Where that applies the page says how many entries it did not write and links the published
-schema, which carries all of them.
+bounded too. Where that applies the page says how many entries it did not write - and it **links nothing**: the
+only source carrying the rest is the architecture repository's own `/docs-api`, an internal address a reader of
+a published site cannot reach, so a link there would read as an offer and answer nothing.
 
 | Diagram                       | Bounded by                                | The page still carries      |
 |-------------------------------|-------------------------------------------|-----------------------------|
 | System context view           | `max-diagram-nodes` other systems         | every relation              |
 | Whitebox view                 | `max-diagram-nodes` other systems         | every component, every relation |
-| Component context view        | `max-context-components` siblings, and `max-diagram-nodes` other systems | every relation |
+| Component context view        | `max-context-components` component boxes - siblings and foreign counterparts together - and `max-diagram-nodes` other systems | every relation |
 | Entity relationship diagram   | `max-schema-table-diagram` entries               | `max-schema-table-list` entries, with their columns |
 | Any arrow of any of them      | `max-edge-labels` names, then their count | the names, in the table     |
 

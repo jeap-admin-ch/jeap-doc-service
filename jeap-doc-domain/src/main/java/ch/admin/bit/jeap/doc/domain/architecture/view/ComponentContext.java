@@ -480,8 +480,10 @@ public record ComponentContext(
         private Node of(String systemName, String componentName) {
             if (isBlank(componentName)) {
                 // Only the system is known, so the system is the box - and where neither is, there is no end.
-                return isBlank(systemName) ? null : node(NodeKind.NEIGHBOUR_SYSTEM, owner(systemName, null),
-                        systemName, null);
+                if (isBlank(systemName) || namesThisSystem(systemName)) {
+                    return null;
+                }
+                return node(NodeKind.NEIGHBOUR_SYSTEM, owner(systemName, null), systemName, null);
             }
             DocumentedSystem owner = owner(systemName, componentName);
             if (owner == null) {
@@ -493,6 +495,23 @@ public record ComponentContext(
                     ? (componentName.equalsIgnoreCase(self.componentName()) ? NodeKind.SELF : NodeKind.SIBLING)
                     : NodeKind.NEIGHBOUR_COMPONENT;
             return node(kind, owner, owner.name(), componentName);
+        }
+
+        /**
+         * Whether an end that names only a system names the one this component belongs to.
+         * <p>
+         * Such an end is no counterpart: it says the relation touches this system, which is where the
+         * component already is. Drawn, it would be a whole box for this system beside the package the view
+         * opens for it - both keyed on the system alone, so PlantUML would be handed one alias twice and
+         * render an error box, which fails no build. The system-level view has the same guard in
+         * {@code SystemRelation.counterpartSystemOf}.
+         */
+        private boolean namesThisSystem(String systemName) {
+            if (systemName.equalsIgnoreCase(system.name())) {
+                return true;
+            }
+            DocumentedSystem named = owner(systemName, null);
+            return named != null && named.name().equalsIgnoreCase(system.name());
         }
 
         /**

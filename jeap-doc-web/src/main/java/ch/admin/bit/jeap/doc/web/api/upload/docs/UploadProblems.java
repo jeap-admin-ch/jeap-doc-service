@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 
 import java.net.URI;
+import java.util.regex.Pattern;
 
 /**
  * The RFC 9457 problem document a rejected request below {@code /api/uploads/docs} is answered with.
@@ -19,6 +20,8 @@ final class UploadProblems {
 
     static final String PROBLEM_TYPE = "https://jeap.admin.ch/problems/docs/invalid-upload";
 
+    private static final Pattern LINE_BREAK = Pattern.compile("[\\r\\n]");
+
     private UploadProblems() {
     }
 
@@ -28,6 +31,17 @@ final class UploadProblems {
         problem.setTitle("The upload does not describe a documentation set");
         problem.setProperty("code", code.name());
         return problem;
+    }
+
+    /**
+     * A problem detail on its way into a log line.
+     * <p>
+     * A detail quotes what the request carried - a parameter name straight out of the query string, already
+     * decoded by the container - so a line break in it would look like a second log entry. The document sent
+     * back is untouched: it is a JSON string, where a line break is escaped and means nothing.
+     */
+    static String forLog(String detail) {
+        return detail == null ? "" : LINE_BREAK.matcher(detail).replaceAll("_");
     }
 
     static HttpStatus statusOf(InvalidUploadException.Code code) {

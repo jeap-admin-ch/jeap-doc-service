@@ -42,13 +42,16 @@ class DescribeRunTest {
         JsonNode written = JSON.readTree(
                 Files.readString(output.resolve(AboutThisDocumentation.STATUS_FILE)));
         assertThat(written.get("buildId").asLong()).isEqualTo(4711L);
-        assertThat(written.get("pageCount").asInt()).isEqualTo(412);
-        assertThat(written.get("sizeInBytes").asLong()).isEqualTo(184_320L);
         assertThat(written.get("generatedInMillis").asLong()).isEqualTo(92_000L);
         assertThat(written.get("generatorMillis").asLong()).isEqualTo(62_000L);
         assertThat(written.propertyNames())
                 .describedAs("the per-build memory peak is gone; what the container does is a series")
                 .doesNotContain("memoryPeakBytes", "memoryLimitBytes", "memoryPeakExact");
+        assertThat(written.propertyNames())
+                .describedAs("and so are the page count and the size: every part writes this file, only the "
+                             + "part carrying the page publishes it where the page can fetch it, so both "
+                             + "would be one part's while reading as the whole site's")
+                .doesNotContain("pageCount", "sizeInBytes");
     }
 
     /** Read by a browser, so the moment is text a browser parses rather than a count of milliseconds. */

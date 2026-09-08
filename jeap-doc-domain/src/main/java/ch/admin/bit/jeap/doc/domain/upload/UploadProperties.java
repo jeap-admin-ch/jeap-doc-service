@@ -20,6 +20,15 @@ public class UploadProperties {
     public static final DataSize DEFAULT_MAX_SIZE = DataSize.ofMegabytes(50);
 
     /**
+     * The highest {@code max-paths} an instance may configure.
+     * <p>
+     * A hundred thousand is far more than the largest documentation set anyone has uploaded and still small
+     * enough that the body bound derived from it stays a bound: at the longest path this service accepts, that
+     * is a request of a few tens of megabytes.
+     */
+    public static final int MAX_PATHS_CEILING = 100_000;
+
+    /**
      * Maximum size of an uploaded bundle. A larger bundle is rejected without being read.
      */
     private DataSize maxSize = DEFAULT_MAX_SIZE;
@@ -99,6 +108,14 @@ public class UploadProperties {
             throw new IllegalStateException(
                     "jeap.doc.upload.validation.max-paths is " + validation.getMaxPaths()
                     + ". A documentation set has at least one file.");
+        }
+        if (validation.getMaxPaths() > MAX_PATHS_CEILING) {
+            // The bound on the body is derived from this one, so a value far above what a documentation set
+            // can be makes both bounds meaningless - and the endpoint is reachable by every pipeline.
+            throw new IllegalStateException(
+                    "jeap.doc.upload.validation.max-paths is " + validation.getMaxPaths()
+                    + ". No documentation set has that many files, and the bound on the request body is "
+                    + "derived from this one, so a value above " + MAX_PATHS_CEILING + " bounds neither.");
         }
         if (validation.getMaxFindings() < 1) {
             throw new IllegalStateException(

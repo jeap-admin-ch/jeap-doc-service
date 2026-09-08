@@ -317,6 +317,36 @@ class DocumentationBuildRunnerConcurrencyTest {
         }
     }
 
+    /**
+     * <b>What is owed is read again for every candidate, not once per drained queue.</b>
+     * <p>
+     * A pass over a landscape lasts minutes, and the reason to read again is that a request arriving during
+     * one is served by it. Refilling only once the queue has run dry does read again - but not until every
+     * part queued at the start has been built, so a request arriving early in a long pass is served at the end
+     * of it whatever its place in the pick-up order would have been.
+     * <p>
+     * Counted rather than ordered: the order within a size band is each instance's own by design, so an
+     * assertion on which part came second would be an assertion on a shuffle. One slot, so the drain runs on
+     * this thread and the reads are this thread's.
+     */
+    @Test
+    void aPassReadsWhatIsOwedAgainForEveryCandidate() {
+        CountingStandingBuildRequests standing = new CountingStandingBuildRequests();
+        int parts = 3;
+        for (int part = 0; part < parts; part++) {
+            standing.request(PartKey.of(SITE, "system-" + part), BuildTrigger.IMPORT, NOW, null, false);
+        }
+        CountingSiteBuilder builder = new CountingSiteBuilder(prepared -> {
+        });
+
+        boolean built = runnerWith(builder, new RecordingBuildMetrics(), locks, 1, standing).runOnce();
+
+        assertThat(built).isTrue();
+        assertThat(builder.generated).describedAs("every part built").hasSize(parts);
+        assertThat(standing.reads).describedAs("one read per candidate taken, and one that found nothing")
+                .hasValueGreaterThanOrEqualTo(parts + 1);
+    }
+
     private DocumentationBuildRunner runnerWith(SiteBuilder siteBuilder) {
         return runnerWith(siteBuilder, new RecordingBuildMetrics());
     }
@@ -327,9 +357,15 @@ class DocumentationBuildRunnerConcurrencyTest {
 
     private DocumentationBuildRunner runnerWith(SiteBuilder siteBuilder, RecordingBuildMetrics metrics,
                                                 ExclusiveWork exclusiveWork, int slots) {
+        return runnerWith(siteBuilder, metrics, exclusiveWork, slots, requests);
+    }
+
+    private DocumentationBuildRunner runnerWith(SiteBuilder siteBuilder, RecordingBuildMetrics metrics,
+                                                ExclusiveWork exclusiveWork, int slots,
+                                                StandingBuildRequests standing) {
         BuildProperties properties = new BuildProperties();
         properties.setMaxConcurrentParts(slots);
-        return new DocumentationBuildRunner(requests, aBuildRepository(), new DocumentationSites(
+        return new DocumentationBuildRunner(standing, aBuildRepository(), new DocumentationSites(
                 new SiteProperties()), new SystemSitePartition(new NoArchitectureModel()), siteBuilder,
                 aPublicationStorage(), properties, metrics, exclusiveWork,
                 new ArchitectureModelReadiness(new NoArchitectureModel()), Clock.fixed(NOW, ZoneOffset.UTC));
@@ -501,6 +537,18 @@ class DocumentationBuildRunnerConcurrencyTest {
         @Override
         public int sweepWorkspaces(Set<Long> runningBuildIds) {
             return 0;
+        }
+    }
+
+    /** Counts how often a pass reads what is owed. */
+    private static final class CountingStandingBuildRequests extends StandingBuildRequests {
+
+        private final AtomicInteger reads = new AtomicInteger();
+
+        @Override
+        public List<BuildRequest> pending() {
+            reads.incrementAndGet();
+            return super.pending();
         }
     }
 }

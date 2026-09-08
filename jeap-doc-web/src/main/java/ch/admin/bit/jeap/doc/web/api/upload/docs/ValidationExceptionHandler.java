@@ -26,7 +26,10 @@ class ValidationExceptionHandler {
 
     @ExceptionHandler(InvalidUploadException.class)
     ResponseEntity<ProblemDetail> handleInvalid(InvalidUploadException exception) {
-        log.debug("Rejected a structure validation: {} - {}", exception.getCode(), exception.getMessage());
+        // Through forLog: a detail quotes what the request carried, and a line break in it would look like a
+        // second log entry.
+        log.debug("Rejected a structure validation: {} - {}", exception.getCode(),
+                UploadProblems.forLog(exception.getMessage()));
         ProblemDetail problem = UploadProblems.of(exception.getCode(), exception.getMessage());
         return ResponseEntity.status(problem.getStatus()).body(problem);
     }
@@ -34,7 +37,7 @@ class ValidationExceptionHandler {
     @ExceptionHandler(MissingServletRequestParameterException.class)
     ProblemDetail handleMissingParameter(MissingServletRequestParameterException exception) {
         String detail = "The parameter '%s' is required.".formatted(exception.getParameterName());
-        log.debug("Rejected a structure validation: MISSING_PARAMETER - {}", detail);
+        log.debug("Rejected a structure validation: MISSING_PARAMETER - {}", UploadProblems.forLog(detail));
         return UploadProblems.of(InvalidUploadException.Code.MISSING_PARAMETER, detail);
     }
 }

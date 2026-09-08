@@ -213,4 +213,13 @@ interface DocumentationBuildJpaRepository extends JpaRepository<DocumentationBui
                                 and newer.id > b.id))
             """)
     int deleteFinishedBefore(@Param("finishedBefore") Instant finishedBefore);
+
+    /**
+     * Removes every build of one part. Written out rather than derived, because a derived {@code deleteBy...}
+     * selects each row before deleting it.
+     */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from DocumentationBuildEntity b where b.site = :site and b.part = :part")
+    int deletePart(@Param("site") String site, @Param("part") String part);
 }

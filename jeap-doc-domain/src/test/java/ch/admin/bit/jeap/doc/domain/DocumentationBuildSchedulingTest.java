@@ -33,6 +33,8 @@ class DocumentationBuildSchedulingTest {
     @Mock
     private DocumentationBuildHousekeeping housekeeping;
     @Mock
+    private DepartedParts departedParts;
+    @Mock
     private DocumentationBuildTrigger trigger;
 
     private BuildProperties properties;
@@ -45,8 +47,8 @@ class DocumentationBuildSchedulingTest {
     }
 
     /**
-     * Three tasks: the poll that picks up what has been asked for, the housekeeping, and the reconcile of the
-     * sites no architecture import publishes. A site still has no publication schedule of its own.
+     * Four tasks: the poll that picks up what has been asked for, the two nightly clean-ups, and the reconcile
+     * of the sites no architecture import publishes. A site still has no publication schedule of its own.
      */
     @Test
     void configureTasks_thenThePollTheHousekeepingAndTheReconcileAreRegistered() {
@@ -55,7 +57,7 @@ class DocumentationBuildSchedulingTest {
         assertThat(registrar.getFixedDelayTaskList())
                 .describedAs("the poll, on a fixed delay").hasSize(1);
         assertThat(registrar.getCronTaskList())
-                .describedAs("the housekeeping and the reconcile, and nothing per site").hasSize(2);
+                .describedAs("the two clean-ups and the reconcile, and nothing per site").hasSize(3);
     }
 
     @Test
@@ -71,13 +73,15 @@ class DocumentationBuildSchedulingTest {
     /** A landscape whose every site is imported for needs no reconcile, and can switch it off. */
     @ParameterizedTest
     @ValueSource(strings = {"-", ""})
-    void configureTasks_whenTheReconcileIsSwitchedOff_thenOnlyTheHousekeepingIsOnACron(String cron) {
+    void configureTasks_whenTheReconcileIsSwitchedOff_thenOnlyTheCleanUpsAreOnACron(String cron) {
         properties.setReconcileCron(cron);
 
         scheduling().configureTasks(registrar);
 
-        assertThat(registrar.getCronTaskList()).singleElement()
-                .extracting(task -> task.getExpression()).isEqualTo(properties.getHistoryCron());
+        assertThat(registrar.getCronTaskList())
+                .describedAs("the two nightly clean-ups, and nothing else").hasSize(2);
+        assertThat(registrar.getCronTaskList()).extracting(task -> task.getExpression())
+                .containsOnly(properties.getHistoryCron());
     }
 
     @Test
@@ -159,7 +163,7 @@ class DocumentationBuildSchedulingTest {
     }
 
     private DocumentationBuildScheduling scheduling() {
-        return new DocumentationBuildScheduling(pickup, housekeeping, trigger, properties);
+        return new DocumentationBuildScheduling(pickup, housekeeping, departedParts, trigger, properties);
     }
 
 }

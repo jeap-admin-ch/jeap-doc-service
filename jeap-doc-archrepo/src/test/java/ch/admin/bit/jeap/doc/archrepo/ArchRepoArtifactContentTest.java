@@ -189,7 +189,8 @@ class ArchRepoArtifactContentTest {
     void restApi_readsOnlyTheMethodsOfAPathItem() {
         RestApiOverview read = content.restApi(spec(SPEC)).orElseThrow();
 
-        assertThat(read.operations()).extracting(ApiOperation::label)
+        assertThat(read.operations())
+                .extracting(operation -> operation.method() + " " + operation.path())
                 .containsExactlyInAnyOrder("GET /api/orders", "POST /api/orders", "GET /api/orders/{id}",
                         "GET /api/health");
     }

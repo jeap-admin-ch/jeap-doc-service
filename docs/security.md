@@ -9,7 +9,7 @@ The doc service authorizes against **semantic roles**, which requires
 |-------------------------------------------|----------------------------------------------------------------------|
 | `<system-name>_%<system>_@uploads_#write` | Uploading documentation for the system named in the tenant part      |
 | `<system-name>_@docs_#read`               | A name kept free by convention; **nothing in the service checks it** |
-| `<system-name>_@sites_#admin`             | Asking for a documentation site to be published                      |
+| `<system-name>_@sites_#admin`             | Asking for a documentation site to be published, and removing a part the site no longer has |
 | `<system-name>_@sites_#read`              | Reading what the documentation generator has been doing              |
 
 ## A site is nobody's system

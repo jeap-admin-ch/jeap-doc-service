@@ -79,14 +79,44 @@ public class ArchitectureImportQueue {
      * another, because what this ask is about may already have been read - see the note on this class.
      */
     public Outcome submit(String environment) {
-        InFlight waiting = inFlight.get(environment);
-        if (waiting != null) {
+        while (true) {
+            InFlight waiting = inFlight.get(environment);
+            if (waiting == null) {
+                return startImport(environment);
+            }
             if (!waiting.started) {
                 return Outcome.ALREADY_ASKED_FOR;
             }
-            waiting.askedAgain = true;
-            return Outcome.QUEUED;
+            if (askAgain(environment, waiting)) {
+                return Outcome.QUEUED;
+            }
+            // That run ended between reading it and raising the flag. Round again: either nothing is in
+            // flight and this ask starts its own import, or a follow-up run already is and this ask joins it.
         }
+    }
+
+    /**
+     * Raises the ask-again flag on a running import, and reports whether it reached the run it was meant for.
+     * <p>
+     * <b>Under the map's own lock on the key</b>, because {@link #runAndForget} removes the entry and then
+     * reads the flag: a flag raised in between would be set on an entry nothing holds any more, no further
+     * import would run, and the caller would have been told one would. Only on the same run, so an ask cannot
+     * land on a follow-up that has not started reading and does not need it.
+     */
+    private boolean askAgain(String environment, InFlight running) {
+        boolean[] raised = {false};
+        inFlight.computeIfPresent(environment, (id, flight) -> {
+            if (flight == running) {
+                flight.askedAgain = true;
+                raised[0] = true;
+            }
+            return flight;
+        });
+        return raised[0];
+    }
+
+    /** Puts the first ask for an environment on the queue. */
+    private Outcome startImport(String environment) {
         InFlight own = new InFlight();
         if (inFlight.putIfAbsent(environment, own) != null) {
             // Two asks arrived at once and the other one got there first. Its import has not started - it was
@@ -130,8 +160,12 @@ public class ArchitectureImportQueue {
         } finally {
             // Whatever the import did. The environment is asked for hourly, and a failure that kept the
             // environment in this map would make every later ask a no-op.
-            inFlight.remove(environment, own);
-            if (own.askedAgain) {
+            //
+            // Removed and read as one step on the key, so that an ask arriving now either reaches this run -
+            // and is answered by the import below - or finds nothing in flight and starts its own. Read after
+            // the remove and it could fall between the two, and be lost.
+            boolean askedAgain = forget(environment, own);
+            if (askedAgain) {
                 // Asked for while this run was reading, so this run may not have seen what the ask was about.
                 // In the finally, because a run that failed read nothing and owes that ask all the more. The
                 // entry is gone by now, so this goes through submit like any other ask - and submit answers a
@@ -141,6 +175,20 @@ public class ArchitectureImportQueue {
                 submit(environment);
             }
         }
+    }
+
+    /** Takes a finished run out of the map and reports whether somebody asked for it again while it ran. */
+    private boolean forget(String environment, InFlight own) {
+        boolean[] askedAgain = {false};
+        inFlight.compute(environment, (id, flight) -> {
+            if (flight != own) {
+                // A follow-up run already holds the slot; this one has nothing left to give up.
+                return flight;
+            }
+            askedAgain[0] = own.askedAgain;
+            return null;
+        });
+        return askedAgain[0];
     }
 
     /** One environment's place on the queue: whether its run has started, and whether it was asked for again. */

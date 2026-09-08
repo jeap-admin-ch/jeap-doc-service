@@ -334,16 +334,6 @@ final class PlantUmlViews {
         uml.append('\n');
     }
 
-    /** Where a sibling's page is, or null when the model has no component of that name in the system. */
-    private static String siblingLinkOf(ComponentContext context, String sibling, String systemSlug,
-                                        GenerationContext generation) {
-        return context.system().components().stream()
-                .filter(candidate -> candidate.name().equalsIgnoreCase(sibling))
-                .findFirst()
-                .map(candidate -> componentLinkOf(systemSlug, candidate.slug(), generation))
-                .orElse(null);
-    }
-
     private static String componentLinkOf(String systemSlug, String componentSlug,
                                           GenerationContext generation) {
         return generation.diagramLink(DocumentationPaths.component(systemSlug,

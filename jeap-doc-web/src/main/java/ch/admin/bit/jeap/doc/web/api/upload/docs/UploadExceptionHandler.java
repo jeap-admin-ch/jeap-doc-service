@@ -20,7 +20,6 @@ import java.net.URI;
 import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * Turns a rejected upload into an RFC 9457 problem response carrying the machine-readable reason, so a pipeline
@@ -37,8 +36,6 @@ import java.util.regex.Pattern;
 class UploadExceptionHandler {
 
     static final String PROBLEM_TYPE = UploadProblems.PROBLEM_TYPE;
-
-    private static final Pattern LINE_BREAK = Pattern.compile("[\\r\\n]");
 
     /**
      * The codes that are raised before the domain ever sees the upload - a parameter that is missing, unknown or
@@ -114,14 +111,17 @@ class UploadExceptionHandler {
      * logged where it happens, with its cause.
      */
     private static void logRejection(InvalidUploadException.Code code, String detail, HttpServletRequest request) {
+        // Through forLog, because a detail quotes what the request carried - the name of an unknown parameter
+        // among it - and a line break in that would look like a second log entry.
+        String forLog = UploadProblems.forLog(detail);
         if (code == InvalidUploadException.Code.STORAGE_FAILED) {
-            log.debug("Answering the upload {} with {}: {}", uploadIdOf(request), code, detail);
+            log.debug("Answering the upload {} with {}: {}", uploadIdOf(request), code, forLog);
         } else if (code == InvalidUploadException.Code.UPLOAD_IN_PROGRESS) {
             log.info("Refused the upload {} of the system {}: {} - {}",
-                    uploadIdOf(request), systemOf(request), code, detail);
+                    uploadIdOf(request), systemOf(request), code, forLog);
         } else {
             log.warn("Rejected the upload {} of the system {}: {} - {}",
-                    uploadIdOf(request), systemOf(request), code, detail);
+                    uploadIdOf(request), systemOf(request), code, forLog);
         }
     }
 
@@ -136,7 +136,7 @@ class UploadExceptionHandler {
      */
     private static String systemOf(HttpServletRequest request) {
         String system = request.getParameter("system");
-        return system == null ? "?" : LINE_BREAK.matcher(system).replaceAll("_");
+        return system == null ? "?" : UploadProblems.forLog(system);
     }
 
     private static String describeRequiredType(MethodArgumentTypeMismatchException exception) {

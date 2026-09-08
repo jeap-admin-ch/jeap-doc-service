@@ -30,8 +30,4 @@ public record ApiOperation(String method, String path, String summary, boolean d
     public String group() {
         return tags.isEmpty() ? RestApiOverview.UNGROUPED : tags.getFirst();
     }
-
-    public String label() {
-        return method == null || method.isBlank() ? path : method + " " + path;
-    }
 }

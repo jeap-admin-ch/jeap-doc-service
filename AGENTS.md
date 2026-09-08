@@ -344,6 +344,16 @@ are what keep that working. The plan behind it is the enabler's `MODULARIZATION.
   documented travel the same way, on `BuiltSite` through `succeeded`. A **pass** has no meter at all,
   deliberately: it reports itself in one log line, because utilisation is the two slot gauges over a range -
   see `docs/observability.md`.
+- **A part that leaves the site is nobody's until something says so.** The retention only ever offers what a
+  *successful* build published, the nightly clean-up spares the newest succeeded row of every part whatever its
+  age, and nothing under the published sites is expired by the bucket - all three deliberate, and together they
+  mean a decommissioned system's part keeps its objects, its rows and its pages for ever. `DepartedParts` is
+  what finishes the job, and its two guards are the load-bearing part: a long retention, and **a site whose
+  partition produces nothing but the shell is left alone entirely** - an import that failed and stored an empty
+  landscape must never read as every system having been decommissioned at once.
+- **A failed build removes what it uploaded.** The upload happens before the row says SUCCEEDED, so a failure in
+  between leaves a whole part's output that nothing else would ever name again. The prefix is the build id, and
+  the build never became the published one, which is what makes deleting it safe whatever the failure was.
 - **No `part` tag on the build timers.** A site has as many parts as it has systems; the sum of
   `jeap.doc.build` over a window is what publishing the documentation cost across all of them, and a part label
   would multiply the series and break that reading. Part-level detail belongs in the administration API and in

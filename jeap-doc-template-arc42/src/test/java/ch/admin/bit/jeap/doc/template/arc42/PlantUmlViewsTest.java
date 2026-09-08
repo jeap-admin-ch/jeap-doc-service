@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -801,6 +803,66 @@ class PlantUmlViewsTest {
                 .filter(component -> component.name().equals("orders-intake"))
                 .findFirst().orElseThrow();
         return ComponentContext.of(model, system, intake, maxSiblings, maxSystems);
+    }
+
+    /**
+     * A relation naming only the component's own system draws no second box for that system.
+     * <p>
+     * The package the view opens for the system and a whole box for it are both keyed on the system alone, so
+     * one alias would be declared twice - {@code package "orders" as c_orders} followed by
+     * {@code component "orders" as c_orders}. PlantUML cannot tell the two apart and renders an error box,
+     * which fails no build. {@code ComponentContextTest} holds the other half of that rule.
+     */
+    @Test
+    void componentContextView_whenARelationNamesOnlyTheOwnSystem_thenNoAliasIsDeclaredTwice() {
+        ArchitectureModel model = componentLandscapeNamingItsOwnSystem();
+
+        String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60),
+                generation(model)).source();
+
+        assertNoAliasIsDeclaredTwice(uml);
+        assertThat(uml).describedAs("the system is the package this component is in, and nothing else")
+                .doesNotContain("component \"orders\" as ");
+    }
+
+    /** Every diagram this class builds, held to the same rule. */
+    @Test
+    void noViewEverDeclaresOneAliasTwice() {
+        ArchitectureModel model = componentLandscape();
+
+        assertNoAliasIsDeclaredTwice(PlantUmlViews.componentContextView(componentContext(model, 60, 60),
+                generation(model)).source());
+        assertNoAliasIsDeclaredTwice(PlantUmlViews.contextView(SystemContext.of(landscape(), orders(), 60),
+                generation(landscape())).source());
+        assertNoAliasIsDeclaredTwice(PlantUmlViews.whiteboxView(
+                WhiteboxView.of(model, model.find("orders").orElseThrow(), 60), "orders",
+                generation(model)).source());
+    }
+
+    /**
+     * Every {@code as <alias>} of a source, which is what identifies a box. Two boxes sharing one are one box
+     * carrying the arrows of both - or, where their declarations disagree, a diagram that does not parse.
+     */
+    private static void assertNoAliasIsDeclaredTwice(String uml) {
+        List<String> aliases = new ArrayList<>();
+        Matcher matcher = Pattern.compile("\\bas ([A-Za-z0-9_]+)").matcher(uml);
+        while (matcher.find()) {
+            aliases.add(matcher.group(1));
+        }
+        assertThat(aliases).describedAs("the diagram declares an alias").isNotEmpty();
+        assertThat(aliases).doesNotHaveDuplicates();
+    }
+
+    /** The same landscape, with one relation that names the component's own system and no component of it. */
+    private static ArchitectureModel componentLandscapeNamingItsOwnSystem() {
+        DocumentedSystem orders = new DocumentedSystem("orders", "orders", null, List.of(), null,
+                List.of(component("orders-intake"), component("orders-risk")),
+                List.of(new SystemRelation(RelationKind.EVENT, "orders", "orders-risk", "orders",
+                                "orders-intake", "OrdersPaymentAcceptedEvent", null, null, null),
+                        new SystemRelation(RelationKind.EVENT, "orders", "orders-intake", "orders", null,
+                                "OrdersCleared", null, null, null)),
+                List.of());
+        return ArchitectureModel.of(List.of(orders));
     }
 
     /**

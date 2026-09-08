@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -133,6 +134,47 @@ class BuildTriggerApiIT extends DocServiceIntegrationTestBase {
                 .andExpect(jsonPath("$[0].owedABuild").value(true));
     }
 
+
+    /**
+     * <b>A part the site still has is never removed.</b> That is the whole safety of the endpoint: it exists
+     * for a system that has been decommissioned, and a mistyped part must not take a live system's
+     * documentation off the site. The shell is the one part every site always has, so it is the case to hold.
+     */
+    @Test
+    void removePart_whenTheSiteStillHasThePart_thenConflict() throws Exception {
+        mockMvc.perform(delete(SiteApiPaths.PART, SITE, "shell").with(adminRole()))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(get(SiteApiPaths.PARTS, SITE).with(readRole()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].part").value("shell"));
+    }
+
+    /** A part this site never had and never published: there is nothing to remove and nothing to report. */
+    @Test
+    void removePart_whenThereIsNothingToRemove_thenNotFound() throws Exception {
+        mockMvc.perform(delete(SiteApiPaths.PART, SITE, "system-nobody-documents").with(adminRole()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void removePart_whenTheSiteIsNotConfigured_thenNotFound() throws Exception {
+        mockMvc.perform(delete(SiteApiPaths.PART, "a-site-nobody-configured", "system-gone").with(adminRole()))
+                .andExpect(status().isNotFound());
+    }
+
+    /** Removing what a site publishes is not something a read grant may do. */
+    @Test
+    void removePart_whenTheRoleOnlyReads_thenForbidden() throws Exception {
+        mockMvc.perform(delete(SiteApiPaths.PART, SITE, "system-gone").with(readRole()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void removePart_whenThereIsNoToken_thenUnauthorized() throws Exception {
+        mockMvc.perform(delete(SiteApiPaths.PART, SITE, "system-gone"))
+                .andExpect(status().isUnauthorized());
+    }
 
     /**
      * A site is configuration, so one that is not there is a typo in the request rather than something that
