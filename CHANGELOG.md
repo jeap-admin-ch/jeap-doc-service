@@ -13,6 +13,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - An upload's structure can be checked before it is sent: `POST /api/uploads/docs/validation`.
 - What is true only now - the imports, the schedules - is served live beside the site instead of frozen into a page.
 
+### Dependencies
+- **@matfsw/docusaurus-plantuml-plugin**: 1.7.1 → 1.8.1 (minor), with **@plantuml/core** 1.2026.7 → 1.2026.8. An instance has to rebuild its site image: the startup check refuses a `node_modules` installed from a different lockfile.
+
 ## [1.3.0] - 2026-09-06
 
 ### Dependencies
