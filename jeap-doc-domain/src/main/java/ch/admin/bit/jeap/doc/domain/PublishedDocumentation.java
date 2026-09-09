@@ -2,6 +2,8 @@ package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.PublishedPart;
+import ch.admin.bit.jeap.doc.domain.port.PublishedSearchIndex;
+import ch.admin.bit.jeap.doc.domain.port.SearchIndexRepository;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
 import ch.admin.bit.jeap.doc.domain.port.StoredObject;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PublishedDocumentation {
 
     private final DocumentationBuildRepository builds;
+    private final SearchIndexRepository searchIndexes;
     private final DocumentationSites sites;
     private final SitePartition partition;
     private final SitePublicationStorage storage;
@@ -83,8 +86,14 @@ public class PublishedDocumentation {
     }
 
     /**
-     * The prefixes a path of a site is served from, in the order to try them: the shared prefix for the shared
-     * files, and the publication of the most specific part that owns the path - the shell where none does.
+     * The prefixes a path of a site is served from, in the order to try them: the current search index for its
+     * files, the shared prefix for the shared files, and the publication of the most specific part that owns
+     * the path - the shell where none does.
+     * <p>
+     * <b>The search index comes first, and it is not one of the shared files.</b> Those are written by every
+     * part build under the rule that each writes the same bytes; an index has one writer, one lifecycle and an
+     * identifier of its own, so it is a prefix of its own and it has no fallback - a file it does not hold is
+     * a file no other prefix holds either.
      * <p>
      * <b>A shared file falls back to the owning part's publication, and that is what makes an upgrade
      * seamless.</b> Before this service published a site in parts it wrote <i>every</i> file of a build under
@@ -102,6 +111,10 @@ public class PublishedDocumentation {
      */
     private List<String> prefixesOf(String site, String path) {
         CachedParts parts = partsOf(site);
+        if (SearchIndex.holds(path)) {
+            // One prefix and no fallback: an index is whole or it is not there.
+            return parts.searchIndexPrefix == null ? List.of() : List.of(parts.searchIndexPrefix);
+        }
         if (parts.prefixByPart.isEmpty()) {
             return List.of();
         }
@@ -155,17 +168,23 @@ public class PublishedDocumentation {
         // The most specific first, so that the part owning the longest matching prefix answers. Without it a
         // site whose parts nest would be served by whichever one the database listed first.
         owners.sort(Comparator.comparingInt(SitePart::specificity).reversed());
-        return new CachedParts(prefixByPart, List.copyOf(owners), now);
+        // Read here rather than per request, and cached for the same few seconds as the parts: a page of the
+        // site and the index it searches should not be minutes apart in what they were read from.
+        String searchIndex = searchIndexes.currentOf(site)
+                .map(PublishedSearchIndex::objectPrefix).orElse(null);
+        return new CachedParts(prefixByPart, List.copyOf(owners), searchIndex, now);
     }
 
     /**
      * What was published last time it was looked up, which parts own what, and when that was.
      *
-     * @param prefixByPart where each published part's files are
-     * @param owners       the published parts that claim paths, most specific first. The shell is not among
-     *                     them: it is what answers when none of these does
+     * @param prefixByPart      where each published part's files are
+     * @param owners            the published parts that claim paths, most specific first. The shell is not
+     *                          among them: it is what answers when none of these does
+     * @param searchIndexPrefix where the current search index is, or null while a site has never been indexed
      */
-    private record CachedParts(Map<String, String> prefixByPart, List<SitePart> owners, Instant readAt) {
+    private record CachedParts(Map<String, String> prefixByPart, List<SitePart> owners, String searchIndexPrefix,
+                               Instant readAt) {
 
         Optional<String> owning(String path) {
             String withinSite = "/" + path;

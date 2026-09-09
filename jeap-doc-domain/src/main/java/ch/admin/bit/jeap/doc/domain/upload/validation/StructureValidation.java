@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.domain.upload.validation;
 
 import ch.admin.bit.jeap.doc.domain.Slugs;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
+import ch.admin.bit.jeap.doc.domain.template.NumberPrefixes;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;

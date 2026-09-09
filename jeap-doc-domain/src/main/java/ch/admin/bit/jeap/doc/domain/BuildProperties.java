@@ -67,12 +67,12 @@ public class BuildProperties {
     private Duration timeout = Duration.ofMinutes(15);
 
     /**
-     * How long the lock of a site is leased for, and therefore <b>how long after an instance dies its lock
+     * How long the lock of a part is leased for, and therefore <b>how long after an instance dies its lock
      * survives it</b>. It is deliberately far shorter than a build may take: the lock is extended while the
      * build runs, so this bounds the recovery rather than the build.
      * <p>
      * Nothing else has to change when a build gets slower. The one thing it costs is that an extension failing
-     * while the build carries on lets another instance start a second build of the same site - wasteful, and
+     * while the build carries on lets another instance start a second build of the same part - wasteful, and
      * harmless, because each build publishes under its own identifier and the newest successful one wins.
      */
     private Duration lockLease = Duration.ofMinutes(2);
@@ -181,8 +181,17 @@ public class BuildProperties {
     /**
      * How long the record of a build is kept. It is the evidence of what was generated and when, so it outlives
      * the uploads.
+     * <p>
+     * <b>A fortnight, because a row is written per part per import.</b> A site cut into a part per system asks
+     * for every part on every hourly import - fifty-two parts, fifteen imports a day, some eight hundred rows
+     * daily, and all but a handful of them saying that a part's content had not moved. Ninety days of that is
+     * seventy thousand rows to answer a question nobody asks about a build that old; a fortnight is eleven
+     * thousand and still covers the sprint the failure was in.
+     * <p>
+     * <b>The published build of each part is kept whatever its age</b> - it is not history, it is what says
+     * which publication the part is served from - so this bounds the history and never the site.
      */
-    private Duration historyRetention = Duration.ofDays(90);
+    private Duration historyRetention = Duration.ofDays(14);
 
     /**
      * When the record of old builds is removed, in the time zone of the service - at night, like the clean-up of

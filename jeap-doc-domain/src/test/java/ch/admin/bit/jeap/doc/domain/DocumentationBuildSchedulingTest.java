@@ -36,6 +36,8 @@ class DocumentationBuildSchedulingTest {
     private DepartedParts departedParts;
     @Mock
     private DocumentationBuildTrigger trigger;
+    @Mock
+    private SearchIndexHousekeeping searchIndexHousekeeping;
 
     private BuildProperties properties;
     private ScheduledTaskRegistrar registrar;
@@ -47,8 +49,10 @@ class DocumentationBuildSchedulingTest {
     }
 
     /**
-     * Four tasks: the poll that picks up what has been asked for, the two nightly clean-ups, and the reconcile
-     * of the sites no architecture import publishes. A site still has no publication schedule of its own.
+     * Five tasks: the poll that picks up what has been asked for, the three nightly clean-ups, and the
+     * reconcile of the sites no architecture import publishes. A site still has no publication schedule of its
+     * own, and the search index is not on a schedule at all - it is the last step of a build pass. What is on
+     * one is the clean-up of what a killed index run left behind.
      */
     @Test
     void configureTasks_thenThePollTheHousekeepingAndTheReconcileAreRegistered() {
@@ -57,7 +61,7 @@ class DocumentationBuildSchedulingTest {
         assertThat(registrar.getFixedDelayTaskList())
                 .describedAs("the poll, on a fixed delay").hasSize(1);
         assertThat(registrar.getCronTaskList())
-                .describedAs("the two clean-ups and the reconcile, and nothing per site").hasSize(3);
+                .describedAs("the three clean-ups and the reconcile, and nothing per site").hasSize(4);
     }
 
     @Test
@@ -79,10 +83,13 @@ class DocumentationBuildSchedulingTest {
         scheduling().configureTasks(registrar);
 
         assertThat(registrar.getCronTaskList())
-                .describedAs("the two nightly clean-ups, and nothing else").hasSize(2);
+                .describedAs("the three nightly clean-ups, and nothing else").hasSize(3);
         assertThat(registrar.getCronTaskList()).extracting(task -> task.getExpression())
                 .containsOnly(properties.getHistoryCron());
     }
+
+
+
 
     @Test
     void configureTasks_thenThePollIsOnTheConfiguredPollInterval() {
@@ -163,7 +170,8 @@ class DocumentationBuildSchedulingTest {
     }
 
     private DocumentationBuildScheduling scheduling() {
-        return new DocumentationBuildScheduling(pickup, housekeeping, departedParts, trigger, properties);
+        return new DocumentationBuildScheduling(pickup, housekeeping, departedParts, trigger,
+                searchIndexHousekeeping, properties);
     }
 
 }

@@ -1,6 +1,6 @@
 # Operating the bucket
 
-The doc service keeps three kinds of thing in one bucket, and they have three different lifetimes. The uploaded
+The doc service keeps four kinds of thing in one bucket, and they have different lifetimes. The uploaded
 bundles are expired by a lifecycle rule; the published sites are removed by the service and by nothing else, and
 there is deliberately **no age rule over them at all** - see below. So on that prefix there is no fallback for
 what the service never gets to remove, and the little that escapes it has to be removed by hand.
@@ -14,12 +14,15 @@ what the service never gets to remove, and the little that escapes it has to be 
 | `uploads/` | The bundles as they arrived               | The bucket. The service removes the *record* of an upload after `jeap.doc.upload.housekeeping.retention`; the bundle it points at has to outlive that record |
 | `sites/<site>/<build>/` | The generated parts of a site, one prefix per build | The service, down to `jeap.doc.build.retention` per part, after every successful build. A build that *fails* removes its own prefix; one whose instance is killed cannot, and leaves it behind |
 | `sites/<site>/shared/`  | The files every part of a site emits identically - the bundles, the site's images and its branding. Written by whichever part build finds them changed or missing; one that is already stored with the same bytes is not written again | **Nothing.** See [The shared prefix grows](#the-shared-prefix-grows) below |
+| `sites/<site>/search/<index>/` | One search index of a site, one prefix per index - [Search](search.md). Written by the pass that published the site, not by a build | The service. It keeps `jeap.doc.search.retention` of them and deletes the rest as soon as the replacement is being served. What an **interrupted** run left - an instance killed between writing its files and recording that it had - is removed by `SearchIndexHousekeeping` on the nightly clean-up |
 
 `uploads` is `jeap.doc.storage.upload-prefix` and `sites` is `jeap.doc.storage.site-prefix`, and an instance
 may set either to something else - which is why the rules below name a tag rather than a prefix.
 
 **Every object the service writes carries the tag `jeap-doc-content`** - `upload` or `site` - so that a rule can
-name what it is expiring rather than a prefix an instance configures for itself.
+name what it is expiring rather than a prefix an instance configures for itself. A search index is tagged
+`site`, and the rule below therefore covers it: an age rule would take the search off a site nobody has had to
+republish, for the same reason it would take the site itself off.
 
 ## The rules to provision
 
@@ -50,6 +53,13 @@ build finds its digest unchanged and publishes nothing - so it never heals. Only
 That is what makes an age rule unsafe **at any value**, and not merely too short a one. It used to be two days,
 justified by a site being regenerated several times a day; publishing in parts abolished that, deliberately -
 see [Generating the documentation](generation.md).
+
+**A search index is the same story with one difference.** It is written under a prefix named after the run
+that produced it and made current by one row, so an age rule over it would expire the index of a site that has
+not changed - and every filename in it is content-hashed, so a browser holding the manifest would ask for
+chunks that are no longer there. What is different is that a run can die before its row says anything, leaving
+a prefix nothing names: **that** is what the nightly `SearchIndexHousekeeping` clears, and it is safe to do by
+age because it only ever touches runs that were never published.
 
 **What removes a superseded build is the service.** Its retention deletes the objects of a publication it has
 replaced, once the replacement is being served, and it is the only thing that knows which those are. What a

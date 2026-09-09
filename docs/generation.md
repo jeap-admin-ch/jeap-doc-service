@@ -475,15 +475,16 @@ scripts is told where the state is rather than shown a timestamp nobody keeps tr
 resource through that link, uses only its path, and inserts nothing when the fetch fails - the same three
 choices as the numbers of the run above.
 
-### There is no search on the site
+### Search is the last step of a pass
 
-The site ships **no search**. It had one - an index built into every environment tree at build time - and it
-came out again: the index is built from the pages of one build, so a site published as several builds gets one
-index per build and a reader searching in one part would find only that part.
+A pass ends by indexing the sites it published a part of - one index over the whole site, built from the same
+content the parts are written from, once per publication whatever the number of parts and whichever instance
+published them. There is no schedule: a site is indexed when it changes. Indexing runs after the parts are
+published and **cannot fail a publication**: a site whose index could not be built goes on being searched with
+the index it had before.
 
-A search over the whole documentation is a separate piece of work, and it will not be a plugin of the
-generator: the doc service has the text of every page it writes, so an index it serves itself is what can span
-the parts. Until then a reader navigates by the sidebar and the index pages.
+**[Searching the documentation](search.md)** is the whole of it - what is indexed, what a reader gets, where an
+index lives and how one is cleaned up.
 
 ### And there is no sitemap
 
@@ -639,8 +640,9 @@ Every run is a row in `documentation_build`, and it is what to read first:
 served, so there is no second place that can disagree with it. A site is therefore published when its shell
 part is, and a page of it is served out of the publication of the part that owns that page.
 
-Old rows are removed nightly, after `jeap.doc.build.history-retention` - **except the published one of each
-part**, which is kept whatever its age. A part that is only ever built when something is uploaded to it would
+Old rows are removed nightly, after `jeap.doc.build.history-retention` - a fortnight by default, because a
+part per system writes a row per part per import - **except the published one of each part**, which is kept
+whatever its age. A part that is only ever built when something is uploaded to it would
 otherwise lose the row that says it is published at all, and start answering that it has never been generated.
 
 ### A part the site no longer has
@@ -714,7 +716,7 @@ them able to stop the next:
 
 1. **The build is recorded as `ABORTED`** - not `FAILED`. Nothing about the generator is wrong, and the alarm is
    on failures, so a deployment must not page anybody. The meter says `result="aborted"`.
-2. **The site's lock is given back**, so another instance may build it at once rather than after the lease.
+2. **The part's lock is given back**, so another instance may build it at once rather than after the lease.
 3. **The build is asked for again**, so it runs within a poll interval instead of waiting for the next upload or
    schedule. The trigger it carried is the one restored.
 4. **What it had already uploaded is removed.** Those objects are referenced by nothing - the retention only
@@ -749,10 +751,10 @@ A container that is killed outright - `stopTimeout` too short, an out-of-memory 
 nothing at all. **The recovery does not depend on it.** What is left behind is a build still marked as `RUNNING`,
 and that row is itself the evidence that a build is owed:
 
-- its site's lock is leased for `jeap.doc.build.lock-lease` (2 minutes) and extended in the background only
+- its part's lock is leased for `jeap.doc.build.lock-lease` (2 minutes) and extended in the background only
   while an instance is alive to extend it, so the lock frees itself two minutes after the instance dies;
 - the next instance to poll takes that lock, marks the run `ABANDONED`, counts `jeap.doc.build.abandoned`, and
-  **builds the site again as `RECOVERY`** - the request cannot say a build is owed, because it was claimed when
+  **builds the part again as `RECOVERY`** - the request cannot say a build is owed, because it was claimed when
   the build started, so the row says it instead;
 - its workspace is swept, because a build that is not running no longer protects its directory.
 

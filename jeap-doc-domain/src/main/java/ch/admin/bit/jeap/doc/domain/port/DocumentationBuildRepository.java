@@ -53,9 +53,9 @@ public interface DocumentationBuildRepository {
     DocumentationBuild aborted(long id, String reason, Instant finishedAt);
 
     /**
-     * Marks the builds of a site that are still running although they cannot be, because the caller holds that
-     * site's lock and their lease has therefore expired. Reports <b>which</b> they were: more than none means an
-     * instance died mid-build, which is worth a metric, and what triggered them decides whether the site is
+     * Marks the builds of a part that are still running although they cannot be, because the caller holds that
+     * part's lock and their lease has therefore expired. Reports <b>which</b> they were: more than none means an
+     * instance died mid-build, which is worth a metric, and what triggered them decides whether the part is
      * built again straight away - see {@link ch.admin.bit.jeap.doc.domain.BuildTrigger#RECOVERY}.
      */
     List<DocumentationBuild> abandonRunning(PartKey part, Instant finishedAt);

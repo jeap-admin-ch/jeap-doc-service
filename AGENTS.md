@@ -6,8 +6,8 @@ This file provides guidance to coding agents when working with code in this repo
 
 The jEAP Doc Service receives the documentation of systems, components and libraries from build pipelines, stores
 it on S3, generates the documentation site from it together with the architecture model of the jEAP Arch Repo
-Service, and serves that site as a web server. Downstream projects create their own instances by depending on
-`jeap-doc-service-instance` and adding configuration.
+Service, and serves that site as a web server. Downstream projects create their own instances by inheriting from
+or depending on `jeap-doc-service-instance` and adding configuration - see `docs/getting-started.md`.
 
 Built on Java 25 and `jeap-spring-boot-parent` (Spring Boot 4).
 
@@ -296,6 +296,43 @@ are what keep that working. The plan behind it is the enabler's `MODULARIZATION.
   written again** - fifty-two parts writing the same ninety names was five thousand requests for bytes that
   were already there - and what decides is the stored entity tag, never that the key exists: the fixed-name
   files of that prefix do change with a new version of the template.
+- **The search index is not a shared file, and must not become one.** It lives under `<site>/search/<id>/`
+  with its own row, because the shared prefix holds what *every part writes identically* and an index has one
+  writer, one lifecycle and an identifier. `PublishedDocumentation.prefixOf` routes `/pagefind/**` to it ahead
+  of both `SharedAssets` and the parts. Folding it into `SharedAssets.DIRECTORIES` would look tidier and would
+  weaken the rule above, which the parts depend on.
+- **What a publication writes is keyed by path, so a bundle sits one level down.** The index bundle is
+  published from a directory holding nothing but `pagefind/`, because an object's key is the path a reader
+  asks for and the Pagefind client resolves its chunks relative to where it loaded `pagefind.js` from.
+  Publishing the bundle's *contents* makes every path a 404, and nothing says so but a test.
+- **An index is published under a new prefix and the old one outlives the swap.** Every file the indexer
+  writes is named by a content hash, so a reader whose browser holds the previous manifest is still fetching
+  chunks by names only the previous prefix has. `jeap.doc.search.retention` is refused below two for that
+  reason, and it is checked while the service starts.
+- **The index run's workspace is named by `BuildWorkspaces` and swept by it.** It is named after its site
+  rather than after a run, so nothing in the database says whether one is in use: the sweep leaves a fresh one
+  alone and takes one that has lain untouched for a day, which is the workspace of a site nothing indexes any
+  more. `BuildWorkspacesTest` pins both halves, so a change to the sweep sees what depends on it.
+- **The search index is built once per publication, not once per build and not once per instance.**
+  `DocumentationBuildRunner.Pass` ends by indexing the sites it published a part of, over
+  `SitePart.wholeSiteOf` - which is the one part no partition answers with. A build is one part and the index
+  is the whole site, so indexing inside a build would index the site once per part and throw all but one away;
+  and since the parts of one publication are built by several instances, a run whose site's current index
+  already began after its newest publication builds nothing.
+- **Nothing in the site template routes to a search hit.** The index spans the whole site while each build's
+  router knows one part, so the box and the results page navigate with a page load - the same rule as the
+  `pathname://` links the generator writes. `SiteSearchBrowserIT` asserts the document is replaced.
+- **A page's route is not its path, and `NumberPrefixes` is the one place that knows the difference.**
+  Docusaurus serves `5-building-block-view` at `building-block-view`, so anything deriving a URL from a file
+  path has to strip the number from every segment - the search index does, the upload validation does, and
+  `StructureChapter` refuses a folder the rule would rename. A second regex somewhere else is how the search
+  came to offer a dead link for every generated chapter of a deployed site while every test was green.
+- **The environment lives in the path, except on `/search/`.** That page is the shell part's, at the site root,
+  and takes its scope from `?env=`; the navbar's switcher rewrites the query rather than the path while the
+  reader is on it, and the results page therefore has no environment control of its own.
+- **Indexing must never fail a publication.** It runs after the parts are published and its failures are
+  recorded and logged at error, never propagated: a site whose index could not be built serves its new pages
+  with the search it had before. Anything that lets an index failure reach the pass is a defect.
 - **`SitePartition` is the only place that knows the axis.** Nothing else may derive a part from a system, an
   environment or a path: `partsOf`, `partOf` and `partsDocumenting` are the three questions everything else
   asks. `partOf` must answer **without reading the architecture model** - it is on the path of every request.

@@ -82,7 +82,7 @@ class BuildShutdownIT {
             assertThat(countOf(connection, "select count(*) from documentation_build_request where site = ?"))
                     .describedAs("the build should have been asked for again").isEqualTo(1);
             assertThat(lockIsHeld(connection))
-                    .describedAs("the site's lock should have been given back, not left to expire").isFalse();
+                    .describedAs("the part's lock should have been given back, not left to expire").isFalse();
         }
     }
 
@@ -196,6 +196,29 @@ class BuildShutdownIT {
         @Bean
         BlockingSiteBuilder blockingSiteBuilder() {
             return new BlockingSiteBuilder();
+        }
+
+        /**
+         * No search indexer. It is a port of the domain, so the context needs one bound whatever
+         * {@code jeap.doc.search.enabled} says - and what these tests are about is a build being given up on,
+         * which the index has nothing to do with. It is never called.
+         */
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.SearchIndexBuilder searchIndexBuilder() {
+            return new ch.admin.bit.jeap.doc.domain.port.SearchIndexBuilder() {
+
+                @Override
+                public ch.admin.bit.jeap.doc.domain.port.BuiltSearchIndex build(
+                        ch.admin.bit.jeap.doc.domain.Site site,
+                        ch.admin.bit.jeap.doc.domain.SitePart part) {
+                    throw new UnsupportedOperationException("no search index in this test");
+                }
+
+                @Override
+                public void discard(ch.admin.bit.jeap.doc.domain.port.BuiltSearchIndex index) {
+                    // Nothing was built.
+                }
+            };
         }
 
         /**

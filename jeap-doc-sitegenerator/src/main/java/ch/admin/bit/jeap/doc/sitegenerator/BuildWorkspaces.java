@@ -13,6 +13,8 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -28,11 +30,28 @@ import java.util.stream.Stream;
  * <p>
  * The workspace holds one build's scratch files and outlives nothing, so it belongs on storage that belongs to
  * this container alone: the writable layer of a task on ECS, an {@code emptyDir} on Kubernetes.
+ * <p>
+ * The one workspace that is not a build's is the <b>search index run's</b>, which is named after its site
+ * because a site has one at a time - so its age rather than a row says whether it may go. See
+ * {@link #searchIndexWorkspace} and {@link #sweep}.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class BuildWorkspaces {
+
+    /** What the workspace of a search index run is called, before the site it is indexing. */
+    private static final String SEARCH_INDEX = "search-index";
+
+    /**
+     * How long a search index workspace has to have lain untouched before a sweep takes it.
+     * <p>
+     * An index workspace is not named after a run - there is one per site, replaced by the next run - so
+     * nothing in the database says whether one is in use, and its age is what does. Far above what a run takes
+     * and above {@code jeap.doc.search.abandoned-after}, so that what is swept is only ever the workspace of a
+     * site nothing indexes any more: one that has left the configuration, or a run that was killed.
+     */
+    static final Duration SEARCH_INDEX_UNTOUCHED_FOR = Duration.ofDays(1);
 
     private final BuildProperties properties;
 
@@ -67,8 +86,23 @@ public class BuildWorkspaces {
     }
 
     /**
+     * The workspace an index run of the given site works in.
+     * <p>
+     * Named after the site rather than after the run, because a site has one at a time and every run starts by
+     * replacing it - and named here rather than by the indexer, because {@link #sweep} is what removes it.
+     */
+    public Path searchIndexWorkspace(String siteId) {
+        return root().resolve(SEARCH_INDEX + "-" + siteId);
+    }
+
+    /**
      * Removes every workspace whose build is not among the ones that are still running, and reports how many
      * there were. A build that is running is one whose directory is in use, by this instance or by another.
+     * <p>
+     * A search index workspace is the one exception: it is named after its site and not after a run, so
+     * nothing says whether it is in use and it goes only once it has lain untouched for
+     * {@link #SEARCH_INDEX_UNTOUCHED_FOR} - which is what clears the one left by a site that has gone out of
+     * the configuration, and what leaves a running index run alone.
      */
     public int sweep(Set<Long> runningBuildIds) {
         if (properties.isKeepWorkspace()) {
@@ -174,10 +208,32 @@ public class BuildWorkspaces {
         if (!Files.isDirectory(entry)) {
             return false;
         }
+        String name = entry.getFileName().toString();
+        if (name.startsWith(SEARCH_INDEX + "-")) {
+            return hasLainUntouched(entry);
+        }
         try {
-            return !runningBuildIds.contains(Long.parseLong(entry.getFileName().toString()));
+            return !runningBuildIds.contains(Long.parseLong(name));
         } catch (NumberFormatException e) {
             // Not a workspace of ours: a workspace is named after its build, and a build is a number.
+            return false;
+        }
+    }
+
+    /**
+     * Whether a directory has not been written to for long enough that no run can be using it.
+     * <p>
+     * The wall clock of this instance rather than the domain's, deliberately: what it is compared against is a
+     * file time of this container's own disk, and the workspace root belongs to this container alone.
+     */
+    private static boolean hasLainUntouched(Path directory) {
+        try {
+            return Files.getLastModifiedTime(directory).toInstant()
+                    .isBefore(Instant.now().minus(SEARCH_INDEX_UNTOUCHED_FOR));
+        } catch (IOException e) {
+            // Its age could not be read, so nothing is known about it. Leaving it costs disk; removing it
+            // could cost a running index run its workspace.
+            log.warn("The age of {} could not be read, so it was left alone.", directory, e);
             return false;
         }
     }

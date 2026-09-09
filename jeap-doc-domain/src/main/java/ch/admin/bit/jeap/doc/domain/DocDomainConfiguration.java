@@ -31,7 +31,7 @@ import java.time.Clock;
 @ComponentScan
 @EnableScheduling
 @EnableConfigurationProperties({UploadProperties.class, SiteProperties.class, BuildProperties.class,
-        PublicationProperties.class, ArchitectureImportProperties.class})
+        PublicationProperties.class, ArchitectureImportProperties.class, SearchProperties.class})
 public class DocDomainConfiguration {
 
     /**

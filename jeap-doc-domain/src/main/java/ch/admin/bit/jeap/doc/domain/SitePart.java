@@ -45,6 +45,22 @@ public record SitePart(PartKey key, String documents, String tree, boolean carri
         routePrefixes = routePrefixes == null ? List.of() : List.copyOf(routePrefixes);
     }
 
+    /**
+     * The whole site as one part: every environment, every system, no subtree.
+     * <p>
+     * <b>Not a part of any partition, and nothing publishes it.</b> A site is published as the parts its
+     * {@link SitePartition} answers with, and this is the opposite of that - the one case where the whole of a
+     * site has to be written into one tree, which is the search index. Writing it part by part instead would
+     * walk a growing tree once per part and copy the site's branding fifty times over.
+     * <p>
+     * It is here rather than in a partition because it names no axis: it is what a site looks like when it is
+     * not cut at all.
+     */
+    public static SitePart wholeSiteOf(Site site) {
+        return new SitePart(PartKey.of(site.id(), SHELL), "the whole site", "", true,
+                site.environments().stream().map(SiteEnvironment::id).toList(), List.of());
+    }
+
     public String site() {
         return key.site();
     }

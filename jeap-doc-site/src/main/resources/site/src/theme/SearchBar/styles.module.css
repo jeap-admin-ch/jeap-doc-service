@@ -1,0 +1,104 @@
+/* The search box in the navbar, and the dropdown of results under it. */
+
+.container {
+    position: relative;
+}
+
+.input {
+    width: 14rem;
+    max-width: 40vw;
+}
+
+/*
+ * The dropdown hangs off the navbar, so it needs a stacking context above the page and a height bound: eight
+ * hits with excerpts are taller than a short viewport.
+ */
+.dropdown {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: calc(var(--ifm-z-index-fixed) + 1);
+    /* Wide enough for a hit's location on one line: a system and a component of this platform are around
+       fifty monospace characters together, and a breadcrumb that wraps reads as two of them. */
+    width: 34rem;
+    max-width: 90vw;
+    max-height: min(70vh, 32rem);
+    overflow-y: auto;
+    padding: 0.25rem;
+    background: var(--ifm-dropdown-background-color, var(--ifm-background-surface-color));
+    border: 1px solid var(--ifm-color-emphasis-200);
+    border-radius: var(--ifm-global-radius);
+    box-shadow: var(--ifm-global-shadow-md);
+}
+
+.message {
+    padding: 0.75rem 0.75rem;
+    color: var(--ifm-color-emphasis-700);
+    font-size: 0.875rem;
+}
+
+/* A button rather than a link: selecting a hit is a router push, so there is no href to hand a reader. */
+.hit {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    border-radius: var(--ifm-global-radius);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.hitActive {
+    background: var(--ifm-menu-color-background-active, var(--ifm-color-emphasis-100));
+}
+
+.hitTitle {
+    display: block;
+    font-weight: var(--ifm-font-weight-semibold);
+    color: var(--ifm-menu-color-active, var(--ifm-color-primary));
+}
+
+/*
+ * Two lines of the page's text around the match. Bounded, because an excerpt of a database schema page is a
+ * table row and would otherwise push the next hit off the screen.
+ */
+.hitExcerpt {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 0.125rem;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--ifm-color-emphasis-800);
+}
+
+/* The marks inside it are the shared ones - see src/components/SearchHit/styles.module.css. */
+
+.more {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    border-top: 1px solid var(--ifm-color-emphasis-200);
+    background: transparent;
+    color: var(--ifm-color-primary);
+    font: inherit;
+    font-size: 0.8125rem;
+    text-align: center;
+    cursor: pointer;
+}
+
+/*
+ * At a narrow viewport the navbar collapses into a sidebar, and an absolutely positioned dropdown inside a
+ * scrolling list has nowhere to open - the environment switcher has been through exactly this. The box goes
+ * with the rest of the navbar rather than trying to be useful there.
+ */
+@media (max-width: 996px) {
+    .container {
+        display: none;
+    }
+}

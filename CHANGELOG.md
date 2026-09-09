@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-09
+
+- The site has a search again: a box in the navbar and a results page at `/search`, both scoped to the reader's environment. A result names the system and component it is in, marks what matched, and leads to the page's route rather than to its numbered path.
+- One index over the whole site, built at the end of the build pass that published it - no schedule, and never able to fail a publication.
+- `jeap.doc.build.history-retention` is `P14D`, down from `P90D`. **pagefind** joins the site template, so an instance has to rebuild its site image or set `jeap.doc.search.enabled: false`.
+- Getting started documents `jeap-doc-service-instance` as the **parent** of an instance beside the dependency form it already showed: the parent version then names the doc service, the dependency management of the template and the jEAP parent that version was built against, and it says which two settings of this build an instance undoes - the javadoc artifact, and the skip an `unpack-site-manifest` execution inherits.
+
 ## [1.4.0] - 2026-09-08
 
 - Component documentation is generated: an arc42 tree per component - context view, database schema, REST API, messages.

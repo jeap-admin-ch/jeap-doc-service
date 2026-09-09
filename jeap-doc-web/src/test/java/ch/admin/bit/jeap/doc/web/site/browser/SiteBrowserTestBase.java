@@ -5,22 +5,27 @@ import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import ch.admin.bit.jeap.doc.sitegenerator.GeneratorProperties;
 import ch.admin.bit.jeap.doc.sitegenerator.SystemPages;
+import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
+import ch.admin.bit.jeap.doc.domain.SystemSitePartition;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
+import ch.admin.bit.jeap.doc.sitegenerator.AboutThisDocumentation;
 import ch.admin.bit.jeap.doc.sitegenerator.BuildWorkspaces;
 import ch.admin.bit.jeap.doc.sitegenerator.DocusaurusSiteBuilder;
 import ch.admin.bit.jeap.doc.sitegenerator.NodeProcess;
 import ch.admin.bit.jeap.doc.sitegenerator.SiteSources;
 import ch.admin.bit.jeap.doc.sitegenerator.SiteTemplate;
 import ch.admin.bit.jeap.doc.sitegenerator.SiteUrls;
+import ch.admin.bit.jeap.doc.sitegenerator.WrittenContent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -57,6 +62,28 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
 
     /** A page that exists in every environment, so that switching environment has somewhere to land. */
     protected static final String GUIDE_ROUTE = "guide";
+
+    /**
+     * A page in the shape a generated site really has: inside a system, inside a <b>numbered</b> chapter
+     * folder, inside a component's own tree.
+     * <p>
+     * <b>The numbers are the point.</b> Docusaurus serves a folder called {@code 5-building-block-view} at
+     * {@code building-block-view}, so a page's route is not its path - and a search index that took one for
+     * the other offered a dead link for every generated chapter of a real site while every test here stayed
+     * green, because this fixture had no numbered folder in it.
+     */
+    protected static final String SYSTEM = "orders";
+    protected static final String COMPONENT = "orders-intake";
+    /** Where that page is written, below an environment tree. */
+    protected static final String COMPONENT_PAGE_PATH =
+            "systems/" + SYSTEM + "/system-architecture/5-building-block-view/components/" + COMPONENT
+            + "/component-architecture/6-runtime-view";
+    /** And where the site serves it: every number gone. */
+    protected static final String COMPONENT_PAGE_ROUTE =
+            "systems/" + SYSTEM + "/system-architecture/building-block-view/components/" + COMPONENT
+            + "/component-architecture/runtime-view";
+    /** A word that occurs on that page and nowhere else, so a search for it can only find it. */
+    protected static final String COMPONENT_PAGE_WORD = "backpressure";
 
     private static final Instant GENERATED_AT = Instant.parse("2026-08-26T10:15:30Z");
 
@@ -176,6 +203,31 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     }
 
     /**
+     * What this suite's fixture site is made of: the pages the generator writes, plus a guide page in every
+     * environment tree that says which tree it is.
+     * <p>
+     * Shared with {@link SiteSearchBrowserIT}, which builds a search index over the same content. An index
+     * over a fixture that merely looked like the site would prove nothing about the site.
+     */
+    protected SiteSources fixtureSources(SiteUrls urls, BuildProperties properties) {
+        return new SiteSources(urls, new DefaultResourceLoader(), withoutSystemPages(),
+                new DocumentationSites(new SiteProperties()),
+                new SystemSitePartition(NO_MODEL), properties, provenance(),
+                new AboutThisDocumentation()) {
+            @Override
+            public WrittenContent write(long buildId, Site written, SitePart part, Path content,
+                                        Instant generatedAt) throws IOException {
+                WrittenContent sources = super.write(buildId, written, part, content, generatedAt);
+                for (SiteEnvironment environment : written.environments()) {
+                    writeGuidePage(content.resolve(environment.id()), environment);
+                    writeComponentPage(content.resolve(environment.id()));
+                }
+                return sources;
+            }
+        };
+    }
+
+    /**
      * These tests drive the site template in a browser, not the documentation in it: they build a site with the
      * pages they need and nothing else. What a real build reads from the architecture repository is covered by
      * {@code DocumentationGenerationIT}.
@@ -183,7 +235,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     private SystemPages withoutSystemPages() {
         return new SystemPages(withoutArchitectureModel(), withoutMessageSchemas(), withoutArtifacts(),
                 withoutArtifacts(), new StructureTemplates(List.of()), new GeneratorProperties(),
-                new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
+                new ArchitectureImportProperties(),
                 BuildMetrics.NONE, urls);
     }
 
@@ -331,7 +383,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 new DocumentationSites(new SiteProperties()), new NeverImported(),
                 withoutArchitectureModel(),
                 new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
-                new BuildProperties(), new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
+                new BuildProperties(), new ArchitectureImportProperties(),
                 java.time.Clock.systemDefaultZone());
     }
 
@@ -365,22 +417,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
             throw new UncheckedIOException(e);
         }
         properties.setWorkspaceDirectory(workspaceRoot);
-        SiteSources sources = new SiteSources(urls, new DefaultResourceLoader(), withoutSystemPages(),
-                new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), properties, provenance(),
-                new ch.admin.bit.jeap.doc.sitegenerator.AboutThisDocumentation()) {
-            @Override
-            public ch.admin.bit.jeap.doc.sitegenerator.WrittenContent write(
-                    long buildId, Site written, ch.admin.bit.jeap.doc.domain.SitePart part, Path content,
-                    Instant generatedAt) throws IOException {
-                ch.admin.bit.jeap.doc.sitegenerator.WrittenContent sources =
-                        super.write(buildId, written, part, content, generatedAt);
-                for (SiteEnvironment environment : written.environments()) {
-                    writeGuidePage(content.resolve(environment.id()), environment);
-                }
-                return sources;
-            }
-        };
+        SiteSources sources = fixtureSources(urls, properties);
         DocusaurusSiteBuilder builder = new DocusaurusSiteBuilder(properties, new BuildWorkspaces(properties),
                 new SiteTemplate(), new NodeProcess(properties), sources);
         // One part carrying the whole site: this suite is about what the template does in a browser, and
@@ -488,7 +525,8 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
             "orders_order" }o--|| "orders_party" : party_id
             @enduml""";
 
-    private static void writeGuidePage(Path environmentTree, SiteEnvironment environment) throws IOException {
+    /** Shared with {@link SiteSearchBrowserIT}, which indexes the same pages the site is built from. */
+    protected static void writeGuidePage(Path environmentTree, SiteEnvironment environment) throws IOException {
         Files.writeString(environmentTree.resolve(GUIDE_ROUTE + ".md"), """
                 # The upload guide
 
@@ -504,6 +542,26 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 %s
                 ```
                 """.formatted(guideMarkerOf(environment), GENERATED_DIAGRAM, GENERATED_SCHEMA_DIAGRAM), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The page inside a component's tree, in a numbered chapter - see {@link #COMPONENT_PAGE_PATH}.
+     * <p>
+     * Written by hand rather than generated: this suite configures no architecture repository, and what is
+     * needed here is the <b>shape</b> of a generated page's path, which is what a route is derived from.
+     */
+    private static void writeComponentPage(Path environmentTree) throws IOException {
+        Path page = environmentTree.resolve(COMPONENT_PAGE_PATH + ".md");
+        Files.createDirectories(page.getParent());
+        Files.writeString(page, ("""
+                ---
+                title: 6. Runtime View
+                ---
+
+                # 6. Runtime View
+
+                The intake applies WORD when the queue grows.
+                """).replace("WORD", COMPONENT_PAGE_WORD), StandardCharsets.UTF_8);
     }
 
     /**

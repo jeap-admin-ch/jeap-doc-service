@@ -12,6 +12,16 @@ export const ENVIRONMENTS = [...environments.environments].sort((a, b) => a.orde
 /** The environment served at the site root - exactly one is marked, which the generator guarantees. */
 export const MAIN_ENVIRONMENT = ENVIRONMENTS.find((environment) => environment.main);
 
+/**
+ * The environment of an id, and the main environment for an id that names none.
+ *
+ * What reads it is the search: the results page takes its scope from `?env=` rather than from a path, and the
+ * navbar's switcher has to show the same answer while the reader is on it.
+ */
+export function environmentById(id) {
+    return ENVIRONMENTS.find((environment) => environment.id === id) ?? MAIN_ENVIRONMENT;
+}
+
 /** `/dev`, and the empty string for the environment served at the site root. */
 export function routePrefixOf(environment) {
     return environment.main ? '' : `/${environment.id}`;

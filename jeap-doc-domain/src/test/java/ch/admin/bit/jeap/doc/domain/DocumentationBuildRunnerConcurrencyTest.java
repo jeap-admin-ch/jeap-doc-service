@@ -368,7 +368,8 @@ class DocumentationBuildRunnerConcurrencyTest {
         return new DocumentationBuildRunner(standing, aBuildRepository(), new DocumentationSites(
                 new SiteProperties()), new SystemSitePartition(new NoArchitectureModel()), siteBuilder,
                 aPublicationStorage(), properties, metrics, exclusiveWork,
-                new ArchitectureModelReadiness(new NoArchitectureModel()), Clock.fixed(NOW, ZoneOffset.UTC));
+                new ArchitectureModelReadiness(new NoArchitectureModel()), new RecordingSearchIndexing(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     /**

@@ -254,6 +254,26 @@ const footerLinks = [
     },
 ];
 
+/**
+ * The page at `/search`, added as a route rather than as a file.
+ *
+ * The preset has `pages: false` - every page of this site is generated content - so the one page the
+ * application brings itself is registered here. It exists in the shell part only: it is a page of the site
+ * rather than of a system, and two parts writing it would give the site two of them.
+ */
+function searchPage() {
+    return {
+        name: 'search-page',
+        contentLoaded({actions}) {
+            actions.addRoute({
+                path: `${site.baseUrl.replace(/\/$/, '')}/search`,
+                component: '@site/src/components/SearchPage/index.js',
+                exact: true,
+            });
+        },
+    };
+}
+
 /** @type {import('@docusaurus/types').Config} */
 const config = {
     title: site.title,
@@ -346,6 +366,10 @@ const config = {
     plugins: [
         // Renders ```plantuml and ```dot fences in the reader's browser - no PlantUML server, no images.
         '@matfsw/docusaurus-plantuml-plugin',
+        // The full search results, at the site root - which only the shell part owns. Every other part links
+        // it the way it links the front page, unchecked, and a part that added a /search of its own would
+        // give the site two.
+        ...(part.shell ? [searchPage] : []),
         // One docs instance per environment this part carries. All of them are plugin instances and none is
         // the preset's: a part may carry any set of environments, and the preset's instance would be a
         // special case among them that has to be picked and named.
@@ -414,6 +438,10 @@ const config = {
                     height: 28,
                 },
                 items: [
+                    // Before the switcher, and placed by an item rather than left to the theme: the classic
+                    // theme renders `@theme/SearchBar` itself when no search item is present, and the two
+                    // paths put it in different places.
+                    {type: 'search', position: 'right'},
                     {type: 'custom-environmentSwitcher', position: 'right'},
                 ],
             },

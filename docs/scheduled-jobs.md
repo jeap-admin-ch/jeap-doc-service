@@ -1,6 +1,6 @@
 # The scheduled jobs
 
-Everything the doc service does on its own, without a request: seven jobs, each with its schedule in the
+Everything the doc service does on its own, without a request: eight jobs, each with its schedule in the
 configuration rather than in an annotation, each logged while the service starts. **Why is this site not
 updating** and **why is the model old** are answered by the first lines of the log, not by reading the
 configuration of a running service.
@@ -11,12 +11,17 @@ configuration of a running service.
 | [Architecture import](architecture-import.md), per environment | `jeap.doc.archrepo.import.cron`            | `0 45 5-19 * * *` | Imports the architecture model, the OpenAPI specifications, the database schemas and the Avro schemas of the message type versions of one environment, and **asks for every part of every site documenting it to be published**. Hourly. There is no separate publication schedule: this is it. **Empty means never**      |
 | [Architecture import catch-up](architecture-import.md)         | `jeap.doc.archrepo.import.on-startup`      | `true`            | Once, after the service is up: imports every environment and kind that has **never** been imported, so the first build after a deployment finds a model                                                                                                                     |
 | [Upload housekeeping](uploads.md)                              | `jeap.doc.upload.housekeeping.cron`        | `0 30 2 * * *`    | Removes uploads last received more than `jeap.doc.upload.housekeeping.retention` (`P14D`) ago, whatever state they are in. **The database only** - the bundles are expired by a lifecycle rule of the bucket. `jeap.doc.upload.housekeeping.enabled: false` switches it off |
-| [Build history housekeeping](generation.md)                    | `jeap.doc.build.history-cron`              | `0 45 2 * * *`    | Removes the record of builds that finished more than `jeap.doc.build.history-retention` (`P90D`) ago - **except the published build of each part**, which is what says which site is served                                                                                 |
+| [Build history housekeeping](generation.md)                    | `jeap.doc.build.history-cron`              | `0 45 2 * * *`    | Removes the record of builds that finished more than `jeap.doc.build.history-retention` (`P14D`) ago - **except the published build of each part**, which is what says which site is served                                                                                 |
 | [Site reconcile](generation.md)                                | `jeap.doc.build.reconcile-cron`            | `0 15 6-18/4 * * *` | Asks for every part of the sites **no architecture import publishes** - a site whose environments have no architecture repository has no other trigger than an upload or an operator, and would go on serving what an earlier release generated. Nearly free: a part whose content has not moved is not generated. `-` switches it off |
+| [Search index housekeeping](search.md)                         | `jeap.doc.build.history-cron`              | `0 45 2 * * *`    | Removes what an **interrupted or failed** search index run left behind - a prefix in the bucket and a row saying it is still running. It is safe to do by age because it only ever touches runs that were **never published**, and what a site is served from is one that was. The index itself is on no schedule at all: it is the last step of a build pass |
 
-Every cron expression is a Spring six-field one and is read **in the time zone of the service**. The two
-nightly jobs are a quarter of an hour apart on purpose: they are both a delete over a large table, and one at a
-time is enough.
+Every cron expression is a Spring six-field one and is read **in the time zone of the service**. The nightly
+jobs are a quarter of an hour apart on purpose: they are both a delete over a large table, and one at a time is
+enough.
+
+**Search indexing is not in the table**, and that is the point of it: it happens at the end of the build pass
+that published a site, so a site is indexed when it changes rather than when a clock says so - see
+[Search](search.md). What is on a schedule is only the clean-up of what a killed run left behind.
 
 ## Which thread, and which lock
 
@@ -29,6 +34,8 @@ time is enough.
 | Upload housekeeping          | The scheduler pool                                              | `documentationUploadHousekeeping`, leased for 30 minutes                                                               |
 | Build history housekeeping   | The scheduler pool                                              | `documentationBuildHousekeeping`, leased for 30 minutes                                                                |
 | Site reconcile               | The scheduler pool - it only writes build requests and returns  | none - the per-part request is what collapses two instances asking for the same part                                   |
+| Search indexing              | The pass's own thread, at the end of it - it is not a scheduled job | `searchIndex-<site>`, leased for `jeap.doc.search.lock-lease` (`PT30M`)                                             |
+| Search index housekeeping    | The scheduler pool                                              | `searchIndexHousekeeping`, leased for 30 minutes                                                                       |
 
 Three things follow from that table, and each of them is deliberate:
 

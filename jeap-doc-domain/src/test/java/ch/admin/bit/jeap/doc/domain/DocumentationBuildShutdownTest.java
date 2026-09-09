@@ -77,7 +77,7 @@ class DocumentationBuildShutdownTest {
         metrics = new RecordingBuildMetrics();
         runner = new DocumentationBuildRunner(requests, builds, sites,
                 new SystemSitePartition(new NoArchitectureModel()), siteBuilder, publication,
-                properties, metrics, alwaysGranting(), alwaysReady(), clock);
+                properties, metrics, alwaysGranting(), alwaysReady(), new RecordingSearchIndexing(), clock);
         shutdown = new DocumentationBuildShutdown(runner, siteBuilder, properties);
         shutdown.start();
         scheduler = Executors.newSingleThreadExecutor();

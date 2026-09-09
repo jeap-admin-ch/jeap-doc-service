@@ -281,7 +281,7 @@ class DocumentationBuildRepositoryAdapter implements DocumentationBuildRepositor
 
     /**
      * The end of a reason rather than all of it: it is the last lines that say what went wrong, and an
-     * unbounded column plus a ninety day retention is how a database fills up with bundler output.
+     * unbounded column plus a retention measured in weeks is how a database fills up with bundler output.
      */
     static String shortened(String reason) {
         if (reason == null || reason.length() <= MAX_FAILURE_REASON) {

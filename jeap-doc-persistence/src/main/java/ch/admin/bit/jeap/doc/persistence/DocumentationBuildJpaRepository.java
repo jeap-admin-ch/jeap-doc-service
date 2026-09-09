@@ -98,7 +98,7 @@ interface DocumentationBuildJpaRepository extends JpaRepository<DocumentationBui
      * <p>
      * <b>Bounded by {@code since}.</b> This is read on every scrape and only the newest answer is ever used,
      * but the grouping and the two anti-joins run over every publication row the retention still holds -
-     * ninety days times the parts of the site. What is wanted is the last publication that is <i>over</i>, so
+     * the retention times the parts of the site. What is wanted is the last publication that is <i>over</i>, so
      * the window only has to reach back past the one that may still be running - see
      * {@link #newestPublicationRequestedAt}, which is where it starts.
      */
@@ -171,7 +171,7 @@ interface DocumentationBuildJpaRepository extends JpaRepository<DocumentationBui
     List<DocumentationBuildEntity> findBySiteAndPartAndState(String site, String part, BuildState state);
 
     /**
-     * Gives up on the builds of a site that are still marked as running. The caller holds that site's lock, so
+     * Gives up on the builds of a part that are still marked as running. The caller holds that part's lock, so
      * their lease has expired and whatever is still writing has lost its claim.
      */
     @Transactional

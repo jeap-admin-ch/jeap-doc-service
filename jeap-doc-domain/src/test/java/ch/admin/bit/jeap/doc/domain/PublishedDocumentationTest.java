@@ -3,7 +3,10 @@ package ch.admin.bit.jeap.doc.domain;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
+import ch.admin.bit.jeap.doc.domain.port.AbandonedSearchIndex;
 import ch.admin.bit.jeap.doc.domain.port.PublishedPart;
+import ch.admin.bit.jeap.doc.domain.port.PublishedSearchIndex;
+import ch.admin.bit.jeap.doc.domain.port.SearchIndexRepository;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
 import ch.admin.bit.jeap.doc.domain.port.StoredObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,11 +52,17 @@ class PublishedDocumentationTest {
     private PublicationProperties properties;
     private PublishedDocumentation documentation;
 
+    /**
+     * Nothing has been indexed. What the search index does to serving is
+     * {@code SearchIndexServingIT}'s question; here it only has to be answerable.
+     */
+    private final SearchIndexRepository searchIndexes = new NothingIndexed();
+
     @BeforeEach
     void setUp() {
         clock = new MovableClock(NOW);
         properties = new PublicationProperties();
-        documentation = new PublishedDocumentation(builds, new DocumentationSites(new SiteProperties()),
+        documentation = new PublishedDocumentation(builds, searchIndexes, new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(new TwoSystems()), storage, properties, clock);
     }
 
@@ -289,6 +298,46 @@ class PublishedDocumentationTest {
         @Override
         public Instant instant() {
             return now;
+        }
+    }
+
+    /** A service whose sites have never been indexed. */
+    private static final class NothingIndexed implements SearchIndexRepository {
+
+        @Override
+        public long start(String site, String instance, Instant startedAt) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void published(long id, String objectPrefix, int records, Instant finishedAt) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void failed(long id, String reason, Instant finishedAt) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Optional<PublishedSearchIndex> currentOf(String site) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<PublishedSearchIndex> supersededOf(String site, int keep) {
+            return List.of();
+        }
+
+        @Override
+        public List<AbandonedSearchIndex> abandoned(Instant runningStartedBefore,
+                                                    Instant failedFinishedBefore) {
+            return List.of();
+        }
+
+        @Override
+        public void forget(long id) {
+            throw new UnsupportedOperationException();
         }
     }
 }

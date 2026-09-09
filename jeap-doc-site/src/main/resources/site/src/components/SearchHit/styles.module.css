@@ -1,0 +1,56 @@
+/*
+ * Where a hit is: quieter than the title it sits under, and <b>on one line</b>.
+ *
+ * A trail that wraps reads as two hits rather than as one location, so it does not wrap - a step that will not
+ * fit is cut with an ellipsis instead. That is the only thing left to give: the names here are a system's and a
+ * component's, and this platform's run to fifty characters together.
+ */
+.where {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: 0.3rem;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.78rem;
+    color: var(--ifm-color-emphasis-600);
+    font-family: var(--ifm-font-family-monospace);
+}
+
+/* Each step keeps its own line and gives up its end rather than its neighbour's beginning. */
+.where > span {
+    flex: 0 1 auto;
+    min-width: 2.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* The innermost step of the trail is the one that identifies the hit, so it carries the weight. */
+.innermost {
+    color: var(--ifm-color-emphasis-800);
+}
+
+/* And the separator is not a step: it never shrinks and never wraps away from what follows it. */
+.separator {
+    flex: 0 0 auto;
+    min-width: 0;
+    color: var(--ifm-color-emphasis-500);
+}
+
+/* No layout of its own: each place that shows an excerpt sets its own - the dropdown clamps it to two lines,
+   the results page lets it run. What is shared is only what a match looks like. */
+/* The matched words. The browser's own mark is a flat yellow that survives neither the dark mode nor the
+   emphasis palette, so both modes are set here - and the text colour with the background, because a yellow
+   ground under white text is what a dark mode would otherwise produce. */
+.excerpt mark {
+    background-color: #fff3a3;
+    color: #1c1e21;
+    border-radius: 2px;
+    padding: 0 0.1em;
+}
+
+[data-theme='dark'] .excerpt mark {
+    background-color: #6b5a00;
+    color: #ffffff;
+}

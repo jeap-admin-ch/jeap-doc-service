@@ -75,6 +75,7 @@ class DocumentationBuildRunnerTest {
     private RecordingExclusiveWork locks;
     private RecordingBuildMetrics metrics;
     private ArchitectureModelReadiness readiness;
+    private RecordingSearchIndexing searchIndexing;
     /** What the container did while a build ran - set by the tests that are about the line it produces. */
     private DocumentationBuildRunner runner;
 
@@ -85,9 +86,10 @@ class DocumentationBuildRunnerTest {
         locks = new RecordingExclusiveWork();
         readiness = new ArchitectureModelReadiness(NoArchitectureRepository.INSTANCE);
         metrics = new RecordingBuildMetrics();
+        searchIndexing = new RecordingSearchIndexing();
         runner = new DocumentationBuildRunner(requests, builds, sites,
                 new SystemSitePartition(NoArchitectureRepository.INSTANCE), siteBuilder, publication,
-                properties, metrics, locks, readiness, Clock.fixed(NOW, ZoneOffset.UTC));
+                properties, metrics, locks, readiness, searchIndexing, Clock.fixed(NOW, ZoneOffset.UTC));
 
         when(builds.start(any(), any(), anyString(), any(), any())).thenReturn(build(7L, BuildState.RUNNING));
         when(siteBuilder.prepare(anyLong(), any(), any(), any())).thenAnswer(invocation -> new PreparedPart(
@@ -161,6 +163,45 @@ class DocumentationBuildRunnerTest {
     }
 
     /**
+     * <b>A pass that published something ends by making it searchable.</b> The index is over the whole site
+     * and a build is one part of it, so indexing per build would index the site once per part and throw all
+     * but one away; the end of the pass is the first moment at which everything owed has been published.
+     */
+    @Test
+    void runOnce_whenAPartWasPublished_thenTheSiteIsIndexedOnceAtTheEnd() {
+        pending(SITE);
+
+        runner.runOnce();
+
+        assertThat(searchIndexing.indexed()).containsExactly(SITE);
+    }
+
+    /** A pass that built nothing has nothing to index, and the index it has is still the right one. */
+    @Test
+    void runOnce_whenNothingWasBuilt_thenNothingIsIndexed() {
+        when(requests.pending()).thenReturn(List.of());
+
+        runner.runOnce();
+
+        assertThat(searchIndexing.indexed()).isEmpty();
+    }
+
+    /**
+     * <b>Indexing cannot fail a publication.</b> The parts are already published by the time it runs, so a
+     * site whose index could not be built serves its new pages with the search it had before - which is worth
+     * an error in the log and nothing else.
+     */
+    @Test
+    void runOnce_whenTheIndexingFails_thenThePublicationStands() {
+        pending(SITE);
+        searchIndexing.failWith(new IllegalStateException("the indexer exited with 1"));
+
+        assertThat(runner.runOnce()).describedAs("the pass published a part, whatever the index did").isTrue();
+
+        verify(builds).succeeded(anyLong(), anyString(), anyInt(), anyLong(), anyLong(), anyString(), any());
+    }
+
+    /**
      * The order the whole design rests on: the lock first, then the request, then the inputs.
      */
     @Test
@@ -214,7 +255,7 @@ class DocumentationBuildRunnerTest {
         sites = new DocumentationSites(configured);
         runner = new DocumentationBuildRunner(requests, builds, sites,
                 new SystemSitePartition(NoArchitectureRepository.INSTANCE), siteBuilder, publication,
-                properties, metrics, locks, readiness, Clock.fixed(NOW, ZoneOffset.UTC));
+                properties, metrics, locks, readiness, searchIndexing, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     /**

@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * than inherited: this service's own environment holds database and object storage credentials, and a
  * documentation build has no business seeing them. Its <b>output is read continuously</b>, because a child whose
  * pipe fills up blocks for ever. And it has a <b>hard timeout</b>, after which the process tree is destroyed - a
- * build that hangs would otherwise hold its site's lock until the lease expires and then do it again.
+ * build that hangs would otherwise hold its part's lock until the lease expires and then do it again.
  * <p>
  * There is a second way to end it: {@link #abort()} destroys whatever is running now, so that an instance being
  * stopped gives its build up in a second rather than at the end of the timeout. Aborting this way rather than

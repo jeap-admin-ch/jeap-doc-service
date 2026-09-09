@@ -8,6 +8,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -107,6 +110,37 @@ class BuildWorkspacesTest {
 
         assertThat(workspaces.sweep(Set.of())).isZero();
         assertThat(root.resolve("not-a-build")).isDirectory();
+    }
+
+    /**
+     * <b>The search index run depends on this.</b> Its workspace lives under the same root and is named after
+     * its site rather than after a run, so nothing in the database says whether it is in use - and a sweep
+     * runs at the start of a build pass, which is when a run of the previous pass may still be writing.
+     * Named here rather than only in {@link PagefindSearchIndexBuilderIT}, because this is where a change
+     * would break it.
+     */
+    @Test
+    void sweep_whenTheSearchIndexWorkspaceIsFresh_thenItIsNotSwept() throws IOException {
+        Path workspace = workspaces.searchIndexWorkspace("default");
+        Files.createDirectory(workspace);
+
+        assertThat(workspaces.sweep(Set.of())).isZero();
+        assertThat(workspace).isDirectory();
+    }
+
+    /**
+     * And it goes once nothing can be using it. The one that stays for ever otherwise is the workspace of a
+     * site that has left the configuration: no run replaces it, and no run offers it for removal either.
+     */
+    @Test
+    void sweep_whenTheSearchIndexWorkspaceHasLainUntouched_thenItGoes() throws IOException {
+        Path workspace = workspaces.searchIndexWorkspace("gone-from-the-configuration");
+        Files.createDirectory(workspace);
+        Files.setLastModifiedTime(workspace, FileTime.from(
+                Instant.now().minus(BuildWorkspaces.SEARCH_INDEX_UNTOUCHED_FOR).minus(Duration.ofHours(1))));
+
+        assertThat(workspaces.sweep(Set.of())).isEqualTo(1);
+        assertThat(workspace).doesNotExist();
     }
 
     @Test

@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -85,6 +86,8 @@ public class DocumentationBuildRunner {
     private final BuildMetrics metrics;
     private final ExclusiveWork exclusiveWork;
     private final ArchitectureModelReadiness readiness;
+    /** What makes the documentation searchable, run once at the end of a pass that published something. */
+    private final SearchIndexing searchIndexing;
     private final Clock clock;
 
     /**
@@ -187,6 +190,12 @@ public class DocumentationBuildRunner {
          */
         private final Map<String, Map<String, Integer>> publishedPages = new HashMap<>();
 
+        /**
+         * The sites this pass published a part of, which are the ones whose search index is out of date by the
+         * time it ends. A pass that built nothing indexes nothing.
+         */
+        private final Set<String> sitesWithABuild = new LinkedHashSet<>();
+
         private final long startedAtNanos = System.nanoTime();
         /** The build time of this pass added up over every slot: three busy slots for a minute is three. */
         private final AtomicLong busyNanos = new AtomicLong();
@@ -218,7 +227,42 @@ public class DocumentationBuildRunner {
                 // and without this the busy-slots gauge keeps the value it had while the instance sits idle.
                 report();
             }
+            indexWhatWasPublished();
             return built > 0;
+        }
+
+        /**
+         * Makes the documentation this pass published searchable, once, for each site it built a part of.
+         * <p>
+         * <b>After the parts, not before them, and outside the build of any one of them.</b> A build is one
+         * part and the index is over the whole site, so indexing per build would index the whole site
+         * fifty-two times for one publication and throw fifty-one of them away. The end of the pass is the
+         * first moment at which everything this instance was owed has been published.
+         * <p>
+         * <b>It cannot fail the pass.</b> The parts are already published: a site whose index could not be
+         * built serves its new pages with the search it had before, which is worse than the alternative only
+         * for as long as it takes the next pass to fix it. What that costs is a log line at error and a row
+         * saying why - never a publication.
+         */
+        private void indexWhatWasPublished() {
+            for (String site : sitesWithABuild) {
+                if (stopping) {
+                    // The instance is going. An index takes minutes and half of one is not published anyway,
+                    // and the shutdown is waiting on this pass - so the sites this has not started are left to
+                    // the instance that runs the next pass. Checked per site rather than once: a stop
+                    // signalled while the first site is being indexed has to stop the second.
+                    return;
+                }
+                try {
+                    sites.find(site).ifPresent(searchIndexing::index);
+                } catch (RuntimeException e) {
+                    // SearchIndexing records and swallows its own failures; this is the one that got past it -
+                    // a site that went out of the configuration, a database that went away. Same rule: the
+                    // publication stands.
+                    log.error("The documentation of {} was published and could not be indexed for search. It "
+                              + "is served with the index it had before.", site, e);
+                }
+            }
         }
 
         /**
@@ -436,7 +480,10 @@ public class DocumentationBuildRunner {
             settled.put(part, new Settlement(offeredAt, mayBeOfferedAgain(outcome)));
             metrics.slotsBusy(inFlight.size());
             switch (outcome) {
-                case BUILT -> built++;
+                case BUILT -> {
+                    built++;
+                    sitesWithABuild.add(part.site());
+                }
                 case NOTHING_OWED -> notOwed++;
                 // Counted as it happens rather than when the pass ends: a pass can run for hours, and these
                 // two are what says the fleet is unwell while it still is.
@@ -551,7 +598,7 @@ public class DocumentationBuildRunner {
      * without giving up on it, the row stays {@code RUNNING} for ever, its identifier keeps its workspace from
      * being swept, and this warning is logged on every pass until someone notices.
      * <p>
-     * <b>Under the site's lock all the same</b>, because the sites are configured per instance: during a rolling
+     * <b>Under the part's lock all the same</b>, because the sites are configured per instance: during a rolling
      * deployment that removes a site, the instances that still have it are entitled to be building it. Giving up
      * on a run without the lock would mark a live build as abandoned, and its instance would then record it as
      * succeeded over a failure reason saying its instance had stopped.

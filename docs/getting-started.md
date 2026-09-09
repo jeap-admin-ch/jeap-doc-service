@@ -1,9 +1,39 @@
 # Getting started
 
-The jEAP Doc Service is a service template: a project creates its own doc service instance by depending on
-`jeap-doc-service-instance` and adding its configuration.
+The jEAP Doc Service is a service template: a project creates its own doc service instance by taking
+`jeap-doc-service-instance` into its POM and adding its configuration.
 
 ## Creating an instance
+
+There are two ways to take the template. Either one contributes the whole service; they differ in how much of the
+build comes along with it.
+
+### As the parent
+
+For a project whose only module is the instance, `jeap-doc-service-instance` is the **parent**. One version then
+names the doc service - the parent version - and with it come the service, the dependency management of the
+template and the jEAP parent that version of the template was built against:
+
+```xml
+<parent>
+    <groupId>ch.admin.bit.jeap</groupId>
+    <artifactId>jeap-doc-service-instance</artifactId>
+    <version>1.5.0</version>
+    <relativePath/> <!-- lookup parent from repository -->
+</parent>
+```
+
+Two settings of the template's own build are worth undoing in an instance:
+
+| | |
+| --- | --- |
+| **Javadoc** | The template generates a javadoc artifact because Maven Central requires one. An instance that is configuration has no API to document, so it sets `maven.javadoc.skip` back to `true` |
+| **`unpack-site-manifest`** | The template manages an execution of that id for its own integration tests, where it is skipped along with the tests. An instance unpacking the site manifest for [its image](site-image.md) declares the same id and inherits that skip - and the image cannot be built without the two files, so it pins `<skip>false</skip>` |
+
+### As a dependency
+
+A project that already has a parent - the instance is one module of a larger reactor, or the project inherits a
+parent of its own - depends on the instance POM instead:
 
 ```xml
 <dependency>
@@ -14,7 +44,25 @@ The jEAP Doc Service is a service template: a project creates its own doc servic
 </dependency>
 ```
 
-The instance provides its own Spring Boot application class:
+This form contributes the service and nothing else: the jEAP parent, the plugin settings and the dependency
+management of the template stay the project's own business.
+
+### The application class
+
+The template ships the Spring Boot application, so an instance holds no Java at all - it names that class as the
+main class of the executable jar:
+
+```xml
+<plugin>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-maven-plugin</artifactId>
+    <configuration>
+        <mainClass>ch.admin.bit.jeap.doc.web.DocServiceApplication</mainClass>
+    </configuration>
+</plugin>
+```
+
+An instance that has beans of its own to add declares its own `@SpringBootApplication` in place of it:
 
 ```java
 @SpringBootApplication

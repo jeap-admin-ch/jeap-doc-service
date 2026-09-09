@@ -32,6 +32,8 @@ class DocumentationBuildScheduling implements SchedulingConfigurer {
     private final DocumentationBuildHousekeeping housekeeping;
     private final DepartedParts departedParts;
     private final DocumentationBuildTrigger trigger;
+    /** A clean-up rather than anything about indexing: what a killed index run left behind. */
+    private final SearchIndexHousekeeping searchIndexHousekeeping;
     private final BuildProperties properties;
 
     /**
@@ -91,6 +93,11 @@ class DocumentationBuildScheduling implements SchedulingConfigurer {
         registrar.addCronTask(departedParts::removeWhatIsGone, properties.getHistoryCron());
         log.info("What a part its site no longer has published is removed after {}, on the same schedule.",
                 properties.getDepartedPartRetention());
+        // And on the same schedule again, for the same reason. The search index is not on a schedule - it is
+        // built at the end of the pass that published a site - but what a killed index run left behind is
+        // reachable from nothing and needs somebody to come past.
+        registrar.addCronTask(searchIndexHousekeeping::removeAbandonedRuns, properties.getHistoryCron());
+        log.info("What an interrupted or failed search index run left behind is removed on the same schedule.");
         registerReconcile(registrar);
     }
 

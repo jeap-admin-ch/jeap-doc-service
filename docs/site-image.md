@@ -13,6 +13,12 @@ The site template is two things with two different lifetimes:
 | **The template sources** - the generator's configuration, its components and its plugins | The `jeap-doc-site` jar, on the service's own classpath. They are extracted into the build workspace on every build, so the template is by definition the version this service was built against |
 | **`node_modules`**                                                                       | **The image.** Tens of thousands of files produced by a tool, which cannot be packaged into a jar and must not be fetched at run time                                                            |
 
+> **The search indexer is in `node_modules` too** - see [Search](search.md). `pagefind` brings a native binary of about 56 MB for the
+> platform it is installed on - statically linked, so it does not depend on the runtime image's libc. An image
+> built from a `package-lock.json` that predates the search has no indexer, and the service refuses to start
+> unless `jeap.doc.search.enabled` is `false`; that flag is how a service version reaches an instance whose
+> image has not caught up yet.
+
 So the image carries the Node runtime, `node_modules` and the `package-lock.json` they were installed from - and
 **no template sources at all**. It also needs no npm registry at run time: nothing is installed while the service
 runs.
@@ -31,6 +37,7 @@ runs.
             <phase>prepare-package</phase>
             <goals><goal>unpack</goal></goals>
             <configuration>
+                <skip>false</skip>
                 <artifactItems>
                     <artifactItem>
                         <groupId>ch.admin.bit.jeap</groupId>
@@ -47,6 +54,11 @@ runs.
     </executions>
 </plugin>
 ```
+
+`<skip>false</skip>` is for the instance that has [the template as its parent](getting-started.md#as-the-parent):
+the template manages an execution of this same id for its own integration tests, where it is skipped along with
+the tests, and an execution of that id inherits it. The image cannot be built without the two files, so a build
+that skips the tests still has to unpack them.
 
 An instance whose `.dockerignore` allows only what it needs has to allow these too:
 

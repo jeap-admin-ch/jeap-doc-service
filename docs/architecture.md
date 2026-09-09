@@ -51,7 +51,7 @@ flowchart LR
 | `jeap-doc-metrics`          | driven adapter     | The Micrometer meters behind the `UploadMetrics`, `BuildMetrics` and `ArchitectureImportMetrics` ports, and the container memory gauges, which are read in this module and have no port in the domain - nothing in the domain asks what the container holds |
 | `jeap-doc-site`             | resources          | The site generator's own application - no Java. Read from the classpath, never from a directory beside the jar        |
 | `jeap-doc-web`              | driving adapter    | The Spring Boot application: REST API, OpenAPI, security, and the documentation it serves                             |
-| `jeap-doc-service-instance` | packaging          | POM-only module a project depends on to create its own doc service instance                                           |
+| `jeap-doc-service-instance` | packaging          | POM-only module a project inherits from, or depends on, to create its own doc service instance                        |
 
 ### The packages of the domain
 

@@ -2,8 +2,17 @@ import React, {useCallback, useRef, useState} from 'react';
 import Link from '@docusaurus/Link';
 import clsx from 'clsx';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import {ENVIRONMENTS, routePrefixOf, useEnvironment, useSitePath, withoutEnvironment} from '@site/src/data/environments';
+import useIsBrowser from '@docusaurus/useIsBrowser';
+import {useLocation} from '@docusaurus/router';
+import {ENVIRONMENTS, environmentById, routePrefixOf, useEnvironment, useSitePath, withoutEnvironment} from '@site/src/data/environments';
 import styles from './styles.module.css';
+
+/** Where the results page is: the shell part's own, at the site root and with no environment prefix. */
+const SEARCH_PATH = '/search/';
+
+function isTheSearchPage(relativePath) {
+    return relativePath === SEARCH_PATH || relativePath === '/search';
+}
 
 /**
  * The environment switcher of the navbar.
@@ -17,9 +26,18 @@ import styles from './styles.module.css';
  * therefore written with Docusaurus' `pathname://` protocol, which renders a plain anchor and takes the target
  * out of the build's broken-link check: without it a site whose environments differ at all could not be built,
  * and `onBrokenLinks: 'throw'` is worth far more on the generated pages than it would cost here.
+ *
+ * **The search page is the one page whose environment is not in its path.** It sits at the site root, where no
+ * environment tree does, and takes its scope from `?env=` - so switching environment there rewrites the query
+ * rather than the path. Without that this switcher offered `/dev/search/`, which no part of the site serves,
+ * and it is why the results page needs no environment control of its own.
+ *
+ * **That part waits for the browser.** A query string does not exist while the page is prerendered, so a
+ * switcher that read one would render `PROD` into the HTML and `DEV` into the hydrated tree - a mismatch React
+ * reports as an error and this site's browser tests fail on. Until it is hydrated the switcher therefore shows
+ * what the path says, exactly as it does on every other page, and picks the query up a moment later.
  */
 export default function EnvironmentSwitcher({mobile, onClick}) {
-    const current = useEnvironment();
     const [open, setOpen] = useState(false);
     const wrapper = useRef(null);
 
@@ -42,9 +60,23 @@ export default function EnvironmentSwitcher({mobile, onClick}) {
     }, []);
     const relative = withoutEnvironment(useSitePath());
     const {siteConfig: {baseUrl}} = useDocusaurusContext();
+    const {search} = useLocation();
+    // `useIsBrowser` rather than the path alone: see the note above about the query and the prerendered HTML.
+    const onTheSearchPage = useIsBrowser() && isTheSearchPage(relative);
+    // Which environment the reader is in - their path, except on the one page whose environment is its query.
+    const fromThePath = useEnvironment();
+    const current = onTheSearchPage ? environmentById(new URLSearchParams(search).get('env')) : fromThePath;
 
     /** The same page in another environment, as an unchecked absolute path including the base url. */
-    const hrefFor = (environment) => `pathname://${baseUrl.replace(/\/$/, '')}${routePrefixOf(environment)}${relative}`;
+    const hrefFor = (environment) => {
+        const site = baseUrl.replace(/\/$/, '');
+        if (onTheSearchPage) {
+            const parameters = new URLSearchParams(search);
+            parameters.set('env', environment.id);
+            return `pathname://${site}${SEARCH_PATH}?${parameters.toString()}`;
+        }
+        return `pathname://${site}${routePrefixOf(environment)}${relative}`;
+    };
 
     if (ENVIRONMENTS.length < 2) {
         return null; // a site with one environment has nothing to switch between
