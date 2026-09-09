@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-09
+
+### Dependencies
+- **ch.admin.bit.jeap:jeap-spring-boot-parent**: 40.9.2 → 40.11.0 (minor)
+- **react-dom**: 19.2.8 → 19.3.0 (minor)
+- **react**: 19.2.8 → 19.3.0 (minor)
+- **js-yaml**: 4.3.2 → 5.4.1 (major)
+
 ## [1.5.0] - 2026-09-09
 
 - The site has a search again: a box in the navbar and a results page at `/search`, both scoped to the reader's environment. A result names the system and component it is in, marks what matched, and leads to the page's route rather than to its numbered path.
