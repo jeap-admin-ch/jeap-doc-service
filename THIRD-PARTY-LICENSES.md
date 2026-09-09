@@ -35,6 +35,7 @@ Apache License Version 2.0
  * jackson-databind - [com.fasterxml.jackson.core:jackson-databind](https://github.com/FasterXML/jackson)
  * Jackson-dataformat-YAML - [com.fasterxml.jackson.dataformat:jackson-dataformat-yaml](https://github.com/FasterXML/jackson-dataformats-text)
  * Jackson datatype: JSR310 - [com.fasterxml.jackson.datatype:jackson-datatype-jsr310](https://github.com/FasterXML/jackson-modules-java8/jackson-datatype-jsr310)
+ * Caffeine cache - [com.github.ben-manes.caffeine:caffeine](https://github.com/ben-manes/caffeine)
  * docker-java-api - [com.github.docker-java:docker-java-api](https://github.com/docker-java/docker-java)
  * docker-java-transport - [com.github.docker-java:docker-java-transport](https://github.com/docker-java/docker-java)
  * docker-java-transport-zerodep - [com.github.docker-java:docker-java-transport-zerodep](https://github.com/docker-java/docker-java)
