@@ -282,7 +282,7 @@ in it. A component the architecture repository knows only the name of gets three
 | *Component Context View*    | The diagram above, and the table of **every** relation with its counterpart, kind and label                                                                                                                                |
 | *Database Schema*           | The entity relationship diagram, the database name and schema version, and the list of every table with its columns, their types, whether they may be null and which keys they belong to                                    |
 | *REST API*                  | The specification version, where the API is served, the count of operations, the **deep link into the Swagger UI of the architecture repository** - and a table per API group, with each operation's method, path and summary |
-| *Messages*                  | What the component produces and what it consumes, with the topic and the versions under contract, each message **linked into the system's tree** where it is documented                                                     |
+| *Messages*                  | What the component produces and what it consumes, with the defining system, the topic and the versions under contract, each message **linked into the tree of the system that defines it** - which is not always the component's own                                                     |
 | *Component Reactions*       | Written and empty on purpose: the reactions are observed at runtime and that import is not published yet, so the page says what it is waiting for                                                                          |
 
 **The REST API page is an overview and a link, not a rendered specification.** A rendered specification is a
@@ -297,6 +297,18 @@ part of the API that is not there. An operation with several tags appears once, 
 
 **A message is documented once**, on the page of the system that defines it. A component's *Messages* page
 links to it rather than repeating it.
+
+**And the message need not be its own system's.** A contract is recorded on the message, so a component
+consuming another system's event has that contract on nothing of its own system at all - which is the ordinary
+case in a landscape that exchanges events. The page therefore resolves contracts across the whole imported
+model, names the defining system in a column of its own, and links into that system's tree; where that is
+another part of the site the link leaves this build's broken-link check and is rewritten to an absolute URL.
+A component whose every contract is on other systems' messages gets the page all the same.
+
+**A contract is matched on the system and the component, not on the component alone.** A component name is
+unique within its system and nowhere else - two systems each having a `gateway` is ordinary - so the system is
+part of the join. Where the model does not say which system a contract's component belongs to, the name is all
+there is and is matched on its own.
 
 **The REST API page describes the component's own operations and not the platform's.**
 [`rest-api-excluded-paths`](configuration.md#the-architecture-model) leaves out what matches it, and its

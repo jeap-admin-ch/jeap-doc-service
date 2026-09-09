@@ -79,10 +79,10 @@ class DocumentationBuildTriggerTest {
      * content of every part, and not a site rebuilt.
      */
     @Test
-    void requestBecauseTheModelWasImported_thenEveryPartOfTheSiteIsAskedFor() {
+    void requestBecauseTheArchitectureWasImported_thenEveryPartOfTheSiteIsAskedFor() {
         DocumentationBuildTrigger documented = triggerFor(new SiteProperties(), landscapeOf("orders", "tariffs"));
 
-        int parts = documented.requestBecauseTheModelWasImported("dev");
+        int parts = documented.requestBecauseTheArchitectureWasImported("dev");
 
         assertThat(parts).isEqualTo(3);
         // One ask for the lot: the parts of a publication have to become owed in one transaction.
@@ -99,12 +99,12 @@ class DocumentationBuildTriggerTest {
      * that has it is asked, and each of them reports what it asked for.
      */
     @Test
-    void requestBecauseTheModelWasImported_whenTwoSitesHaveThatEnvironment_thenBothAreAskedFor() {
+    void requestBecauseTheArchitectureWasImported_whenTwoSitesHaveThatEnvironment_thenBothAreAskedFor() {
         DocumentationBuildTrigger both = triggerFor(propertiesOf(Map.of(
                 Site.DEFAULT_SITE, new SiteProperties.Site(), "governance", new SiteProperties.Site())),
                 landscapeOf("orders", "tariffs"));
 
-        assertThat(both.requestBecauseTheModelWasImported("dev"))
+        assertThat(both.requestBecauseTheArchitectureWasImported("dev"))
                 .describedAs("every part of both sites")
                 .isEqualTo(6);
         // One ask per site, each carrying that site's parts.
@@ -117,8 +117,8 @@ class DocumentationBuildTriggerTest {
 
     /** A landscape of an environment no site has is imported all the same, and asks for nothing. */
     @Test
-    void requestBecauseTheModelWasImported_whenNoSiteHasThatEnvironment_thenNothingIsAskedFor() {
-        assertThat(trigger.requestBecauseTheModelWasImported("an-environment-nobody-documents")).isZero();
+    void requestBecauseTheArchitectureWasImported_whenNoSiteHasThatEnvironment_thenNothingIsAskedFor() {
+        assertThat(trigger.requestBecauseTheArchitectureWasImported("an-environment-nobody-documents")).isZero();
 
         verify(requests, never()).requestAll(any(), any(), any(), any(), anyBoolean());
     }
@@ -289,11 +289,11 @@ class DocumentationBuildTriggerTest {
 
     /** The import publishes the whole site, so it is a publication like a forced build. */
     @Test
-    void requestBecauseTheModelWasImported_thenThePartsCarryOnePublication() {
+    void requestBecauseTheArchitectureWasImported_thenThePartsCarryOnePublication() {
         DocumentationBuildTrigger ofALandscape = triggerFor(new SiteProperties(),
                 landscapeOf("orders", "shipping"));
 
-        ofALandscape.requestBecauseTheModelWasImported("dev");
+        ofALandscape.requestBecauseTheArchitectureWasImported("dev");
 
         ArgumentCaptor<Publication> publication = ArgumentCaptor.forClass(Publication.class);
         verify(requests).requestAll(any(), any(), any(), publication.capture(), anyBoolean());

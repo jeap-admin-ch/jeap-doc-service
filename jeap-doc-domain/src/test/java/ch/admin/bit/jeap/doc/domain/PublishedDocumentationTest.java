@@ -9,6 +9,7 @@ import ch.admin.bit.jeap.doc.domain.port.StoredObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -24,6 +25,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -113,6 +115,62 @@ class PublishedDocumentationTest {
 
         verify(storage).open(eq("default/shared"), eq("assets/js/main.a1b2c3.js"));
         verify(storage).open(eq("default/shared"), eq("img/logo.svg"));
+    }
+
+    /**
+     * <b>The upgrade from a whole-site publication.</b> Before a site was published in parts every file of a
+     * build lay under that build's own prefix, shared or not, and the migration keeps that publication
+     * serving as the shell. Its pages are therefore answered, and its stylesheets, scripts and images are
+     * under the same old prefix rather than under the site's shared one, which no build of the new version has
+     * written yet. Resolving a shared path to the shared prefix alone answered every one of them with a 404 -
+     * the whole site arriving without its layout until the shell had been rebuilt, which is the last part of
+     * the first pass.
+     */
+    @Test
+    void open_whenTheSharedPrefixDoesNotHoldTheAsset_thenItIsReadFromTheOwningPartsPublication() {
+        published(part(SitePart.SHELL, 42L));
+        when(storage.open(eq("default/shared"), any())).thenReturn(Optional.empty());
+        when(storage.open(eq("default/42"), any())).thenReturn(Optional.of(object()));
+
+        assertThat(documentation.open(SITE, "assets/js/main.a1b2c3.js")).isPresent();
+
+        InOrder inOrder = inOrder(storage);
+        inOrder.verify(storage).open(eq("default/shared"), eq("assets/js/main.a1b2c3.js"));
+        inOrder.verify(storage).open(eq("default/42"), eq("assets/js/main.a1b2c3.js"));
+    }
+
+    /**
+     * And the fallback is a fallback: an asset the shared prefix does hold is read from there and the
+     * publication of the part is not touched, so the extra lookup costs nothing on the ordinary path.
+     */
+    @Test
+    void open_whenTheSharedPrefixHoldsTheAsset_thenNoPartsPublicationIsRead() {
+        published(part(SitePart.SHELL, 42L), part("system-orders", 43L));
+        when(storage.open(eq("default/shared"), any())).thenReturn(Optional.of(object()));
+
+        assertThat(documentation.open(SITE, "assets/js/main.a1b2c3.js")).isPresent();
+
+        verify(storage).open(eq("default/shared"), eq("assets/js/main.a1b2c3.js"));
+        verify(storage, never()).open(eq("default/42"), any());
+        verify(storage, never()).open(eq("default/43"), any());
+    }
+
+    /**
+     * <b>The fallback of a shared path is the shell, and only the shell.</b> No system part claims a
+     * top-level {@code assets/} route, so the most specific part that owns one is always the shell - which is
+     * exactly the publication the migration leaves the old whole-site build serving as. {@code exists} takes
+     * the same route as {@code open}, so a caller that only asks is not told a file is missing that
+     * {@code open} would find.
+     */
+    @Test
+    void exists_whenTheSharedPrefixDoesNotHoldTheAsset_thenTheShellsPublicationIsAsked() {
+        published(part(SitePart.SHELL, 42L), part("system-orders", 43L));
+        when(storage.exists("default/shared", "img/logo.svg")).thenReturn(false);
+        when(storage.exists("default/42", "img/logo.svg")).thenReturn(true);
+
+        assertThat(documentation.exists(SITE, "img/logo.svg")).isTrue();
+
+        verify(storage, never()).exists(eq("default/43"), any());
     }
 
     /**

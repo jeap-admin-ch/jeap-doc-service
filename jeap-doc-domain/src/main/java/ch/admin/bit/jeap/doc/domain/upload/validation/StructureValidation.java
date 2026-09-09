@@ -108,6 +108,7 @@ public class StructureValidation {
                                                     List<String> checked) {
         List<StructureFinding> findings = new ArrayList<>();
         Set<String> duplicated = duplicatesOf(checked);
+        Set<String> colliding = collidingDocumentsOf(checked);
         // Distinct, so a path that appears three times is one finding rather than three - and so that a
         // second guard against reporting it twice is not needed.
         for (String path : new LinkedHashSet<>(checked)) {
@@ -136,14 +137,16 @@ public class StructureValidation {
                                 .formatted(segments[1], template.id())));
                 continue;
             }
-            nameFinding(path, segments[1], template, chapter.get(), placement).ifPresent(findings::add);
+            nameFinding(path, segments[1], template, chapter.get(), placement, colliding)
+                    .ifPresent(findings::add);
         }
         return findings;
     }
 
     /** The rules about a file's own name: hidden, unpublishable, its extension, and what is reserved. */
     private Optional<StructureFinding> nameFinding(String path, String name, StructureTemplate template,
-                                                   StructureChapter chapter, DocumentationPlacement placement) {
+                                                   StructureChapter chapter, DocumentationPlacement placement,
+                                                   Set<String> colliding) {
         if (name.startsWith(".")) {
             return Optional.of(StructureFinding.of(FindingCode.HIDDEN_NAME, path,
                     ("'%s' is a hidden file. The ones a tool writes are ignored; this one was not, so it is "
@@ -170,17 +173,38 @@ public class StructureValidation {
         if (!DocumentationPaths.MARKDOWN_EXTENSION.equals(extension)) {
             return Optional.empty();
         }
-        String document = name.substring(0, name.length() - extension.length() - 1);
-        if (isLandingPageName(document, chapter)) {
+        String fileName = name.substring(0, name.length() - extension.length() - 1);
+        // What the generator identifies it as, and not what it is called: a leading number comes off the name
+        // before it becomes a document id - see NumberPrefixes. The landing-page rule right below is the one
+        // exception and is asked of the name as written, because that is the name the generator asks it of.
+        String document = NumberPrefixes.stripped(fileName);
+        if (isLandingPageName(fileName, chapter)) {
             return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
                     ("'%s' is read as the landing page of %s, and the doc service generates that page. Two "
                      + "documents at one URL fail the build of this part, so rename the page.")
-                            .formatted(document, chapter.folder())));
+                            .formatted(fileName, chapter.folder())));
+        }
+        if (DocumentationPaths.INDEX_SEGMENT.equals(document)) {
+            // Not the landing-page rule above: '01-index.md' is not read as the landing page - that is decided
+            // on the name as written - but it is identified as 'index' all the same, which is the document the
+            // generated landing page of the chapter already is. Two documents of one id fail the build just as
+            // two at one URL do.
+            return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
+                    ("'%s' is identified as '%s', because a leading number is not part of a document's name, "
+                     + "and that is the landing page the doc service generates for %s. Rename the page.")
+                            .formatted(name, document, chapter.folder())));
         }
         if (template.generatedNames(chapter, placement.subject()).contains(document)) {
             return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
                     ("'%s' is generated into %s by the doc service. Two documents at one URL fail the build of "
                      + "this part, so rename the page.").formatted(document, chapter.folder())));
+        }
+        if (colliding.contains(documentKeyOf(chapter.folder(), document))) {
+            return Optional.of(StructureFinding.of(FindingCode.COLLIDING_NAME, path,
+                    ("'%s' is published as '%s' in %s, and so is another document of that chapter. A leading "
+                     + "number is not part of the page's URL, so the two would be one route and the build of "
+                     + "this part would fail. Give them names that differ in more than a number.")
+                            .formatted(name, document, chapter.folder())));
         }
         return Optional.empty();
     }
@@ -191,6 +215,12 @@ public class StructureValidation {
      * <p>
      * Folded, because that is how the generator decides it - so {@code README.md} and {@code INDEX.MD} resolve
      * to the same URL as the generated landing page and would fail the build as a duplicate route.
+     * <p>
+     * <b>Asked of the name as written, number prefix and all.</b> The generator's own rule compares the file
+     * name and the folder name as they are - so {@code 1-intro.md} in {@code 1-intro/} is that chapter's
+     * landing page, while {@code intro.md} in the same folder is an ordinary page at a URL of its own. It is
+     * the one rule here that does not read a document's stripped name; a page whose stripped name collides is
+     * caught by the two rules after it instead.
      */
     private static boolean isLandingPageName(String document, StructureChapter chapter) {
         String folded = document.toLowerCase(Locale.ROOT);
@@ -312,6 +342,45 @@ public class StructureValidation {
             return null;
         }
         return name.substring(dot + 1).toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * The documents of one chapter that two different file names would publish at one route, as
+     * {@code <chapter>/<document>}.
+     * <p>
+     * Two file names, because an identical path is {@link FindingCode#DUPLICATE_PATH} and is reported as that:
+     * the paths are made distinct first. What is left is {@code foo.md} beside {@code 1-foo.md}, which are two
+     * files of the set and one page of the site.
+     * <p>
+     * Markdown only. An image is served under the name it has, so an image and a document of one name are two
+     * different things at two different URLs - which is the same reason the reserved names are checked for
+     * documents alone.
+     */
+    private static Set<String> collidingDocumentsOf(List<String> paths) {
+        Set<String> seen = new HashSet<>();
+        Set<String> twice = new HashSet<>();
+        for (String path : new LinkedHashSet<>(paths)) {
+            String[] segments = path.split("/");
+            if (segments.length != 2) {
+                continue;
+            }
+            String name = segments[1];
+            String extension = extensionOf(name);
+            if (!DocumentationPaths.MARKDOWN_EXTENSION.equals(extension)) {
+                continue;
+            }
+            String document = NumberPrefixes.stripped(name.substring(0, name.length() - extension.length() - 1));
+            String key = documentKeyOf(segments[0], document);
+            if (!seen.add(key)) {
+                twice.add(key);
+            }
+        }
+        return twice;
+    }
+
+    /** How a document of a chapter is named in {@link #collidingDocumentsOf}. */
+    private static String documentKeyOf(String chapterFolder, String document) {
+        return chapterFolder + "/" + document.toLowerCase(Locale.ROOT);
     }
 
     private static Set<String> duplicatesOf(List<String> paths) {

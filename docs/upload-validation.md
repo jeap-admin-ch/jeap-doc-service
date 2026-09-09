@@ -50,10 +50,27 @@ These rules are the doc service's, whatever template an upload names.
 | 4 | No folder inside a chapter: the pages of a chapter lie directly in it | `NESTED_FOLDER` |
 | 5 | No file name begins with `.` or `_` - see below | `HIDDEN_NAME`, `UNPUBLISHABLE_NAME` |
 | 6 | No file name is one the site generator reads as the chapter's landing page - `index`, `readme` or the chapter folder's own name, in any case - because the doc service writes that page | `RESERVED_NAME` |
-| 7 | The set holds at least one path that was not ignored | `EMPTY_TREE` |
+| 7 | No two documents of one chapter carry the same name once a leading number is taken off it - see below | `COLLIDING_NAME` |
+| 8 | The set holds at least one path that was not ignored | `EMPTY_TREE` |
 
-Rules 3 to 6 are about a *chapter*, so they apply to a Markdown upload and not to an HTML one, which follows
+Rules 3 to 7 are about a *chapter*, so they apply to a Markdown upload and not to an HTML one, which follows
 no chapters at all.
+
+### A number in front of a name is not part of the name
+
+The site generator parses a **leading number** off a document's file name and publishes what is left: `01-rest-api.md`
+is the document `rest-api`, at the URL `rest-api`. Two consequences, and both are checked:
+
+- a numbered name **can be a reserved one**. `01-rest-api.md` in `5-building-block-view/` is the page the doc
+  service generates there, and `01-index.md` is the chapter's generated landing page - both are `RESERVED_NAME`.
+- two names that **differ only in their number** are one document. `foo.md` beside `1-foo.md`, or `1-foo.md`
+  beside `2-foo.md`, are two files of the set and one page of the site, which fails the build of that part;
+  both files are reported, because which of them to rename is the author's choice.
+
+What looks like a date or a version is left alone, exactly as the generator leaves it alone: `2021-11-notes.md`
+and `7.0-notes.md` are pages of their own name. The one rule that reads the name **as written** is the
+landing-page rule above, because that is the name the generator asks it of: `1-intro.md` in `1-intro/` is that
+chapter's landing page, while `intro.md` in the same folder is an ordinary page at a URL of its own.
 
 ### A name that will not be published
 
@@ -182,7 +199,8 @@ as a whole.
 | `HIDDEN_NAME` | A file name beginning with a dot |
 | `UNPUBLISHABLE_NAME` | A file name beginning with an underscore |
 | `FORBIDDEN_EXTENSION` | An extension the template, or a microsite, does not take |
-| `RESERVED_NAME` | A document of a name the doc service generates into that chapter, or one the site generator reads as the chapter's landing page |
+| `RESERVED_NAME` | A document of a name the doc service generates into that chapter, or one the site generator reads as the chapter's landing page - a leading number is taken off the name first |
+| `COLLIDING_NAME` | Two documents of one chapter that the site generator would publish at one URL, because a leading number is not part of a page's name |
 | `UNKNOWN_TEMPLATE` | *Set-level.* No template of that name exists; the message names the ones that do |
 | `EMPTY_TREE` | *Set-level.* Nothing in the set would be published |
 | `MISSING_ENTRY_POINT` | *Set-level.* An HTML upload with no `index.html` at its root |

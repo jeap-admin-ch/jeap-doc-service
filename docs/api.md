@@ -447,10 +447,15 @@ happen today.
 | `204`  | It is gone - the objects and the records both                              |
 | `409`  | **The site still has that part**, so it is not removed                      |
 | `404`  | No such site, or nothing was ever published or recorded for that part      |
+| `503`  | Nothing was removed and the ask can be repeated: the objects could not be deleted, a build is holding the part, or it was published again in between |
 
 The `409` is the point of the endpoint rather than an edge of it: only a part the partition no longer produces
 can be removed, so a mistyped part cannot take a live system's documentation off the site. To remove a system's
 documentation deliberately, take the system out of the architecture repository first.
+
+The `503` **keeps the build records**, and deliberately: they are the only thing that names the objects a part
+published, so forgetting them after a failed deletion would leave those objects in the bucket with nothing left
+to find them by - and nothing under the published sites expires by age. Ask again.
 
 ### Reading the state of the sites
 

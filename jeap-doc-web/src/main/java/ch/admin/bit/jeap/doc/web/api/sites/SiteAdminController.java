@@ -134,6 +134,13 @@ class SiteAdminController {
                     ("The documentation site %s still has the part %s, so it is not removed. Only a part the "
                      + "site no longer produces can be.").formatted(site, part));
             case NOTHING_TO_REMOVE -> throw unknownPart(site, part);
+            // 503 and not 500: the ask was right and nothing was deleted, so repeating it is what to do. What
+            // gets here is an object storage that would not delete, a build holding the part's lock, or a part
+            // that was published again in between - and the records are deliberately kept in all three, or
+            // nothing would name the objects that are still there.
+            case NOT_REMOVED -> throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    ("What the part %s of the documentation site %s published could not be removed now, and "
+                     + "nothing was deleted. A build may be holding it; ask again.").formatted(part, site));
         };
     }
 

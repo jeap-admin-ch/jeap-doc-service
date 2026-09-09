@@ -10,7 +10,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Component documentation is generated: an arc42 tree per component - context view, database schema, REST API, messages.
 - A site is published as one build per system, several at a time, and only where the content digest moved.
 - A component context view names the components it exchanges something with, each inside the system that owns it.
-- An upload's structure can be checked before it is sent: `POST /api/uploads/docs/validation`.
+- A component's *Messages* page carries the messages of **every** system it has a contract on, not only its own system's, names the defining system in a column of its own and links into that system's tree. A contract is matched on the system and the component, so a same-named component of another system is not mistaken for it.
+- An upload's structure can be checked before it is sent: `POST /api/uploads/docs/validation`. A leading number is taken off a document's name before it is compared, because the site generator does the same: `01-rest-api.md` is reported as a reserved name, and two names that differ only in their number as `COLLIDING_NAME`.
+- The architecture import asks for the documentation **once, after its whole chain** rather than after the model step. A build is no longer started while the OpenAPI specifications and database schemas of the same environment are still being fetched, and an artifact that is newly replicated while the landscape stands still is published rather than waiting for the model to move.
+- After the upgrade to a site published in parts, the previous whole-site publication goes on serving its stylesheets, scripts and images too: a shared path that the site's shared prefix does not hold falls back to the publication of the part that owns it. Without it every page of the site arrived without its layout until the shell had been rebuilt.
+- `DELETE /api/sites/{site}/parts/{part}` answers `503` and **keeps the build records** when the objects could not be deleted, when a build holds the part, or when it was published again in between. The records are the only thing that names what a part published, so removing them after a failed deletion left the objects in the bucket with nothing to find them by.
 
 ### Removed
 
@@ -18,6 +22,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Dependencies
 - **@matfsw/docusaurus-plantuml-plugin**: 1.7.1 → 1.8.1 (minor), with **@plantuml/core** 1.2026.7 → 1.2026.8. An instance has to rebuild its site image: the startup check refuses a `node_modules` installed from a different lockfile.
+- **js-yaml**: 4.3.1 → 4.3.2 and **qs**: 6.15.3 → 6.16.0, both pinned through `overrides` because both are transitive. They close CVE-2026-84375 (`js-yaml`, denial of service in YAML parsing) and CVE-2026-82417 and CVE-2026-82562 (`qs`, denial of service in `stringify` and through an array-limit bypass). The site image has to be rebuilt for the same reason as above.
 
 ## [1.3.0] - 2026-09-06
 

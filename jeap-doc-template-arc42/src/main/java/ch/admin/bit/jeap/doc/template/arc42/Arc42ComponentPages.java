@@ -27,6 +27,7 @@ import ch.admin.bit.jeap.doc.markdown.Md;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import static ch.admin.bit.jeap.doc.markdown.MarkdownWriter.NOT_KNOWN;
@@ -65,7 +66,13 @@ final class Arc42ComponentPages {
     private static final String NONE = "None.";
 
     /** The columns of the two contract tables on the messages page. */
-    private static final List<String> MESSAGE_COLUMNS = List.of("Message", "Kind", TOPIC_LABEL, VERSIONS_LABEL);
+    /**
+     * <b>The defining system is a column of its own.</b> A component contracts on the messages of other
+     * systems as readily as on its own - consuming another system's event is the ordinary case - and the two
+     * are indistinguishable in a table that names only the message.
+     */
+    private static final List<String> MESSAGE_COLUMNS =
+            List.of("Message", "Kind", "Defined by", TOPIC_LABEL, VERSIONS_LABEL);
 
     private Arc42ComponentPages() {
     }
@@ -260,7 +267,7 @@ final class Arc42ComponentPages {
                                                   DocumentedComponent component, GenerationContext context,
                                                   DocumentationPaths.ComponentPaths paths, Path structure)
             throws IOException {
-        List<DocumentedMessage> messages = messagesOf(system, component);
+        List<ContractedMessage> messages = contractedMessagesOf(system, component, context);
         boolean database = component.databaseSchema() != null || component.schema() != null;
         boolean restApi = component.hasRestApi();
         if (!database && !restApi && messages.isEmpty()) {
@@ -711,17 +718,21 @@ final class Arc42ComponentPages {
     /**
      * The messages this component produces and consumes.
      * <p>
-     * <b>Each is a link into the system's tree</b>, where the message is documented. A message belongs to the
-     * system that defines it, not to the components that handle it, so it is not documented twice.
+     * <b>Each is a link into the tree of the system that defines it</b>, which is not always this component's
+     * own: a message belongs to the system that defines it rather than to the components that handle it, so it
+     * is documented once and linked from everywhere it is contracted on. Where that system is another one the
+     * link leaves this part of the site, and {@code CrossPartLinks} rewrites it.
      */
     private static void writeMessages(DocumentedSystem system, DocumentedComponent component,
-                                      List<DocumentedMessage> messages, GenerationContext context,
+                                      List<ContractedMessage> messages, GenerationContext context,
                                       Path directory) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(MESSAGES_LABEL, 3, context))
                 .heading(1, MESSAGES_LABEL)
                 .paragraph(Md.sentence("The events and commands {} has a contract for, and the topics they "
-                                       + "travel on. Each of them is documented with {}, which defines it.",
+                                       + "travel on. Each of them is documented with the system that defines "
+                                       + "it, which is {} for the messages of its own and the defining system "
+                                       + "itself for the rest.",
                         Md.code(component.name()),
                         Md.link(DocumentationPaths.chapter(system.slug(), SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW),
                                 "the system's building block view")));
@@ -741,14 +752,16 @@ final class Arc42ComponentPages {
      * answer that looks right, and leaving the contract out would hide that the component is involved.
      */
     private static void writeContracts(MarkdownWriter page, DocumentedSystem system,
-                                       DocumentedComponent component, List<DocumentedMessage> messages,
+                                       DocumentedComponent component, List<ContractedMessage> messages,
                                        ContractRole role, String heading) {
         List<List<Markdown>> rows = new ArrayList<>();
-        for (DocumentedMessage message : messages) {
-            for (MessageContract contract : contractsOf(message, component, role)) {
+        for (ContractedMessage contracted : messages) {
+            DocumentedMessage message = contracted.message();
+            for (MessageContract contract : contractsOf(message, component, system, role)) {
                 rows.add(List.of(
-                        messageLink(system, message),
+                        messageLink(contracted.definedBy(), message),
                         Md.text(message.kind().label()),
+                        systemLink(contracted.definedBy(), system),
                         Md.code(contract.topic()),
                         Md.joinWith(", ", contract.versions().stream().map(Md::code).toList())));
             }
@@ -771,10 +784,14 @@ final class Arc42ComponentPages {
     /**
      * Where a message is documented. <b>A link, with no fallback</b>, unlike {@link #endLink}.
      * <p>
-     * It needs none: the rows come from {@link #messagesOf}, which filters {@code system.messages()}, and
-     * {@code Arc42MessagePages} writes a page for every one of those in the same run. Widen the source and
-     * this needs a fallback, because {@code Md.link} throws on a target it will not put on a page - which
-     * would end the generation of every system.
+     * It needs none, and still does not now that the source is the whole landscape: the systems come from
+     * {@link #contractedMessagesOf}, which walks {@code context.model().systems()} and takes each message from
+     * the system whose {@code messages()} holds it - and {@code Arc42MessagePages} writes a page for every
+     * message of every one of those systems in the same run. A message therefore always has a page, and the
+     * slug it is built from always exists. What a widening here would have to keep is that pairing: build the
+     * link from anything other than the system that owns the message and it can name a page nobody writes,
+     * because {@code Md.link} throws on a target it will not put on a page - which would end the generation of
+     * every system.
      */
     private static Markdown messageLink(DocumentedSystem system, DocumentedMessage message) {
         String group = message.kind() == MessageKind.COMMAND
@@ -783,22 +800,79 @@ final class Arc42ComponentPages {
                 message.slug()), Md.code(message.name()));
     }
 
-    /**
-     * The messages of the system that this component has a contract on. <b>Matched ignoring case</b>, like
-     * every other name join here: the two names come from two exports of one upstream.
-     */
-    private static List<DocumentedMessage> messagesOf(DocumentedSystem system, DocumentedComponent component) {
-        return system.messages().stream()
-                .filter(message -> !contractsOf(message, component, null).isEmpty())
-                .toList();
+    /** The system that defines a message, named plainly for the component's own and linked for another's. */
+    private static Markdown systemLink(DocumentedSystem definedBy, DocumentedSystem own) {
+        if (definedBy.slug().equals(own.slug())) {
+            return Md.text("this system");
+        }
+        return Md.link(DocumentationPaths.chapter(definedBy.slug(), SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW),
+                Md.code(definedBy.name()));
     }
 
-    /** The contracts of this component on one message, of one role or of any. */
+    /** One message this component has a contract on, and the system that defines it. */
+    private record ContractedMessage(DocumentedSystem definedBy, DocumentedMessage message) {
+    }
+
+    /**
+     * Every message this component has a contract on, <b>wherever in the landscape it is defined</b>, each
+     * with the system that defines it.
+     * <p>
+     * <b>The whole model and not this component's own system.</b> A message belongs to the system that defines
+     * it, and a component consuming another system's event is the ordinary case rather than an edge - the
+     * architecture repository records the contract on the message, so the contract of an {@code orders}
+     * component on an event of {@code payments} is on that event and on nothing of {@code orders}. Filtering
+     * {@code system.messages()} therefore dropped every such contract, and a component that only consumes
+     * other systems' messages lost the page altogether.
+     * <p>
+     * <b>The component's own system first</b>, then the rest by slug, so that the ordinary reading is the
+     * unsurprising one and two runs over one model produce the same page.
+     */
+    private static List<ContractedMessage> contractedMessagesOf(DocumentedSystem system,
+                                                                DocumentedComponent component,
+                                                                GenerationContext context) {
+        List<DocumentedSystem> landscape = new ArrayList<>();
+        context.model().systems().stream()
+                .filter(each -> each.slug().equals(system.slug()))
+                .forEach(landscape::add);
+        if (landscape.isEmpty()) {
+            // The system being written is not in the model of this run - which the tests do, and which a
+            // generation over a partial landscape would. Its own messages are still its own.
+            landscape.add(system);
+        }
+        context.model().systems().stream()
+                .filter(each -> !each.slug().equals(system.slug()))
+                .sorted(Comparator.comparing(DocumentedSystem::slug))
+                .forEach(landscape::add);
+
+        List<ContractedMessage> contracted = new ArrayList<>();
+        for (DocumentedSystem defining : landscape) {
+            for (DocumentedMessage message : defining.messages()) {
+                if (!contractsOf(message, component, system, null).isEmpty()) {
+                    contracted.add(new ContractedMessage(defining, message));
+                }
+            }
+        }
+        return List.copyOf(contracted);
+    }
+
+    /**
+     * The contracts of this component on one message, of one role or of any. <b>Matched ignoring case</b>, like
+     * every other name join here: the two names come from two exports of one upstream.
+     * <p>
+     * <b>The system is part of the match.</b> A component name is unique within its system and nowhere else -
+     * two systems each having a {@code gateway} is ordinary - so matching the name alone attributed one
+     * system's contracts to the other's component of that name. Where the model does not say which system a
+     * contract's component belongs to the name is all there is, and it is matched on its own.
+     *
+     * @param system the system the documented component belongs to
+     */
     private static List<MessageContract> contractsOf(DocumentedMessage message, DocumentedComponent component,
-                                                     ContractRole role) {
+                                                     DocumentedSystem system, ContractRole role) {
         return message.contracts().stream()
                 .filter(contract -> contract.component() != null
                                     && contract.component().equalsIgnoreCase(component.name()))
+                .filter(contract -> contract.system() == null
+                                    || contract.system().equalsIgnoreCase(system.name()))
                 .filter(contract -> role == null || contract.role() == role)
                 .toList();
     }

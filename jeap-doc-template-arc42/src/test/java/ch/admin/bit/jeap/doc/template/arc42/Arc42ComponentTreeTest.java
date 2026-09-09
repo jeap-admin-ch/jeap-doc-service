@@ -732,6 +732,59 @@ class Arc42ComponentTreeTest {
     }
 
     /**
+     * <b>A message another system defines belongs on the page too.</b> A contract is recorded on the message,
+     * and a message belongs to the system that defines it - so an {@code orders} component consuming an event
+     * of {@code shipping} has its contract on nothing of {@code orders} at all. Reading only the component's
+     * own system dropped every such contract, which is the ordinary case rather than an edge.
+     */
+    @Test
+    void theMessagesPage_showsAMessageDefinedByAnotherSystem() throws IOException {
+        generate();
+
+        String page = read("component-architecture/5-building-block-view/messages.md");
+        assertThat(page).describedAs("the event, linked into the tree of the system that defines it")
+                .contains("/systems/shipping/system-architecture/building-block-view/events/"
+                          + "shipping-dispatched-event/");
+        assertThat(page).describedAs("named as another system's, and with its own topic and version")
+                .contains("`shipping`").contains("`shipping-dispatch`").contains("`3.1.0`");
+    }
+
+    /**
+     * <b>And a contract of a same-named component of another system is not this component's.</b> A component
+     * name is unique within its system and nowhere else, so matching the name alone attributed
+     * {@code shipping}'s {@code orders-intake} to {@code orders}' one - here it would have shown the event as
+     * produced as well as consumed.
+     */
+    @Test
+    void theMessagesPage_doesNotShowAContractOfASameNamedComponentOfAnotherSystem() throws IOException {
+        generate();
+
+        String page = read("component-architecture/5-building-block-view/messages.md");
+        int dispatched = page.split("shipping-dispatched-event", -1).length - 1;
+        assertThat(dispatched).describedAs("once, as what this component consumes, and not also as produced")
+                .isEqualTo(1);
+    }
+
+    /**
+     * A component whose every contract is on another system's messages still gets its page. It used to lose
+     * the page altogether, and with it chapter 5's link to it.
+     */
+    @Test
+    void theMessagesPage_isWrittenForAComponentThatOnlyContractsOnAnotherSystemsMessages() throws IOException {
+        DocumentedSystem withoutMessages = new DocumentedSystem(orders.name(), orders.slug(),
+                orders.description(), orders.aliases(), orders.team(), orders.components(),
+                orders.relations(), List.of());
+
+        Arc42ComponentPages.write(template, withoutMessages, componentOf(withoutMessages, "orders-intake"),
+                contextOf(withoutMessages, LIMITS), componentDirectory);
+
+        assertThat(read("component-architecture/5-building-block-view/messages.md"))
+                .contains("## Consumes")
+                .contains("/systems/shipping/system-architecture/building-block-view/events/"
+                          + "shipping-dispatched-event/");
+    }
+
+    /**
      * A role this service does not know is shown rather than guessed at. A wrong side would look right, and
      * leaving the contract out would hide that the component is involved.
      */
@@ -1007,10 +1060,24 @@ class Arc42ComponentTreeTest {
     private static DocumentedSystem shipping() {
         return new DocumentedSystem("shipping", "shipping", "Sends the goods out", List.of(), null,
                 List.of(new DocumentedComponent("shipping-gateway", "shipping-gateway", null,
-                        ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null)),
+                                ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null),
+                        // A component of another system that happens to carry the same name as the one being
+                        // documented. A contract of this one must not be read as a contract of that one.
+                        new DocumentedComponent("orders-intake", "orders-intake", null,
+                                ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null)),
                 List.of(new SystemRelation(RelationKind.EVENT, "orders", "orders-intake", "shipping",
                         "shipping-gateway", "ShippingArrangedEvent", null, null, null)),
-                List.of());
+                List.of(new DocumentedMessage("ShippingDispatchedEvent", "shipping-dispatched-event",
+                        MessageKind.EVENT, "internal", "shipping-dispatch", "The goods went out.", null, null,
+                        List.of(DocumentedMessageVersion.of("3.1.0")),
+                        List.of(
+                                // The case the component page used to drop: an orders component contracted on
+                                // an event that shipping defines.
+                                new MessageContract(ContractRole.CONSUMES, "orders-intake", "orders",
+                                        "shipping-dispatch", List.of("3.1.0")),
+                                // And shipping's own component of the same name, which is a different one.
+                                new MessageContract(ContractRole.PRODUCES, "orders-intake", "shipping",
+                                        "shipping-dispatch", List.of("3.1.0"))))));
     }
 
     /**

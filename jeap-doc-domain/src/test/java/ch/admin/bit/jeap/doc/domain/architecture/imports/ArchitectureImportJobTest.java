@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.domain.architecture.imports;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemTopology;
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
+import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
 import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
@@ -46,6 +47,7 @@ class ArchitectureImportJobTest {
     private InMemoryImports imports;
     private ArchitectureImportProperties properties;
     private ArchitectureImportShutdown shutdown;
+    private RecordingTrigger trigger;
 
     /**
      * The log of the job, because two of its guarantees are levels and nothing else can see them.
@@ -58,6 +60,7 @@ class ArchitectureImportJobTest {
         model = new RecordingStep(ArchitectureImportKind.MODEL);
         openApi = new RecordingStep(ArchitectureImportKind.OPENAPI_SPEC);
         databaseSchema = new RecordingStep(ArchitectureImportKind.DATABASE_SCHEMA);
+        trigger = new RecordingTrigger();
         locks = new RecordingLocks(true);
         imports = new InMemoryImports();
         properties = new ArchitectureImportProperties();
@@ -248,7 +251,124 @@ class ArchitectureImportJobTest {
 
     private ArchitectureImportJob jobOf(ArchitectureImportStep... steps) {
         return new ArchitectureImportJob(List.of(steps), new OneEnvironment(), imports, properties, locks,
-                shutdown);
+                trigger, shutdown);
+    }
+
+    /**
+     * <b>The chain asks, and it asks once.</b> Every step of one environment stores into the same landscape a
+     * page is written from, so one ask after all of them is what a build needs - and one ask, because fifty
+     * parts asked for three times over is three passes over the same content.
+     */
+    @Test
+    void importEnvironment_whenTheChainStoredSomething_thenTheDocumentationIsAskedForOnce() {
+        jobOf(model, openApi, databaseSchema).importEnvironment(ENVIRONMENT);
+
+        assertThat(trigger.asked).containsExactly(ENVIRONMENT);
+    }
+
+    /**
+     * <b>The ask comes after the last step, not after the model.</b> A build asked for by the model step would
+     * start while the artifacts of the same environment were still being fetched, and publish the landscape
+     * beside the specifications and schemas of the run before it.
+     */
+    @Test
+    void importEnvironment_thenTheDocumentationIsAskedForAfterEveryStepHasRun() {
+        jobOf(model, openApi, databaseSchema).importEnvironment(ENVIRONMENT);
+
+        assertThat(trigger.askedAfter)
+                .describedAs("the kinds that had run when the documentation was asked for")
+                .containsExactlyInAnyOrder(ArchitectureImportKind.MODEL, ArchitectureImportKind.OPENAPI_SPEC,
+                        ArchitectureImportKind.DATABASE_SCHEMA);
+    }
+
+    /**
+     * <b>An artifact that arrives while the landscape stands still is still published.</b> This is the case
+     * the ask used to be blind to: the model is unchanged, so the model step returns early, while a database
+     * schema whose first fetch failed is newly replicated. Nothing else would ask for it - a site an
+     * architecture repository feeds is left out of the reconcile schedule - so the page saying the schema is
+     * missing would stand until the landscape happened to move.
+     */
+    @Test
+    void importEnvironment_whenOnlyADownstreamStepStored_thenTheDocumentationIsStillAskedFor() {
+        model.outcome = ImportOutcome.UNCHANGED;
+        openApi.outcome = ImportOutcome.UNCHANGED;
+        databaseSchema.outcome = ImportOutcome.REPLACED;
+
+        jobOf(model, openApi, databaseSchema).importEnvironment(ENVIRONMENT);
+
+        assertThat(trigger.asked).containsExactly(ENVIRONMENT);
+    }
+
+    /** A run in which nothing moved asks for nothing: it is the common case, and the cheap one. */
+    @Test
+    void importEnvironment_whenNothingStored_thenNothingIsAskedFor() {
+        model.outcome = ImportOutcome.UNCHANGED;
+        openApi.outcome = ImportOutcome.UNCHANGED;
+        databaseSchema.outcome = ImportOutcome.UNCHANGED;
+
+        jobOf(model, openApi, databaseSchema).importEnvironment(ENVIRONMENT);
+
+        assertThat(trigger.asked).isEmpty();
+    }
+
+    /**
+     * <b>A partial run does not ask, whichever step reports it.</b> An artifact step reports {@code PARTIAL}
+     * whenever any entry of its index could not be replicated, whether or not it stored the rest - so asking
+     * on it would ask for every part of the site on every run for as long as one component's specification
+     * stays unfetchable, an hourly content pass over the whole landscape that publishes nothing. The run in
+     * which a failing fetch finally succeeds reports {@code REPLACED} and asks.
+     */
+    @Test
+    void importEnvironment_whenAStepWasPartial_thenNothingIsAskedFor() {
+        model.outcome = ImportOutcome.PARTIAL;
+        openApi.outcome = ImportOutcome.PARTIAL;
+        databaseSchema.outcome = ImportOutcome.UNCHANGED;
+
+        jobOf(model, openApi, databaseSchema).importEnvironment(ENVIRONMENT);
+
+        assertThat(trigger.asked).isEmpty();
+    }
+
+    /** A run that failed outright stored nothing, so a build must not be claimed after it. */
+    @Test
+    void importEnvironment_whenEveryStepFailed_thenNothingIsAskedFor() {
+        model.outcome = ImportOutcome.FAILED;
+        openApi.outcome = ImportOutcome.FAILED;
+        databaseSchema.outcome = ImportOutcome.FAILED;
+
+        jobOf(model, openApi, databaseSchema).importEnvironment(ENVIRONMENT);
+
+        assertThat(trigger.asked).isEmpty();
+    }
+
+    /**
+     * What the steps stored is stored. Asking is the last thing the chain does, so a trigger that throws costs
+     * an hour - the next import asks again - and never the import.
+     */
+    @Test
+    void importEnvironment_whenAskingFails_thenTheImportStillRan() {
+        trigger.failing = true;
+
+        jobOf(model, openApi, databaseSchema).importEnvironment(ENVIRONMENT);
+
+        assertThat(ranInOrder()).containsExactly(ArchitectureImportKind.MODEL,
+                ArchitectureImportKind.OPENAPI_SPEC, ArchitectureImportKind.DATABASE_SCHEMA);
+        assertThat(logged.list)
+                .extracting(ILoggingEvent::getLevel)
+                .contains(Level.WARN);
+    }
+
+    /**
+     * A stopping instance gives up the rest of the chain, and what the steps before it stored is asked for all
+     * the same: the rest is the next schedule's, on whichever instance is left.
+     */
+    @Test
+    void importEnvironment_whenTheInstanceStopsMidChain_thenWhatWasStoredIsStillAskedFor() {
+        model.stopping = shutdown;
+
+        jobOf(model, openApi, databaseSchema).importEnvironment(ENVIRONMENT);
+
+        assertThat(trigger.asked).containsExactly(ENVIRONMENT);
     }
 
     private List<ArchitectureImportKind> ranInOrder() {
@@ -280,6 +400,8 @@ class ArchitectureImportJobTest {
         private final ArchitectureImportKind kind;
         private int ranAt = -1;
         private boolean throwing;
+        /** What this step reports. Replaced is the ordinary case, so it is the default. */
+        private ImportOutcome outcome = ImportOutcome.REPLACED;
         /** Set to have the step stop the instance while it runs, as a deployment does. */
         private ArchitectureImportShutdown stopping;
         private Deadline deadline;
@@ -303,7 +425,33 @@ class ArchitectureImportJobTest {
             if (throwing) {
                 throw new IllegalStateException("A step that does not keep its contract.");
             }
-            return ImportOutcome.REPLACED;
+            return outcome;
+        }
+    }
+
+    /**
+     * What the chain asked for, kept rather than acted on. Which parts that is is
+     * DocumentationBuildTriggerTest's business; what this class is about is <i>whether it asked, and when</i>.
+     */
+    private final class RecordingTrigger extends DocumentationBuildTrigger {
+
+        private final List<String> asked = new ArrayList<>();
+        /** Which kinds had already run when the documentation was asked for - the order is the point. */
+        private List<ArchitectureImportKind> askedAfter = new ArrayList<>();
+        private boolean failing;
+
+        private RecordingTrigger() {
+            super(null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public int requestBecauseTheArchitectureWasImported(String environment) {
+            if (failing) {
+                throw new IllegalStateException("the database went away");
+            }
+            askedAfter = ranInOrder();
+            asked.add(environment);
+            return 1;
         }
     }
 

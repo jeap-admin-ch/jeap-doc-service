@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.domain.architecture.imports;
 
-import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
@@ -45,7 +44,6 @@ class ArchitectureModelImportStepTest {
     private FakeUpstream upstream;
     private InMemoryModels models;
     private InMemoryImports imports;
-    private RecordingTrigger trigger;
     private ArchitectureModelImportStep step;
 
     @BeforeEach
@@ -54,26 +52,8 @@ class ArchitectureModelImportStepTest {
         models = new InMemoryModels();
         imports = new InMemoryImports();
         imports.writeOrder = models.writeOrder;
-        trigger = new RecordingTrigger();
-        trigger.writeOrder = models.writeOrder;
         step = new ArchitectureModelImportStep(upstream, models, imports, ArchitectureImportMetrics.NONE,
-                trigger, Clock.fixed(NOW, ZoneOffset.UTC));
-    }
-
-    /**
-     * <b>The import is what publishes the documentation.</b> A landscape that is new asks for the site to be
-     * built, and which parts of it moved is not asked: a part is one system, and a part whose content has not
-     * moved is not generated.
-     */
-    @Test
-    void run_whenTheLandscapeChanged_thenTheDocumentationIsAskedFor() {
-        upstream.has("Orders", "Shipping");
-        step.run(ENVIRONMENT, Deadline.none());
-
-        upstream.has("Orders", "Shipping", "Tariffs");
-        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
-
-        assertThat(trigger.asked).containsExactly(ENVIRONMENT, ENVIRONMENT);
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     /**
@@ -84,72 +64,32 @@ class ArchitectureModelImportStepTest {
      * build read the landscape this import is about to replace and hold it under the new key, and the site
      * would then publish the previous landscape until the next import.
      * <p>
-     * And the builds are asked for last, for the same reason: a trigger starts a pass at once now, so a part
-     * that started before the state row moved would hold the landscape that was just replaced.
+     * The builds are asked for after the whole chain rather than here, and for the same reason: a trigger
+     * starts a pass at once, so a part that started before the state row moved would hold the landscape that
+     * was just replaced - see {@code ArchitectureImportJobTest}.
      */
     @Test
-    void run_whenTheLandscapeIsStored_thenTheStateRowComesAfterItAndTheBuildsAfterThat() {
+    void run_whenTheLandscapeIsStored_thenTheStateRowComesAfterIt() {
         upstream.has("Orders");
 
         assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
 
         assertThat(models.writeOrder).containsExactly("landscape", "last success");
-        assertThat(trigger.askedAfter).containsExactly("landscape", "last success");
     }
 
     /**
-     * A run that finds the landscape it already has asks for nothing at all. It is the one thing that is still
-     * compared: the landscape as a whole, by the hash the fetch produced - so an hour in which nothing changed
-     * costs no build and no content.
+     * <b>Nothing is stored that was not read whole.</b> A run that could not read the landscape writes
+     * nothing, so the outcome it reports is what keeps the chain from asking for a build - see
+     * {@code ArchitectureImportJobTest}.
      */
     @Test
-    void run_whenTheLandscapeIsUnchanged_thenNothingIsAskedFor() {
-        upstream.has("Orders");
-        step.run(ENVIRONMENT, Deadline.none());
-        trigger.asked.clear();
-
-        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.UNCHANGED);
-
-        assertThat(trigger.asked).isEmpty();
-    }
-
-    /**
-     * The landscape is stored either way. Asking for the documentation is what happens *after* it, so a
-     * trigger that throws costs an hour - the next import publishes it - and never the landscape.
-     */
-    @Test
-    void run_whenAskingForTheDocumentationFails_thenTheLandscapeIsStillImported() {
-        trigger.failing = true;
-        upstream.has("Orders");
-
-        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
-        assertThat(models.stored.systems()).hasSize(1);
-    }
-
-    /**
-     * <b>Nothing is published that was not stored.</b> Asking for a build is the last thing a replacing run
-     * does, so a run that read no landscape at all must not reach it - a build claimed after one would
-     * publish a landscape this service never has.
-     */
-    @Test
-    void run_whenTheUpstreamCannotBeRead_thenNothingIsAskedFor() {
+    void run_whenTheUpstreamCannotBeRead_thenNothingIsWritten() {
         upstream.has("Orders", "Shipping");
         upstream.failsOn("Shipping");
 
         assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.FAILED);
 
         assertThat(models.writes).isZero();
-        assertThat(trigger.asked).isEmpty();
-    }
-
-    /** And a run that stopped at its deadline stored nothing either, so it asks for nothing. */
-    @Test
-    void run_whenTheDeadlineHasGone_thenNothingIsAskedFor() {
-        upstream.has("Orders");
-
-        assertThat(step.run(ENVIRONMENT, Deadline.of(Duration.ZERO))).isEqualTo(ImportOutcome.PARTIAL);
-
-        assertThat(trigger.asked).isEmpty();
     }
 
     @Test
@@ -576,33 +516,6 @@ class ArchitectureModelImportStepTest {
                     .map(name -> new DocumentedMessage(name, null, MessageKind.EVENT, null, "topic", null, null,
                             null, List.of(), List.of()))
                     .toList());
-        }
-    }
-
-    /**
-     * What the import asked for, kept rather than acted on. Which parts that is is
-     * DocumentationBuildTriggerTest's business; what this class is about is <i>whether it asked</i>.
-     */
-    private static final class RecordingTrigger extends DocumentationBuildTrigger {
-
-        private final List<String> asked = new ArrayList<>();
-        /** What had already been written when the documentation was asked for - the order is the point. */
-        private List<String> askedAfter = new ArrayList<>();
-        private List<String> writeOrder = new ArrayList<>();
-        private boolean failing;
-
-        private RecordingTrigger() {
-            super(null, null, null, null, null, null, null);
-        }
-
-        @Override
-        public int requestBecauseTheModelWasImported(String environment) {
-            if (failing) {
-                throw new IllegalStateException("the database went away");
-            }
-            askedAfter = List.copyOf(writeOrder);
-            asked.add(environment);
-            return 1;
         }
     }
 

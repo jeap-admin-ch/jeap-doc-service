@@ -266,6 +266,11 @@ public class DocumentationBuildRunner {
          * Starts builds while there is a free slot and a candidate to put in it. <b>Nothing is started once the
          * instance is stopping</b>: the builds already running have a terminal state to write, and the shutdown
          * budget is theirs.
+         * <p>
+         * <b>Which part goes into a free slot is not decided here.</b> The candidates arrive in the order
+         * {@link BuildPickUpOrder} put them in - oldest second first, largest band first within a second, and
+         * <b>the shell of a site last of all</b>, because it carries the links into the system parts. A slot
+         * filled with whatever came to hand would publish the shell before the parts it links to.
          */
         private void fill(CompletionService<PartResult> finished) {
             while (inFlight.size() < slots() && !stopping) {

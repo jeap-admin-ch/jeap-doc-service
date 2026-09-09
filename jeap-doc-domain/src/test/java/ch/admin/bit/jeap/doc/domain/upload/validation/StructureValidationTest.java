@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Would this path tree be accepted?
@@ -274,6 +275,88 @@ class StructureValidationTest {
                 .containsExactly(FindingCode.RESERVED_NAME);
         assertThat(validate(systemDocs(), "1-intro/readme.png").findings())
                 .describedAs("and only a document can collide with a document")
+                .isEmpty();
+    }
+
+    /**
+     * <b>A number prefix is not part of the page's name.</b> Docusaurus parses a leading number off a
+     * document's file name and uses what is left as the document's id and its route, so {@code 01-rest-api.md}
+     * is the document {@code rest-api} - which is the page the doc service generates into that chapter. The
+     * rule compared the file name as written, so the upload was told it would be accepted and the build it
+     * later fed would fail on two documents of one id.
+     */
+    @Test
+    void aNumberedNameOfAGeneratedPage_isReserved() {
+        assertThat(codesOf(validate(componentDocs(), "5-building-block-view/01-rest-api.md")))
+                .containsExactly(FindingCode.RESERVED_NAME);
+        assertThat(codesOf(validate(componentDocs(), "5-building-block-view/1-rest-api.md")))
+                .describedAs("one digit or two, the generator parses both")
+                .containsExactly(FindingCode.RESERVED_NAME);
+        assertThat(codesOf(validate(componentDocs(), "5-building-block-view/1_rest-api.md")))
+                .describedAs("and an underscore or a dot separates a prefix just as a hyphen does")
+                .containsExactly(FindingCode.RESERVED_NAME);
+    }
+
+    /**
+     * The same for the landing page of a chapter: {@code 01-index.md} is not <i>read</i> as the landing page -
+     * that is decided on the name as written - but it is identified as {@code index} all the same, which is
+     * the document the generated landing page already is.
+     */
+    @Test
+    void aNumberedIndex_isReserved() {
+        assertThat(codesOf(validate(systemDocs(), "1-intro/01-index.md")))
+                .containsExactly(FindingCode.RESERVED_NAME);
+    }
+
+    /**
+     * <b>What a date or a version looks like is left alone</b>, because the generator leaves it alone: a
+     * second number after the separator is not read as a prefix, so these are pages of their own name and
+     * collide with nothing.
+     */
+    @Test
+    void aNameThatOnlyLooksNumbered_isNotReserved() {
+        assertThat(validate(componentDocs(), "5-building-block-view/2021-11-rest-api.md").findings())
+                .describedAs("a date is not a number prefix")
+                .isEmpty();
+        assertThat(validate(componentDocs(), "5-building-block-view/7.0-rest-api.md").findings())
+                .describedAs("nor is a version")
+                .isEmpty();
+    }
+
+    /**
+     * <b>Two files, one page.</b> {@code foo.md} and {@code 1-foo.md} are two paths and neither is reserved,
+     * so the duplicate-path rule saw nothing - and the generator identifies both as {@code foo} and fails the
+     * build on a duplicate document id.
+     * <p>
+     * <b>Both files are named</b>, one finding each, unlike a path that simply appears twice: these are two
+     * different files, and which of them to rename is the author's choice - so a report that named only one
+     * of them would be telling half the story.
+     */
+    @Test
+    void twoNamesThatDifferOnlyInANumberPrefix_collide() {
+        assertThat(validate(systemDocs(), "1-intro/foo.md", "1-intro/1-foo.md").findings())
+                .extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactlyInAnyOrder(tuple(FindingCode.COLLIDING_NAME, "1-intro/foo.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "1-intro/1-foo.md"));
+        assertThat(codesOf(validate(systemDocs(), "1-intro/1-foo.md", "1-intro/2-foo.md")))
+                .describedAs("two prefixes of one name are the same page just as well")
+                .containsExactly(FindingCode.COLLIDING_NAME, FindingCode.COLLIDING_NAME);
+    }
+
+    /** Within one chapter. The same name in two chapters is two pages at two URLs. */
+    @Test
+    void oneNameInTwoChapters_doesNotCollide() {
+        assertThat(validate(systemDocs(), "1-intro/foo.md", "4-solution-strategy/1-foo.md").findings())
+                .isEmpty();
+    }
+
+    /**
+     * And a collision is about documents: an image keeps the name it has, so an image and a document that
+     * differ only in a number prefix are two files at two URLs.
+     */
+    @Test
+    void anImageAndADocumentThatDifferOnlyInANumberPrefix_doNotCollide() {
+        assertThat(validate(systemDocs(), "1-intro/foo.md", "1-intro/1-foo.png").findings())
                 .isEmpty();
     }
 

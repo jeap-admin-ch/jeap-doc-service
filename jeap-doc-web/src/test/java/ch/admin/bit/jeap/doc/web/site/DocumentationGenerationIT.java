@@ -789,11 +789,20 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
                   "columns": [ { "name": "installed_rank", "type": "integer", "nullable": false } ] }
               ] }""";
 
-    /** A content resource with the entity tag its index announced, which is what makes it replicable. */
+    /**
+     * A content resource with the entity tag its index announced, which is what makes it replicable.
+     * <p>
+     * <b>Compression is off, and that is not a detail.</b> WireMock gzips a response when the client offers to
+     * take it and then appends {@code --gzip} to the entity tag, so the artifact was stored under
+     * {@code "sha256:spec--gzip"} while its index went on announcing {@code "sha256:spec"} - the two never
+     * matched, and every import re-stored every artifact as though the upstream had changed it. The real
+     * architecture repository serves the tag its index announced, which is what makes the second import of an
+     * unchanged landscape store nothing and ask for nothing.
+     */
     private static void tagged(String path, String etag, String body) {
         ARCH_REPO.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(urlEqualTo(path))
                 .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
-                        .withHeader("ETag", etag).withBody(body)));
+                        .withHeader("ETag", etag).withGzipDisabled(true).withBody(body)));
     }
 
     private static void stub(String path, String body) {

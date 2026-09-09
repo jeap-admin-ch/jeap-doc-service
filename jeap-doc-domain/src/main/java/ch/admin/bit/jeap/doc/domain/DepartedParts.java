@@ -60,7 +60,17 @@ public class DepartedParts {
         /** The partition still produces that part, so it is not gone and this service will not remove it. */
         STILL_A_PART,
         /** Nothing was published for it and no record of it was left. */
-        NOTHING_TO_REMOVE
+        NOTHING_TO_REMOVE,
+        /**
+         * Nothing was removed and the ask can be repeated: the objects could not be deleted, a build holds the
+         * part, or it was published again while it was being removed.
+         * <p>
+         * <b>It is its own answer because the records must survive it.</b> They are the only thing that names
+         * the objects of a part - the sweep and this endpoint both find a part by reading what it published -
+         * so forgetting them after a failed deletion would strand every object of that part in the bucket
+         * with nothing left to find it by, and nothing under the published sites expires by age.
+         */
+        NOT_REMOVED
     }
 
     /**
@@ -125,12 +135,35 @@ public class DepartedParts {
         }
         PartKey key = PartKey.of(site.id(), partId);
         Optional<PublishedPart> published = publishedPartOf(key);
-        if (published.isPresent() && remove(key, published.get())) {
-            return Removal.REMOVED;
+        if (published.isPresent()) {
+            // Only the outcome of the removal itself. It answers false for a failed deletion, for a part a
+            // build holds and for one that was published again in between, and in none of those may the
+            // records be forgotten - see Removal.NOT_REMOVED.
+            return remove(key, published.get()) ? Removal.REMOVED : Removal.NOT_REMOVED;
         }
-        // Nothing published, or a build took the lock in between. Either way the records are what is left, and
-        // removing them is what stops the part reading as one this site once had.
-        return builds.forgetPart(key) > 0 ? Removal.REMOVED : Removal.NOTHING_TO_REMOVE;
+        // Nothing published, so the records are all that is left of the part, and removing them is what stops
+        // it reading as one this site once had.
+        return forget(key);
+    }
+
+    /**
+     * Forgets the records of a part that published nothing, under the part's own lock.
+     * <p>
+     * <b>Under the lock and checked again inside it</b>, like every other removal here: without it a build that
+     * started meanwhile has its rows deleted underneath it, and a part that published while this waited for the
+     * lock would lose the record of what it published while the objects stayed.
+     */
+    private Removal forget(PartKey key) {
+        return exclusiveWork.underLock(DocumentationBuildRunner.LOCK_PREFIX + key, properties.getLockLease(),
+                        () -> {
+                            if (publishedPartOf(key).isPresent()) {
+                                log.info("{} was published while it was being removed as gone, so its records "
+                                         + "are left alone.", key);
+                                return Removal.NOT_REMOVED;
+                            }
+                            return builds.forgetPart(key) > 0 ? Removal.REMOVED : Removal.NOTHING_TO_REMOVE;
+                        })
+                .orElse(Removal.NOT_REMOVED);
     }
 
     private Set<String> currentPartsOf(Site site) {

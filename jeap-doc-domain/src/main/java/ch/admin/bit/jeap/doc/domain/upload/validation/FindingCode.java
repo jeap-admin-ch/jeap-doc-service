@@ -42,6 +42,12 @@ public enum FindingCode {
     /** A document of a name the generator writes into that chapter. Two documents, one URL. */
     RESERVED_NAME,
 
+    /**
+     * Two documents of one chapter that the generator would publish at one route, because a leading number is
+     * not part of a page's URL - {@code foo.md} beside {@code 1-foo.md}.
+     */
+    COLLIDING_NAME,
+
     /** The named template does not exist. Set-level. */
     UNKNOWN_TEMPLATE,
 

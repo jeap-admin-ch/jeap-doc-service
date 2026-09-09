@@ -53,7 +53,13 @@ public class PublishedDocumentation {
      * @param path the path of the file within that site, without a leading slash
      */
     public Optional<StoredObject> open(String site, String path) {
-        return prefixOf(site, path).flatMap(prefix -> storage.open(prefix, path));
+        for (String prefix : prefixesOf(site, path)) {
+            Optional<StoredObject> object = storage.open(prefix, path);
+            if (object.isPresent()) {
+                return object;
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -61,7 +67,7 @@ public class PublishedDocumentation {
      * wants to know, and would otherwise leak the connection {@link #open} hands it.
      */
     public boolean exists(String site, String path) {
-        return prefixOf(site, path).map(prefix -> storage.exists(prefix, path)).orElse(false);
+        return prefixesOf(site, path).stream().anyMatch(prefix -> storage.exists(prefix, path));
     }
 
     /**
@@ -77,18 +83,36 @@ public class PublishedDocumentation {
     }
 
     /**
-     * The prefix a path of a site is served from: the shared prefix for the shared files, and otherwise the
-     * publication of the most specific part that owns the path - the shell where none does.
+     * The prefixes a path of a site is served from, in the order to try them: the shared prefix for the shared
+     * files, and the publication of the most specific part that owns the path - the shell where none does.
+     * <p>
+     * <b>A shared file falls back to the owning part's publication, and that is what makes an upgrade
+     * seamless.</b> Before this service published a site in parts it wrote <i>every</i> file of a build under
+     * that build's own prefix, shared or not, and the migration keeps that publication serving as the shell -
+     * so its pages are answered from it while the parts are built. Their stylesheets, scripts and images,
+     * however, are under that same old prefix and not under the site's shared one, which no build has written
+     * yet. Resolving a shared path to the shared prefix alone would answer every one of them with a 404: the
+     * pages of the site would arrive without their layout until the shell had been rebuilt, which is the last
+     * part of the first pass.
+     * <p>
+     * <b>Which in practice means the shell.</b> No part claims a top-level {@code assets/} route, so the most
+     * specific part owning one is always the shell - and the shell is the part the old whole-site publication
+     * is kept as. The fallback is reached only when the shared prefix does not hold the file, so it costs one
+     * lookup on paths that would otherwise be a 404 and nothing at all on the ordinary path.
      */
-    private Optional<String> prefixOf(String site, String path) {
+    private List<String> prefixesOf(String site, String path) {
         CachedParts parts = partsOf(site);
         if (parts.prefixByPart.isEmpty()) {
-            return Optional.empty();
+            return List.of();
         }
-        if (SharedAssets.holds(path)) {
-            return Optional.of(SharedAssets.prefixOf(site));
+        Optional<String> owning = parts.owning(path);
+        if (!SharedAssets.holds(path)) {
+            return owning.map(List::of).orElseGet(List::of);
         }
-        return parts.owning(path);
+        String shared = SharedAssets.prefixOf(site);
+        return owning.filter(prefix -> !prefix.equals(shared))
+                .map(prefix -> List.of(shared, prefix))
+                .orElseGet(() -> List.of(shared));
     }
 
     /**

@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
+import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
 import ch.admin.bit.jeap.doc.domain.port.PublishedPart;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,11 +13,13 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -165,6 +168,68 @@ class DepartedPartsTest {
 
         assertThat(departedParts().removeNow(site(), "system-catalog"))
                 .isEqualTo(DepartedParts.Removal.REMOVED);
+    }
+
+    /**
+     * <b>A failed deletion keeps the records</b>, and that is the whole point of them: they are the only thing
+     * that names what a part published, so forgetting them after the objects survived would strand every one
+     * of those objects in the bucket with nothing left to find it by - and nothing under the published sites
+     * expires by age. The next ask finds the part again and tries once more.
+     */
+    @Test
+    void removeNow_whenTheObjectsCannotBeRemoved_thenTheRecordsAreKeptAndTheAskIsRepeatable() {
+        publishes(published("system-catalog", SITE + "/12", NOW.minusSeconds(60)));
+        doThrow(new IllegalStateException("the object storage said no")).when(publication).delete(any());
+
+        assertThat(departedParts().removeNow(site(), "system-catalog"))
+                .isEqualTo(DepartedParts.Removal.NOT_REMOVED);
+        verify(builds, never()).forgetPart(any());
+    }
+
+    /**
+     * <b>A part a build holds is left entirely alone.</b> Deleting its rows without the part's own lock would
+     * take them out from under the build that is writing them.
+     */
+    @Test
+    void removeNow_whenABuildHoldsThePart_thenNothingIsRemoved() {
+        publishes(published("system-catalog", SITE + "/12", NOW.minusSeconds(60)));
+        ExclusiveWork locked = heldFor(DocumentationBuildRunner.LOCK_PREFIX
+                                      + PartKey.of(SITE, "system-catalog"));
+
+        assertThat(departedPartsWith(locked).removeNow(site(), "system-catalog"))
+                .isEqualTo(DepartedParts.Removal.NOT_REMOVED);
+        verify(publication, never()).delete(any());
+        verify(builds, never()).forgetPart(any());
+    }
+
+    /**
+     * And the records-only case takes the same lock: a part that published nothing is still one a build can
+     * start on, and its rows are not deleted while one holds it.
+     */
+    @Test
+    void removeNow_whenOnlyRecordsAreLeftAndABuildHoldsThePart_thenNothingIsRemoved() {
+        publishes();
+        ExclusiveWork locked = heldFor(DocumentationBuildRunner.LOCK_PREFIX
+                                      + PartKey.of(SITE, "system-catalog"));
+
+        assertThat(departedPartsWith(locked).removeNow(site(), "system-catalog"))
+                .isEqualTo(DepartedParts.Removal.NOT_REMOVED);
+        verify(builds, never()).forgetPart(any());
+    }
+
+    /** An {@code ExclusiveWork} that hands out every lock but the one named. */
+    private static ExclusiveWork heldFor(String taken) {
+        return new ExclusiveWork() {
+            @Override
+            public <T> Optional<T> underLock(String name, Duration lease, Supplier<T> work) {
+                return name.equals(taken) ? Optional.empty() : Optional.ofNullable(work.get());
+            }
+        };
+    }
+
+    private DepartedParts departedPartsWith(ExclusiveWork exclusiveWork) {
+        return new DepartedParts(new DocumentationSites(new SiteProperties()), partition, builds, publication,
+                properties, exclusiveWork, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private void publishes(PublishedPart... parts) {

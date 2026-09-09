@@ -82,7 +82,7 @@ public class DocumentationBuildTrigger {
      * Every site that has this environment, because an environment is not a site's own: one landscape can be
      * documented by several of them.
      */
-    public int requestBecauseTheModelWasImported(String environment) {
+    public int requestBecauseTheArchitectureWasImported(String environment) {
         int requested = 0;
         for (Site site : sites.all()) {
             if (site.environments().stream().noneMatch(each -> each.id().equals(environment))) {
