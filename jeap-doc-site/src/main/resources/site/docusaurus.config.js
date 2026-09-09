@@ -56,7 +56,9 @@ const part = site.part || {
 };
 
 if (!Array.isArray(part.environments)) {
-    throw new Error(
+    // A TypeError is exactly what this guard replaces: unguarded, the read throws one out of the middle of
+    // the configuration and names the field only by the line it threw on - see DocusaurusConfigTest.
+    throw new Error( // NOSONAR
         `site.json describes the part ${part.id} without part.environments. The site generator writes that ` +
         `array; it says which of the site's environments this part carries.`);
 }
@@ -66,7 +68,9 @@ if (!Array.isArray(part.environments)) {
 // builds a shell whose sidebar lists no system and whose own links all leave the check - a wrong site that
 // nothing fails on.
 if (typeof part.carriesWholeEnvironments !== 'boolean') {
-    throw new Error(
+    // A TypeError is exactly what this guard replaces: unguarded, the read throws one out of the middle of
+    // the configuration and names the field only by the line it threw on - see DocusaurusConfigTest.
+    throw new Error( // NOSONAR
         `site.json describes the part ${part.id} without part.carriesWholeEnvironments. The site generator ` +
         `writes that flag; it says whether this part wrote the site's own pages.`);
 }

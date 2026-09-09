@@ -138,6 +138,8 @@ final class CrossPartLinks {
                && otherParts.stream().noneMatch(other -> other.owns(pathWithinSite));
     }
 
+    // Guard clauses: one continue per line that carries no link to rewrite, fenced code among them.
+    @SuppressWarnings("java:S135")
     private static int rewrite(Path page, SitePart part, List<SitePart> otherParts, EnvironmentLinks links) {
         // Split keeping the trailing empty field, so joining puts the file back exactly as it was.
         String[] lines = read(page).split("\n", -1);

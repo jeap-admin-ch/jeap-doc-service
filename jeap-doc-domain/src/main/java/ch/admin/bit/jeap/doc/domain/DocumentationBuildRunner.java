@@ -338,6 +338,7 @@ public class DocumentationBuildRunner {
          * or of an axis the site was cut on before - and settled, so that the junk is handled once per pass
          * rather than on every refill.
          */
+        @SuppressWarnings("java:S135") // Guard clauses: each continue names one reason a candidate is not queued.
         private boolean refill() {
             queue.clear();
             // Once per site rather than once per candidate: it reads the import state of every environment of
@@ -555,6 +556,9 @@ public class DocumentationBuildRunner {
      * on a run without the lock would mark a live build as abandoned, and its instance would then record it as
      * succeeded over a failure reason saying its instance had stopped.
      */
+    // A pass is one run of the runner and holds no state of its own beyond its queue; the lock, the
+    // properties and the repositories these three read belong to the runner and stay with it.
+    @SuppressWarnings("java:S3398")
     private void forgetPartThatIsGone(PartKey part, Instant requestedAt) {
         exclusiveWork.underLock(LOCK_PREFIX + part, properties.getLockLease(),
                 () -> forgetUnderLock(part, requestedAt));
@@ -604,6 +608,7 @@ public class DocumentationBuildRunner {
      * is.</b> Whether it really is stale is not decided here - it is decided by whether that part's lock can be
      * taken, which only succeeds once the dead instance's lease has run out.
      */
+    @SuppressWarnings("java:S3398") // See forgetPartThatIsGone.
     private List<Owed> partsOwedABuild(ToIntFunction<PartKey> pagesOf) {
         // Largest first and shuffled within a size band, so that the tail of a pass is not one large part and
         // two instances do not both go for the head of the queue - see BuildPickUpOrder.
@@ -629,6 +634,7 @@ public class DocumentationBuildRunner {
      * The lease is far shorter than a build may take, because the lock is extended while the build runs. What it
      * sizes is how long a killed instance blocks that one part.
      */
+    @SuppressWarnings("java:S3398") // See forgetPartThatIsGone.
     private PartOutcome buildPart(Site site, SitePart part) {
         return exclusiveWork
                 .underLock(LOCK_PREFIX + part.key(), properties.getLockLease(), () -> claimAndBuild(site, part))

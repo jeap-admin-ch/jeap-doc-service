@@ -190,7 +190,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
     @Test
     void morePathsThanTheLimit_isRefusedRatherThanAnswered() throws Exception {
         String paths = IntStream.rangeClosed(0, 10_000)
-                .mapToObj(index -> "\"1-intro/page-%d.md\"".formatted(index))
+                .mapToObj("\"1-intro/page-%d.md\""::formatted)
                 .collect(Collectors.joining(","));
 
         mockMvc.perform(validationOf("{\"paths\": [" + paths + "]}").with(mayUpload()))

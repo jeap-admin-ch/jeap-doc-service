@@ -573,6 +573,8 @@ public record ComponentContext(
         }
     }
 
+    // A string test of this view's own, not of its node index: Nodes is what resolves an end onto a box.
+    @SuppressWarnings("java:S3398")
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }

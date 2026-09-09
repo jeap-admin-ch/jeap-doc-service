@@ -104,6 +104,8 @@ public class StructureValidation {
     }
 
     /** The eight path rules and the two set-level ones, in the order the finding codes are documented in. */
+    // Guard clauses: one continue per rule, so the first finding about a path is the only one reported.
+    @SuppressWarnings("java:S135")
     private List<StructureFinding> markdownFindings(DocumentationPlacement placement, StructureTemplate template,
                                                     List<String> checked) {
         List<StructureFinding> findings = new ArrayList<>();
@@ -356,6 +358,7 @@ public class StructureValidation {
      * different things at two different URLs - which is the same reason the reserved names are checked for
      * documents alone.
      */
+    @SuppressWarnings("java:S135") // Guard clauses: one continue per kind of path this rule does not look at.
     private static Set<String> collidingDocumentsOf(List<String> paths) {
         Set<String> seen = new HashSet<>();
         Set<String> twice = new HashSet<>();
