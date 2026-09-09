@@ -256,9 +256,6 @@ class SiteSourcesTest {
     void write_thenItAnswersHowManySystemsEachEnvironmentThatReadsAModelDocuments() throws IOException {
         Site site = siteOf("default");
         String modelled = site.environments().getFirst().id();
-        PublicationProperties publication = new PublicationProperties();
-        publication.setUrl("https://doc.example.ch");
-        SiteUrls urls = new SiteUrls(publication, "");
         SiteSources withOneModel = sourcesReadingOneModelIn(modelled);
 
         Map<String, EnvironmentModel> models =

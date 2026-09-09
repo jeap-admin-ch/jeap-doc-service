@@ -193,20 +193,32 @@ public record ComponentContext(
      * before it named foreign components rather than losing the relation.
      */
     private static List<Node> drawnOf(Node self, List<Edge> edges, int maxComponents, int maxSystems) {
-        List<Node> siblings = counterpartsOf(edges, self, NodeKind.SIBLING);
         List<Node> reachedSystems = reachedSystemsOf(edges, self, Math.max(maxSystems, 0));
 
         int budget = Math.max(maxComponents, 0);
         List<Node> drawn = new ArrayList<>();
         drawn.add(self);
-        for (Node sibling : siblings) {
+        for (Node sibling : counterpartsOf(edges, self, NodeKind.SIBLING)) {
             if (drawn.size() - 1 >= budget) {
                 break;
             }
             drawn.add(sibling);
         }
+        Set<Node> foreign = handOutForeignBoxes(drawn, budget, owedOf(edges, self, reachedSystems));
 
-        // One from each neighbour per pass, in the order the neighbours are reached, until the budget is out.
+        // A neighbour that got no box of its own for any of its components is drawn whole.
+        for (Node neighbour : reachedSystems) {
+            boolean drawnOpen = foreign.stream()
+                    .anyMatch(node -> node.systemName().equalsIgnoreCase(neighbour.systemName()));
+            if (!drawnOpen) {
+                drawn.add(neighbour);
+            }
+        }
+        return List.copyOf(drawn);
+    }
+
+    /** The components a box is still owed to, per neighbour, in the order the neighbours are reached. */
+    private static Map<String, List<Node>> owedOf(List<Edge> edges, Node self, List<Node> reachedSystems) {
         Map<String, List<Node>> owed = new LinkedHashMap<>();
         for (Node neighbour : reachedSystems) {
             List<Node> components = counterpartsIn(edges, self, neighbour.systemName());
@@ -214,6 +226,17 @@ public record ComponentContext(
                 owed.put(neighbour.systemName(), new ArrayList<>(components));
             }
         }
+        return owed;
+    }
+
+    /**
+     * Hands out the boxes the siblings left over: one from each neighbour per pass, in the order the
+     * neighbours are reached, until the budget is out.
+     *
+     * @return the foreign components that got a box - which is what decides whether a neighbour is drawn whole
+     */
+    private static Set<Node> handOutForeignBoxes(List<Node> drawn, int budget,
+                                                 Map<String, List<Node>> owed) {
         Set<Node> foreign = new LinkedHashSet<>();
         boolean handedOne = true;
         while (handedOne && drawn.size() - 1 < budget) {
@@ -228,16 +251,7 @@ public record ComponentContext(
                 handedOne = true;
             }
         }
-
-        // A neighbour that got no box of its own for any of its components is drawn whole.
-        for (Node neighbour : reachedSystems) {
-            boolean drawnOpen = foreign.stream()
-                    .anyMatch(node -> node.systemName().equalsIgnoreCase(neighbour.systemName()));
-            if (!drawnOpen) {
-                drawn.add(neighbour);
-            }
-        }
-        return List.copyOf(drawn);
+        return foreign;
     }
 
     /**
@@ -491,9 +505,14 @@ public record ComponentContext(
                 // outside every system would read as a component of no system, which is not what this says.
                 return node(NodeKind.COMPONENT_OF_UNKNOWN_SYSTEM, null, systemName, componentName);
             }
-            NodeKind kind = owner.name().equalsIgnoreCase(system.name())
-                    ? (componentName.equalsIgnoreCase(self.componentName()) ? NodeKind.SELF : NodeKind.SIBLING)
-                    : NodeKind.NEIGHBOUR_COMPONENT;
+            NodeKind kind;
+            if (!owner.name().equalsIgnoreCase(system.name())) {
+                kind = NodeKind.NEIGHBOUR_COMPONENT;
+            } else if (componentName.equalsIgnoreCase(self.componentName())) {
+                kind = NodeKind.SELF;
+            } else {
+                kind = NodeKind.SIBLING;
+            }
             return node(kind, owner, owner.name(), componentName);
         }
 

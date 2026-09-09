@@ -134,10 +134,13 @@ class DocumentationValidationController {
         int problems = report.findings().size() + report.findingsOmitted();
         // Without the paths clause when nothing was checked: an unknown template is refused before a single
         // path is looked at, and "1 problem in 0 paths" reads like a bug to whoever sent forty-two of them.
-        String detail = report.pathsChecked() == 0
-                ? "%d problem%s.".formatted(problems, problems == 1 ? "" : "s")
-                : "%d problem%s in %d path%s.".formatted(problems, problems == 1 ? "" : "s",
-                        report.pathsChecked(), report.pathsChecked() == 1 ? "" : "s");
+        String detail;
+        if (report.pathsChecked() == 0) {
+            detail = "%d problem%s.".formatted(problems, plural(problems));
+        } else {
+            detail = "%d problem%s in %d path%s.".formatted(problems, plural(problems),
+                    report.pathsChecked(), plural(report.pathsChecked()));
+        }
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, detail);
         problem.setType(URI.create(PROBLEM_TYPE));
         problem.setTitle("The documentation structure is invalid");
@@ -149,5 +152,10 @@ class DocumentationValidationController {
         problem.setProperty("findings", report.findings());
         problem.setProperty("findingsOmitted", report.findingsOmitted());
         return problem;
+    }
+
+    /** The plural s of a count, and nothing where there is one of them. */
+    private static String plural(int count) {
+        return count == 1 ? "" : "s";
     }
 }

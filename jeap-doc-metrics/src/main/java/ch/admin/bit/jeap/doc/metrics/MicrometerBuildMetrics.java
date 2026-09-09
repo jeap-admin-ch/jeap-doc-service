@@ -60,6 +60,7 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
     private static final String TRIGGER_TAG = "trigger";
     private static final String PART_TAG = "part";
     private static final String ENVIRONMENT_TAG = "environment";
+    private static final String SECONDS = "seconds";
 
     private final BuildProperties properties;
     private final DocumentationBuildRepository builds;
@@ -134,7 +135,7 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
         // it goes stale silently, in the one rule that was meant to warn about this.
         Gauge.builder("jeap.doc.build.timeout", () -> (double) properties.getTimeout().toSeconds())
                 .description("How long a build may take before it is given up on")
-                .baseUnit("seconds")
+                .baseUnit(SECONDS)
                 .register(meterRegistry);
         // Untagged, both: how many builds an instance may run and is running belong to the instance and not to
         // a site - it builds whatever is owed, of whichever site. Together, and averaged over a range, they are
@@ -157,7 +158,7 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
             String id = site.id();
             databaseGauge("jeap.doc.build.last.success.age", () -> ageOrNaN(builds.lastSuccessAt(id)))
                     .description("Seconds since this documentation site was last published, NaN while it never has been")
-                    .baseUnit("seconds")
+                    .baseUnit(SECONDS)
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
             // The freshness signal, and the one to alarm on. A part whose content has not moved is not
@@ -167,12 +168,12 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
             databaseGauge("jeap.doc.build.last.check.age", () -> ageOrNaN(builds.lastCheckAt(id)))
                     .description("Seconds since a part of this documentation site was last published or found "
                                  + "already current, NaN while none ever was")
-                    .baseUnit("seconds")
+                    .baseUnit(SECONDS)
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
             databaseGauge("jeap.doc.build.request.age", () -> ageOf(requests.pendingSince(id)))
                     .description("Seconds the oldest pending build request of this site has been waiting, 0 if none")
-                    .baseUnit("seconds")
+                    .baseUnit(SECONDS)
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
             // A site is published as several builds now, so how many of its parts are owed one is what says
@@ -191,7 +192,7 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
                     .register(meterRegistry);
             databaseGauge("jeap.doc.part.age", () -> ageOf(builds.oldestPublicationAt(id)))
                     .description("Seconds since the oldest published part of this site was built, 0 if none")
-                    .baseUnit("seconds")
+                    .baseUnit(SECONDS)
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
             // Read from the database, like the two ages above and for the same reason: an in-memory value
@@ -212,7 +213,7 @@ public class MicrometerBuildMetrics implements BuildMetrics, MeterBinder {
             databaseGauge("jeap.doc.publication.seconds",
                             () -> publicationValue(id, publication -> publication.duration().toMillis() / 1000.0))
                     .description("Wall clock of the last completed full publication of this site, NaN while none has completed")
-                    .baseUnit("seconds")
+                    .baseUnit(SECONDS)
                     .tag(SITE_TAG, id)
                     .register(meterRegistry);
             databaseGauge("jeap.doc.publication.parts",

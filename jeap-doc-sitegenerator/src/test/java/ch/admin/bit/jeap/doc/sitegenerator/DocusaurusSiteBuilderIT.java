@@ -309,9 +309,9 @@ class DocusaurusSiteBuilderIT {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,
                                         Instant generatedAt) throws IOException {
-                WrittenContent sources = super.write(buildId, written, part, content, generatedAt);
+                WrittenContent writtenContent = super.write(buildId, written, part, content, generatedAt);
                 extra.writeInto(written, content);
-                return sources;
+                return writtenContent;
             }
         };
     }

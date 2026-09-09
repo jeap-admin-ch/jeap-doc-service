@@ -20,7 +20,7 @@ import OriginalLink from '@theme-original/DocSidebarItem/Link';
 const UNCHECKED = 'pathname://';
 
 export default function DocSidebarItemLink(props) {
-    const href = props.item && props.item.href;
+    const href = props.item?.href;
     const staysOnThisSite = typeof href === 'string' && href.startsWith(UNCHECKED);
     return <OriginalLink {...props} {...(staysOnThisSite ? {target: '_self'} : {})} />;
 }

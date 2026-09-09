@@ -795,14 +795,14 @@ class DocumentationBuildRunnerTest {
      */
     @Test
     void runOnce_whenTheRequestIsPartOfAPublication_thenTheBuildIsToo() {
-        Publication publication = Publication.askedAt(NOW);
-        BuildRequest request = new BuildRequest(SHELL, NOW, BuildTrigger.MANUAL, publication, true);
+        Publication askedFor = Publication.askedAt(NOW);
+        BuildRequest request = new BuildRequest(SHELL, NOW, BuildTrigger.MANUAL, askedFor, true);
         when(requests.pending()).thenReturn(List.of(request));
         when(requests.claim(SHELL)).thenReturn(Optional.of(request));
 
         assertThat(runner.runOnce()).isTrue();
 
-        verify(builds).start(eq(SHELL), any(), anyString(), any(), eq(publication));
+        verify(builds).start(eq(SHELL), any(), anyString(), any(), eq(askedFor));
     }
 
     /** A pass that lost every part to another instance says so, rather than looking like a pass with no work. */

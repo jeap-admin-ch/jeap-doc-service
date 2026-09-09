@@ -173,7 +173,7 @@ function withSystemsListed(environment, items) {
     if (links.length === 0) {
         return items;
     }
-    return items.map((item) => (item.type === 'category' && item.customProps && item.customProps.systemsIndex
+    return items.map((item) => (item.type === 'category' && item.customProps?.systemsIndex
         ? {...item, collapsed: false, items: [...item.items, ...links]}
         : item));
 }

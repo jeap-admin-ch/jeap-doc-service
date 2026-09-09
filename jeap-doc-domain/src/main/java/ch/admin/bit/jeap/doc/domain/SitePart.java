@@ -97,7 +97,14 @@ public record SitePart(PartKey key, String documents, String tree, boolean carri
     private static String route(String pathWithinSite) {
         int hash = pathWithinSite.indexOf('#');
         int query = pathWithinSite.indexOf('?');
-        int end = hash < 0 ? query : query < 0 ? hash : Math.min(hash, query);
+        int end;
+        if (hash < 0) {
+            end = query;
+        } else if (query < 0) {
+            end = hash;
+        } else {
+            end = Math.min(hash, query);
+        }
         String path = end < 0 ? pathWithinSite : pathWithinSite.substring(0, end);
         return path.endsWith("/") ? path : path + "/";
     }

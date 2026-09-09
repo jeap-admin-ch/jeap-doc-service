@@ -96,8 +96,8 @@ class DocumentationBuildPickupTest {
 
         await().atMost(Duration.ofSeconds(5)).until(() -> passes.get() == 2);
         // And it stays there: the fifty are one queued pass, not fifty.
-        Thread.sleep(200);
-        assertThat(passes.get()).isEqualTo(2);
+        await().during(Duration.ofMillis(200)).atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> assertThat(passes.get()).isEqualTo(2));
     }
 
     /**
@@ -105,13 +105,13 @@ class DocumentationBuildPickupTest {
      * It is what the tests of the other modules run with, so that a case asserts what it set off itself.
      */
     @Test
-    void whenAskedFor_whenPickingUpOnATriggerIsOff_thenNoPassRuns() throws Exception {
+    void whenAskedFor_whenPickingUpOnATriggerIsOff_thenNoPassRuns() {
         properties.setPickUpOnTrigger(false);
 
         pickup.whenAskedFor();
 
-        Thread.sleep(200);
-        verify(runner, org.mockito.Mockito.never()).runOnce();
+        await().during(Duration.ofMillis(200)).atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> verify(runner, org.mockito.Mockito.never()).runOnce());
     }
 
     /** The poll is not the trigger, and is not switched off with it. */
@@ -126,13 +126,13 @@ class DocumentationBuildPickupTest {
 
     /** Once the instance is stopping, nothing queues another pass behind the one being given up on. */
     @Test
-    void whenAskedFor_whenTheInstanceIsStopping_thenNoPassRuns() throws Exception {
+    void whenAskedFor_whenTheInstanceIsStopping_thenNoPassRuns() {
         pickup.stop();
 
         pickup.whenAskedFor();
 
-        Thread.sleep(200);
-        verify(runner, org.mockito.Mockito.never()).runOnce();
+        await().during(Duration.ofMillis(200)).atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> verify(runner, org.mockito.Mockito.never()).runOnce());
     }
 
     /** A pass that threw is not allowed to take the pickup thread's next pass with it. */

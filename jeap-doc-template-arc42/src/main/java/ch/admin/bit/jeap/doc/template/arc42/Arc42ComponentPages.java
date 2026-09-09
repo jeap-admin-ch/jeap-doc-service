@@ -61,6 +61,7 @@ final class Arc42ComponentPages {
     private static final String DATABASE_SCHEMA_LABEL = "Database Schema";
     private static final String REST_API_LABEL = "REST API";
     private static final String MESSAGES_LABEL = "Messages";
+    private static final String OPERATIONS_LABEL = "Operations";
     private static final String TOPIC_LABEL = "Topic";
     private static final String VERSIONS_LABEL = "Versions";
     private static final String NONE = "None.";
@@ -568,7 +569,7 @@ final class Arc42ComponentPages {
             facts.add(List.of(Md.text("Swagger UI"),
                     Md.linkOrCode(component.openApi().swaggerUrl(), "Open the specification")));
         }
-        facts.add(List.of(Md.text("Operations"),
+        facts.add(List.of(Md.text(OPERATIONS_LABEL),
                 Md.text(String.valueOf(operationCountOf(component, api, context)))));
         page.table(List.of("", ""), facts);
 
@@ -628,7 +629,7 @@ final class Arc42ComponentPages {
      */
     private static void writeEveryOperationExcluded(MarkdownWriter page, DocumentedComponent component,
                                                     RestApiOverview declared) {
-        page.heading(2, "Operations");
+        page.heading(2, OPERATIONS_LABEL);
         if (declared.isEmpty()) {
             page.paragraph("The published specification declares no operation.");
             return;
@@ -653,7 +654,7 @@ final class Arc42ComponentPages {
      */
     private static void writeOperationsFromTheModel(MarkdownWriter page, DocumentedComponent component,
                                                     GenerationContext context) {
-        page.heading(2, "Operations");
+        page.heading(2, OPERATIONS_LABEL);
         List<RestApiOperation> documented = component.restApis().stream()
                 .filter(operation -> context.apiPaths().documents(operation.path()))
                 .toList();
