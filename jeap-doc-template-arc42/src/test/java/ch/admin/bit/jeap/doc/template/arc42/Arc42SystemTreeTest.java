@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.template.arc42;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
 import ch.admin.bit.jeap.doc.domain.architecture.ContractRole;
+import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
@@ -13,8 +14,10 @@ import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
 import ch.admin.bit.jeap.doc.domain.architecture.RelationKind;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
+import ch.admin.bit.jeap.doc.domain.template.ReactionViews;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import ch.admin.bit.jeap.doc.markdown.CategoryFile;
@@ -29,6 +32,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -73,6 +77,9 @@ class Arc42SystemTreeTest {
         systemDirectory = content.resolve("systems").resolve("orders");
     }
 
+    /** When the graphs of these tests were imported, which the pages name. */
+    private static final Instant REACTIONS_IMPORTED_AT = Instant.parse("2026-09-09T06:00:00Z");
+
     private void generate() throws IOException {
         template.writeSystem(orders, context, systemDirectory);
     }
@@ -84,6 +91,9 @@ class Arc42SystemTreeTest {
      */
     @Test
     void theTreeIsTheOneTheUrlLayoutPromises() throws IOException {
+        // With reactions, because chapter 6 is part of the layout wherever something was observed.
+        context = context.withReactions(reactionsOfOrders());
+
         generate();
 
         assertThat(filesOfTheSystemsOwnTree()).containsExactlyInAnyOrder(
@@ -441,7 +451,9 @@ class Arc42SystemTreeTest {
                 .contains("| `1.0.0` |")
                 .contains("## Sender Contracts")
                 .contains("## Receiver Contracts")
-                .contains("## Reactions");
+                // No reactions section: nothing has been observed reacting to this command, and a section
+                // saying so would be a page telling a reader about an absence.
+                .doesNotContain("## Reactions");
     }
 
     /**
@@ -584,14 +596,132 @@ class Arc42SystemTreeTest {
                 .contains("`1.0.0`");
     }
 
+    /**
+     * <b>No reactions, no chapter 6.</b> A system nothing has been observed reacting to gets no page rather
+     * than one saying it is empty - and on a platform whose observer has just been switched on, that is every
+     * system.
+     */
     @Test
-    void theRuntimeViewSaysWhatItIsWaitingFor() throws IOException {
+    void theRuntimeView_whenNothingWasObserved_thenTheChapterIsNotWritten() throws IOException {
+        generate();
+
+        assertThat(Files.exists(systemDirectory.resolve("system-architecture/6-runtime-view"))).isFalse();
+        assertThat(read("system-architecture/index.md"))
+                .describedAs("and the landing page does not offer it").doesNotContain("Runtime View");
+    }
+
+    /** A stored graph with nothing in it is not content either, and reads exactly like having none. */
+    @Test
+    void theRuntimeView_whenTheGraphIsEmpty_thenTheChapterIsNotWritten() throws IOException {
+        context = context.withReactions(ReactionViews.of(REACTIONS_IMPORTED_AT, ReactionView.empty(),
+                Map.of(), Map.of(), Set.of()));
+
+        generate();
+
+        assertThat(Files.exists(systemDirectory.resolve("system-architecture/6-runtime-view"))).isFalse();
+    }
+
+    @Test
+    void theRuntimeView_whenReactionsWereObserved_thenTheyAreDrawnAndListed() throws IOException {
+        context = context.withReactions(reactionsOfOrders());
+
+        generate();
+
+        String page = read("system-architecture/6-runtime-view/system-reactions.md");
+        assertThat(page)
+                .contains("# System Reactions")
+                .describedAs("the fence the site's diagram plugin renders").contains("```dot")
+                .contains("digraph \"reactions\"")
+                // The table is the complete list and the searchable one.
+                .contains("| Triggered by | Component | Publishes in answer | Times observed |")
+                .contains("`orders-intake`")
+                .describedAs("and it says the reactions were observed, not documented")
+                .contains("Observed at runtime by the reaction observer");
+        assertThat(read("system-architecture/index.md")).contains("Runtime View");
+    }
+
+    /**
+     * <b>Every node carries an explicit id, and a reaction links into the component's own runtime view</b>,
+     * focused on the same reaction. The plugin resolves a deep link by SVG id first, so a link never lands on
+     * a node that merely happens to contain the same text.
+     */
+    @Test
+    void theRuntimeView_thenEveryNodeCarriesAnIdAndALinkWhereThereIsAPage() throws IOException {
+        context = context.withReactions(reactionsOfOrders());
+
         generate();
 
         assertThat(read("system-architecture/6-runtime-view/system-reactions.md"))
-                .contains("# System Reactions")
-                .contains("reaction observer")
-                .contains("not published yet");
+                .contains("\"REACTION-2\" [id=\"REACTION-2\"")
+                .contains("\"MESSAGE-1\" [id=\"MESSAGE-1\"")
+                .describedAs("the link carries the environment prefix, because nothing rewrites a fence")
+                // The route, not the path: the chapter numbers are on disk and Docusaurus serves without
+                // them, which is what DocumentationPaths writes.
+                .contains("URL=\"/docs/dev/systems/orders/system-architecture/building-block-view/"
+                          + "components/orders-intake/component-architecture/runtime-view/"
+                          + "component-reactions/#graph?highlight-node=REACTION-2\"");
+    }
+
+    /** A message page is where a message's own reaction graph is drawn, and it names its own source there. */
+    @Test
+    void aMessagePage_whenReactionsWereObserved_thenItDrawsThemInASectionOfItsOwn() throws IOException {
+        context = context.withReactions(reactionsOfOrders());
+
+        generate();
+
+        assertThat(read("system-architecture/5-building-block-view/events/orders-payment-accepted-event.md"))
+                .contains("## Reactions")
+                .contains("```dot")
+                .contains("Observed at runtime by the reaction observer");
+    }
+
+    /** A message nothing was observed reacting to says nothing about reactions at all. */
+    @Test
+    void aMessagePage_whenNothingWasObserved_thenItSaysNothingAboutReactions() throws IOException {
+        generate();
+
+        assertThat(read("system-architecture/5-building-block-view/events/orders-payment-accepted-event.md"))
+                .doesNotContain("## Reactions");
+    }
+
+    /** Two variants of one message type are two graphs upstream, and two diagrams under two headings here. */
+    @Test
+    void aMessagePage_whenTheTypeHasVariants_thenEachIsItsOwnDiagram() throws IOException {
+        ReactionView view = ReactionView.of(observedReactions(), context.model(), orders);
+        context = context.withReactions(ReactionViews.of(REACTIONS_IMPORTED_AT, ReactionView.empty(),
+                Map.of(), Map.of("OrdersPaymentAcceptedEvent",
+                        List.of(new ReactionViews.VariantView("", view),
+                                new ReactionViews.VariantView("legacy", view))), Set.of()));
+
+        generate();
+
+        assertThat(read("system-architecture/5-building-block-view/events/orders-payment-accepted-event.md"))
+                .contains("### Variant legacy")
+                .containsPattern("(?s)```dot.*```dot")
+                // A node id becomes a DOM id, so the two diagrams of one page name their nodes apart - a
+                // deep link into an id the page carries twice lands on whichever comes first.
+                .contains("\"V1-REACTION-2\" [id=\"V1-REACTION-2\"")
+                .contains("\"V2-REACTION-2\" [id=\"V2-REACTION-2\"");
+    }
+
+    /**
+     * One message triggering one reaction of one of the system's components - as the system's own graph, and
+     * as the graph of the message that triggered it.
+     */
+    private ReactionViews reactionsOfOrders() {
+        ReactionView view = ReactionView.of(observedReactions(), context.model(), orders);
+        // The component's own view is part of it, as it is in a real run: a reaction is only a link where
+        // this run wrote the page it would point at.
+        return ReactionViews.of(REACTIONS_IMPORTED_AT, view, Map.of("orders-intake", view),
+                Map.of("OrdersPaymentAcceptedEvent", List.of(new ReactionViews.VariantView("", view))),
+                Set.of("orders-intake"));
+    }
+
+    private static ObservedReactions observedReactions() {
+        return new ObservedReactions(
+                List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake")),
+                List.of(new ObservedReactions.ObservedTrigger(1, 2, 12)), List.of());
     }
 
     /**
@@ -887,6 +1017,8 @@ class Arc42SystemTreeTest {
      */
     @Test
     void everyFileWrittenIntoAChapterIsAReservedName() throws IOException {
+        context = context.withReactions(reactionsOfOrders());
+
         generate();
 
         Path structure = systemDirectory.resolve("system-architecture");

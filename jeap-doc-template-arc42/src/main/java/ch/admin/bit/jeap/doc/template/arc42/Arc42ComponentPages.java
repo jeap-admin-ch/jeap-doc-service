@@ -17,6 +17,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.SchemaForeignKey;
 import ch.admin.bit.jeap.doc.domain.architecture.SchemaTable;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ComponentContext;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
@@ -98,9 +99,10 @@ final class Arc42ComponentPages {
         writeContextAndScope(template, system, component, context, paths, structure);
         boolean buildingBlockView =
                 writeBuildingBlockView(template, system, component, context, paths, structure);
-        writeRuntimeView(template, component, context, paths, structure);
+        boolean runtimeView = writeRuntimeView(template, component, context, paths, structure);
 
-        writeLandingPage(template, system, component, context, paths, structure, buildingBlockView);
+        writeLandingPage(template, system, component, context, paths, structure, buildingBlockView,
+                runtimeView);
     }
 
     /** Where the pages of this component are served. The one place a component path is built. */
@@ -114,7 +116,7 @@ final class Arc42ComponentPages {
     private static void writeLandingPage(Arc42Template template, DocumentedSystem system,
                                          DocumentedComponent component, GenerationContext context,
                                          DocumentationPaths.ComponentPaths paths, Path structure,
-                                         boolean buildingBlockView) throws IOException {
+                                         boolean buildingBlockView, boolean runtimeView) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(template.componentLabel(), 0, context))
                 .heading(1, template.componentLabel() + " - " + component.name())
@@ -128,7 +130,7 @@ final class Arc42ComponentPages {
                            + "chapter has not been written, not that it is empty.");
 
         List<List<Markdown>> rows = new ArrayList<>();
-        for (StructureChapter chapter : chaptersOf(buildingBlockView)) {
+        for (StructureChapter chapter : chaptersOf(buildingBlockView, runtimeView)) {
             rows.add(List.of(Md.link(paths.chapter(chapter), chapter.label()),
                     Md.text(Arc42Chapters.componentSummaryOf(chapter))));
         }
@@ -138,13 +140,19 @@ final class Arc42ComponentPages {
     }
 
     /**
-     * The chapters this run wrote. Chapter 5 is the only conditional one: a component with no schema, no REST
-     * API and no message contract has nothing to put in it.
+     * The chapters this run wrote. Two of them are conditional: chapter 5, which a component with no schema,
+     * no REST API and no message contract has nothing to put in, and chapter 6, which holds the reactions
+     * observed at runtime and is written only where something was observed.
      */
-    private static List<StructureChapter> chaptersOf(boolean buildingBlockView) {
-        return buildingBlockView
-                ? List.of(INTRODUCTION, CONTEXT_AND_SCOPE, BUILDING_BLOCK_VIEW, RUNTIME_VIEW)
-                : List.of(INTRODUCTION, CONTEXT_AND_SCOPE, RUNTIME_VIEW);
+    private static List<StructureChapter> chaptersOf(boolean buildingBlockView, boolean runtimeView) {
+        List<StructureChapter> chapters = new ArrayList<>(List.of(INTRODUCTION, CONTEXT_AND_SCOPE));
+        if (buildingBlockView) {
+            chapters.add(BUILDING_BLOCK_VIEW);
+        }
+        if (runtimeView) {
+            chapters.add(RUNTIME_VIEW);
+        }
+        return List.copyOf(chapters);
     }
 
     /**
@@ -879,13 +887,20 @@ final class Arc42ComponentPages {
     }
 
     /**
-     * Chapter 6: how the component behaves while it runs. The reactions that will fill it are imported
-     * separately, so the page says what it is waiting for rather than disappearing and coming back.
+     * Chapter 6: how the component behaves while it runs - which message makes it react, and what it does in
+     * answer.
+     * <p>
+     * <b>No reactions, no chapter</b>, as on a system's tree: a component nothing has been observed reacting
+     * to gets no page rather than an empty one, and the landing page links only the chapters this run wrote.
      */
-    private static void writeRuntimeView(Arc42Template template, DocumentedComponent component,
-                                         GenerationContext context,
-                                         DocumentationPaths.ComponentPaths paths, Path structure)
+    private static boolean writeRuntimeView(Arc42Template template, DocumentedComponent component,
+                                            GenerationContext context,
+                                            DocumentationPaths.ComponentPaths paths, Path structure)
             throws IOException {
+        ReactionView reactions = context.reactions().ofComponent(component.name());
+        if (reactions.isEmpty()) {
+            return false;
+        }
         Path directory = Arc42Pages.chapterDirectory(template, structure, RUNTIME_VIEW);
 
         MarkdownWriter index = new MarkdownWriter()
@@ -897,19 +912,14 @@ final class Arc42ComponentPages {
         Arc42Pages.provenance(index, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
-        MarkdownWriter reactions = new MarkdownWriter()
+        MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(COMPONENT_REACTIONS_LABEL, 1, context))
                 .heading(1, COMPONENT_REACTIONS_LABEL)
-                .paragraph(Md.sentence("Which message makes {} react, and what it does in answer. The "
-                                       + "reactions are observed at runtime and imported from the reaction "
-                                       + "observer service; that import is not published yet, so this page "
-                                       + "is empty.", Md.code(component.name())))
-                .paragraph(Md.sentence("Until then, {} shows what this component exchanges with its "
-                                       + "neighbours.",
-                        Md.link(paths.page(CONTEXT_AND_SCOPE, COMPONENT_CONTEXT_VIEW_PAGE),
-                                "the component context view")));
-        Arc42Pages.provenance(reactions, context);
-        Arc42Pages.write(directory, COMPONENT_REACTIONS_PAGE + ".md", reactions);
+                .paragraph(Md.sentence("Which message makes {} react, and what it publishes in answer.",
+                        Md.code(component.name())));
+        Arc42ReactionPages.write(page, reactions, context, component.name());
+        Arc42Pages.write(directory, COMPONENT_REACTIONS_PAGE + ".md", page);
+        return true;
     }
 
     /**

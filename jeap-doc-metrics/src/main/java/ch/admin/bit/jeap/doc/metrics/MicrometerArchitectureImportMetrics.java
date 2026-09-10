@@ -7,6 +7,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
+import ch.admin.bit.jeap.doc.domain.port.ReactionGraphUpstream;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -43,6 +44,7 @@ public class MicrometerArchitectureImportMetrics implements ArchitectureImportMe
 
     private final ArchitectureImportRepository imports;
     private final ObjectProvider<ArchitectureModelUpstream> upstreams;
+    private final ObjectProvider<ReactionGraphUpstream> reactions;
     private final Clock clock;
 
     private MeterRegistry registry;
@@ -57,7 +59,9 @@ public class MicrometerArchitectureImportMetrics implements ArchitectureImportMe
         // which is what the alert is written to catch.
         for (String environment : configuredEnvironments()) {
             for (ArchitectureImportKind kind : ArchitectureImportKind.values()) {
-                bindGaugesFor(registry, environment, kind);
+                if (isImported(kind, environment)) {
+                    bindGaugesFor(registry, environment, kind);
+                }
             }
         }
         // And whatever else already has a row, so an environment taken out of the configuration goes on being
@@ -79,6 +83,24 @@ public class MicrometerArchitectureImportMetrics implements ArchitectureImportMe
         // that stops it.
         ArchitectureModelUpstream upstream = upstreams.getIfUnique();
         return upstream == null ? List.of() : upstream.environments().stream().sorted().toList();
+    }
+
+    /**
+     * Whether this instance imports that kind for that environment at all.
+     * <p>
+     * The reactions are the only kind that can be switched off, and a gauge for a kind nothing imports would
+     * read NaN for ever - which is exactly what the documented alert fires on. So the three reaction kinds are
+     * bound where a reaction observer is configured and nowhere else. A row that exists is still bound below,
+     * so an environment whose observer has been taken away goes on being reported.
+     */
+    private boolean isImported(ArchitectureImportKind kind, String environment) {
+        return switch (kind) {
+            case MODEL, OPENAPI_SPEC, DATABASE_SCHEMA, MESSAGE_SCHEMA -> true;
+            case SYSTEM_REACTIONS, COMPONENT_REACTIONS, MESSAGE_REACTIONS -> {
+                ReactionGraphUpstream observer = reactions.getIfUnique();
+                yield observer != null && observer.isConfiguredFor(environment);
+            }
+        };
     }
 
     @Override

@@ -300,8 +300,6 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
             /systems/orders/system-architecture/building-block-view/components/orders-intake/             | Takes payments in
             /systems/orders/system-architecture/building-block-view/events/                               | Events
             /systems/orders/system-architecture/building-block-view/events/orders-payment-accepted-event/ | OrdersPaymentAcceptedEvent
-            /systems/orders/system-architecture/runtime-view/                                             | Runtime View
-            /systems/orders/system-architecture/runtime-view/system-reactions/                            | System Reactions
             /systems/shipping/                                                                            | Sends the goods out
             /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/                                    | Component Architecture
             /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/intro/                              | Introduction and Goals
@@ -311,8 +309,6 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
             /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/building-block-view/database-schema/| Database Schema
             /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/building-block-view/rest-api/       | REST API
             /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/building-block-view/messages/       | Messages
-            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/runtime-view/                       | Runtime View
-            /systems/orders/system-architecture/building-block-view/components/orders-intake/component-architecture/runtime-view/component-reactions/   | Component Reactions
             """)
     void everyGeneratedPageIsServed(String path, String marker) throws Exception {
         build();
@@ -322,10 +318,15 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
 
     /**
      * The chapters with nothing to generate are not created, so a gap in the numbering is what a reader sees.
+     * <p>
+     * <b>The runtime view is among them here</b>, and it is the one that is empty for a reason other than the
+     * template: it holds what was observed reacting, this instance imports no reactions, and a chapter saying
+     * <i>this system does not react</i> is not what an absence means.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"constraints", "solution-strategy", "deployment-view", "crosscutting-concepts",
-            "architecture-decision-records", "quality-requirements", "risks", "glossary"})
+    @ValueSource(strings = {"constraints", "solution-strategy", "deployment-view", "runtime-view",
+            "crosscutting-concepts", "architecture-decision-records", "quality-requirements", "risks",
+            "glossary"})
     void theChaptersWithNothingInThemAreNotServed(String chapter) throws Exception {
         build();
 
@@ -459,14 +460,21 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
     }
 
     /**
-     * The runtime view is the one page generated empty on purpose, so it has to say what it is waiting for.
+     * <b>No reactions, no chapter</b> - and nothing links one either. A landing page that offered a chapter
+     * this run did not write would fail the site build, so the two rules are one fact seen from both sides.
      */
     @Test
-    void theRuntimeViewSaysWhatItIsWaitingFor() throws Exception {
+    void withoutReactions_neitherTheSystemNorItsComponentsHaveARuntimeView() throws Exception {
         build();
 
-        assertThat(page("/systems/orders/system-architecture/runtime-view/system-reactions/"))
-                .contains("reaction observer");
+        assertThat(page("/systems/orders/system-architecture/")).doesNotContain("Runtime View");
+        mockMvc.perform(get("/systems/orders/system-architecture/runtime-view/system-reactions/"))
+                .andExpect(status().isNotFound());
+
+        String component = "/systems/orders/system-architecture/building-block-view/components/orders-intake/"
+                           + "component-architecture/";
+        assertThat(page(component)).doesNotContain("Runtime View");
+        mockMvc.perform(get(component + "runtime-view/")).andExpect(status().isNotFound());
     }
 
     /**

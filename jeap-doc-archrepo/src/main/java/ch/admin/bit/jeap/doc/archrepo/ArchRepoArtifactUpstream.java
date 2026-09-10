@@ -1,5 +1,7 @@
 package ch.admin.bit.jeap.doc.archrepo;
 
+import ch.admin.bit.jeap.doc.upstream.UpstreamException;
+import ch.admin.bit.jeap.doc.upstream.UpstreamHttp;
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactRef;
@@ -68,10 +70,10 @@ class ArchRepoArtifactUpstream implements ArchitectureArtifactUpstream {
             return ArtifactFetch.skipped("its content URL cannot be fetched");
         }
         long cap = properties.getMaxArtifactSize().toBytes();
-        ArchRepoClients.Answer answer;
+        UpstreamHttp.Answer answer;
         try {
             answer = clients.retrying(() -> clients.getBounded(client, content.get(), knownEtag, cap));
-        } catch (ArchRepoException e) {
+        } catch (UpstreamException e) {
             if (e.isNotFound()) {
                 // It went away between the index and the fetch, which is a race and not an error. The index is
                 // asked unconditionally on the next run, so an artifact that comes back is offered again.
@@ -195,7 +197,7 @@ class ArchRepoArtifactUpstream implements ArchitectureArtifactUpstream {
     private <T> T call(String environment, Supplier<T> request) {
         try {
             return request.get();
-        } catch (ArchRepoException e) {
+        } catch (UpstreamException e) {
             throw ArchRepoModelUpstream.unavailable(environment, clients.urlOf(environment).orElse(""), e);
         } catch (RuntimeException e) {
             throw new ArchitectureModelUnavailableException(

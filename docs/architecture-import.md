@@ -1,8 +1,10 @@
 # Importing the architecture repository
 
-Everything the doc service reads from the architecture repository - the model, the OpenAPI specifications and
-the database schemas - is imported into its own database by **one job, per environment, on one schedule**. A
-documentation build reads what was imported and makes no call to the architecture repository at all.
+Everything the doc service reads from another service - the model, the OpenAPI specifications and the database
+schemas from the architecture repository, and the reaction graphs from the [reaction
+observer](#the-reactions-a-second-upstream-under-the-same-job) - is imported into its own database by **one
+job, per environment, on one schedule**. A documentation build reads what was imported and calls neither of
+them at all.
 
 ```mermaid
 flowchart LR
@@ -11,8 +13,10 @@ flowchart LR
   DB[("architecture_* tables")]
   Build["Documentation build"]
 
+  RO["Reaction observer<br/>/api/graphs"]
   AR -->|" model: fetched whole "| Job
   AR -->|" artifacts: only what moved "| Job
+  RO -->|" graphs: only what moved "| Job
   Job --> DB
   DB -->|" read, no HTTP "| Build
 ```
@@ -21,14 +25,17 @@ The point of it is that a documentation build no longer depends on a service tha
 architecture repository cannot be read, the site goes on being published from the landscape the last successful
 import stored, and every generated page names the import its content came from.
 
-## The four kinds
+## The seven kinds
 
-| Kind              | What it is                                            | How it is read                  |
-|-------------------|-------------------------------------------------------|---------------------------------|
-| `MODEL`           | The systems, their components, relations and messages | Fetched whole, replaced whole   |
-| `OPENAPI_SPEC`    | The OpenAPI specification a component publishes       | Only where its entity tag moved |
-| `DATABASE_SCHEMA` | The database schema a component publishes             | Only where its entity tag moved |
-| `MESSAGE_SCHEMA`  | The Avro schemas of a message type version            | Only where its entity tag moved |
+| Kind                  | What it is                                             | Read from               | How it is read                  |
+|-----------------------|--------------------------------------------------------|-------------------------|---------------------------------|
+| `MODEL`               | The systems, their components, relations and messages  | Architecture repository | Fetched whole, replaced whole   |
+| `OPENAPI_SPEC`        | The OpenAPI specification a component publishes        | Architecture repository | Only where its entity tag moved |
+| `DATABASE_SCHEMA`     | The database schema a component publishes              | Architecture repository | Only where its entity tag moved |
+| `MESSAGE_SCHEMA`      | The Avro schemas of a message type version             | Architecture repository | Only where its entity tag moved |
+| `SYSTEM_REACTIONS`    | The reaction graph of a system                         | Reaction observer       | Only where its entity tag moved |
+| `COMPONENT_REACTIONS` | The reaction graph of a component                      | Reaction observer       | Only where its entity tag moved |
+| `MESSAGE_REACTIONS`   | The reaction graphs of a message type, one per variant | Reaction observer       | Only where its entity tag moved |
 
 **The difference is not a preference, it is what the upstream does.** The architecture repository computes the
 entity tag of a model resource by serializing the whole body and hashing it, so answering "not modified" costs
@@ -70,6 +77,16 @@ per environment when it is.
 An answer that carries **no list of systems at all** fails the run rather than reading as a landscape without
 systems: a run that fetches no system replaces the stored model with an empty one, and Spring hands out a null
 body for any zero-length `200`. A landscape that really has none answers with an empty list.
+
+**Every name the index lists has to answer with itself.** A system is addressed upstream by name *or by alias*,
+so an alias of one system that is the name of another makes both entries answer with the same system - and
+importing that documents it twice, the second time under a name that is not its own: a page tree saying one
+thing and a heading saying another, while the system whose name was taken has no pages at all. A name whose
+answer is a different system is therefore **left out**, named in one `WARN` with both spellings, and the rest of
+the landscape is imported as usual. It is the one thing this step leaves out rather than fails over, because it
+is not a system it could not read - it is a second copy of one it already has. If *nothing* answers for itself
+the run fails instead: that is an upstream not serving this landscape at all, and importing nothing would
+replace the documentation of the whole environment with an empty one.
 
 ## Reading a landscape while one is being written
 
@@ -223,6 +240,59 @@ This service keys a version by the three the resource is addressed by, so the tw
 the index drops the repeat, and the store replaces rather than inserts. A blind insert would violate the unique
 index and record the whole environment as failed, on every run, for as long as the upstream kept listing it.
 
+<a id="the-reactions-a-second-upstream-under-the-same-job"></a>
+## The reactions: a second upstream under the same job
+
+The three reaction kinds come from the **reaction observer** of the environment - a different service, on a
+schedule of its own, which watches what actually reacts to what at runtime. They are steps of this import
+rather than a job of their own because everything one needs is already here: a lock per step, a deadline, a
+state row, a staleness gauge and an administration API.
+
+**One observer per environment**, configured under `jeap.doc.reactions.environments.<environment>`, and read
+with a client-credentials token carrying `<system-name>_@reactions_#read` on that stage's authorization
+server. The observer offers HTTP Basic as well and this service does not use it.
+
+**It is off by default.** A platform may run no reaction observer at all, and `jeap.doc.reactions.enabled` is
+what says whether this one does. Switched on with no environment configured, the service does not start - that
+way a platform without an observer and a property path with a typo do not look the same.
+
+**And an environment configured here has to have an architecture repository.** These are steps of that
+import, which runs the environments `jeap.doc.archrepo.environments` names, so an environment only the
+reactions name is never visited - and it could draw nothing anyway. That one fails the startup too. An
+environment with an architecture repository and no observer is the ordinary case and is not an error.
+
+**The observer has to be recent enough to serve the replication indexes.** One call per kind lists which graphs
+exist with the entity tag of each, so a round that finds nothing changed costs three requests per environment
+instead of one per system, per component and per message type. An observer that answers `404` on an index is
+older than the release that serves them - which is also the release that requires a resource server - and the
+environment fails with a message saying so rather than being read the slow way.
+
+### The names are resolved against the model
+
+**The observer's names are not the model's.** It stores a system name lower-cased and a component name exactly
+as the publishing service sent it, while the model has its own spellings and its aliases. So every name an
+index offers is resolved against the stored model of that environment - a system by name or alias ignoring
+case, a component by name within the system the observer says its reactions were published under - and **what
+is stored is the model's spelling**, with the observer's kept beside it in `upstream_name`.
+
+The observer's spelling is not only kept for the record: a message type's resource answers every variant at
+once, keyed by the names the index carried, so it is `upstream_name` that addresses the answer. Picking the
+variant out of it by the resolved name would lose every graph of a type the two spell differently.
+
+Two things follow from resolving before comparing:
+
+- **A name the model does not have is not imported**, and the run says so once with the names rather than a
+  bare count. It is the normal case for a system that reacts on a platform whose model does not carry it, and
+  it is also what a genuine mismatch looks like - so it is worth reading after the first import of a
+  landscape. The line counts **names and graphs apart** and spells each name once with the number of graphs
+  under it: a message type is listed once per variant, so a single type the model does not have can be eighty
+  entries, and a warning repeating that name eighty times says nothing about how much of the index it is.
+- **There is no orphan sweep.** A system that leaves the model stops being resolvable, so it stops being
+  listed, so the prune that exists for a graph the observer withdrew removes its graph too.
+
+A graph itself is **stored as it arrived**. Nothing in the import looks inside it: how a reaction graph is
+drawn is decided when a page is generated, so changing the drawing needs no re-import.
+
 ## Every name becomes a slug
 
 Turning a name into a path segment is the doc service's job, not a reason to leave something out. Diacritics
@@ -304,16 +374,21 @@ jeap_doc_architecture_import_last_success_age_seconds > 4 * 3600
   or jeap_doc_architecture_import_last_success_age_seconds != jeap_doc_architecture_import_last_success_age_seconds
 ```
 
-Every configured environment and every one of the four kinds is bound at startup, before any of them has run, so
+Every configured environment and every kind it can import is bound at startup, before any of them has run, so
 a kind that is new in a deployment reads `NaN` rather than being missing - the `absent(...)` clause above is
-false as soon as any other pair reports, so a missing series would not be caught by it.
+false as soon as any other pair reports, so a missing series would not be caught by it. **The four kinds the
+architecture repository serves are bound for every environment; the three reaction kinds only where that
+environment has a reaction observer configured**, because an environment without one imports no reactions and a
+series that could never move is a series nobody can alarm on. A pair that has been bound once keeps being
+reported.
 
 Beside it: `jeap.doc.architecture.import` times one run and tags what it did, `.items` counts what was stored,
-confirmed unchanged, removed or skipped - `skipped` staying above zero is an artifact the architecture
-repository serves and this service refuses, run after run - and `jeap.doc.architecture.artifacts` is how many
-are stored - a sudden drop
-there is an architecture repository that lost its data, which no failure counter catches because the run
-succeeded.
+confirmed unchanged, removed, skipped or - for the reactions - left unresolved, and
+`jeap.doc.architecture.artifacts` is how many are stored. `skipped` staying above zero is something an upstream
+serves and this service refuses, run after run; `unresolved` staying above zero is a name the reaction observer
+lists that the stored model does not have, so those graphs are never imported and the pages that would draw
+them are never written. A sudden drop in `artifacts` is an upstream that lost its data, which no failure counter
+catches because the run succeeded.
 
 **What each run did is on its row**, as `last_outcome` of `architecture_import` - `REPLACED`, `UNCHANGED`,
 `PARTIAL` or `FAILED`. An environment with no architecture repository writes no row at all, and no meter either:

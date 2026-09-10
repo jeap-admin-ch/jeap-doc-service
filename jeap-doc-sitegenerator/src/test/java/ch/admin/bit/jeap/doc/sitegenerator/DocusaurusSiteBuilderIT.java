@@ -246,6 +246,7 @@ class DocusaurusSiteBuilderIT {
         return new SiteSources(urls, resourceLoader,
                 new SystemPages(OneSystemEverywhere.INSTANCE, NoMessageSchemas.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                        NoReactions.INSTANCE, NoReactions.INSTANCE,
                         new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
                         new GeneratorProperties(),
                         new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),

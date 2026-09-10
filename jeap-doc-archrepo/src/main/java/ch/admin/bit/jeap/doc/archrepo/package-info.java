@@ -8,7 +8,11 @@
  * what was imported, through {@link ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource}, which the
  * domain implements over this service's own database.
  * <p>
- * It knows HTTP, OAuth2 and the payloads of the architecture repository. It knows nothing about pages, Markdown
- * or arc42, and answers with the doc service's own domain records.
+ * It knows the routes and the payloads of the architecture repository, and nothing about pages, Markdown or
+ * arc42 - it answers with the doc service's own domain records.
+ * <p>
+ * <b>How a request is made is not here.</b> The client, the bounded conditional read, the redirect rule, the
+ * entity tag and the retry policy are {@code jeap-doc-upstream}'s, shared with
+ * {@code jeap-doc-reactionobserver}, and neither adapter may keep a copy of them.
  */
 package ch.admin.bit.jeap.doc.archrepo;

@@ -300,6 +300,38 @@ class BuildShutdownIT {
             };
         }
 
+        /**
+         * And the three reaction kinds, whose client lives in another module again. An instance that reads no
+         * reactions is the default, so this is also the shape most instances really have - what it must not be
+         * is a context that will not start.
+         */
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.ReactionGraphUpstream reactionGraphUpstream() {
+            return new ch.admin.bit.jeap.doc.domain.port.ReactionGraphUpstream() {
+
+                @Override
+                public boolean isConfiguredFor(String environment) {
+                    return false;
+                }
+
+                @Override
+                public java.util.Optional<ch.admin.bit.jeap.doc.domain.port.Fetched<java.util.List<
+                        ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionGraphRef>>> index(
+                        String environment,
+                        ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind,
+                        String knownIndexEtag) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public ch.admin.bit.jeap.doc.domain.port.GraphFetch content(String environment,
+                        ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionGraphRef ref,
+                        String knownEtag) {
+                    return ch.admin.bit.jeap.doc.domain.port.GraphFetch.skipped("nothing is served here");
+                }
+            };
+        }
+
         @Bean
         ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics architectureImportMetrics() {
             return ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics.NONE;

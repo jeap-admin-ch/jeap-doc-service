@@ -6,6 +6,10 @@ import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUnavailableException;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionGraphRef;
+import ch.admin.bit.jeap.doc.domain.port.Fetched;
+import ch.admin.bit.jeap.doc.domain.port.GraphFetch;
+import ch.admin.bit.jeap.doc.domain.port.ReactionGraphUpstream;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemTopology;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import io.micrometer.core.instrument.Meter;
@@ -47,7 +51,7 @@ class MicrometerArchitectureImportMetricsTest {
         registry = new SimpleMeterRegistry();
         imports = new InMemoryImports();
         metrics = new MicrometerArchitectureImportMetrics(imports, providerOf(new TwoEnvironments()),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                providerOf(null), Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     /**
@@ -61,7 +65,8 @@ class MicrometerArchitectureImportMetricsTest {
         metrics.bindTo(registry);
 
         assertThat(registry.find("jeap.doc.architecture.import.last.success.age").gauges())
-                .describedAs("two environments times the four kinds").hasSize(8);
+                .describedAs("two environments times the four kinds read from the architecture repository")
+                .hasSize(8);
         assertThat(registry.find("jeap.doc.architecture.import.last.success.age")
                 .tag("environment", "prod").tag("kind", "message_schema").gauge().value())
                 .describedAs("never imported reads NaN, not zero").isNaN();
@@ -95,7 +100,8 @@ class MicrometerArchitectureImportMetricsTest {
     @Test
     void bindTo_whenTheArchitectureRepositoryIsConfiguredForNoEnvironment_thenNothingIsBound() {
         MicrometerArchitectureImportMetrics withoutEnvironments = new MicrometerArchitectureImportMetrics(
-                imports, providerOf(new NoEnvironments()), Clock.fixed(NOW, ZoneOffset.UTC));
+                imports, providerOf(new NoEnvironments()), providerOf(null),
+                Clock.fixed(NOW, ZoneOffset.UTC));
 
         withoutEnvironments.bindTo(registry);
 
@@ -116,7 +122,7 @@ class MicrometerArchitectureImportMetricsTest {
     @Test
     void bindTo_whenNoArchitectureRepositoryIsConfigured_thenNothingIsBoundAndNothingFails() {
         MicrometerArchitectureImportMetrics withoutUpstream =
-                new MicrometerArchitectureImportMetrics(imports, providerOf(null),
+                new MicrometerArchitectureImportMetrics(imports, providerOf(null), providerOf(null),
                         Clock.fixed(NOW, ZoneOffset.UTC));
 
         withoutUpstream.bindTo(registry);
@@ -170,7 +176,7 @@ class MicrometerArchitectureImportMetricsTest {
     void imported_thenTheTimerPublishesNoHistogramBuckets() {
         RecordingHistogramConfig recording = new RecordingHistogramConfig();
         MicrometerArchitectureImportMetrics boundMetrics = new MicrometerArchitectureImportMetrics(imports,
-                providerOf(new TwoEnvironments()), Clock.fixed(NOW, ZoneOffset.UTC));
+                providerOf(new TwoEnvironments()), providerOf(null), Clock.fixed(NOW, ZoneOffset.UTC));
         boundMetrics.bindTo(recording);
 
         boundMetrics.imported("dev", ArchitectureImportKind.MODEL, ImportOutcome.REPLACED,
@@ -192,7 +198,7 @@ class MicrometerArchitectureImportMetricsTest {
                 .counter().count()).isEqualTo(40d);
     }
 
-    /** The tag values of the four kinds and the four outcomes, which dashboards and alerts are written on. */
+    /** The tag values of the seven kinds and the four outcomes, which dashboards and alerts are written on. */
     @Test
     void tags_thenTheKindsAndOutcomesAreSpelledAsTheDocumentationSaysTheyAre() {
         metrics.bindTo(registry);
@@ -205,12 +211,67 @@ class MicrometerArchitectureImportMetricsTest {
         }
 
         assertThat(tagValuesOf("jeap.doc.architecture.import", "kind"))
-                .containsExactlyInAnyOrder("model", "openapi_spec", "database_schema", "message_schema");
+                .containsExactlyInAnyOrder("model", "openapi_spec", "database_schema", "message_schema",
+                        "system_reactions", "component_reactions", "message_reactions");
         assertThat(tagValuesOf("jeap.doc.architecture.import", "result"))
                 .contains("replaced", "unchanged", "partial", "failed");
     }
 
 
+
+    /**
+     * <b>A kind nothing imports must not be bound.</b> The reactions are the one kind that can be switched
+     * off, and the documented alert fires on a gauge that reads NaN - so binding the three of them on an
+     * instance without a reaction observer would alarm every such instance for ever.
+     */
+    @Test
+    void bindTo_whenNoReactionObserverIsConfigured_thenTheReactionKindsAreNotBound() {
+        metrics.bindTo(registry);
+
+        assertThat(tagValuesOf("jeap.doc.architecture.import.last.success.age", "kind"))
+                .doesNotContain("system_reactions", "component_reactions", "message_reactions");
+    }
+
+    /** And where one is, the three kinds report before they have run, like every other kind. */
+    @Test
+    void bindTo_whenAReactionObserverIsConfigured_thenTheThreeReactionKindsReportToo() {
+        MicrometerArchitectureImportMetrics withReactions = new MicrometerArchitectureImportMetrics(imports,
+                providerOf(new TwoEnvironments()), providerOf(reactionsIn("dev")),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        withReactions.bindTo(registry);
+
+        assertThat(registry.find("jeap.doc.architecture.import.last.success.age")
+                .tag("environment", "dev").tag("kind", "system_reactions").gauge().value())
+                .describedAs("never imported reads NaN, not zero").isNaN();
+        assertThat(registry.find("jeap.doc.architecture.import.last.success.age")
+                .tag("environment", "prod").tag("kind", "system_reactions").gauges())
+                .describedAs("prod has no observer configured").isEmpty();
+    }
+
+    /** A reaction observer configured for the named environments and no other. */
+    private static ReactionGraphUpstream reactionsIn(String... environments) {
+        Set<String> configured = Set.of(environments);
+        return new ReactionGraphUpstream() {
+
+            @Override
+            public boolean isConfiguredFor(String environment) {
+                return configured.contains(environment);
+            }
+
+            @Override
+            public Optional<Fetched<List<ReactionGraphRef>>> index(String environment,
+                                                                   ArchitectureImportKind kind,
+                                                                   String knownIndexEtag) {
+                throw new UnsupportedOperationException("This test binds meters and fetches nothing.");
+            }
+
+            @Override
+            public GraphFetch content(String environment, ReactionGraphRef ref, String knownEtag) {
+                throw new UnsupportedOperationException("This test binds meters and fetches nothing.");
+            }
+        };
+    }
 
     private Set<String> tagValuesOf(String meter, String tag) {
         return registry.find(meter).meters().stream()

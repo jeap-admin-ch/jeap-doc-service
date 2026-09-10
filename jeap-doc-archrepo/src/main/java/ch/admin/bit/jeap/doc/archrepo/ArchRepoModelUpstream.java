@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.archrepo;
 
+import ch.admin.bit.jeap.doc.upstream.UpstreamException;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
 import ch.admin.bit.jeap.doc.domain.architecture.ContractRole;
 import ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchemaReference;
@@ -99,7 +100,7 @@ class ArchRepoModelUpstream implements ArchitectureModelUpstream {
     private <T> T read(String environment, Supplier<T> request) {
         try {
             return request.get();
-        } catch (ArchRepoException e) {
+        } catch (UpstreamException e) {
             throw unavailable(environment, clients.urlOf(environment).orElse(""), e);
         } catch (RuntimeException e) {
             throw new ArchitectureModelUnavailableException(
@@ -115,7 +116,7 @@ class ArchRepoModelUpstream implements ArchitectureModelUpstream {
     private <T> Optional<T> whatIsThere(String environment, Supplier<T> request) {
         try {
             return Optional.ofNullable(request.get());
-        } catch (ArchRepoException e) {
+        } catch (UpstreamException e) {
             if (e.isNotFound()) {
                 return Optional.empty();
             }
@@ -128,7 +129,7 @@ class ArchRepoModelUpstream implements ArchitectureModelUpstream {
     }
 
     static ArchitectureModelUnavailableException unavailable(String environment, String upstream,
-                                                             ArchRepoException e) {
+                                                             UpstreamException e) {
         if (e.isUnauthorized()) {
             return new ArchitectureModelUnavailableException(
                     ("The doc service is not allowed to read the architecture model of the environment %s at "

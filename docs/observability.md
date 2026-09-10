@@ -197,12 +197,12 @@ Its four meters, and the alert to write on them, are on
 [The architecture import](architecture-import.md#what-it-reports-about-itself) - beside the explanation of what
 a partial run leaves behind, which is what that alert is really about.
 
-| Meter                                           | Kind    | Tags                             | What it is                                                                                                       |
-|-------------------------------------------------|---------|----------------------------------|------------------------------------------------------------------------------------------------------------------|
-| `jeap.doc.architecture.import.last.success.age` | Gauge   | `environment`, `kind`            | How long ago the last successful import was, `NaN` if there has never been one. **The one to alarm on**           |
-| `jeap.doc.architecture.artifacts`               | Gauge   | `environment`, `kind`            | How many things of that kind are stored, `NaN` before the first success. A drop is an arch repo that lost its data |
-| `jeap.doc.architecture.import`                  | Timer   | `environment`, `kind`, `result`  | One run: how long it took and how it ended                                                                        |
-| `jeap.doc.architecture.import.items`            | Counter | `environment`, `kind`, `outcome` | What a run did: `stored`, `unchanged`, `removed`, `skipped`                                                       |
+| Meter                                           | Kind    | Tags                             | What it is                                                                                                                                                                                     |
+|-------------------------------------------------|---------|----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.architecture.import.last.success.age` | Gauge   | `environment`, `kind`            | How long ago the last successful import was, `NaN` if there has never been one. **The one to alarm on**. The three reaction kinds are bound only where the environment has a reaction observer |
+| `jeap.doc.architecture.artifacts`               | Gauge   | `environment`, `kind`            | How many things of that kind are stored, `NaN` before the first success. A drop is an arch repo that lost its data                                                                             |
+| `jeap.doc.architecture.import`                  | Timer   | `environment`, `kind`, `result`  | One run: how long it took and how it ended                                                                                                                                                     |
+| `jeap.doc.architecture.import.items`            | Counter | `environment`, `kind`, `outcome` | What a run did: `stored`, `unchanged`, `removed`, `skipped`, and `unresolved` for the reaction kinds                                                                                           |
 
 ## What to alarm on
 

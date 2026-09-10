@@ -1,4 +1,4 @@
-package ch.admin.bit.jeap.doc.archrepo;
+package ch.admin.bit.jeap.doc.upstream;
 
 import lombok.Getter;
 
@@ -9,12 +9,12 @@ import lombok.Getter;
  * then decide whether to skip one system or give up on the run.
  */
 @Getter
-public class ArchRepoException extends RuntimeException {
+public class UpstreamException extends RuntimeException {
 
     private final int status;
     private final String problemType;
 
-    public ArchRepoException(String message, int status, String problemType, Throwable cause) {
+    public UpstreamException(String message, int status, String problemType, Throwable cause) {
         super(message, cause);
         this.status = status;
         this.problemType = problemType;
@@ -44,7 +44,7 @@ public class ArchRepoException extends RuntimeException {
     /**
      * A failure the client retries. Thrown for {@code 5xx} and {@code 429}.
      */
-    public static class Retryable extends ArchRepoException {
+    public static class Retryable extends UpstreamException {
 
         public Retryable(String message, int status, String problemType, Throwable cause) {
             super(message, status, problemType, cause);

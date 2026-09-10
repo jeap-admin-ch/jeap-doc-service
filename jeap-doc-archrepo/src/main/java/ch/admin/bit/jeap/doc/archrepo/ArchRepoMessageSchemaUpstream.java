@@ -1,5 +1,7 @@
 package ch.admin.bit.jeap.doc.archrepo;
 
+import ch.admin.bit.jeap.doc.upstream.UpstreamException;
+import ch.admin.bit.jeap.doc.upstream.UpstreamHttp;
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageSchema;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef;
@@ -70,10 +72,10 @@ class ArchRepoMessageSchemaUpstream implements MessageSchemaUpstream {
             return SchemaFetch.skipped("its content URL cannot be fetched");
         }
         long cap = properties.getMaxArtifactSize().toBytes();
-        ArchRepoClients.Answer answer;
+        UpstreamHttp.Answer answer;
         try {
             answer = clients.retrying(() -> clients.getBounded(client, resource.get(), knownEtag, cap));
-        } catch (ArchRepoException e) {
+        } catch (UpstreamException e) {
             if (e.isNotFound()) {
                 // It went away between the index and the fetch - a message type withdrawn while the run was
                 // reading. The next run asks the index again and simply does not list it.
@@ -226,7 +228,7 @@ class ArchRepoMessageSchemaUpstream implements MessageSchemaUpstream {
     private <T> T call(String environment, java.util.function.Supplier<T> request) {
         try {
             return request.get();
-        } catch (ArchRepoException e) {
+        } catch (UpstreamException e) {
             throw ArchRepoModelUpstream.unavailable(environment, clients.urlOf(environment).orElse(""), e);
         } catch (RuntimeException e) {
             throw new ArchitectureModelUnavailableException(

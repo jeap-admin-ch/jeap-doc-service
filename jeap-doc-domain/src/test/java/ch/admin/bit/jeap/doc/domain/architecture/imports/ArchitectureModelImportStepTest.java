@@ -425,6 +425,51 @@ class ArchitectureModelImportStepTest {
                 .doesNotContain("systems '");
     }
 
+    /**
+     * <b>An index entry has to answer with itself.</b> Upstream a system is addressed by name or by alias, so
+     * an alias of one system that is the name of another makes both entries answer with the same system -
+     * which would document it twice, the second time under a name that is not its own.
+     */
+    @Test
+    void run_whenASystemAnswersWithAnotherSystem_thenItIsLeftOutAndTheRestIsImported() {
+        upstream.has("Orders", "Shared");
+        upstream.answersWith("Shared", "Orders");
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
+
+        assertThat(models.stored.systems()).extracting(DocumentedSystem::name).containsExactly("Orders");
+        assertThat(models.stored.systems()).extracting(DocumentedSystem::slug).containsExactly("orders");
+    }
+
+    /** A name that differs only in case or in whitespace is the system that was asked for. */
+    @Test
+    void run_whenASystemAnswersWithItsNameSpelledDifferently_thenItIsImported() {
+        upstream.has("Orders");
+        upstream.answersWith("Orders", " orders ");
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
+
+        assertThat(models.stored.systems()).extracting(DocumentedSystem::name).containsExactly(" orders ");
+    }
+
+    /**
+     * <b>The floor under the skip.</b> An upstream where nothing answers for itself is not a landscape this
+     * service can leave one system out of - importing nothing would replace the documentation of the whole
+     * environment with an empty one, which is what every other failure here is careful not to do.
+     */
+    @Test
+    void run_whenEverySystemAnswersWithAnother_thenNothingIsWritten() {
+        upstream.has("Orders", "Shared");
+        upstream.answersWith("Orders", "Something else");
+        upstream.answersWith("Shared", "Something else");
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.FAILED);
+
+        assertThat(models.writes).isZero();
+        assertThat(imports.state(ENVIRONMENT, ArchitectureImportKind.MODEL).failureReason())
+                .contains("Not one of the 2 systems").contains("dev");
+    }
+
     @Test
     void run_whenNoArchitectureRepositoryIsConfigured_thenNothingHappens() {
         assertThat(step.run("no-archrepo", Deadline.none())).isEqualTo(ImportOutcome.NOT_CONFIGURED);
@@ -436,6 +481,7 @@ class ArchitectureModelImportStepTest {
         private final Map<String, List<String>> messages = new LinkedHashMap<>();
         private List<String> systems = List.of();
         private String failing;
+        private final Map<String, String> answeredWith = new LinkedHashMap<>();
         private String vanishing;
         private int vanishesTimes;
         private ZonedDateTime lastSeen;
@@ -466,6 +512,11 @@ class ArchitectureModelImportStepTest {
 
         void failsOn(String system) {
             failing = system;
+        }
+
+        /** What an alias of one system that is the name of another does upstream: both names, one system. */
+        void answersWith(String system, String answered) {
+            answeredWith.put(system, answered);
         }
 
         void vanishesOnce(String system) {
@@ -507,7 +558,8 @@ class ArchitectureModelImportStepTest {
                 parts.add(new DocumentedComponent(name, null, null, ComponentType.of("BACKEND"), null, null,
                         lastSeen, List.of(), null, null, null));
             }
-            return Optional.of(new SystemTopology(system, null, List.of(), null, parts, List.of()));
+            return Optional.of(new SystemTopology(answeredWith.getOrDefault(system, system), null, List.of(),
+                    null, parts, List.of()));
         }
 
         @Override

@@ -19,6 +19,7 @@ flowchart LR
         Storage[jeap-doc-objectstorage<br/>driven adapter]
         Generator[jeap-doc-sitegenerator<br/>driven adapter]
         ArchRepo[jeap-doc-archrepo<br/>driven adapter]
+        Reactions[jeap-doc-reactionobserver<br/>driven adapter]
     end
     subgraph Templates[Structure template plugins]
         Arc42[jeap-doc-template-arc42]
@@ -28,6 +29,7 @@ flowchart LR
     Domain -.->|port| Storage
     Domain -.->|port| Generator
     Domain -.->|port| ArchRepo
+    Domain -.->|port| Reactions
     Arc42 -.->|implements StructureTemplate| Domain
     Generator -.->|injected| Templates
     Web -.->|injected| Templates
@@ -35,23 +37,28 @@ flowchart LR
     Storage --> S3[(S3 object storage)]
     Generator --> Node[Site generator<br/>child process]
     ArchRepo --> Model[(Architecture repository)]
+    Reactions --> Observer[(Reaction observer)]
+    ArchRepo -.->|transport| Upstream[jeap-doc-upstream<br/>support]
+    Reactions -.->|transport| Upstream
 ```
 
 ## Modules
 
-| Module                      | Role               | Contents                                                                                                              |
-|-----------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `jeap-doc-domain`           | domain             | The model of the documentation, the services acting on it and the ports it needs - see [its packages](#the-packages-of-the-domain) |
-| `jeap-doc-markdown`         | support            | How a page is written: Markdown, front matter, `_category_.json` - **and the escaping**. No dependencies at all       |
-| `jeap-doc-template-arc42`   | plugin             | arc42: its twelve chapters, its structural rules, and the pages generated into them from the architecture model       |
-| `jeap-doc-persistence`      | driven adapter     | Spring Data JPA on PostgreSQL (the uploads, the builds, the architecture model and what is replicated beside it), and the Flyway migrations |
-| `jeap-doc-objectstorage`    | driven adapter     | S3 over the jEAP object storage starter, and the startup check of the bucket                                          |
-| `jeap-doc-sitegenerator`    | driven adapter     | Produces the site: the build workspace, what the site template reads, the site template itself, the generator process |
-| `jeap-doc-archrepo`         | driven adapter     | Everything about the architecture repository: the client of its `/docs-api` behind the three upstream ports of [the import](architecture-import.md), and the reading of a replicated artifact behind `ArchitectureArtifactContent` |
-| `jeap-doc-metrics`          | driven adapter     | The Micrometer meters behind the `UploadMetrics`, `BuildMetrics` and `ArchitectureImportMetrics` ports, and the container memory gauges, which are read in this module and have no port in the domain - nothing in the domain asks what the container holds |
-| `jeap-doc-site`             | resources          | The site generator's own application - no Java. Read from the classpath, never from a directory beside the jar        |
-| `jeap-doc-web`              | driving adapter    | The Spring Boot application: REST API, OpenAPI, security, and the documentation it serves                             |
-| `jeap-doc-service-instance` | packaging          | POM-only module a project inherits from, or depends on, to create its own doc service instance                        |
+| Module                      | Role            | Contents                                                                                                                                                                                                                                                                                                    |
+|-----------------------------|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap-doc-domain`           | domain          | The model of the documentation, the services acting on it and the ports it needs - see [its packages](#the-packages-of-the-domain)                                                                                                                                                                          |
+| `jeap-doc-markdown`         | support         | How a page is written: Markdown, front matter, `_category_.json` - **and the escaping**. No dependencies at all                                                                                                                                                                                             |
+| `jeap-doc-template-arc42`   | plugin          | arc42: its twelve chapters, its structural rules, and the pages generated into them from the architecture model                                                                                                                                                                                             |
+| `jeap-doc-persistence`      | driven adapter  | Spring Data JPA on PostgreSQL (the uploads, the builds, the architecture model and what is replicated beside it), and the Flyway migrations                                                                                                                                                                 |
+| `jeap-doc-objectstorage`    | driven adapter  | S3 over the jEAP object storage starter, and the startup check of the bucket                                                                                                                                                                                                                                |
+| `jeap-doc-sitegenerator`    | driven adapter  | Produces the site: the build workspace, what the site template reads, the site template itself, the generator process                                                                                                                                                                                       |
+| `jeap-doc-upstream`         | support         | How another jEAP service is called and replicated: the client and its token, the bounded conditional `GET`, entity tags, redirects, content URLs, one exception with a retry policy over it. **No bean, no auto-configuration, no properties** - and what the two upstream adapters below may not duplicate |
+| `jeap-doc-archrepo`         | driven adapter  | Everything about the architecture repository: the client of its `/docs-api` behind the three upstream ports of [the import](architecture-import.md), and the reading of a replicated artifact behind `ArchitectureArtifactContent`                                                                          |
+| `jeap-doc-reactionobserver` | driven adapter  | Everything about the reaction observer: the client of its replication API behind `ReactionGraphUpstream`, which [the import](architecture-import.md) reads the reaction graphs of an environment through                                                                                                    |
+| `jeap-doc-metrics`          | driven adapter  | The Micrometer meters behind the `UploadMetrics`, `BuildMetrics` and `ArchitectureImportMetrics` ports, and the container memory gauges, which are read in this module and have no port in the domain - nothing in the domain asks what the container holds                                                 |
+| `jeap-doc-site`             | resources       | The site generator's own application - no Java. Read from the classpath, never from a directory beside the jar                                                                                                                                                                                              |
+| `jeap-doc-web`              | driving adapter | The Spring Boot application: REST API, OpenAPI, security, and the documentation it serves                                                                                                                                                                                                                   |
+| `jeap-doc-service-instance` | packaging       | POM-only module a project inherits from, or depends on, to create its own doc service instance                                                                                                                                                                                                              |
 
 ### The packages of the domain
 

@@ -10,6 +10,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchemaReference;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
+import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageContract;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
@@ -22,8 +23,10 @@ import ch.admin.bit.jeap.doc.domain.architecture.SchemaForeignKey;
 import ch.admin.bit.jeap.doc.domain.architecture.SchemaTable;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.DocumentedApiPaths;
+import ch.admin.bit.jeap.doc.domain.template.ReactionViews;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.markdown.CategoryFile;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
@@ -41,6 +44,7 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -100,6 +104,20 @@ class Arc42ComponentTreeTest {
         generate(componentOf(orders, "orders-intake"));
     }
 
+    /** When the graphs of these tests were imported, which the pages name. */
+    private static final Instant REACTIONS_IMPORTED_AT = Instant.parse("2026-09-09T06:00:00Z");
+
+    /** One message triggering one reaction of this component, as its own graph. */
+    private ReactionViews reactionsOfIntake() {
+        ObservedReactions observed = new ObservedReactions(
+                List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake")),
+                List.of(new ObservedReactions.ObservedTrigger(1, 2, 12)), List.of());
+        return ReactionViews.of(REACTIONS_IMPORTED_AT, ReactionView.empty(),
+                Map.of("orders-intake", ReactionView.of(observed, context.model(), orders)), Map.of(),
+                Set.of("orders-intake"));
+    }
+
     private void generate(DocumentedComponent component) throws IOException {
         Arc42ComponentPages.write(template, orders, component, context, componentDirectory);
     }
@@ -107,6 +125,9 @@ class Arc42ComponentTreeTest {
     /** A component with everything the architecture repository can know about one. */
     @Test
     void theTreeIsTheOneTheUrlLayoutPromises() throws IOException {
+        // With reactions, because chapter 6 is part of the layout wherever something was observed.
+        context = context.withReactions(reactionsOfIntake());
+
         generate();
 
         assertThat(filesUnder(componentDirectory)).containsExactlyInAnyOrder(
@@ -149,19 +170,18 @@ class Arc42ComponentTreeTest {
                 "component-architecture/1-intro/index.md",
                 "component-architecture/3-context-and-scope/_category_.json",
                 "component-architecture/3-context-and-scope/index.md",
-                "component-architecture/3-context-and-scope/context-view.md",
-                "component-architecture/6-runtime-view/_category_.json",
-                "component-architecture/6-runtime-view/index.md",
-                "component-architecture/6-runtime-view/component-reactions.md");
+                "component-architecture/3-context-and-scope/context-view.md");
         assertThat(read("component-architecture/index.md"))
-                .describedAs("the landing page lists the three chapters that exist and no more")
+                .describedAs("the landing page lists the two chapters that exist and no more")
                 .contains("1. Introduction and Goals")
                 .contains("3. Context and Scope")
-                .contains("6. Runtime View")
-                .doesNotContain("5. Building Block View");
+                .doesNotContain("5. Building Block View")
+                .describedAs("nothing was observed reacting to it either")
+                .doesNotContain("6. Runtime View");
         assertThat(everyPage())
                 .describedAs("and no page of the tree links into a chapter that was not written")
-                .allSatisfy(page -> assertThat(page).doesNotContain(STRUCTURE_URL + "building-block-view/"));
+                .allSatisfy(page -> assertThat(page).doesNotContain(STRUCTURE_URL + "building-block-view/")
+                        .doesNotContain(STRUCTURE_URL + "runtime-view/"));
     }
 
     /**
@@ -203,6 +223,8 @@ class Arc42ComponentTreeTest {
      */
     @Test
     void theLandingPageNamesTheComponentTheSystemAndTheChaptersThatExist() throws IOException {
+        context = context.withReactions(reactionsOfIntake());
+
         generate();
 
         assertThat(read("component-architecture/index.md"))
@@ -806,15 +828,46 @@ class Arc42ComponentTreeTest {
                 "component-architecture/5-building-block-view/messages.md")).doesNotExist();
     }
 
-    /** The one page generated empty on purpose has to say what it is waiting for. */
+    /**
+     * <b>No reactions, no chapter 6.</b> A component nothing has been observed reacting to gets no page, and
+     * the landing page does not offer one.
+     */
     @Test
-    void theRuntimeViewSaysWhatItIsWaitingFor() throws IOException {
+    void theRuntimeView_whenNothingWasObserved_thenTheChapterIsNotWritten() throws IOException {
+        generate();
+
+        assertThat(Files.exists(componentDirectory.resolve("component-architecture/6-runtime-view"))).isFalse();
+        assertThat(read("component-architecture/index.md")).doesNotContain("Runtime View");
+    }
+
+    @Test
+    void theRuntimeView_whenReactionsWereObserved_thenTheyAreDrawnAndListed() throws IOException {
+        context = context.withReactions(reactionsOfIntake());
+
         generate();
 
         assertThat(read("component-architecture/6-runtime-view/component-reactions.md"))
                 .contains("# Component Reactions")
-                .contains("reaction observer")
-                .contains(STRUCTURE_URL + "context-and-scope/context-view/");
+                .contains("```dot")
+                .contains("digraph \"reactions\"")
+                .contains("\"REACTION-2\" [id=\"REACTION-2\"")
+                .contains("| Triggered by | Component | Publishes in answer | Times observed |")
+                .contains("Observed at runtime by the reaction observer");
+        assertThat(read("component-architecture/index.md")).contains("Runtime View");
+    }
+
+    /**
+     * The page a deep link from a system's graph lands on: the same reaction, addressed by the same id, so
+     * the plugin can highlight it.
+     */
+    @Test
+    void theRuntimeView_thenTheReactionCarriesTheIdASystemsGraphLinksTo() throws IOException {
+        context = context.withReactions(reactionsOfIntake());
+
+        generate();
+
+        assertThat(read("component-architecture/6-runtime-view/component-reactions.md"))
+                .contains("id=\"REACTION-2\"");
     }
 
     /** Every generated page says where it came from and when, and carries the machine-readable status. */
@@ -1089,6 +1142,8 @@ class Arc42ComponentTreeTest {
      */
     @Test
     void everyFileWrittenIntoAChapterIsAReservedName() throws IOException {
+        context = context.withReactions(reactionsOfIntake());
+
         generate();
 
         Path structure = componentDirectory.resolve("component-architecture");

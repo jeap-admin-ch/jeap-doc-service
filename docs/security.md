@@ -121,17 +121,24 @@ which skips the API and the actuator paths.
 
 ## What the doc service is a client of
 
-Everything above is about who may call the doc service. It calls one service itself: the architecture
-repository, to read the model it generates the documentation from.
+Everything above is about who may call the doc service. It calls two services itself: the architecture
+repository, to read the model it generates the documentation from, and - where it is configured - the reaction
+observer, to read what reacts to what at runtime.
 
-|               |                                                                                                                                                                   |
-|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| How           | A client-credentials token of this service, obtained through `JeapOAuth2RestClientBuilderFactory` - the jEAP way of calling another service in the system context |
-| Which role    | `<system-name>_@architecture-model_#read`, granted on the **architecture repository's** authorization server, which is not this service's own                     |
-| Configured as | `jeap.doc.archrepo.environments.<environment>.client-registration`, naming a `spring.security.oauth2.client.registration` entry                                   |
-| Secret        | From the secret store of the platform. Never in a repository                                                                                                      |
+|               |                                                                                                                                                                                                                                                                     |
+|---------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| How           | A client-credentials token of this service, obtained through `JeapOAuth2RestClientBuilderFactory` - the jEAP way of calling another service in the system context                                                                                                   |
+| Which role    | `<system-name>_@architecture-model_#read` for the architecture repository, `<system-name>_@reactions_#read` for the reaction observer - both **without a tenant part**, and both granted on **that upstream's** authorization server rather than this service's own |
+| Configured as | `jeap.doc.archrepo.environments.<environment>.client-registration` and `jeap.doc.reactions.environments.<environment>.client-registration`, each naming a `spring.security.oauth2.client.registration` entry                                                        |
+| Secret        | From the secret store of the platform. Never in a repository                                                                                                                                                                                                        |
 
-The doc service reads; the architecture repository never calls back. There is no inbound surface for this.
+**The reaction observer is read with a token and with nothing else.** It also accepts HTTP Basic with an
+in-memory user, which is what the architecture repository's own importer uses; this service does not, because a
+second credential model is one more thing to operate and rotate. The consequence is a version floor: the
+release of the observer that requires a resource server is the one an environment has to be on before it can be
+configured here.
+
+The doc service reads; neither upstream calls back. There is no inbound surface for this.
 
 A refused token fails the **import**, not a build: a build makes no call to the architecture repository at all,
 and what it generates from is what the last successful import stored. So the documentation of an environment goes

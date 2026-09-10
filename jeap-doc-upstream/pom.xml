@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ch.admin.bit.jeap</groupId>
+        <artifactId>jeap-doc-service</artifactId>
+        <version>2.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>jeap-doc-upstream</artifactId>
+    <name>${project.groupId}:${project.artifactId}</name>
+
+    <!--
+        How this service calls another jEAP service and replicates what it answers: the client that carries a
+        client-credentials token, the bounded conditional GET, and the rules about redirects, entity tags and
+        content URLs that go with them.
+
+        Not an adapter, and deliberately not one. It contributes no bean, no auto-configuration and no
+        configuration properties of its own, and it knows nothing about the domain - it is a library of
+        transport, the shape jeap-doc-markdown already has in this build. Two adapters depend on it,
+        jeap-doc-archrepo and jeap-doc-reactionobserver, and it depends on neither.
+    -->
+    <dependencies>
+        <dependency>
+            <!-- the RestClient, and the request-factory builders it is configured through -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
+        </dependency>
+        <dependency>
+            <!-- the problem-document reader names JsonMapper and JsonNode directly -->
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <!-- JeapOAuth2RestClientBuilderFactory: the jEAP way of calling another service in the system
+                 context, which is what puts a semantic role in the token -->
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-spring-boot-security-starter</artifactId>
+        </dependency>
+        <dependency>
+            <!-- lombok and slf4j, which the parent manages, arrive with it -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

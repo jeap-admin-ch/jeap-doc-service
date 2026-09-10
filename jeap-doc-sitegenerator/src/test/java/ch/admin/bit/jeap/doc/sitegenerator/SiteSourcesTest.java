@@ -209,6 +209,7 @@ class SiteSourcesTest {
         return new SiteSources(urls, new DefaultResourceLoader(),
                 new SystemPages(new OneSystemIn(modelled), NoMessageSchemas.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                        NoReactions.INSTANCE, NoReactions.INSTANCE,
                         new StructureTemplates(List.of()), new GeneratorProperties(),
                         new ArchitectureImportProperties(), BuildMetrics.NONE, urls),
                 new DocumentationSites(new SiteProperties()),
@@ -223,7 +224,8 @@ class SiteSourcesTest {
         SiteUrls urls = new SiteUrls(publication, "");
         return new SiteSources(urls, new DefaultResourceLoader(),
                 new SystemPages(landscape, NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
-                        NoArchitectureArtifacts.INSTANCE, new StructureTemplates(List.of()),
+                        NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new StructureTemplates(List.of()),
                         new GeneratorProperties(), new ArchitectureImportProperties(), BuildMetrics.NONE, urls),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(landscape), new BuildProperties(),

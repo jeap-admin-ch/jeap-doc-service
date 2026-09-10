@@ -7,7 +7,7 @@
     <parent>
         <groupId>ch.admin.bit.jeap</groupId>
         <artifactId>jeap-doc-service</artifactId>
-        <version>2.0.0-SNAPSHOT</version>
+        <version>2.1.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>jeap-doc-archrepo</artifactId>
@@ -18,14 +18,20 @@
         import reads through - ArchitectureModelUpstream, ArchitectureArtifactUpstream and
         MessageSchemaUpstream.
 
-        An adapter like any other: it depends on the domain and on the technology it needs, and on no other
-        adapter. In particular it does not depend on jeap-doc-sitegenerator - a build reads what was imported,
-        through ArchitectureModelSource, and never reaches this client at all.
+        An adapter like any other: it depends on the domain, on jeap-doc-upstream for the transport every
+        outbound client of this service shares, and on no other adapter. In particular it does not depend on
+        jeap-doc-sitegenerator - a build reads what was imported, through ArchitectureModelSource, and never
+        reaches this client at all.
     -->
     <dependencies>
         <dependency>
             <groupId>ch.admin.bit.jeap</groupId>
             <artifactId>jeap-doc-domain</artifactId>
+        </dependency>
+        <dependency>
+            <!-- the client, the bounded conditional GET, the exception and the retry policy over it -->
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-doc-upstream</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -41,7 +47,7 @@
             <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
         <dependency>
-            <!-- DocsApiDtos and the problem-document reader name JsonMapper and JsonNode directly -->
+            <!-- DocsApiDtos names JsonMapper directly -->
             <groupId>tools.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>

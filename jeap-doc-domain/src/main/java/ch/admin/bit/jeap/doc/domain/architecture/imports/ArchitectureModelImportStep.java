@@ -41,6 +41,9 @@ import java.util.function.ToIntFunction;
  * <b>All or nothing.</b> A run that cannot read every system writes nothing at all and leaves the stored
  * landscape serving. A landscape missing one system is not a landscape, and the alternative to failing is
  * silently deleting documentation.
+ * <p>
+ * The one thing left out rather than read is a name that <b>answers with a different system</b>: that is not a
+ * system this run failed to read, it is a second copy of one it has, and the landscape is better without it.
  */
 @Slf4j
 @Component
@@ -135,33 +138,105 @@ public class ArchitectureModelImportStep implements ArchitectureImportStep {
     private Fetch fetch(String environment, Deadline deadline) {
         for (int attempt = 1; attempt <= ATTEMPTS; attempt++) {
             List<String> names = upstream.systemNames(environment);
-            List<DocumentedSystem> systems = new ArrayList<>();
-            Map<String, String> slugs = new LinkedHashMap<>();
-            boolean landscapeMoved = false;
-            for (String name : names) {
-                if (deadline.hasExpired()) {
-                    logStoppedByDeadline(environment, deadline, systems.size(), names.size());
-                    return null;
-                }
-                String slug = slugOf("system", "the environment " + environment, name, slugs);
-                Optional<SystemTopology> topology = upstream.topology(environment, name);
-                Optional<List<DocumentedMessage>> messages = upstream.messages(environment, name);
-                if (topology.isEmpty() || messages.isEmpty()) {
-                    landscapeMoved = true;
-                    break;
-                }
-                systems.add(systemOf(environment, slug, topology.get(), messages.get()));
+            Read read = read(environment, names, deadline);
+            if (read == null) {
+                return null;
             }
-            if (!landscapeMoved) {
-                ArchitectureModel model = ArchitectureModel.of(systems);
-                return new Fetch(model, hashOf(fingerprintOf(model)));
+            if (read.landscapeMoved()) {
+                log.info("A system of the environment {} went away while it was being read; the landscape is "
+                         + "read again (attempt {} of {}).", environment, attempt, ATTEMPTS);
+                continue;
             }
-            log.info("A system of the environment {} went away while it was being read; the landscape is read "
-                     + "again (attempt {} of {}).", environment, attempt, ATTEMPTS);
+            return modelOf(environment, read, names.size());
         }
         throw new ArchitectureModelUnavailableException(
                 ("The landscape of the environment %s kept changing while it was being read. It is left as it "
                  + "was and read again on the next run.").formatted(environment));
+    }
+
+    /**
+     * One pass over the index: every system it lists, read and turned into the model's own shape.
+     *
+     * @return null when the deadline ran out, and a read that says the landscape moved when a system the
+     * index listed was no longer there - which is a race between two requests and is retried, not a failure
+     */
+    private Read read(String environment, List<String> names, Deadline deadline) {
+        List<DocumentedSystem> systems = new ArrayList<>();
+        Map<String, String> slugs = new LinkedHashMap<>();
+        List<String> answeredWithAnother = new ArrayList<>();
+        for (String name : names) {
+            if (deadline.hasExpired()) {
+                logStoppedByDeadline(environment, deadline, systems.size(), names.size());
+                return null;
+            }
+            Optional<SystemTopology> topology = upstream.topology(environment, name);
+            Optional<List<DocumentedMessage>> messages = upstream.messages(environment, name);
+            if (topology.isEmpty() || messages.isEmpty()) {
+                return new Read(List.of(), List.of(), true);
+            }
+            if (!isTheSystemAskedFor(name, topology.get().name())) {
+                answeredWithAnother.add("%s (answered with '%s')".formatted(name, topology.get().name()));
+                continue;
+            }
+            // The slug is claimed after that check, so a system that is not imported occupies no segment.
+            String slug = slugOf("system", "the environment " + environment, name, slugs);
+            systems.add(systemOf(environment, slug, topology.get(), messages.get()));
+        }
+        return new Read(systems, answeredWithAnother, false);
+    }
+
+    /** What a complete read amounts to, once what it skipped has been reported and judged. */
+    private static Fetch modelOf(String environment, Read read, int listed) {
+        if (!read.answeredWithAnother().isEmpty()) {
+            logAnsweredWithAnother(environment, read.answeredWithAnother(), listed);
+        }
+        if (read.systems().isEmpty() && listed > 0) {
+            // The floor under the skip. Everything answered with something else is an upstream that is not
+            // serving this landscape at all, and importing nothing would replace the documentation of the
+            // whole environment with an empty one.
+            throw new ArchitectureModelUnavailableException(("Not one of the %d systems the architecture "
+                    + "repository of the environment %s lists answered with the system that was asked for, "
+                    + "so there is nothing to import.").formatted(listed, environment));
+        }
+        ArchitectureModel model = ArchitectureModel.of(read.systems());
+        return new Fetch(model, hashOf(fingerprintOf(model)));
+    }
+
+    /**
+     * One pass over the index.
+     *
+     * @param answeredWithAnother the entries that answered with a system other than themselves, spelled for
+     *                            the warning that names them
+     * @param landscapeMoved      whether a system the index listed was gone by the time it was read
+     */
+    private record Read(List<DocumentedSystem> systems, List<String> answeredWithAnother,
+                        boolean landscapeMoved) {
+    }
+
+    /**
+     * Whether the system that came back is the one the index named.
+     * <p>
+     * <b>An index entry has to answer with itself.</b> Upstream a system is addressed by name or by alias, so
+     * an alias of one system that is the name of another makes both entries answer with the same system - and
+     * importing that would document one system twice, the second time under a name that is not its own, with a
+     * page tree that says one thing and a heading that says another.
+     */
+    private static boolean isTheSystemAskedFor(String asked, String answered) {
+        return answered != null && asked.trim().equalsIgnoreCase(answered.trim());
+    }
+
+    /**
+     * <b>WARN and not ERROR</b>: nothing the operators of this service can act on, and nothing that stops the
+     * rest of the landscape from being documented. It is read by whoever can fix the names upstream, so it
+     * names both sides of every entry it left out.
+     */
+    private static void logAnsweredWithAnother(String environment, List<String> answeredWithAnother,
+                                               int listed) {
+        log.warn("The architecture repository of the environment {} answered {} of its {} systems with a "
+                 + "different system than the one asked for, and they are not imported - {}. Every name the "
+                 + "index lists has to answer with itself; an alias of one system that is the name of another "
+                 + "is what makes it answer with the wrong one.",
+                environment, answeredWithAnother.size(), listed, answeredWithAnother);
     }
 
     /**

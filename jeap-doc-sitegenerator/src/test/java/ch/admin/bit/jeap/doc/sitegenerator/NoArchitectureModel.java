@@ -24,6 +24,7 @@ public class NoArchitectureModel implements ArchitectureModelSource {
     public static SystemPages systemPages(SiteUrls urls) {
         return new SystemPages(new NoArchitectureModel(), NoMessageSchemas.INSTANCE,
                 NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                        NoReactions.INSTANCE, NoReactions.INSTANCE,
                 new StructureTemplates(List.of()), new GeneratorProperties(),
                 new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(), BuildMetrics.NONE, urls);
     }

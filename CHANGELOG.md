@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-09-10
+
+- Reactions are imported from the reaction observer service , as steps of the architecture import.
+- Runtime views for reactions are generated: Chapter 6 of a system and of a component, and a message's page.
+
 ## [2.0.0] - 2026-09-09
 
 ### Dependencies

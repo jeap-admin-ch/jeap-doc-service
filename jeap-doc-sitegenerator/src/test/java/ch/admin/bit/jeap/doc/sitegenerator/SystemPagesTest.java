@@ -152,8 +152,9 @@ class SystemPagesTest {
         RecordingTemplate template = new RecordingTemplate();
         RecordingSchemas schemas = new RecordingSchemas();
         new SystemPages(new OneSystem(), schemas, NoArchitectureArtifacts.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, new StructureTemplates(List.of(template)),
-                new GeneratorProperties(), new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
+                NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new StructureTemplates(List.of(template)),
+                new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
         assertThat(schemas.asked).describedAs("one read, by the model's own spelling of the system name")
@@ -167,13 +168,33 @@ class SystemPagesTest {
                 }));
     }
 
+    /**
+     * <b>Three reads for the environment, whatever it carries.</b> Whether a landscape has any reaction graph
+     * at all is the same answer for every system of it, and most landscapes run no reaction observer - asked
+     * once per system it is three full index queries per system, on every build, all answering nothing.
+     */
+    @Test
+    void write_thenWhetherTheEnvironmentHasReactionsIsAskedOncePerEnvironment() throws IOException {
+        CountingReactions reactions = new CountingReactions();
+        new SystemPages(new TwoSystems(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, reactions, reactions,
+                new StructureTemplates(List.of(new RecordingTemplate())),
+                new GeneratorProperties(), new ArchitectureImportProperties(),
+                BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        assertThat(reactions.refsAsked)
+                .describedAs("one read per reaction kind, not per system")
+                .isEqualTo(3);
+    }
+
     /** A version nothing was replicated for is left exactly as the model had it. */
     @Test
     void write_whenNothingWasReplicated_thenTheVersionsAreLeftAsTheyAre() throws IOException {
         RecordingTemplate template = new RecordingTemplate();
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, new StructureTemplates(List.of(template)),
-                new GeneratorProperties(), new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
+                NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new StructureTemplates(List.of(template)),
+                new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
         assertThat(template.system.messages()).singleElement().satisfies(message ->
@@ -199,6 +220,7 @@ class SystemPagesTest {
         RecordingArtifacts artifacts = new RecordingArtifacts();
 
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, artifacts, artifacts,
+                NoReactions.INSTANCE, NoReactions.INSTANCE,
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null)
                 .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
@@ -245,6 +267,7 @@ class SystemPagesTest {
         unreadable.readable = false;
 
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, unreadable, unreadable,
+                NoReactions.INSTANCE, NoReactions.INSTANCE,
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null)
                 .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
@@ -267,6 +290,7 @@ class SystemPagesTest {
         other.stored = "orders-risk";
 
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, other, other,
+                NoReactions.INSTANCE, NoReactions.INSTANCE,
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null)
                 .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
@@ -283,9 +307,51 @@ class SystemPagesTest {
 
     private SystemPages pagesWith(StructureTemplate template) {
         return new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, new StructureTemplates(List.of(template)),
-                new GeneratorProperties(), new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
+                NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new StructureTemplates(List.of(template)),
+                new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null);
+    }
+
+    /**
+     * A landscape of exactly one system and a second one beside it - which is what makes a read per system
+     * tell itself apart from a read per environment.
+     */
+    private static final class TwoSystems implements ArchitectureModelSource {
+
+        private final OneSystem orders = new OneSystem();
+
+        @Override
+        public Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
+            return orders.lastSuccessfulImportAt(environment);
+        }
+
+        @Override
+        public boolean isConfiguredFor(String environment) {
+            return true;
+        }
+
+        @Override
+        public Optional<String> sourceUrlOf(String environment) {
+            return orders.sourceUrlOf(environment);
+        }
+
+        @Override
+        public java.util.List<String> systemSlugsOf(String environment) {
+            return read(environment).model().systems().stream()
+                    .map(DocumentedSystem::slug).sorted().toList();
+        }
+
+        @Override
+        public ArchitectureSnapshot read(String environment) {
+            ArchitectureSnapshot orderly = orders.read(environment);
+            List<DocumentedSystem> systems = new java.util.ArrayList<>(orderly.model().systems());
+            systems.add(new DocumentedSystem("SHIPPING", "shipping", null, List.of(), null,
+                    List.of(new DocumentedComponent("shipping-dispatch", "shipping-dispatch", null,
+                            ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null)),
+                    List.of(), List.of()));
+            return new ArchitectureSnapshot(ArchitectureModel.of(systems), orderly.importedAt());
+        }
     }
 
     /** A landscape of exactly one system, so the assertions are about the pages and not about the model. */
@@ -327,6 +393,20 @@ class SystemPagesTest {
                                     .of("1.0.0")),
                             List.of()))))),
                     CONTENT_IMPORTED_AT);
+        }
+    }
+
+    /** An environment with no reaction graph, counting how often it was asked. */
+    private static final class CountingReactions extends NoReactions {
+
+        private int refsAsked;
+
+        @Override
+        public List<ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionGraphRef> findRefs(
+                String environment,
+                ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind) {
+            refsAsked++;
+            return super.findRefs(environment, kind);
         }
     }
 

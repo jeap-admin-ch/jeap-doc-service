@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ch.admin.bit.jeap</groupId>
+        <artifactId>jeap-doc-service</artifactId>
+        <version>2.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>jeap-doc-reactionobserver</artifactId>
+    <name>${project.groupId}:${project.artifactId}</name>
+
+    <!--
+        The client of the reaction observer's replication API: the adapter behind ReactionGraphUpstream, which
+        the import reads the reaction graphs of an environment through.
+
+        An adapter like any other: it depends on the domain, on jeap-doc-upstream for the transport every
+        outbound client of this service shares, and on no other adapter. What it must not do is repeat
+        anything jeap-doc-upstream already does - see that module's package documentation.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-doc-domain</artifactId>
+        </dependency>
+        <dependency>
+            <!-- the client, the bounded conditional GET, the exception and the retry policy over it -->
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-doc-upstream</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <!-- RestClient: this adapter names it in its own signatures, rather than only through
+                 jeap-doc-upstream -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
+        </dependency>
+        <dependency>
+            <!-- the index records and the graph envelope name JsonMapper and JsonNode directly -->
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <!-- JeapOAuth2RestClientBuilderFactory, which puts <system-name>_@reactions_#read in the token -->
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-spring-boot-security-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- The HTTP server this client is tested against, as the architecture repository's client is -->
+            <groupId>org.wiremock.integrations</groupId>
+            <artifactId>wiremock-spring-boot-standalone</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

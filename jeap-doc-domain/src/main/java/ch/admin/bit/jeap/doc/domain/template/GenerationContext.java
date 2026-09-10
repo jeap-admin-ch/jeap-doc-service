@@ -33,10 +33,12 @@ public record GenerationContext(
         Instant generatedAt,
         DiagramLimits limits,
         String linkPrefix,
-        DocumentedApiPaths apiPaths) {
+        DocumentedApiPaths apiPaths,
+        ReactionViews reactions) {
 
     public GenerationContext {
         apiPaths = apiPaths == null ? DocumentedApiPaths.ALL : apiPaths;
+        reactions = reactions == null ? ReactionViews.none() : reactions;
     }
 
     /**
@@ -50,7 +52,35 @@ public record GenerationContext(
                              Instant modelImportedAt, Instant generatedAt, DiagramLimits limits,
                              String linkPrefix) {
         this(model, environment, archRepoUrl, modelImportedAt, generatedAt, limits, linkPrefix,
-                DocumentedApiPaths.ALL);
+                DocumentedApiPaths.ALL, ReactionViews.none());
+    }
+
+    /**
+     * A run with the configured paths but no reactions - which is every run of an environment whose
+     * stage has no reaction observer, and every test that is not about the runtime views.
+     */
+    public GenerationContext(ArchitectureModel model, String environment, String archRepoUrl,
+                             Instant modelImportedAt, Instant generatedAt, DiagramLimits limits,
+                             String linkPrefix, DocumentedApiPaths apiPaths) {
+        this(model, environment, archRepoUrl, modelImportedAt, generatedAt, limits, linkPrefix,
+                apiPaths, ReactionViews.none());
+    }
+
+    /**
+     * The same run, carrying the reaction graphs of the system whose pages are about to be written.
+     * <p>
+     * They are joined on per system and let go afterwards: the graphs of a whole landscape held at once
+     * would be a multiple of what a build is given, which is the rule a component's replicated
+     * artifacts already follow.
+     */
+    public GenerationContext withReactions(ReactionViews reactions) {
+        return new GenerationContext(model, environment, archRepoUrl, modelImportedAt, generatedAt,
+                limits, linkPrefix, apiPaths, reactions);
+    }
+
+    /** When the reactions were imported, written where a person reads it. Empty when they never were. */
+    public String reactionsImportedAtDisplay() {
+        return DisplayTime.orEmpty(reactions.importedAt());
     }
 
     public String generatedAtDisplay() {

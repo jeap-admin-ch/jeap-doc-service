@@ -8,6 +8,7 @@ import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactContent;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactUpstream;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
 import ch.admin.bit.jeap.doc.domain.port.MessageSchemaUpstream;
+import ch.admin.bit.jeap.doc.upstream.UpstreamChecks;
 import ch.admin.bit.jeap.security.restclient.JeapOAuth2RestClientBuilderFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -17,8 +18,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -92,57 +91,13 @@ public class ArchRepoConfiguration {
                         + "otherwise be, and it is a typo and nothing else.")
                         .formatted(environment, declared));
             }
-            if (upstream.getUrl() == null || upstream.getUrl().isBlank()) {
-                throw new IllegalStateException(
-                        "jeap.doc.archrepo.environments.%s.url is not configured.".formatted(environment));
-            }
-            requireAnAbsoluteUrl(environment, upstream.getUrl());
-            if (upstream.getClientRegistration() == null || upstream.getClientRegistration().isBlank()) {
-                throw new IllegalStateException((
-                        "jeap.doc.archrepo.environments.%s.client-registration is not configured. The doc "
-                        + "service reads the architecture model with a client-credentials token, and the "
-                        + "client needs the role <system-name>_@architecture-model_#read.")
-                        .formatted(environment));
-            }
-            if (clientRegistrations == null) {
-                // No registry means the token comes from somewhere else, which is what a test looks like.
-                // There is nothing to check the name against.
-                log.warn("jeap.doc.archrepo.environments.{} names the client registration '{}', and this "
-                         + "instance has no OAuth2 client registry to resolve it against. Unless the token "
-                         + "comes from elsewhere, configure it under "
-                         + "spring.security.oauth2.client.registration.",
-                        environment, upstream.getClientRegistration());
-                return;
-            }
-            if (clientRegistrations.findByRegistrationId(upstream.getClientRegistration()) == null) {
-                throw new IllegalStateException((
-                        "jeap.doc.archrepo.environments.%s.client-registration is '%s', and no such client "
-                        + "registration is configured under spring.security.oauth2.client.registration. "
-                        + "Without it every build of this environment would fail an hour from now.")
-                        .formatted(environment, upstream.getClientRegistration()));
-            }
+            UpstreamChecks.requireAnAbsoluteUrl(
+                    "jeap.doc.archrepo.environments.%s.url".formatted(environment), upstream.getUrl());
+            UpstreamChecks.requireAClientRegistration(
+                    "jeap.doc.archrepo.environments.%s.client-registration".formatted(environment),
+                    upstream.getClientRegistration(), "<system-name>_@architecture-model_#read",
+                    clientRegistrations);
         });
-    }
-
-    /**
-     * The upstream has to be an absolute URL, because every content URL of an artifact is resolved against its
-     * origin. Without a scheme there is no origin to resolve against, and the first artifact of the first
-     * import would be the one to find out.
-     */
-    private static void requireAnAbsoluteUrl(String environment, String url) {
-        URI parsed;
-        try {
-            parsed = new URI(url);
-        } catch (URISyntaxException e) {
-            throw new IllegalStateException(("jeap.doc.archrepo.environments.%s.url is '%s', which is not a "
-                                             + "URL.").formatted(environment, url), e);
-        }
-        if (parsed.getScheme() == null || parsed.getHost() == null) {
-            throw new IllegalStateException(("jeap.doc.archrepo.environments.%s.url is '%s', which names no "
-                                             + "scheme and host. It has to be absolute, because the content "
-                                             + "URL of every artifact is resolved against its origin.")
-                    .formatted(environment, url));
-        }
     }
 
     private static void report(ArchRepoProperties properties, DocumentationSites sites) {

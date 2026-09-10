@@ -102,6 +102,7 @@ what arc42 produces:
 /systems/orders/system-architecture/building-block-view/events/orders-payment-accepted-event/
 /systems/orders/system-architecture/building-block-view/commands/orders-check-availability-command/
 /systems/orders/system-architecture/runtime-view/                         6. Runtime View
+/systems/orders/system-architecture/runtime-view/system-reactions/        what was observed reacting
 ```
 
 **A component carries the same structure one level down**, below its own page and under a segment named for
@@ -118,6 +119,7 @@ what it describes there:
 .../component-architecture/building-block-view/rest-api/                  the API by group, and the Swagger link
 .../component-architecture/building-block-view/messages/                  what it produces and consumes
 .../component-architecture/runtime-view/                                  6. Runtime View
+.../component-architecture/runtime-view/component-reactions/              what was observed reacting
 ```
 
 Four rules follow, and an upload has to keep the first three too:
@@ -496,6 +498,36 @@ the documentation. A sitemap that claims to be the site's and lists none of its 
 What would be right is a **sitemap index** the shell writes from what the other parts emitted. That is the
 doc service's to write rather than the generator's, like the search, and it is not worth the machinery for a
 crawler hint on documentation nobody crawls.
+
+### The runtime views
+
+Chapter 6 is written from what actually happened rather than from what the model says: the reaction graphs the
+[reaction observer](architecture-import.md) of that environment saw, imported beside the architecture model.
+
+| Where                                             | What it draws                                                                                                  |
+|---------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| A system's `runtime-view/system-reactions/`       | Which message makes one of the system's components react, and what it publishes in answer                      |
+| A component's `runtime-view/component-reactions/` | The same for one component. It is the page a reaction on a system's graph links into, focused on that reaction |
+| A message's own page, in chapter 5                | A `## Reactions` section: what was observed reacting to that message, one diagram per variant                  |
+
+**No reactions, no chapter.** A system, component or message nothing has been observed reacting to gets no
+page at all, and the landing page does not link one - an empty page would say *this system does not react*,
+which is not what an absence means. It is also the normal state of a platform whose reaction observer has just
+been switched on.
+
+**The diagram is GraphViz in a fence**, rendered in the reader's browser like every other diagram this service
+writes, and every node carries an id so that a link can address it: a reaction on a system's graph links into
+the component's own runtime view and lands on the same reaction. The site raises the diagram plugin's source
+limit to 2 MB for these, because a system's reaction graph is the largest thing the site draws.
+
+**And a table sits under every graph** with one row per reaction - what triggered it, which component reacted,
+what it published in answer and how often it was seen. It is the complete list, the one the browser's own
+find-in-page searches, and what the page still says if a graph is ever too large to draw.
+
+The message pages are the one runtime view that is not in the runtime chapter. A message is a building block
+of the system that defines it, so its page is in chapter 5, and a reader who has the message in front of them
+should not have to go to chapter 6 to see what answers it. That section names its own source and its own age,
+because the page's front matter names the model.
 
 ## What makes a build happen
 

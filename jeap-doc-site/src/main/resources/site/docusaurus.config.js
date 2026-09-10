@@ -365,7 +365,16 @@ const config = {
 
     plugins: [
         // Renders ```plantuml and ```dot fences in the reader's browser - no PlantUML server, no images.
-        '@matfsw/docusaurus-plantuml-plugin',
+        //
+        // The source limit is raised from the plugin's default of 100 kB: a reaction graph of a whole system
+        // is the largest thing this site draws, and a source over the limit is refused with an explanation
+        // instead of a picture. 2 MB is an assumption rather than a measurement - a reaction graph runs to a
+        // few hundred bytes per node, so this is thousands of nodes - and it is worth revisiting once the
+        // graph of a real landscape has been through it, in either direction. Graphviz lays out in the
+        // reader's own tab, so what is being accepted here is a tab that stalls on the largest graph, once,
+        // with the fitted view and the minimap to make the result usable afterwards. The table under every
+        // graph is what the page still says if one is ever refused.
+        ['@matfsw/docusaurus-plantuml-plugin', {graphviz: {maxSourceBytes: 2_000_000}}],
         // The full search results, at the site root - which only the shell part owns. Every other part links
         // it the way it links the front page, unchecked, and a part that added a /search of its own would
         // give the site two.

@@ -1,9 +1,9 @@
 package ch.admin.bit.jeap.doc.archrepo;
 
+import ch.admin.bit.jeap.doc.upstream.UpstreamClientSettings;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -27,9 +27,10 @@ public class ArchRepoProperties {
     private Map<String, Environment> environments = new LinkedHashMap<>();
 
     /**
-     * What the client does when the architecture repository is slow.
+     * What the client does when the architecture repository is slow. The same settings every outbound client
+     * of this service has, under this upstream's own prefix - see {@code UpstreamClientSettings}.
      */
-    private Client client = new Client();
+    private UpstreamClientSettings client = new UpstreamClientSettings();
 
     @Data
     public static class Environment {
@@ -49,39 +50,4 @@ public class ArchRepoProperties {
         private String clientRegistration;
     }
 
-    @Data
-    public static class Client {
-
-        /**
-         * How long the client waits for the connection.
-         */
-        private Duration connectTimeout = Duration.ofSeconds(5);
-
-        /**
-         * How long the client waits for one response. The budget of a whole import is its deadline.
-         */
-        private Duration readTimeout = Duration.ofSeconds(30);
-
-        /**
-         * How often a failed request is tried again, so two means three attempts in all. Only a connection
-         * failure, a read timeout, a {@code 5xx} or a {@code 429} is retried.
-         */
-        private int retries = 2;
-
-        /**
-         * How long to wait before the first retry. Doubled for each further one.
-         */
-        private Duration retryDelay = Duration.ofMillis(500);
-
-        /**
-         * How much the delay is varied, so that instances whose schedules fire together do not retry in
-         * lockstep.
-         */
-        private Duration retryJitter = Duration.ofMillis(250);
-
-        /**
-         * The longest a retry waits, however often the delay has been doubled.
-         */
-        private Duration maxRetryDelay = Duration.ofSeconds(2);
-    }
 }

@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.template.arc42;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.architecture.view.SystemContext;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.architecture.view.WhiteboxView;
@@ -73,6 +74,18 @@ final class Arc42SystemPages {
         writeRuntimeView(template, system, context, structure);
     }
 
+    /**
+     * The chapters this run wrote, which is what the landing page may link.
+     * <p>
+     * Chapter 6 is the conditional one: it holds the reactions observed at runtime, and a system nothing has
+     * been observed reacting to gets no chapter rather than a page saying so.
+     */
+    private static List<StructureChapter> chaptersOf(GenerationContext context) {
+        return context.reactions().hasReactionsOfTheSystem()
+                ? GENERATED_CHAPTERS
+                : GENERATED_CHAPTERS.stream().filter(chapter -> chapter != RUNTIME_VIEW).toList();
+    }
+
     /** What this tree answers, and which of the twelve chapters exist. */
     private static void writeStructureLandingPage(Arc42Template template, DocumentedSystem system, GenerationContext context, Path structure)
             throws IOException {
@@ -87,7 +100,7 @@ final class Arc42SystemPages {
 
         // Only the chapters this run wrote. A link to a missing page fails the site build.
         List<List<Markdown>> rows = new ArrayList<>();
-        for (StructureChapter chapter : GENERATED_CHAPTERS) {
+        for (StructureChapter chapter : chaptersOf(context)) {
             rows.add(List.of(
                     Md.link(DocumentationPaths.chapter(system.slug(), SYSTEM_SEGMENT, chapter),
                             chapter.label()),
@@ -416,11 +429,21 @@ final class Arc42SystemPages {
     }
 
     /**
-     * Chapter 6: how the system behaves while it runs. The reactions that fill it are imported separately, so
-     * the page says what it is waiting for rather than disappearing and coming back.
+     * Chapter 6: how the system behaves while it runs - which message makes one of its components react, and
+     * what it does in answer.
+     * <p>
+     * <b>No reactions, no chapter.</b> Nothing is written when the reaction observer of this environment has
+     * no graph for the system, or has one with nothing in it: an empty page is a lie about a system that has
+     * simply not been observed reacting, and on a platform whose observer has just been switched on that is
+     * every system. The landing page links the chapters this run wrote, so a missing one shows as a gap in
+     * the numbering.
      */
-    private static void writeRuntimeView(Arc42Template template, DocumentedSystem system, GenerationContext context, Path structure)
-            throws IOException {
+    private static void writeRuntimeView(Arc42Template template, DocumentedSystem system,
+                                         GenerationContext context, Path structure) throws IOException {
+        ReactionView reactions = context.reactions().system();
+        if (reactions.isEmpty()) {
+            return;
+        }
         Path directory = Arc42Pages.chapterDirectory(template, structure, RUNTIME_VIEW);
 
         MarkdownWriter index = new MarkdownWriter()
@@ -432,18 +455,14 @@ final class Arc42SystemPages {
         Arc42Pages.provenance(index, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
-        MarkdownWriter reactions = new MarkdownWriter()
+        MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(SYSTEM_REACTIONS_LABEL, 1, context))
                 .heading(1, SYSTEM_REACTIONS_LABEL)
-                .paragraph(Md.sentence("Which message makes {} react, and what it does in answer. The "
-                                       + "reactions are observed at runtime and imported from the reaction "
-                                       + "observer service; that import is not published yet, so this page is "
-                                       + "empty.", Md.code(system.name())))
-                .paragraph(Md.sentence("Until then, {} shows what the system exchanges with its neighbours.",
-                        Md.link(DocumentationPaths.page(system.slug(), SYSTEM_SEGMENT, CONTEXT_AND_SCOPE,
-                                CONTEXT_VIEW_PAGE), "the system context view")));
-        Arc42Pages.provenance(reactions, context);
-        Arc42Pages.write(directory, SYSTEM_REACTIONS_PAGE + ".md", reactions);
+                .paragraph(Md.sentence("Which message makes {} react, and what it does in answer. Every "
+                                       + "reaction here belongs to one of its components; a message outlined "
+                                       + "in blue is defined by another system.", Md.code(system.name())));
+        Arc42ReactionPages.write(page, reactions, context, null);
+        Arc42Pages.write(directory, SYSTEM_REACTIONS_PAGE + ".md", page);
     }
 
     private static Markdown teamOf(Team team) {

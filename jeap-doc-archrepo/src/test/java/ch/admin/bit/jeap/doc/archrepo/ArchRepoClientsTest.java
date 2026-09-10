@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.archrepo;
 
+import ch.admin.bit.jeap.doc.upstream.UpstreamException;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,7 +46,7 @@ class ArchRepoClientsTest {
                 "{\"type\":\"system-not-found\",\"status\":404,\"title\":\"No such system\"}");
 
         assertThatThrownBy(() -> client.systems())
-                .isInstanceOfSatisfying(ArchRepoException.class, e -> {
+                .isInstanceOfSatisfying(UpstreamException.class, e -> {
                     assertThat(e.getStatus()).isEqualTo(404);
                     assertThat(e.getProblemType()).isEqualTo("system-not-found");
                     assertThat(e.isNotFound()).isTrue();
@@ -57,7 +58,7 @@ class ArchRepoClientsTest {
         stubSystems(403, "application/problem+json", "{\"type\":\"forbidden\",\"status\":403}");
 
         assertThatThrownBy(() -> client.systems())
-                .isInstanceOfSatisfying(ArchRepoException.class, e -> assertThat(e.isUnauthorized()).isTrue());
+                .isInstanceOfSatisfying(UpstreamException.class, e -> assertThat(e.isUnauthorized()).isTrue());
     }
 
     /**
@@ -75,7 +76,7 @@ class ArchRepoClientsTest {
         stubSystems(500, "application/problem+json", body);
 
         assertThatThrownBy(() -> client.systems())
-                .isInstanceOfSatisfying(ArchRepoException.class, e -> {
+                .isInstanceOfSatisfying(UpstreamException.class, e -> {
                     assertThat(e.getStatus()).isEqualTo(500);
                     assertThat(e.getProblemType()).isNull();
                 });
@@ -90,7 +91,7 @@ class ArchRepoClientsTest {
         stubSystems(500, "application/json", "{\"type\":\"not-a-problem-document\"}");
 
         assertThatThrownBy(() -> client.systems())
-                .isInstanceOfSatisfying(ArchRepoException.class,
+                .isInstanceOfSatisfying(UpstreamException.class,
                         e -> assertThat(e.getProblemType()).isNull());
     }
 
@@ -103,7 +104,7 @@ class ArchRepoClientsTest {
         stubSystems(503, "text/html", "x".repeat(2_000_000));
 
         assertThatThrownBy(() -> client.systems())
-                .isInstanceOfSatisfying(ArchRepoException.class,
+                .isInstanceOfSatisfying(UpstreamException.class,
                         e -> assertThat(e.getStatus()).isEqualTo(503));
     }
 
@@ -121,7 +122,7 @@ class ArchRepoClientsTest {
                 "{\"status\":503,\"detail\":\"" + padding + "\",\"type\":\"upstream-unavailable\"}");
 
         assertThatThrownBy(() -> client.systems())
-                .isInstanceOfSatisfying(ArchRepoException.class, e -> {
+                .isInstanceOfSatisfying(UpstreamException.class, e -> {
                     assertThat(e.getStatus()).isEqualTo(503);
                     assertThat(e.getProblemType())
                             .describedAs("the type is past the read limit, so it is not found")
@@ -140,7 +141,7 @@ class ArchRepoClientsTest {
                 + "\",\"type\":\"upstream-unavailable\"}");
 
         assertThatThrownBy(() -> client.systems())
-                .isInstanceOfSatisfying(ArchRepoException.class,
+                .isInstanceOfSatisfying(UpstreamException.class,
                         e -> assertThat(e.getProblemType()).isEqualTo("upstream-unavailable"));
     }
 

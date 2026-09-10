@@ -67,10 +67,24 @@ Ports and adapters, one auto-configuration per module - see `docs/architecture.m
 - `jeap-doc-archrepo/` - everything about the architecture repository: the client of its `/docs-api`, behind
   `ArchitectureModelUpstream` and `ArchitectureArtifactUpstream`, and the reading of a replicated artifact,
   behind `ArchitectureArtifactContent`. An adapter like any other.
+- `jeap-doc-reactionobserver/` - everything about the reaction observer: the client of its replication API,
+  behind `ReactionGraphUpstream`. An adapter like any other.
+- `jeap-doc-upstream/` - **how another jEAP service is called**, and the one thing the two adapters above must
+  not each have their own copy of: the client and its client-credentials token, the conditional request and the
+  entity tag that goes back verbatim, the read that stops at its cap, the redirect that is not followed,
+  resolving a content URL against the upstream's origin, one exception class and the retry policy over it. It
+  contributes no bean, no auto-configuration and no properties, and it names nothing of the domain.
 - `jeap-doc-service-instance/` - POM-only module for downstream instances.
 
 Keep the layering: business logic goes into the domain, technology into an adapter, and an adapter never depends
 on another adapter.
+
+**Two adapters must not carry the same logic twice.** Where they would - two clients of two jEAP services, both
+replicating what they are told - the shared part becomes a support module both depend on
+(`jeap-doc-upstream`), and each adapter keeps only what is its own upstream's: its routes, its payload records,
+the wording of its messages and its `@ConfigurationProperties`. The reason is drift rather than tidiness: two
+copies of *what a `304` means* is how one upstream comes to refetch everything on every run while the other
+does not, with both copies green because each is tested against itself.
 
 ### A structure template is a module
 
@@ -143,6 +157,13 @@ it", the answer is a port and an adapter.
 
 Adding a port means the wiring can now break without a compile error, so `DocServiceWiringIT` asserts that every
 port has exactly one adapter in the real application context. **Add the new port to it.**
+
+**And the same port breaks the contexts that are deliberately partial.** The shutdown tests of
+`jeap-doc-persistence` start the domain with this module and no upstream adapters at all - which is the shape of
+an instance that imports nothing - so a domain service that requires a new port stops those contexts from
+starting, in a module whose tests a change to the domain gives nobody a reason to run. `BuildShutdownIT`'s test
+application is where they are stubbed, and both shutdown tests share it. **A new driven port the domain
+requires goes there too**, and `./mvnw verify` over the whole build is what says so before CI does.
 
 
 - **Upload paths**: everything below `/api/uploads` is an upload, and the segment after it names the kind of
@@ -645,6 +666,46 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
   - **Nothing is ever skipped.** A name that is not a slug is converted into one. The only things that stop an
     import are a name that yields no slug at all and two names that yield the same one, and both abandon the
     run rather than leaving something quietly out.
+- **The reactions are a second upstream under the same job**, off by default (`jeap.doc.reactions.enabled`)
+  because a platform may run no reaction observer at all. Three rules about them:
+  - **One observer per environment**, like the architecture repository, and read with a client-credentials
+    token and nothing else. The observer offers HTTP Basic; this service does not use it, and an environment
+    whose observer is too old to serve the replication indexes fails with a message saying so rather than
+    being read a slower way.
+  - **A graph is stored as it arrived.** Nothing in the import looks inside it - how a reaction graph is drawn
+    is decided when a page is generated, and changing the drawing must not need a re-import.
+  - **Names are resolved against the stored model before anything is compared**, aliases included, and what is
+    stored is the model's spelling with the observer's kept beside it. That is also why there is no orphan
+    sweep: a system that leaves the model stops being listed, so the prune takes its graph. A name the model
+    does not have is not stored, and is reported once per run with the names.
+  - **But the upstream is addressed by the upstream's spelling.** A reference reaching the adapter carries the
+    model's name, and the observer's answer is keyed by its own: a message type's resource answers every
+    variant at once under the keys the index carried, so it is `upstreamName` that picks one out. Addressing
+    it by the resolved name loses every graph of a type the two spell differently - silently, and for ever,
+    because the skips also stop the index tag from being trusted.
+  - **An environment with a reaction observer has to have an architecture repository.** These are steps of
+    that import, which runs the environments `jeap.doc.archrepo.environments` names, and a runtime view is
+    drawn onto the pages of a model - so a reaction environment that is not also an archrepo environment
+    fails the startup. The other way round is the ordinary case.
+  - **No reactions, no runtime view.** A system, component or message with no stored graph gets no chapter 6
+    at all rather than an empty page - and an empty graph counts as none. A node the observer sent without a
+    name counts as none of a node: it is dropped with the edges that led to it, because a label of null
+    further down is a whole part's build failing on one bad node.
+  - **What a graph is asked of decides what may be linked.** Whether a component has a runtime view is a
+    question about the *environment* and not about the system being written - a reaction on a system's graph
+    is regularly a component of another system, whose pages another pass writes - so it is answered from the
+    refs of the environment, read once per build, and not from the graphs handed to a template. **And from
+    the refs that draw something**: a stored graph is not a written page, so a ref carries the count of nodes
+    the adapter saw while storing it, and a graph of none is linked from nowhere.
+  - **A component's graph is addressed with its system**, in the unique index, in the identity the step
+    compares and in every lookup. `ArchitectureModel.systemsOf` says two systems may each call a component
+    `gateway`, and the observer's index says which system it saw one under - one row for both would store
+    whichever came last and draw it on both pages. The kinds that are no component's carry `""`, never null,
+    for the reason the variant does: a unique index does not constrain nulls.
+  - **The model is indexed once per environment, not walked per node.** A graph names its nodes and nothing
+    else, so every node is a lookup, and a landscape has a graph per system, per component and per message
+    variant - `ReactionModelIndex` is built once and handed to every view, because the product of those two
+    numbers is what a build pays otherwise.
 - **arc42 is CC BY-SA and the rest of this service is Apache-2.0.** The attribution is in `NOTICE`, in
   `jeap-doc-template-arc42`'s `README.md` and Javadoc, and **once in the generated site** at the foot of chapter
   1 of every system - not on every page. Keeping arc42 confined to its module is what keeps that a question

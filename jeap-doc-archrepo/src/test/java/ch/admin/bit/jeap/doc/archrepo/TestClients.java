@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.archrepo;
 
+import ch.admin.bit.jeap.doc.upstream.UpstreamClientSettings;
 import ch.admin.bit.jeap.security.restclient.JeapOAuth2RestClientBuilderFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
@@ -26,7 +27,7 @@ final class TestClients {
     }
 
     /** The same, with the client settings a test wants - a read timeout it does not have to wait out. */
-    static ArchRepoClients of(String environment, String url, Consumer<ArchRepoProperties.Client> settings) {
+    static ArchRepoClients of(String environment, String url, Consumer<UpstreamClientSettings> settings) {
         ArchRepoProperties properties = new ArchRepoProperties();
         ArchRepoProperties.Environment upstream = new ArchRepoProperties.Environment();
         upstream.setUrl(url);

@@ -9,6 +9,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.MessageContract;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
+import ch.admin.bit.jeap.doc.domain.template.ReactionViews;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.markdown.Md;
@@ -72,7 +73,7 @@ final class Arc42MessagePages {
         Arc42Pages.writeCategory(directory, kind.plural(), position, true);
         writeIndex(system, kind, group, messages, context, directory);
         for (DocumentedMessage message : messages) {
-            writeMessage(system, message, context, directory);
+            writeMessage(message, context, directory);
         }
         return true;
     }
@@ -182,8 +183,8 @@ final class Arc42MessagePages {
     }
 
     /** One message: what it is, its versions, and the contracts on it. */
-    private static void writeMessage(DocumentedSystem system, DocumentedMessage message,
-                                     GenerationContext context, Path directory) throws IOException {
+    private static void writeMessage(DocumentedMessage message, GenerationContext context, Path directory)
+            throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(message.name(), 0, context)
                         .put("description", message.description()))
@@ -204,14 +205,44 @@ final class Arc42MessagePages {
         writeContracts(page, message, context.model(), false);
         writeUnknownContracts(page, message, context.model());
 
-        page.heading(2, "Reactions");
-        page.paragraph(Md.sentence("The reaction graph of this message is imported from the reaction observer "
-                                   + "and is not published yet. Until then, {} shows which components handle "
-                                   + "it.", Md.link(DocumentationPaths.chapter(system.slug(),
-                Arc42Template.SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW), "the building block view")));
+        writeReactions(page, message, context);
 
         Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, message.slug() + ".md", page);
+    }
+
+    /**
+     * What was observed reacting to this message, one diagram per variant.
+     * <p>
+     * <b>The one runtime view that is not in chapter 6.</b> A message is a building block of the system that
+     * defines it, so its page lives in chapter 5 - and a reader who has the message in front of them should
+     * not have to go to another chapter to see what answers it. The section names its own source and its own
+     * age, because the page's front matter can only name one and it names the model.
+     * <p>
+     * A message nothing has been observed reacting to has no section at all, as a system with no reactions has
+     * no chapter.
+     */
+    private static void writeReactions(MarkdownWriter page, DocumentedMessage message,
+                                       GenerationContext context) {
+        List<ReactionViews.VariantView> variants = context.reactions().ofMessage(message.name());
+        if (variants.isEmpty()) {
+            return;
+        }
+        page.heading(2, "Reactions");
+        page.paragraph(Md.sentence("What was observed reacting to {} at runtime, and what those reactions "
+                                   + "published in answer.", Md.code(message.name())));
+        int ordinal = 0;
+        for (ReactionViews.VariantView variant : variants) {
+            if (variant.hasVariant()) {
+                // A variant is a graph of its own upstream, so it is a heading of its own here: two diagrams
+                // with no way to tell which is which would be worse than one.
+                page.heading(3, "Variant " + variant.variant());
+            }
+            // An ordinal rather than the variant: the ids it prefixes end up in the page's DOM, and a
+            // variant is an upstream string that may carry anything.
+            String idPrefix = variants.size() == 1 ? "" : "V" + ++ordinal + "-";
+            Arc42ReactionPages.write(page, variant.view(), context, null, idPrefix);
+        }
     }
 
     private static void writeContracts(MarkdownWriter page, DocumentedMessage message, ArchitectureModel model,

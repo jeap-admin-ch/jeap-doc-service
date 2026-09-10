@@ -343,6 +343,43 @@ Two things fail the startup. Both are configuration errors nobody would notice u
 The architecture repository is not called while the service starts. It may be deploying, and an instance that
 refuses to boot because a neighbour is restarting cannot serve the documentation it already has.
 
+## The reactions
+
+What reacts to what at runtime, read from the [reaction observer](architecture-import.md) of each stage and
+drawn as the runtime views of a system, a component and a message. **Off by default**, because a platform may
+run no reaction observer at all.
+
+```yaml
+jeap:
+  doc:
+    reactions:
+      enabled: true
+      environments:
+        dev:
+          url: https://internal.example.ch/reaction-observer-service
+          client-registration: doc-service
+```
+
+| Property                                                            | Default   | Description                                                                                                                                                                                                                                                                                                         |
+|---------------------------------------------------------------------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.reactions.enabled`                                        | `false`   | Whether this instance imports reactions at all. Off registers no work, calls nothing and writes no state row. **On with no environment configured fails the startup**: without that, a platform with no observer and a property path with a typo would look the same and both import nothing quietly                |
+| `jeap.doc.reactions.environments.<environment>.url`                 | -         | Where the reaction observer of that stage is - the **internal** hostname, as for the architecture repository. An environment no entry names has no reactions even with the flag on                                                                                                                                  |
+| `jeap.doc.reactions.environments.<environment>.client-registration` | -         | The `spring.security.oauth2.client.registration` entry the token is obtained with. Its client needs `<system-name>_@reactions_#read` **on that stage's authorization server** - see [Security](security.md). There is no other way to authenticate: the observer offers HTTP Basic and this service does not use it |
+| `jeap.doc.reactions.max-graph-size`                                 | `8MB`     | The largest reaction graph that is replicated. A bigger one is left where it is, with a warning naming it; nothing past the cap is read off the wire                                                                                                                                                                |
+| `jeap.doc.reactions.client.connect-timeout`                         | `PT5S`    | How long the client waits for the connection                                                                                                                                                                                                                                                                        |
+| `jeap.doc.reactions.client.read-timeout`                            | `PT30S`   | How long the client waits for one response                                                                                                                                                                                                                                                                          |
+| `jeap.doc.reactions.client.retries`                                 | `2`       | How often a failed request is tried again, so three attempts in all. Only a connection failure, a read timeout, a `5xx` or a `429` is retried                                                                                                                                                                       |
+| `jeap.doc.reactions.client.retry-delay`                             | `PT0.5S`  | How long to wait before the first retry, doubled for each further one                                                                                                                                                                                                                                               |
+| `jeap.doc.reactions.client.retry-jitter`                            | `PT0.25S` | How much the delay is varied, so that instances whose schedules fire together do not retry in lockstep                                                                                                                                                                                                              |
+| `jeap.doc.reactions.client.max-retry-delay`                         | `PT2S`    | The longest a retry waits, however often the delay has been doubled                                                                                                                                                                                                                                                 |
+
+The reactions run on `jeap.doc.archrepo.import.cron`, because they are steps of that import - the model has to
+be there first, since it is what every observed name is resolved against. So an environment named here has to
+be named under `jeap.doc.archrepo.environments` as well, and the startup fails when it is not: the import runs
+the environments the architecture repository is configured for, and a runtime view is written onto the pages of
+a model. The other way round is a landscape - most stages have an architecture repository and no reaction
+observer.
+
 ## Publishing and serving
 
 ```yaml

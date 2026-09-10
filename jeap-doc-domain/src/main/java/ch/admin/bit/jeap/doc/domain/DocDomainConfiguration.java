@@ -3,11 +3,15 @@ package ch.admin.bit.jeap.doc.domain;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactImportStep;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.MessageSchemaImportStep;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionImportStep;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportExecutor;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactRepository;
 import ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.MessageSchemaUpstream;
+import ch.admin.bit.jeap.doc.domain.port.ReactionGraphRepository;
+import ch.admin.bit.jeap.doc.domain.port.ReactionGraphUpstream;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactUpstream;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
@@ -86,6 +90,43 @@ public class DocDomainConfiguration {
                                                             ArchitectureImportRepository imports,
                                                             ArchitectureImportMetrics metrics, Clock clock) {
         return new ArchitectureArtifactImportStep(ArchitectureImportKind.DATABASE_SCHEMA, upstream, artifacts,
+                imports, metrics, clock);
+    }
+
+    /**
+     * The three reaction steps: the systems' graphs, the components' and the message types'.
+     * <p>
+     * Registered whatever {@code jeap.doc.reactions.enabled} says, and inert when the reactions are off - the
+     * adapter builds no client then, so {@code isConfiguredFor} answers false for every environment and a run
+     * returns {@code NOT_CONFIGURED} without calling anything or writing a row. <b>The flag is the adapter's
+     * and the domain does not read it</b>: a service that decided what to register from an adapter's
+     * configuration property would have the domain know the name of one.
+     */
+    @Bean
+    ReactionImportStep systemReactionImportStep(ReactionGraphUpstream upstream, ReactionGraphRepository graphs,
+                                                ArchitectureModelSource models,
+                                                ArchitectureImportRepository imports,
+                                                ArchitectureImportMetrics metrics, Clock clock) {
+        return new ReactionImportStep(ArchitectureImportKind.SYSTEM_REACTIONS, upstream, graphs, models,
+                imports, metrics, clock);
+    }
+
+    @Bean
+    ReactionImportStep componentReactionImportStep(ReactionGraphUpstream upstream,
+                                                   ReactionGraphRepository graphs,
+                                                   ArchitectureModelSource models,
+                                                   ArchitectureImportRepository imports,
+                                                   ArchitectureImportMetrics metrics, Clock clock) {
+        return new ReactionImportStep(ArchitectureImportKind.COMPONENT_REACTIONS, upstream, graphs, models,
+                imports, metrics, clock);
+    }
+
+    @Bean
+    ReactionImportStep messageReactionImportStep(ReactionGraphUpstream upstream, ReactionGraphRepository graphs,
+                                                 ArchitectureModelSource models,
+                                                 ArchitectureImportRepository imports,
+                                                 ArchitectureImportMetrics metrics, Clock clock) {
+        return new ReactionImportStep(ArchitectureImportKind.MESSAGE_REACTIONS, upstream, graphs, models,
                 imports, metrics, clock);
     }
 
