@@ -7,8 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [2.1.0] - 2026-09-10
 
-- Reactions are imported from the reaction observer service , as steps of the architecture import.
+- Reactions are imported from the reaction observer service, as steps of the architecture import.
 - Runtime views for reactions are generated: Chapter 6 of a system and of a component, and a message's page.
+- A message on a reaction graph links to its own page focused on itself, and the diagram of a variant is
+  addressed by a slug of that variant.
 
 ## [2.0.0] - 2026-09-09
 

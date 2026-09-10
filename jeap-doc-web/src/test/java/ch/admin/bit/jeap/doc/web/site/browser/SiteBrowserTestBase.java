@@ -159,6 +159,13 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     /** The variant of the message type whose page draws two diagrams. */
     protected static final String VARIANT = "express";
 
+    /**
+     * The observer's id of that variant's message node. A link into a message page addresses the node of the
+     * variant it came from, and the variant's diagram is not the first one on the page - so this is the id
+     * that says whether the link landed on the right of two.
+     */
+    protected static final long VARIANT_MESSAGE_ID = 9;
+
     /** How many further reactions the system's graph carries, so that it is one nobody reads at a glance. */
     protected static final int WIDE_REACTIONS = 30;
 
@@ -763,7 +770,8 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                         List.of(new ReactionViews.VariantView("", ReactionView.of(messageGraph(), model,
                                         shipping)),
                                 new ReactionViews.VariantView(VARIANT,
-                                        ReactionView.of(messageGraph(), model, shipping)))),
+                                        ReactionView.of(messageGraph(VARIANT_MESSAGE_ID, VARIANT), model,
+                                                shipping)))),
                 componentsWithAGraph);
 
         // The prefix a link inside a fence has to carry, and it is the site's own rule: the base URL, then the
@@ -822,7 +830,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 new ObservedReactions.ObservedMessage(3, "ShippingDispatchedEvent", null),
                 new ObservedReactions.ObservedMessage(5, "BillingSettledEvent", null),
                 new ObservedReactions.ObservedMessage(7, UNDOCUMENTED_MESSAGE, null),
-                new ObservedReactions.ObservedMessage(9, "OrdersPaymentAcceptedEvent", VARIANT)));
+                new ObservedReactions.ObservedMessage(VARIANT_MESSAGE_ID, "OrdersPaymentAcceptedEvent", VARIANT)));
         List<ObservedReactions.ObservedReaction> reactions = new java.util.ArrayList<>(List.of(
                 new ObservedReactions.ObservedReaction(REACTION_ID, REACTING_COMPONENT),
                 // Three reactions of one component to one message: one dashed box with three nodes in it.
@@ -842,7 +850,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         List<ObservedReactions.ObservedAction> actions = new java.util.ArrayList<>(List.of(
                 new ObservedReactions.ObservedAction(REACTION_ID, 3),
                 new ObservedReactions.ObservedAction(4243, 5),
-                new ObservedReactions.ObservedAction(4246, 9)));
+                new ObservedReactions.ObservedAction(4246, VARIANT_MESSAGE_ID)));
         // And enough further reactions that the picture is one a reader has to navigate: a minimap and a
         // fitted view are features of a graph nobody can read at once.
         for (int index = 0; index < WIDE_REACTIONS; index++) {
@@ -882,12 +890,21 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
 
     /** What one message triggered, which is the section on its own page. */
     private static ObservedReactions messageGraph() {
+        return messageGraph(1, null);
+    }
+
+    /**
+     * The graph of one message type, or of one variant of it - and <b>the subject is a node of it</b>, which is
+     * what makes a variant's diagram addressable: the observer gives every variant of a type an id of its own,
+     * so a link from another graph names that id and lands on the variant's own diagram.
+     */
+    private static ObservedReactions messageGraph(long subject, String variant) {
         return new ObservedReactions(
-                List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
+                List.of(new ObservedReactions.ObservedMessage(subject, "OrdersPaymentAcceptedEvent", variant)),
                 List.of(new ObservedReactions.ObservedReaction(REACTION_ID, REACTING_COMPONENT),
                         new ObservedReactions.ObservedReaction(4243, BUSY_COMPONENT)),
-                List.of(new ObservedReactions.ObservedTrigger(1, REACTION_ID, 12),
-                        new ObservedReactions.ObservedTrigger(1, 4243, 400)),
+                List.of(new ObservedReactions.ObservedTrigger(subject, REACTION_ID, 12),
+                        new ObservedReactions.ObservedTrigger(subject, 4243, 400)),
                 List.of());
     }
 

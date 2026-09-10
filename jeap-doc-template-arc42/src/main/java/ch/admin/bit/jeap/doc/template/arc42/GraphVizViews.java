@@ -4,6 +4,7 @@ import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
+import ch.admin.bit.jeap.doc.domain.template.ReactionIds;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -41,6 +42,12 @@ final class GraphVizViews {
     static final String LANGUAGE = "dot";
 
     /**
+     * What a link appends to focus a node on the page it opens - the plugin's own hash, watched live, so it
+     * works from inside a diagram without a reload.
+     */
+    private static final String FOCUS = "#graph?highlight-node=";
+
+    /**
      * What a message of another system is outlined in - a fact about the node, not a decoration.
      * <p>
      * A mid blue, which carries enough contrast against a white page and against a dark one, because the site
@@ -72,7 +79,7 @@ final class GraphVizViews {
                 .append("  node [shape=box style=rounded]\n");
         Map<Long, String> messageIds = new LinkedHashMap<>();
         for (ReactionView.MessageNode message : view.messages()) {
-            String id = prefix + "MESSAGE-" + message.id();
+            String id = ReactionIds.messageId(prefix, message.id());
             messageIds.put(message.id(), id);
             dot.append("  ").append(quoted(id)).append(" [id=").append(quoted(id))
                     .append(" shape=ellipse label=").append(quoted(labelOf(message)));
@@ -92,7 +99,7 @@ final class GraphVizViews {
                     .append("    label=").append(quoted(group.label())).append('\n')
                     .append("    style=").append(quoted("rounded,dashed")).append('\n');
             for (ReactionView.ReactionNode reaction : group.reactions()) {
-                String id = prefix + "REACTION-" + reaction.id();
+                String id = ReactionIds.reactionId(prefix, reaction.id());
                 reactionIds.put(reaction.id(), id);
                 dot.append("    ").append(quoted(id)).append(" [id=").append(quoted(id))
                         .append(" label=").append(quoted(reaction.label()));
@@ -133,9 +140,20 @@ final class GraphVizViews {
     }
 
     /**
-     * The page of a message, where this run writes one. A message of a system this site does not carry is
-     * drawn and not linked: the plugin would hand the path to the browser and the reader would get a
-     * {@code 404} from the server.
+     * The page of a message, <b>focused on the message</b>, where this run writes one. A message of a system
+     * this site does not carry is drawn and not linked: the plugin would hand the path to the browser and the
+     * reader would get a {@code 404} from the server.
+     * <p>
+     * The fragment is what makes the link land rather than merely arrive. A message page draws one diagram per
+     * variant - eighty-two of them for the busiest type on a real landscape - so a link without it leaves the
+     * reader at the top of the page to find the variant they came from. Its id comes from
+     * {@link ReactionIds#prefixOf}, which is why the prefix of a variant's diagram is derived from the variant
+     * and not counted: this pass holds the graphs of one system and knows nothing of the page it points at.
+     * <p>
+     * <b>Written even where that page draws no graph at all</b>, which is a message type the observer never saw
+     * react. The hash then names a node no diagram carries, the plugin does nothing with it, and the reader
+     * lands on the page - what a link without a fragment does anyway. Suppressing it would mean carrying an
+     * index of every message type of the environment that has a graph, for a case that costs nothing.
      */
     private static Optional<String> linkOfMessage(ReactionView.MessageNode message,
                                                   GenerationContext context) {
@@ -145,8 +163,13 @@ final class GraphVizViews {
         String group = message.kind() == MessageKind.COMMAND
                 ? Arc42MessagePages.COMMANDS
                 : Arc42MessagePages.EVENTS;
-        return Optional.of(context.diagramLink(DocumentationPaths.page(message.systemSlug(),
-                Arc42Template.SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW, group, message.messageSlug())));
+        String page = context.diagramLink(DocumentationPaths.page(message.systemSlug(),
+                Arc42Template.SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW, group, message.messageSlug()));
+        // Prefixed with the variant's, because the node addressed is on the message's own page, where a
+        // variant is a diagram of its own. The prefix of the graph this link sits in is another page's and
+        // has nothing to do with it.
+        return Optional.of(page + FOCUS
+                           + ReactionIds.messageId(ReactionIds.prefixOf(message.variant()), message.id()));
     }
 
     /**
@@ -180,7 +203,7 @@ final class GraphVizViews {
                 .page(RUNTIME_VIEW, Arc42Template.COMPONENT_REACTIONS_PAGE);
         // Unprefixed, because the node addressed is on the component's own page and that page carries one
         // graph. The prefix belongs to the page a graph is drawn on, not to the reaction.
-        return Optional.of(context.diagramLink(page) + "#graph?highlight-node=REACTION-" + reaction.id());
+        return Optional.of(context.diagramLink(page) + FOCUS + ReactionIds.reactionId("", reaction.id()));
     }
 
     /**

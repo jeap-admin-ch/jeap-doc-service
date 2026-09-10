@@ -10,6 +10,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
+import ch.admin.bit.jeap.doc.domain.template.ReactionIds;
 import ch.admin.bit.jeap.doc.domain.template.ReactionViews;
 import org.junit.jupiter.api.Test;
 
@@ -53,7 +54,7 @@ class GraphVizViewsTest {
         String dot = draw(observed());
 
         assertThat(dot).contains("URL=\"/docs/dev/systems/orders/system-architecture/building-block-view/"
-                                 + "events/orders-payment-accepted-event/\"");
+                                 + "events/orders-payment-accepted-event/#graph?highlight-node=MESSAGE-1\"");
         assertThat(dot).contains("#graph?highlight-node=REACTION-2");
     }
 
@@ -188,12 +189,61 @@ class GraphVizViewsTest {
      */
     @Test
     void reactions_whenThePageCarriesSeveralGraphs_thenEachOnesIdsAreItsOwn() {
-        String dot = draw(observed(), null, Set.of("orders-intake"), "V2-");
+        String dot = draw(observed(), null, Set.of("orders-intake"), ReactionIds.prefixOf("legacy"));
 
-        assertThat(dot).contains("\"V2-MESSAGE-1\" [id=\"V2-MESSAGE-1\"");
-        assertThat(dot).contains("\"V2-REACTION-2\" [id=\"V2-REACTION-2\"");
-        assertThat(dot).describedAs("and the graph itself is named apart too").contains("digraph \"V2-reactions\"");
-        assertThat(dot).describedAs("the edges follow the nodes").contains("\"V2-MESSAGE-1\" -> \"V2-REACTION-2\"");
+        assertThat(dot).contains("\"legacy-MESSAGE-1\" [id=\"legacy-MESSAGE-1\"");
+        assertThat(dot).contains("\"legacy-REACTION-2\" [id=\"legacy-REACTION-2\"");
+        assertThat(dot).describedAs("and the graph itself is named apart too")
+                .contains("digraph \"legacy-reactions\"");
+        assertThat(dot).describedAs("the edges follow the nodes")
+                .contains("\"legacy-MESSAGE-1\" -> \"legacy-REACTION-2\"");
+    }
+
+    /**
+     * <b>A message node focuses the message on the page it opens.</b> A message page draws a diagram per
+     * variant, so a link without the fragment leaves the reader at the top of a page of many graphs to find
+     * the one they came from - which is what the arch repo's Confluence graphs never did.
+     */
+    @Test
+    void reactions_thenAMessageNodeLinksToItsPageFocusedOnItself() {
+        String dot = draw(observed());
+
+        assertThat(dot).contains("/systems/orders/system-architecture/building-block-view/events/"
+                                 + "orders-payment-accepted-event/#graph?highlight-node=MESSAGE-1");
+        assertThat(dot).describedAs("a message of another system as much as one of this one")
+                .contains("/systems/shipping/system-architecture/building-block-view/events/"
+                          + "shipping-dispatched-event/#graph?highlight-node=MESSAGE-3");
+    }
+
+    /**
+     * And the node addressed is the one on <b>that variant's</b> diagram, whose id carries the variant's
+     * prefix. The linking pass holds one system's graphs and knows nothing of the target page, so the prefix
+     * has to be a function of what the node itself carries.
+     */
+    @Test
+    void reactions_whenAMessageHasAVariant_thenTheFragmentNamesThatVariantsNode() {
+        ObservedReactions observed = new ObservedReactions(
+                List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null),
+                        new ObservedReactions.ObservedMessage(3, "ShippingDispatchedEvent", "NES_Risk")),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake")),
+                List.of(new ObservedReactions.ObservedTrigger(1, 2, 12)),
+                List.of(new ObservedReactions.ObservedAction(2, 3)));
+
+        assertThat(draw(observed))
+                .contains("shipping-dispatched-event/#graph?highlight-node=nes-risk-MESSAGE-3");
+    }
+
+    /**
+     * <b>A type whose page draws no graph is linked with the fragment all the same.</b> The hash then names a
+     * node no diagram on that page carries, the plugin does nothing with it, and the reader lands on the page -
+     * which is what a link without a fragment does anyway. Suppressing it would need an index of every message
+     * type of the environment that has a graph, for a case that costs nothing.
+     */
+    @Test
+    void reactions_whenTheMessagesOwnPageDrawsNoGraph_thenTheFragmentIsWrittenAnyway() {
+        // The run carries no graph of any message type at all, which is what a type the observer never saw
+        // react has - and the link is written with its fragment regardless.
+        assertThat(draw(observed())).contains("orders-payment-accepted-event/#graph?highlight-node=MESSAGE-1");
     }
 
     /** And on the component's own page, its reactions link nowhere: the reader is already there. */

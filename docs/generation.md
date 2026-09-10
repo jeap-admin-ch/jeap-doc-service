@@ -517,8 +517,16 @@ been switched on.
 
 **The diagram is GraphViz in a fence**, rendered in the reader's browser like every other diagram this service
 writes, and every node carries an id so that a link can address it: a reaction on a system's graph links into
-the component's own runtime view and lands on the same reaction. The site raises the diagram plugin's source
-limit to 2 MB for these, because a system's reaction graph is the largest thing the site draws.
+the component's own runtime view and lands on the same reaction, and a message links into its own page and
+lands on itself. The site raises the diagram plugin's source limit to 2 MB for these, because a system's
+reaction graph is the largest thing the site draws.
+
+**A node's id is `MESSAGE-<id>` or `REACTION-<id>`**, the observer's own ids, and on a message page - the one
+page that draws several graphs - the ids of a variant's diagram are prefixed with a slug of that variant
+(`express-MESSAGE-9`). The prefix is derived from the variant rather than counted, because the page writing a
+link holds the graphs of one system and has never seen the page it points at. Two variants whose slugs are
+equal are a corner case: the first diagram keeps the slug, the next takes an ordinal infix, and a link reaches
+the first.
 
 **And a table sits under every graph** with one row per reaction - what triggered it, which component reacted,
 what it published in answer and how often it was seen. It is the complete list, the one the browser's own

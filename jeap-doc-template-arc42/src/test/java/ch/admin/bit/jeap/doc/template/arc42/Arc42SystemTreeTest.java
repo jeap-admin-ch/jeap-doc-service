@@ -699,9 +699,30 @@ class Arc42SystemTreeTest {
                 .contains("### Variant legacy")
                 .containsPattern("(?s)```dot.*```dot")
                 // A node id becomes a DOM id, so the two diagrams of one page name their nodes apart - a
-                // deep link into an id the page carries twice lands on whichever comes first.
-                .contains("\"V1-REACTION-2\" [id=\"V1-REACTION-2\"")
-                .contains("\"V2-REACTION-2\" [id=\"V2-REACTION-2\"");
+                // deep link into an id the page carries twice lands on whichever comes first. The prefix is
+                // the variant's own, so that a graph on another page can address a node on this one.
+                .contains("\"REACTION-2\" [id=\"REACTION-2\"")
+                .contains("\"legacy-REACTION-2\" [id=\"legacy-REACTION-2\"");
+    }
+
+    /**
+     * Two variants that slug alike are a corner case a reader could not tell apart either. The first diagram
+     * keeps the slug, the next takes an ordinal infix, and the page still carries no id twice - a link from
+     * elsewhere addresses the bare slug and so reaches the first.
+     */
+    @Test
+    void aMessagePage_whenTwoVariantsSlugAlike_thenTheFirstKeepsTheSlug() throws IOException {
+        ReactionView view = ReactionView.of(observedReactions(), context.model(), orders);
+        context = context.withReactions(ReactionViews.of(REACTIONS_IMPORTED_AT, ReactionView.empty(),
+                Map.of(), Map.of("OrdersPaymentAcceptedEvent",
+                        List.of(new ReactionViews.VariantView("a_b", view),
+                                new ReactionViews.VariantView("a-b", view))), Set.of()));
+
+        generate();
+
+        assertThat(read("system-architecture/5-building-block-view/events/orders-payment-accepted-event.md"))
+                .contains("\"a-b-REACTION-2\" [id=\"a-b-REACTION-2\"")
+                .contains("\"a-b-2-REACTION-2\" [id=\"a-b-2-REACTION-2\"");
     }
 
     /**

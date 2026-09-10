@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
+import ch.admin.bit.jeap.doc.domain.template.ReactionIds;
 import com.microsoft.playwright.Locator;
 
 import java.util.List;
@@ -116,6 +117,35 @@ class ReactionGraphBrowserIT extends SiteBrowserTestBase {
         assertThat(arrived).isVisible();
         arrived.scrollIntoViewIfNeeded();
         assertThat(diagram()).isVisible();
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>A message on a graph lands on its own diagram, not on the top of a page of diagrams.</b> A message
+     * page draws one diagram per variant - eighty-two of them for the busiest type on a real landscape - so
+     * the fragment is what makes the link useful, and the id it names has to be the one that variant's diagram
+     * carries. This fixture's message page draws two, and the link comes from the express variant's node: a
+     * prefix computed any other way lands on the first diagram or on no node at all.
+     */
+    @Test
+    void aMessageOnTheSystemsGraph_linksIntoTheDiagramOfItsOwnVariant() {
+        String node = ReactionIds.messageId(ReactionIds.prefixOf(VARIANT), VARIANT_MESSAGE_ID);
+        open(route(SYSTEM_REACTIONS_ROUTE));
+
+        Locator link = diagram().locator("a[*|href*='highlight-node=" + node + "']").first();
+        assertThat(link).hasCount(1);
+        link.click();
+        page.waitForURL("**/" + REACTING_MESSAGE + "/**");
+        page.waitForFunction("() => document.documentElement.dataset.hasHydrated === 'true'");
+
+        org.assertj.core.api.Assertions.assertThat(page.url())
+                .endsWith("#graph?highlight-node=" + node);
+        // And the id it addresses is really a node of that page: a URL inside a fence is checked by nothing,
+        // so a fragment naming an id nobody wrote is a link that arrives and does nothing. The diagram is
+        // scrolled to first - the plugin draws one when it comes into view.
+        Locator arrived = page.locator(DIAGRAM).last();
+        arrived.scrollIntoViewIfNeeded();
+        assertThat(page.locator("[id='" + node + "']")).isVisible();
         assertNothingWentWrongInTheBrowser();
     }
 
