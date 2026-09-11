@@ -93,6 +93,38 @@ class Arc42LibraryTreeTest {
         assertThat(Files.readString(group.resolve("index.md"))).contains(LIBRARY);
     }
 
+    /**
+     * <b>No architecture model holds a library</b>, so none of its pages may say it came from one. The site
+     * template renders the provenance from {@code doc_source}, and {@code archrepo} there tells a reader the
+     * page was generated from a model that has never heard of the thing it describes.
+     */
+    @Test
+    void everyGeneratedPage_saysItDidNotComeFromAnArchitectureModel() throws IOException {
+        writeWith(Map.of("2-constraints", List.of("what-was-given.md")));
+
+        Path structure = libraryTree().resolve(Arc42Template.LIBRARY_SEGMENT);
+        try (var files = Files.walk(structure)) {
+            files.filter(Files::isRegularFile)
+                    .filter(file -> file.getFileName().toString().endsWith(".md"))
+                    .filter(file -> !isUploaded(file))
+                    .forEach(file -> {
+                        String page = readOrThrow(file);
+                        assertThat(page)
+                                .describedAs("%s says it came from the architecture model", file)
+                                .doesNotContain("doc_source: \"archrepo\"");
+                        assertThat(page).contains("doc_source: \"doc-service\"");
+                    });
+        }
+    }
+
+    private static String readOrThrow(Path file) {
+        try {
+            return Files.readString(file);
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
     @Test
     void theLibrarysOwnStructure_startsClosed() throws IOException {
         writeWith(Map.of("2-constraints", List.of("what-was-given.md")));

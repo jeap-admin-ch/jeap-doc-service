@@ -32,12 +32,14 @@ final class Arc42ChapterIndexPage {
      * A chapter this template generates into wrote its own, and that one says more.
      */
     static void writeUnlessGenerated(StructureChapter chapter, GenerationContext context,
-                                     Path chapterDirectory) throws IOException {
+                                     Path chapterDirectory, boolean fromTheModel) throws IOException {
         if (Files.exists(chapterDirectory.resolve(Arc42Pages.INDEX))) {
             return;
         }
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(chapter.label(), 0, context))
+                .frontMatter(fromTheModel
+                        ? Arc42Pages.generated(chapter.label(), 0, context)
+                        : Arc42Pages.generatedWithoutTheModel(chapter.label(), 0, context))
                 .heading(1, chapter.label())
                 .paragraph(Md.text(Arc42Chapters.summaryOf(chapter)))
                 .paragraph("The pages of this chapter are in the navigation beside this one.");

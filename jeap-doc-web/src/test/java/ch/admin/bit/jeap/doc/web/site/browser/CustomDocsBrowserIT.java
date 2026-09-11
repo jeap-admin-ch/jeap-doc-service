@@ -73,7 +73,7 @@ class CustomDocsBrowserIT extends SiteBrowserTestBase {
 
         Locator provenance = page.getByLabel("Where this page came from");
         PlaywrightAssertions.assertThat(provenance).isVisible();
-        PlaywrightAssertions.assertThat(provenance).containsText("Written by the team");
+        PlaywrightAssertions.assertThat(provenance).containsText("Uploaded");
         PlaywrightAssertions.assertThat(provenance).containsText(UploadedDocumentation.REPOSITORY);
         PlaywrightAssertions.assertThat(provenance).containsText(UploadedDocumentation.REVISION);
     }
@@ -110,7 +110,7 @@ class CustomDocsBrowserIT extends SiteBrowserTestBase {
         PlaywrightAssertions.assertThat(provenance).isVisible();
         PlaywrightAssertions.assertThat(provenance).containsText("Generated page");
         PlaywrightAssertions.assertThat(provenance)
-                .containsText("its own configuration and records");
+                .containsText("not from an architecture model");
         // A page with a generation date and no import names that date instead.
         PlaywrightAssertions.assertThat(provenance).containsText("generated");
     }

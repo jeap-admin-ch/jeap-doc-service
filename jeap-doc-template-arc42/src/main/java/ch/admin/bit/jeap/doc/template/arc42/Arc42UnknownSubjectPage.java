@@ -56,9 +56,9 @@ final class Arc42UnknownSubjectPage {
                 explanationFor(context, "component", component.name()));
         // The chapter's own landing page: this one is a page in the chapter, not the chapter's index, and a
         // landing page that lists a chapter with no index fails the build on the link.
-        Arc42ChapterIndexPage.writeUnlessGenerated(INTRODUCTION, context, introduction);
+        Arc42ChapterIndexPage.writeUnlessGenerated(INTRODUCTION, context, introduction, false);
         Arc42CustomChapters.write(template, system.pages(), system.componentSubject(component.slug()),
-                context, structure, uploaded);
+                context, structure, uploaded, false);
 
         writeComponentLandingPage(template, component, context, structure,
                 Arc42CustomChapters.merged(template, List.of(INTRODUCTION), uploaded));
@@ -71,7 +71,7 @@ final class Arc42UnknownSubjectPage {
                                                 GenerationContext context, Path componentDirectory)
             throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(component.name(), 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel(component.name(), 0, context))
                 .heading(1, component.name())
                 .paragraph(Md.sentence("A component of this system that the architecture model does not hold. "
                                        + "What is documented about it was written by the team that owns it."))
@@ -87,7 +87,7 @@ final class Arc42UnknownSubjectPage {
                                                   GenerationContext context, Path structure,
                                                   List<StructureChapter> chapters) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(template.componentLabel(), 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel(template.componentLabel(), 0, context))
                 .heading(1, template.componentLabel() + " - " + component.name())
                 .paragraph(Md.sentence("What the team that owns {} has written about it, according to {}.",
                         Md.code(component.name()), Md.link("https://arc42.org/overview/", Arc42Template.ID)));
@@ -103,7 +103,7 @@ final class Arc42UnknownSubjectPage {
     /** The one page, worded for whatever kind of subject it is about. */
     private static MarkdownWriter explanationFor(GenerationContext context, String kind, String name) {
         return new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(LABEL, 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel(LABEL, 0, context))
                 .heading(1, LABEL)
                 .paragraph(Md.sentence("The architecture model of the {} environment does not hold the {} {}. "
                                        + "Everything on these pages was written by the team that owns it.",
@@ -120,7 +120,7 @@ final class Arc42UnknownSubjectPage {
                                Path structureDirectory) throws IOException {
         Path directory = Arc42Pages.chapterDirectory(template, structureDirectory, INTRODUCTION);
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(LABEL, 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel(LABEL, 0, context))
                 .heading(1, LABEL)
                 .paragraph(Md.sentence("The architecture model of the {} environment does not hold the "
                                        + "system {}. Everything on these pages was written by the team that "
@@ -133,6 +133,6 @@ final class Arc42UnknownSubjectPage {
                                        + "happens when something of it is deployed and the importers of the "
                                        + "architecture repository see it. Nothing has to be uploaded again."));
         Arc42Pages.write(directory, PAGE + "." + DocumentationPaths.MARKDOWN_EXTENSION, page);
-        Arc42ChapterIndexPage.writeUnlessGenerated(INTRODUCTION, context, directory);
+        Arc42ChapterIndexPage.writeUnlessGenerated(INTRODUCTION, context, directory, false);
     }
 }

@@ -77,7 +77,7 @@ final class Arc42LibraryPages {
     private static void writeIndex(SystemDocumentation system, List<CustomSubject> libraries,
                                    GenerationContext context, Path group) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(LIBRARIES_LABEL, 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel(LIBRARIES_LABEL, 0, context))
                 .heading(1, LIBRARIES_LABEL)
                 .paragraph(Md.sentence("The libraries of {}. A library publishes no artifact this service "
                                        + "can see and is deployed nowhere, so everything documented about "
@@ -105,7 +105,8 @@ final class Arc42LibraryPages {
         List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
                 system.custom().chapterFoldersOf(library));
         writeOverview(template, system, library, context, structure);
-        Arc42CustomChapters.write(template, system.pages(), library, context, structure, uploaded);
+        Arc42CustomChapters.write(template, system.pages(), library, context, structure, uploaded,
+                false);
 
         writeStructureLandingPage(template, library, context, structure,
                 Arc42CustomChapters.merged(template, List.of(INTRODUCTION), uploaded));
@@ -119,7 +120,7 @@ final class Arc42LibraryPages {
         Path introduction = Arc42Pages.chapterDirectory(template, structure, INTRODUCTION);
         Optional<CustomSet> set = system.custom().setOf(library);
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated("Library Overview", 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel("Library Overview", 0, context))
                 .heading(1, "Library Overview")
                 .paragraph(Md.sentence("What the doc service knows about {}, from the upload that published "
                                        + "this documentation. Everything else on these pages was written by "
@@ -140,7 +141,7 @@ final class Arc42LibraryPages {
                                        + DocumentationPaths.MARKDOWN_EXTENSION, page);
         // The chapter's own landing page. This one is a page in chapter 1, not its index, and the structure
         // landing page links to the chapter.
-        Arc42ChapterIndexPage.writeUnlessGenerated(INTRODUCTION, context, introduction);
+        Arc42ChapterIndexPage.writeUnlessGenerated(INTRODUCTION, context, introduction, false);
     }
 
     /** The landing page of the library's structure: the chapters that exist. */
@@ -148,7 +149,7 @@ final class Arc42LibraryPages {
                                                   GenerationContext context, Path structure,
                                                   List<StructureChapter> chapters) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(template.libraryLabel(), 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel(template.libraryLabel(), 0, context))
                 .heading(1, template.libraryLabel() + " - " + library.name())
                 .paragraph(Md.sentence("What the team that owns {} has written about it, according to {}.",
                         Md.code(library.name()), Md.link("https://arc42.org/overview/", Arc42Template.ID)))
@@ -168,7 +169,7 @@ final class Arc42LibraryPages {
                                          GenerationContext context, Path directory)
             throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(library.name(), 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel(library.name(), 0, context))
                 .heading(1, library.name())
                 .paragraph(Md.sentence("A library of this system: it publishes no artifact this service can "
                                        + "see and is deployed nowhere, so its documentation is written by "

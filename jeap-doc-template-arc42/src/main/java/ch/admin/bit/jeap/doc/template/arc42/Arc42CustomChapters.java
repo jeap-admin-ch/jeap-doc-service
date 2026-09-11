@@ -60,7 +60,7 @@ final class Arc42CustomChapters {
      */
     static void write(StructureTemplate template, CustomPages pages, CustomSubject subject,
                       GenerationContext context, Path structureDirectory,
-                      List<StructureChapter> chapters) throws IOException {
+                      List<StructureChapter> chapters, boolean fromTheModel) throws IOException {
         for (StructureChapter chapter : chapters) {
             Path directory = Arc42Pages.chapterDirectory(template, structureDirectory, chapter);
             pages.writeInto(subject, chapter.folder(), directory);
@@ -68,7 +68,7 @@ final class Arc42CustomChapters {
             // written before this runs, so it has already promised the chapter exists - and every page of a
             // set can be dropped, by a name the template generates or by a file its bundle no longer holds.
             // A link to a chapter with no landing page fails the whole site build.
-            Arc42ChapterIndexPage.writeUnlessGenerated(chapter, context, directory);
+            Arc42ChapterIndexPage.writeUnlessGenerated(chapter, context, directory, fromTheModel);
         }
     }
 }

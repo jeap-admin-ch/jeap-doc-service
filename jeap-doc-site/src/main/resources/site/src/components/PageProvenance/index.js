@@ -19,7 +19,7 @@ export default function PageProvenance({frontMatter}) {
     return (
         <aside className={styles.provenance} aria-label="Where this page came from">
             <span className={custom ? styles.custom : styles.generated}>
-                {custom ? 'Written by the team' : 'Generated page'}
+                {custom ? 'Uploaded' : 'Generated page'}
             </span>
             {custom ? <CustomSource frontMatter={frontMatter}/> : <GeneratedSource frontMatter={frontMatter}/>}
         </aside>
@@ -35,14 +35,29 @@ function CustomSource({frontMatter}) {
     const uploaded = frontMatter.doc_uploaded_at_display || frontMatter.doc_uploaded_at;
     return (
         <span className={styles.detail}>
-            {' from '}<code>{repository}</code>
+            {' from '}<Repository name={repository}/>
             {ref ? <>{' on '}<code>{ref}</code></> : null}
             {revision ? <>{' at '}<code>{revision}</code></> : null}
             {version ? <>{', version '}<code>{version}</code></> : null}
-            {uploaded ? <>{', uploaded '}{uploaded}</> : null}
+            {uploaded ? <>{', '}{uploaded}</> : null}
             {'.'}
         </span>
     );
+}
+
+/**
+ * The repository a page came from, as a link where it is one.
+ *
+ * A pipeline sends whatever its checkout calls its origin: usually a URL a reader can open, sometimes just a
+ * name. Only `http:` and `https:` become a link - anything else is text, so that a value nobody validated
+ * cannot turn into a `javascript:` href on a page of this site.
+ */
+function Repository({name}) {
+    if (!name) {
+        return null;
+    }
+    const linkable = name.startsWith('https://') || name.startsWith('http://');
+    return linkable ? <a href={name}><code>{name}</code></a> : <code>{name}</code>;
 }
 
 /**
@@ -72,7 +87,7 @@ function GeneratedSource({frontMatter}) {
         <span className={styles.detail}>
             {fromTheModel
                 ? ' by the jEAP Doc Service from the architecture model'
-                : ' by the jEAP Doc Service from its own configuration and records'}
+                : ' by the jEAP Doc Service, and not from an architecture model'}
             {environment ? <>{' of the '}<strong>{environment}</strong>{' environment'}</> : null}
             {when ? <>{', '}{when.what}{' '}{when.at}</> : null}
             {'.'}

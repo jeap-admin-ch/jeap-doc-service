@@ -111,7 +111,7 @@ final class Arc42ComponentPages {
         // The uploaded pages last, into the chapters this template named - a generated chapter included,
         // because the generator owns a chapter's index page and an upload owns the pages beside it.
         Arc42CustomChapters.write(template, documented.pages(),
-                documented.componentSubject(component.slug()), context, structure, uploaded);
+                documented.componentSubject(component.slug()), context, structure, uploaded, true);
     }
 
     /** Where the pages of this component are served. The one place a component path is built. */

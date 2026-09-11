@@ -95,7 +95,8 @@ final class Arc42SystemPages {
         // The uploaded pages last, into the chapters this template named. A generated chapter gets them too:
         // the generator owns a chapter's index page and an upload owns the pages beside it.
         Arc42CustomChapters.write(template, system.pages(), system.subject(), context, structure,
-                Arc42CustomChapters.of(template, system.customChaptersOfTheSystem()));
+                Arc42CustomChapters.of(template, system.customChaptersOfTheSystem()),
+                system.isInTheArchitectureModel());
     }
 
     /**

@@ -194,7 +194,7 @@ class CustomDocsGenerationIT extends DocServiceIntegrationTestBase {
 
         mockMvc.perform(get(BASE + "/systems/" + SYSTEM + "/system-architecture/intro/goals/"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Written by the team")))
+                .andExpect(content().string(containsString("Uploaded")))
                 .andExpect(content().string(containsString("catalog-docs.git")))
                 .andExpect(content().string(containsString("beef1234")));
     }

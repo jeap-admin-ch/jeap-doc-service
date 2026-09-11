@@ -52,6 +52,27 @@ final class Arc42Pages {
     }
 
     /**
+     * The front matter of a page this service generated about something <b>no architecture model holds</b>:
+     * a library, or a system or component that is documented and deployed nowhere.
+     * <p>
+     * <b>It names no architecture repository, because none was read for it.</b> The page is generated all the
+     * same - it is the service's own writing, from what the upload said - and the site template renders the
+     * provenance from {@code doc_source}, so a page saying {@code archrepo} tells its reader it came from a
+     * model that has never heard of the thing it describes. The page most obviously wrong about that was the
+     * one explaining that the model does not hold the subject.
+     */
+    static FrontMatter generatedWithoutTheModel(String title, int position, GenerationContext context) {
+        return frontMatter()
+                .put("title", title)
+                .put("sidebar_label", title)
+                .put("sidebar_position", position)
+                .put("doc_status", "generated")
+                .put("doc_source", "doc-service")
+                .put("doc_environment", context.environment())
+                .put("doc_generated_at", context.generatedAt().toString());
+    }
+
+    /**
      * The note under a diagram that left something out, choosing between the singular and the plural.
      * <p>
      * <b>Every one of these notes has to choose.</b> A bound of forty or a hundred is crossed one thing at a
