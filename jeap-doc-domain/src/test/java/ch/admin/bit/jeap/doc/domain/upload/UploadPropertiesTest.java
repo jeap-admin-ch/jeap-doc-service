@@ -17,7 +17,7 @@ class UploadPropertiesTest {
     void theDefaultsAreTheOnesTheApiDocuments() {
         UploadProperties properties = new UploadProperties();
 
-        assertThat(properties.getValidation().getMaxPaths()).isEqualTo(10_000);
+        assertThat(properties.getValidation().getMaxPaths()).isEqualTo(200);
         assertThat(properties.getValidation().getMaxFindings()).isEqualTo(50);
         assertThatCode(properties::check).doesNotThrowAnyException();
     }

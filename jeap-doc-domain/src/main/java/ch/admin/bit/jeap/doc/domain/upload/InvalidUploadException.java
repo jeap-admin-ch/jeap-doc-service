@@ -1,5 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.upload;
 
+import ch.admin.bit.jeap.doc.domain.upload.validation.StructureReport;
+
 import lombok.Getter;
 
 import java.time.Duration;
@@ -37,10 +39,32 @@ public class InvalidUploadException extends RuntimeException {
          * the request is refused instead of answered.
          */
         TOO_MANY_PATHS,
+
+        /** The uploaded bundle cannot be read as a ZIP archive at all. */
+        INVALID_BUNDLE,
+
+        /**
+         * The bundle says its files unpack to more than {@code jeap.doc.custom.max-unpacked-size}. Refused
+         * before it is stored, because a build writes every file of a set into the tree it generates.
+         */
+        UNPACKS_TO_TOO_MUCH,
+
+        /**
+         * The uploaded set would not be published as it is: a page in a chapter no template has, a name the
+         * generator writes itself, a folder inside a chapter. The answer carries the findings, the same ones
+         * the structure validation endpoint reports.
+         */
+        STRUCTURE_INVALID,
         STORAGE_FAILED
     }
 
     private final transient Code code;
+
+    /**
+     * The findings of a set that was refused over its structure, or null for every other reason. It is what
+     * the web layer answers with, and it is the one reason whose answer is more than a sentence.
+     */
+    private final transient StructureReport report;
 
     /**
      * How long the caller should wait before repeating the request, if waiting is what helps.
@@ -48,21 +72,23 @@ public class InvalidUploadException extends RuntimeException {
     private final transient Duration retryAfter;
 
     public InvalidUploadException(Code code, String message) {
-        this(code, message, null, null);
+        this(code, message, null, null, null);
     }
 
     public InvalidUploadException(Code code, String message, Throwable cause) {
-        this(code, message, cause, null);
+        this(code, message, cause, null, null);
     }
 
-    private InvalidUploadException(Code code, String message, Throwable cause, Duration retryAfter) {
+    private InvalidUploadException(Code code, String message, Throwable cause, Duration retryAfter,
+                                   StructureReport report) {
         super(message, cause);
         this.code = code;
         this.retryAfter = retryAfter;
+        this.report = report;
     }
 
     public static InvalidUploadException inProgress(String message, Duration retryAfter) {
-        return new InvalidUploadException(Code.UPLOAD_IN_PROGRESS, message, null, retryAfter);
+        return new InvalidUploadException(Code.UPLOAD_IN_PROGRESS, message, null, retryAfter, null);
     }
 
     public static InvalidUploadException missing(String parameter, String requiredBecause) {
@@ -111,6 +137,18 @@ public class InvalidUploadException extends RuntimeException {
     public static InvalidUploadException bodyIsNotAPathTree() {
         return new InvalidUploadException(Code.INVALID_PARAMETER_VALUE,
                 "The request body is not a readable path tree.");
+    }
+
+    /**
+     * A set that would not be published as it is. The report travels with the exception, so the caller is
+     * answered with the same findings the structure validation endpoint would have given it.
+     */
+    public static InvalidUploadException structureInvalid(StructureReport report) {
+        return new InvalidUploadException(Code.STRUCTURE_INVALID,
+                ("The documentation set would not be published as it is: %d of its %d file(s) break a rule of "
+                 + "the structure template %s. The findings say which.")
+                        .formatted(report.findings().size(), report.pathsChecked(), report.template()),
+                null, null, report);
     }
 
     public static InvalidUploadException tooLarge(long limit) {

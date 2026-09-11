@@ -191,7 +191,7 @@ class AboutThisDocumentationTest {
 
     private String write(DocumentationFacts facts, long buildId) throws IOException {
         page.write(facts, new SiteEnvironment("prod", "PROD", "Production", 1, true, false),
-                Map.of("prod", new EnvironmentModel(twoSystems(), 5, 9, IMPORTED_AT)), buildId, STATUS_URL,
+                Map.of("prod", new EnvironmentModel(twoSystems(), 2, 5, 9, IMPORTED_AT)), buildId, STATUS_URL,
                 LIVE_STATUS_URL, directory);
         return Files.readString(directory.resolve(AboutThisDocumentation.FILE_NAME), StandardCharsets.UTF_8);
     }

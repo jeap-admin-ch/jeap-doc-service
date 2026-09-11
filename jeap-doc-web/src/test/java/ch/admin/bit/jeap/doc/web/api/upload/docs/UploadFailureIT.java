@@ -2,7 +2,7 @@ package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
 import ch.admin.bit.jeap.doc.domain.upload.UploadState;
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage;
+import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import org.junit.jupiter.api.Test;
@@ -39,12 +39,12 @@ class UploadFailureIT extends DocServiceIntegrationTestBase {
     private DocumentationUploadRepository uploads;
 
     @MockitoBean
-    private DocumentationBundleStorage bundleStorage;
+    private UploadedBundles bundles;
 
     @Test
     void upload_whenTheBundleCannotBeStored_thenRecordedAsFailedAndAnswered() throws Exception {
         UUID uploadId = UUID.randomUUID();
-        when(bundleStorage.store(anyLong(), anyInt(), any(), anyLong()))
+        when(bundles.receive(any(), anyLong(), any()))
                 .thenThrow(new IllegalStateException("the object storage did not answer"));
 
         mockMvc.perform(uploadOf(uploadId, componentDocs(), bundle("# a component")).with(writeRole()))

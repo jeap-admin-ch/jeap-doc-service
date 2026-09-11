@@ -20,6 +20,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.view.ComponentContext;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
+import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
@@ -84,8 +85,9 @@ final class Arc42ComponentPages {
      *
      * @param componentDirectory {@code …/building-block-view/components/<slug>}
      */
-    static void write(Arc42Template template, DocumentedSystem system, DocumentedComponent component,
-                      GenerationContext context, Path componentDirectory) throws IOException {
+    static void write(Arc42Template template, SystemDocumentation documented, DocumentedSystem system,
+                      DocumentedComponent component, GenerationContext context, Path componentDirectory)
+            throws IOException {
         DocumentationPaths.ComponentPaths paths = pathsOf(template, system, component);
         Path structure = componentDirectory.resolve(template.componentPathSegment());
         // Closed, and the one category here that is. Every component of a system expanded down to its own
@@ -101,8 +103,15 @@ final class Arc42ComponentPages {
                 writeBuildingBlockView(template, system, component, context, paths, structure);
         boolean runtimeView = writeRuntimeView(template, component, context, paths, structure);
 
+        List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
+                documented.customChaptersOfComponent(component.slug()));
         writeLandingPage(template, system, component, context, paths, structure, buildingBlockView,
-                runtimeView);
+                runtimeView, uploaded);
+
+        // The uploaded pages last, into the chapters this template named - a generated chapter included,
+        // because the generator owns a chapter's index page and an upload owns the pages beside it.
+        Arc42CustomChapters.write(template, documented.pages(),
+                documented.componentSubject(component.slug()), context, structure, uploaded);
     }
 
     /** Where the pages of this component are served. The one place a component path is built. */
@@ -116,7 +125,8 @@ final class Arc42ComponentPages {
     private static void writeLandingPage(Arc42Template template, DocumentedSystem system,
                                          DocumentedComponent component, GenerationContext context,
                                          DocumentationPaths.ComponentPaths paths, Path structure,
-                                         boolean buildingBlockView, boolean runtimeView) throws IOException {
+                                         boolean buildingBlockView, boolean runtimeView,
+                                         List<StructureChapter> uploaded) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(template.componentLabel(), 0, context))
                 .heading(1, template.componentLabel() + " - " + component.name())
@@ -130,12 +140,14 @@ final class Arc42ComponentPages {
                            + "chapter has not been written, not that it is empty.");
 
         List<List<Markdown>> rows = new ArrayList<>();
-        for (StructureChapter chapter : chaptersOf(buildingBlockView, runtimeView)) {
+        // The generated chapters and the uploaded ones, in the template's order. A chapter that exists and is
+        // not listed here is a chapter a reader finds only in the sidebar.
+        for (StructureChapter chapter : Arc42CustomChapters.merged(template,
+                chaptersOf(buildingBlockView, runtimeView), uploaded)) {
             rows.add(List.of(Md.link(paths.chapter(chapter), chapter.label()),
                     Md.text(Arc42Chapters.componentSummaryOf(chapter))));
         }
         page.table(List.of("Chapter", "What it answers"), rows);
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(structure, Arc42Pages.INDEX, page);
     }
 
@@ -193,7 +205,6 @@ final class Arc42ComponentPages {
         }
         page.paragraph("What this component is for and the goals it is built to are written by the team that "
                        + "owns it and appear beside this page.");
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, page);
     }
 
@@ -209,7 +220,6 @@ final class Arc42ComponentPages {
                 .paragraph(Md.sentence("What {} talks to, and about what.", Md.code(component.name())))
                 .bulletList(List.of(Md.link(paths.page(CONTEXT_AND_SCOPE, COMPONENT_CONTEXT_VIEW_PAGE),
                         CONTEXT_VIEW_LABEL)));
-        Arc42Pages.provenance(index, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         writeContextView(system, component, context, directory);
@@ -264,7 +274,6 @@ final class Arc42ComponentPages {
                             Md.joinWith(", ", edge.labels().stream().map(Md::code).toList())))
                     .toList());
         }
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, COMPONENT_CONTEXT_VIEW_PAGE + ".md", page);
     }
 
@@ -304,7 +313,6 @@ final class Arc42ComponentPages {
                 .paragraph(Md.sentence("The data {} keeps and the interfaces it offers.",
                         Md.code(component.name())));
         index.bulletList(contents);
-        Arc42Pages.provenance(index, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
         return true;
     }
@@ -352,7 +360,6 @@ final class Arc42ComponentPages {
             page.paragraph("The architecture repository knows that this component publishes a database "
                            + "schema and this service has not replicated it yet, so there is no diagram and "
                            + "no list of tables. The next import brings them.");
-            Arc42Pages.provenance(page, context);
             Arc42Pages.write(directory, DATABASE_SCHEMA_PAGE + ".md", page);
             return;
         }
@@ -373,7 +380,6 @@ final class Arc42ComponentPages {
             writeHiddenNote(page, documented);
             writeTables(page, documented);
         }
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, DATABASE_SCHEMA_PAGE + ".md", page);
     }
 
@@ -600,7 +606,6 @@ final class Arc42ComponentPages {
                         .toList());
             }
         }
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, REST_API_PAGE + ".md", page);
     }
 
@@ -750,7 +755,6 @@ final class Arc42ComponentPages {
         writeContracts(page, system, component, messages, ContractRole.CONSUMES, "Consumes");
         writeContracts(page, system, component, messages, ContractRole.UNKNOWN,
                 "Contracts With An Unrecognised Role");
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, MESSAGES_PAGE + ".md", page);
     }
 
@@ -909,7 +913,6 @@ final class Arc42ComponentPages {
                 .paragraph(Md.sentence("How {} behaves while it runs.", Md.code(component.name())))
                 .bulletList(List.of(Md.link(paths.page(RUNTIME_VIEW, COMPONENT_REACTIONS_PAGE),
                         COMPONENT_REACTIONS_LABEL)));
-        Arc42Pages.provenance(index, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         MarkdownWriter page = new MarkdownWriter()

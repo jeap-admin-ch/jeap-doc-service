@@ -366,7 +366,7 @@ class DocumentationBuildRunnerConcurrencyTest {
         BuildProperties properties = new BuildProperties();
         properties.setMaxConcurrentParts(slots);
         return new DocumentationBuildRunner(standing, aBuildRepository(), new DocumentationSites(
-                new SiteProperties()), new SystemSitePartition(new NoArchitectureModel()), siteBuilder,
+                new SiteProperties()), new SystemSitePartition(new NoArchitectureModel(), new NoCustomDocumentation()), siteBuilder,
                 aPublicationStorage(), properties, metrics, exclusiveWork,
                 new ArchitectureModelReadiness(new NoArchitectureModel()), new RecordingSearchIndexing(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -431,6 +431,9 @@ class DocumentationBuildRunnerConcurrencyTest {
          * Every second part throws at once while the others take their time, so that a slot freed on the
          * strength of the throw is freed while a build is demonstrably still holding one.
          */
+        // S2925: the sleep waits for nothing - it is how long a build takes. Without it every part would
+        // finish before the next one started, and there would be no concurrency left to assert.
+        @SuppressWarnings("java:S2925")
         @Override
         public BuiltSite generate(PreparedPart prepared) {
             peak.accumulateAndGet(running.incrementAndGet(), Math::max);

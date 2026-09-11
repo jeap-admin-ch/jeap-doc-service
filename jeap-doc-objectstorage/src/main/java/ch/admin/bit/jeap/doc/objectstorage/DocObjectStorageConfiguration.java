@@ -2,7 +2,8 @@ package ch.admin.bit.jeap.doc.objectstorage;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
+import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
 import org.springframework.context.annotation.Bean;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -16,8 +17,14 @@ import software.amazon.awssdk.services.s3.S3Client;
 public class DocObjectStorageConfiguration {
 
     @Bean
-    DocumentationBundleStorage documentationBundleStorage(S3Client s3Client, DocObjectStorageProperties properties) {
+    UploadedBundles uploadedBundles(S3Client s3Client, DocObjectStorageProperties properties) {
         return new S3DocumentationBundleStorage(s3Client, properties);
+    }
+
+    @Bean
+    CustomDocumentationStorage customDocumentationStorage(S3Client s3Client,
+                                                          DocObjectStorageProperties properties) {
+        return new S3CustomDocumentationStorage(s3Client, properties);
     }
 
     @Bean

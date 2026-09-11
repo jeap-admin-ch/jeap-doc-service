@@ -60,6 +60,7 @@ call site.
 | `id()`                                        | What an upload names in its `template` parameter                                                            |
 | `systemPathSegment()` / `systemLabel()`       | The segment and the navigation label below a system                                                         |
 | `componentPathSegment()` / `componentLabel()` | The same below a component                                                                                  |
+| `libraryPathSegment()` / `libraryLabel()`     | And below a library, which no architecture model holds - every chapter of one is written by hand            |
 | `chapters()`                                  | The chapters. Nothing else writes a chapter folder name, and the order they are declared in does not matter |
 | `chapterOfFolder(folder)`                     | The chapter a folder belongs to, which is how an upload's first path segment is checked                     |
 | `allowedFileExtensions()`                     | What an upload to this template may carry, lower case and without the dot. No default: an empty set would silently forbid everything |
@@ -70,6 +71,28 @@ call site.
 
 A template is named for what it describes, so the same structure reads as *System Architecture* below a system
 and as *Component Architecture* below a component.
+
+### What `writeSystem` is handed
+
+**One entry point, and the subject says which case it is in.** `SystemDocumentation` carries the architecture
+model's system where there is one, everything uploaded for that system's subtree, and a writer for the
+uploaded pages. So a template branches once, at the top, rather than checking for a missing model on every
+page:
+
+| It asks | And gets |
+|---|---|
+| `model()` | The `DocumentedSystem`, or empty - a system can be documented before anything is deployed |
+| `components()` | Every component to document: the model's, and those only an upload knows |
+| `libraries()` | The libraries of the system, which no model ever holds |
+| `customChaptersOfTheSystem()`, `customChaptersOfComponent(slug)` | Which chapter folders carry uploaded pages |
+| `pages().writeInto(subject, chapter, directory)` | Writes those pages into a directory the template made |
+
+**A template creates the chapter folder and the writer fills it.** Only a template may name a chapter - the
+label and the position come from its `StructureChapter` - and the front matter and the ordering of an
+uploaded page are one implementation for every methodology, so they are not the template's to decide. A
+template calls the writer while it walks its own chapters, which keeps it one pass.
+
+**A template never sees an uploaded page's bytes.** It is told which chapters carry pages, not what they say.
 
 ## Numbered chapters, or not
 
@@ -168,6 +191,20 @@ The component's context view is served at `context-view` and not at `component-c
 carries the component and `component-architecture`, so the prefix would say the word a third time. The heading
 and the navigation label are *Component Context View* all the same.
 
+And below one library, which stands in the same chapter as the components:
+
+```text
+.../building-block-view/libraries/                     every library of the system
+.../building-block-view/libraries/orders-common-lib/   the library
+.../libraries/orders-common-lib/library-architecture/  arc42 for the library
+.../library-architecture/intro/                        1. Introduction and Goals
+.../library-architecture/intro/library-overview/       what the upload said about it
+```
+
+A library's twelve chapters are written by hand - no architecture model holds one - so everything below
+`library-architecture/` except the overview page comes from an upload. See
+[The documentation a team writes](custom-documentation.md).
+
 ### Three rules, and an upload has to keep them too
 
 - **The chapter folder carries its arc42 number, the URL does not.** A chapter is the folder
@@ -233,4 +270,5 @@ unchanged - see [What an upload is validated against](upload-validation.md#addin
 - [Generating the documentation](generation.md) - what a build does with a template
 - [API](api.md) - the `template` parameter of an upload
 - [Uploads](uploads.md) - what an upload has to look like
+- [The documentation a team writes](custom-documentation.md) - what a template is handed about the uploaded pages
 - [What an upload is validated against](upload-validation.md) - the rules a template's declarations become

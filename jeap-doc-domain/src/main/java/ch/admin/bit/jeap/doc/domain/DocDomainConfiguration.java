@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.domain;
 
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactImportStep;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.MessageSchemaImportStep;
@@ -35,7 +36,8 @@ import java.time.Clock;
 @ComponentScan
 @EnableScheduling
 @EnableConfigurationProperties({UploadProperties.class, SiteProperties.class, BuildProperties.class,
-        PublicationProperties.class, ArchitectureImportProperties.class, SearchProperties.class})
+        PublicationProperties.class, ArchitectureImportProperties.class, SearchProperties.class,
+        CustomProperties.class})
 public class DocDomainConfiguration {
 
     /**

@@ -13,10 +13,14 @@ accepted: `200` when there is nothing to report, `422` with a finding per proble
 uploaded, stored or read by it, and it has no side effect at all - see
 [the API](api.md#validating-a-documentation-set).
 
-**The endpoint is advisory, and today it is the only thing that applies these rules.** The upload endpoint does
-not apply them, and neither does anything else: taking an uploaded documentation set over into the generated
-site is not written yet, and when it is, it will apply the same rules from the same code rather than deriving
-them again. Until then a hand-made ZIP that skips this endpoint is not stopped by anything.
+**The endpoint is advisory; the upload is not.** A pipeline may skip the endpoint, and a hand-made ZIP is
+refused all the same: the upload applies these rules to the paths of the archive it received, from the same
+code, and answers `422` with the same findings. So this endpoint is what keeps a misfiled page out of a
+*build log* rather than out of a site - the site is kept clean by the upload.
+
+**And a build applies them once more**, to a set that is already stored. It is the backstop for a set that
+entered before a rule existed, or for a page whose name a template only started generating later: such a page
+is left out with a line in the build log, and never fails the build.
 
 ## What is ignored, and never reported
 
@@ -144,19 +148,27 @@ prevents.
 
 | Chapter | System docs | Component docs | Library docs |
 | ------- | ----------- | -------------- | ------------ |
+| `1-intro` | `not-in-the-architecture-model` | `not-in-the-architecture-model` | `library-overview` |
 | `3-context-and-scope` | `system-context-view` | `context-view` | - |
-| `5-building-block-view` | `whitebox-view`, `components`, `events`, `commands` | `database-schema`, `rest-api`, `messages` | - |
+| `5-building-block-view` | `whitebox-view`, `components`, `libraries`, `events`, `commands` | `database-schema`, `rest-api`, `messages` | - |
 | `6-runtime-view` | `system-reactions` | `component-reactions` | - |
 
-Three of those are folders rather than pages - `components`, `events`, `commands` - and they are reserved for
-the same reason: a folder with a landing page and a file of that name are one URL.
+Four of those are folders rather than pages - `components`, `libraries`, `events`, `commands` - and they are
+reserved for the same reason: a folder with a landing page and a file of that name are one URL.
+
+**`not-in-the-architecture-model` is reserved whether or not the model holds the subject.** It is the page a
+system or component gets when nothing is deployed yet and the architecture model therefore knows nothing
+about it. Reserving it only while the model is silent would make one and the same upload valid on one day and
+invalid on the next, decided by an import rather than by anything a team did.
 
 Plus, in every chapter of every template, the names the site generator reads as that chapter's landing page:
 `index`, `readme` and the chapter folder's own name - `1-intro/1-intro.md`. Those three are folded, because the
 generator folds them: `README.md` and `INDEX.MD` are the same page to it.
 
-**Nothing is generated for a library**, so a library upload is bounded by the rules that hold for every
-template and by the extensions above, and by nothing else.
+**A library gets one generated page**, `1-intro/library-overview.md`: the version, the repository, the branch
+and the commit its upload named. Nothing else about a library is generated - no architecture model holds one -
+so all twelve of its chapters are the team's to write, and its upload is bounded by the rules that hold for
+every template, the extensions above, and that one name.
 
 **Only a `.md` can collide.** Only Markdown becomes a document, so
 `5-building-block-view/whitebox-view.png` is an image that no page is served at and is accepted.
@@ -225,5 +237,6 @@ service's, so the workflow that prints arc42's report prints the new template's 
 
 - [The API](api.md) - the endpoint, its parameters and its answers
 - [Uploads](uploads.md) - how a documentation set reaches the doc service
+- [The documentation a team writes](custom-documentation.md) - what becomes of a set that passes these rules
 - [Structure templates](structure-templates.md) - what a template is, and how to add one
 - [Generating the documentation](generation.md) - what the doc service writes itself

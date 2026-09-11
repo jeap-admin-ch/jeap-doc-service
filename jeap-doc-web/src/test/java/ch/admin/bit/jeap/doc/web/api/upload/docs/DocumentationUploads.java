@@ -3,14 +3,23 @@ package ch.admin.bit.jeap.doc.web.api.upload.docs;
 import ch.admin.bit.jeap.doc.web.api.upload.UploadPaths;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
+
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -78,5 +87,75 @@ final class DocumentationUploads {
             throw new UncheckedIOException(e);
         }
         return bytes.toByteArray();
+    }
+
+    /**
+     * The same archive as a received bundle, for a test that mocks the receive: it reads the entries out of
+     * the bytes, so what a test asserts about is the archive it built rather than a made-up path list.
+     */
+    static UploadedBundles.ReceivedBundle received(byte[] bundle) {
+        return new ReceivedBytes(bundle);
+    }
+
+    private record ReceivedBytes(byte[] bundle) implements UploadedBundles.ReceivedBundle {
+
+        @Override
+        public List<String> paths() {
+            List<String> paths = new ArrayList<>();
+            walk((entry, in) -> paths.add(entry.getName()));
+            return paths;
+        }
+
+        @Override
+        public long declaredUnpackedSize() {
+            return bundle.length;
+        }
+
+        @Override
+        public String sha256() {
+            try {
+                return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bundle));
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        @Override
+        public long sizeInBytes() {
+            return bundle.length;
+        }
+
+        @Override
+        public byte[] head(String path, int maxBytes) {
+            byte[][] found = {new byte[0]};
+            walk((entry, in) -> {
+                if (entry.getName().equals(path)) {
+                    found[0] = in.readNBytes(maxBytes);
+                }
+            });
+            return found[0];
+        }
+
+        @Override
+        public void close() {
+            // nothing to release: this bundle is a byte array.
+        }
+
+        private void walk(EntryReader reader) {
+            try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(bundle))) {
+                ZipEntry entry;
+                while ((entry = zip.getNextEntry()) != null) {
+                    if (!entry.isDirectory()) {
+                        reader.read(entry, zip);
+                    }
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+    }
+
+    private interface EntryReader {
+        void read(ZipEntry entry, ZipInputStream in) throws IOException;
     }
 }

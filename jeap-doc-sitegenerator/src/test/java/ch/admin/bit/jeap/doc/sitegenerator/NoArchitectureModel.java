@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.sitegenerator;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 
 import java.util.List;
@@ -25,8 +26,23 @@ public class NoArchitectureModel implements ArchitectureModelSource {
         return new SystemPages(new NoArchitectureModel(), NoMessageSchemas.INSTANCE,
                 NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of()), new GeneratorProperties(),
                 new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(), BuildMetrics.NONE, urls);
+    }
+
+    /**
+     * The same instance with one system documented and no architecture repository anywhere - the shape of an
+     * instance whose documentation is all custom.
+     */
+    public static SystemPages systemPagesWithDocumented(
+            ch.admin.bit.jeap.doc.domain.template.StructureTemplate template, String slug) {
+        return new SystemPages(new NoArchitectureModel(), NoMessageSchemas.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new OneDocumentedSystem(slug), NoCustomStorage.INSTANCE, new CustomProperties(),
+                new StructureTemplates(List.of(template)), new GeneratorProperties(),
+                new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(), BuildMetrics.NONE, null);
     }
 
     @Override

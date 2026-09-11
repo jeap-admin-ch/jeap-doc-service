@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.domain.upload.validation;
 import ch.admin.bit.jeap.doc.domain.Slugs;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.NumberPrefixes;
+import ch.admin.bit.jeap.doc.domain.template.ReservedNames;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
@@ -36,14 +37,11 @@ import java.util.Set;
 public class StructureValidation {
 
     /**
-     * The names the site generator reads as a chapter's landing page, beside the chapter folder's own name.
-     * <p>
-     * Every chapter has a generated landing page, so a document of one of these names is a second document at
-     * that page's URL. <b>{@code _category_.json} is not on this list</b> and does not need to be: it begins
-     * with an underscore, which is refused for every template - and naming it here would take a dependency
-     * onto {@code jeap-doc-markdown}, where it is spelled.
+     * The names a chapter's generated pages occupy, which the site generator reads from the same place - see
+     * {@link ReservedNames}. <b>{@code _category_.json} is not among them</b> and does not need to be: it
+     * begins with an underscore, which is refused for every template.
      */
-    static final Set<String> LANDING_PAGE_NAMES = Set.of(DocumentationPaths.INDEX_SEGMENT, "readme");
+    static final Set<String> LANDING_PAGE_NAMES = ReservedNames.LANDING_PAGE_NAMES;
 
     /** The longest a path may be. One absurd path among sane ones is a mistake in one path, not a bad tree. */
     public static final int MAX_PATH_LENGTH = 1024;
@@ -181,13 +179,13 @@ public class StructureValidation {
         // before it becomes a document id - see NumberPrefixes. The landing-page rule right below is the one
         // exception and is asked of the name as written, because that is the name the generator asks it of.
         String document = NumberPrefixes.stripped(fileName);
-        if (isLandingPageName(fileName, chapter)) {
+        if (ReservedNames.isLandingPageName(fileName, chapter)) {
             return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
                     ("'%s' is read as the landing page of %s, and the doc service generates that page. Two "
                      + "documents at one URL fail the build of this part, so rename the page.")
                             .formatted(fileName, chapter.folder())));
         }
-        if (DocumentationPaths.INDEX_SEGMENT.equals(document)) {
+        if (ReservedNames.isTheGeneratedIndex(document)) {
             // Not the landing-page rule above: '01-index.md' is not read as the landing page - that is decided
             // on the name as written - but it is identified as 'index' all the same, which is the document the
             // generated landing page of the chapter already is. Two documents of one id fail the build just as
@@ -197,7 +195,7 @@ public class StructureValidation {
                      + "and that is the landing page the doc service generates for %s. Rename the page.")
                             .formatted(name, document, chapter.folder())));
         }
-        if (template.generatedNames(chapter, placement.subject()).contains(document)) {
+        if (ReservedNames.isGeneratedByTheTemplate(template, chapter, placement.subject(), document)) {
             return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
                     ("'%s' is generated into %s by the doc service. Two documents at one URL fail the build of "
                      + "this part, so rename the page.").formatted(document, chapter.folder())));
@@ -210,25 +208,6 @@ public class StructureValidation {
                             .formatted(name, document, chapter.folder())));
         }
         return Optional.empty();
-    }
-
-    /**
-     * Whether the site generator would read this document as the chapter's landing page: {@code index},
-     * {@code readme} or the chapter folder's own name.
-     * <p>
-     * Folded, because that is how the generator decides it - so {@code README.md} and {@code INDEX.MD} resolve
-     * to the same URL as the generated landing page and would fail the build as a duplicate route.
-     * <p>
-     * <b>Asked of the name as written, number prefix and all.</b> The generator's own rule compares the file
-     * name and the folder name as they are - so {@code 1-intro.md} in {@code 1-intro/} is that chapter's
-     * landing page, while {@code intro.md} in the same folder is an ordinary page at a URL of its own. It is
-     * the one rule here that does not read a document's stripped name; a page whose stripped name collides is
-     * caught by the two rules after it instead.
-     */
-    private static boolean isLandingPageName(String document, StructureChapter chapter) {
-        String folded = document.toLowerCase(Locale.ROOT);
-        return LANDING_PAGE_NAMES.contains(folded)
-               || folded.equals(chapter.folder().toLowerCase(Locale.ROOT));
     }
 
     /** An HTML upload is a microsite: no chapters, its own allowlist, and an entry point. */

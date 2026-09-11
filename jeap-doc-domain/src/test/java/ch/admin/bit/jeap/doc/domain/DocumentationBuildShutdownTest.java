@@ -76,7 +76,7 @@ class DocumentationBuildShutdownTest {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         metrics = new RecordingBuildMetrics();
         runner = new DocumentationBuildRunner(requests, builds, sites,
-                new SystemSitePartition(new NoArchitectureModel()), siteBuilder, publication,
+                new SystemSitePartition(new NoArchitectureModel(), new NoCustomDocumentation()), siteBuilder, publication,
                 properties, metrics, alwaysGranting(), alwaysReady(), new RecordingSearchIndexing(), clock);
         shutdown = new DocumentationBuildShutdown(runner, siteBuilder, properties);
         shutdown.start();

@@ -25,7 +25,9 @@ import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
+import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -116,6 +118,9 @@ class SystemPagesTest {
 
         assertThat(model).isPresent();
         assertThat(model.orElseThrow().systemCount()).isEqualTo(1);
+        assertThat(model.orElseThrow().modelSystems())
+                .describedAs("what the landscape holds, which the page describing the documentation says")
+                .isEqualTo(1);
         assertThat(model.orElseThrow().systems())
                 .describedAs("the systems themselves, because the shell's sidebar lists them and they are "
                              + "built as parts of their own - the name as the model spells it, the path as "
@@ -124,6 +129,69 @@ class SystemPagesTest {
                         EnvironmentModel.DocumentedSystemEntry::path)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("ORDERS", "/systems/orders/"));
         assertThat(model.orElseThrow().importedAt()).isEqualTo(CONTENT_IMPORTED_AT);
+    }
+
+    /**
+     * <b>A system only the uploads know is published, so it has to be reachable.</b> It gets its part, its
+     * tree and its landing page like any other - and before this it was linked from nowhere: not from the
+     * systems index, not from the shell's sidebar, not from the footer. Reachable only by typing its URL.
+     */
+    @Test
+    void write_whenASystemIsOnlyDocumented_thenTheIndexAndTheNavigationNameIt() throws IOException {
+        SystemPages pages = pagesWithDocumented(new SilentTemplate(), "shipping");
+
+        Optional<EnvironmentModel> model =
+                pages.write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        String index = Files.readString(directory.resolve("systems").resolve("index.md"));
+        assertThat(index)
+                .describedAs("the index lists it, with no counts - the model holds none to count")
+                .contains("/systems/shipping/")
+                .contains("The architecture model of this environment does not hold this system.");
+        assertThat(model.orElseThrow().systems())
+                .describedAs("and the shell's sidebar and the footer read this list")
+                .extracting(EnvironmentModel.DocumentedSystemEntry::path)
+                .contains("/systems/shipping/");
+        assertThat(model.orElseThrow().modelSystems())
+                .describedAs("the landscape is still one system large; the tree documents two")
+                .isEqualTo(1);
+        assertThat(model.orElseThrow().systemCount()).isEqualTo(2);
+    }
+
+    /** And it is written, not only listed: a link to a page nothing wrote fails the whole site build. */
+    @Test
+    void write_whenASystemIsOnlyDocumented_thenItsTreeIsWritten() throws IOException {
+        pagesWithDocumented(new WritingTemplate(), "shipping")
+                .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        Path landingPage = directory.resolve("systems").resolve("shipping").resolve("index.md");
+        assertThat(landingPage).exists();
+        assertThat(Files.readString(landingPage))
+                .describedAs("its name is its slug, because nothing else knows how it is spelled")
+                .contains("title: \"shipping\"")
+                .describedAs("and it names no architecture repository, because it read none for this system")
+                .contains("doc_source: \"doc-service\"")
+                .contains("The architecture model of this environment does not hold this system.");
+    }
+
+    /**
+     * An instance with no architecture repository at all is a legitimate one, and everything it publishes was
+     * uploaded. Nothing on such a site may fail to link the documentation it carries.
+     */
+    @Test
+    void write_whenNothingReadsAModel_thenTheDocumentedSystemsAreStillTheNavigation() throws IOException {
+        Optional<EnvironmentModel> model = NoArchitectureModel
+                .systemPagesWithDocumented(new WritingTemplate(), "shipping")
+                .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        assertThat(model).isPresent();
+        assertThat(model.orElseThrow().systems())
+                .extracting(EnvironmentModel.DocumentedSystemEntry::label,
+                        EnvironmentModel.DocumentedSystemEntry::path)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("shipping", "/systems/shipping/"));
+        assertThat(model.orElseThrow().modelSystems())
+                .describedAs("no landscape was read, so it contributed nothing")
+                .isZero();
     }
 
     /**
@@ -153,6 +221,7 @@ class SystemPagesTest {
         RecordingSchemas schemas = new RecordingSchemas();
         new SystemPages(new OneSystem(), schemas, NoArchitectureArtifacts.INSTANCE,
                 NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
@@ -160,7 +229,7 @@ class SystemPagesTest {
         assertThat(schemas.asked).describedAs("one read, by the model's own spelling of the system name")
                 .containsExactly("prod ORDERS");
         assertThat(template.system).isNotNull();
-        assertThat(template.system.messages()).singleElement().satisfies(message ->
+        assertThat(template.system.model().orElseThrow().messages()).singleElement().satisfies(message ->
                 assertThat(message.versions()).singleElement().satisfies(version -> {
                     assertThat(version.version()).isEqualTo("1.0.0");
                     assertThat(version.compatibilityMode()).isEqualTo("BACKWARD");
@@ -178,6 +247,7 @@ class SystemPagesTest {
         CountingReactions reactions = new CountingReactions();
         new SystemPages(new TwoSystems(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                 NoArchitectureArtifacts.INSTANCE, reactions, reactions,
+                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(new RecordingTemplate())),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
@@ -193,11 +263,12 @@ class SystemPagesTest {
         RecordingTemplate template = new RecordingTemplate();
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                 NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
-        assertThat(template.system.messages()).singleElement().satisfies(message ->
+        assertThat(template.system.model().orElseThrow().messages()).singleElement().satisfies(message ->
                 assertThat(message.versions()).singleElement().satisfies(version -> {
                     assertThat(version.version()).isEqualTo("1.0.0");
                     assertThat(version.hasSchemas()).isFalse();
@@ -221,6 +292,7 @@ class SystemPagesTest {
 
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, artifacts, artifacts,
                 NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null)
                 .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
@@ -229,7 +301,7 @@ class SystemPagesTest {
                 .describedAs("one lookup per component and kind, by the model's own spelling of both names")
                 .containsExactly("prod DATABASE_SCHEMA ORDERS/orders-intake",
                         "prod OPENAPI_SPEC ORDERS/orders-intake");
-        assertThat(template.system.components()).singleElement().satisfies(component -> {
+        assertThat(template.system.model().orElseThrow().components()).singleElement().satisfies(component -> {
             assertThat(component.schema()).isNotNull();
             assertThat(component.schema().name()).isEqualTo("orders_db");
             assertThat(component.api()).isNotNull();
@@ -248,7 +320,7 @@ class SystemPagesTest {
 
         pagesWith(template).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
-        assertThat(template.system.components()).singleElement().satisfies(component -> {
+        assertThat(template.system.model().orElseThrow().components()).singleElement().satisfies(component -> {
             assertThat(component.artifacts()).isNull();
             assertThat(component.schema()).isNull();
             assertThat(component.api()).isNull();
@@ -268,11 +340,12 @@ class SystemPagesTest {
 
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, unreadable, unreadable,
                 NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null)
                 .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
-        assertThat(template.system.components()).singleElement().satisfies(component -> {
+        assertThat(template.system.model().orElseThrow().components()).singleElement().satisfies(component -> {
             assertThat(component.name()).isEqualTo("orders-intake");
             assertThat(component.schema()).isNull();
             assertThat(component.api()).isNull();
@@ -291,6 +364,7 @@ class SystemPagesTest {
 
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, other, other,
                 NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null)
                 .write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
@@ -298,16 +372,27 @@ class SystemPagesTest {
         assertThat(other.asked).describedAs("it is still asked for, once per kind")
                 .containsExactly("prod DATABASE_SCHEMA ORDERS/orders-intake",
                         "prod OPENAPI_SPEC ORDERS/orders-intake");
-        assertThat(template.system.components()).singleElement().satisfies(component -> {
+        assertThat(template.system.model().orElseThrow().components()).singleElement().satisfies(component -> {
             assertThat(component.artifacts()).isNull();
             assertThat(component.schema()).isNull();
             assertThat(component.api()).isNull();
         });
     }
 
+    /** The same, with one system documented that the architecture model does not hold. */
+    private SystemPages pagesWithDocumented(StructureTemplate template, String slug) {
+        return new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new OneDocumentedSystem(slug), NoCustomStorage.INSTANCE, new CustomProperties(),
+                new StructureTemplates(List.of(template)),
+                new GeneratorProperties(), new ArchitectureImportProperties(),
+                BuildMetrics.NONE, null);
+    }
+
     private SystemPages pagesWith(StructureTemplate template) {
         return new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                 NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null);
@@ -444,12 +529,22 @@ class SystemPagesTest {
         }
 
         @Override
+        public String libraryPathSegment() {
+            return "library-architecture";
+        }
+
+        @Override
+        public String libraryLabel() {
+            return "Library Architecture";
+        }
+
+        @Override
         public List<StructureChapter> chapters() {
             return List.of();
         }
 
         @Override
-        public void writeSystem(DocumentedSystem system, GenerationContext context, Path systemDirectory)
+        public void writeSystem(SystemDocumentation system, GenerationContext context, Path systemDirectory)
                 throws IOException {
             // Nothing to document, so nothing is written and no folder appears.
         }
@@ -473,7 +568,7 @@ class SystemPagesTest {
         }
 
         @Override
-        public void writeSystem(DocumentedSystem system, GenerationContext context, Path systemDirectory)
+        public void writeSystem(SystemDocumentation system, GenerationContext context, Path systemDirectory)
                 throws IOException {
             Path own = systemDirectory.resolve(systemPathSegment());
             Files.createDirectories(own);
@@ -485,10 +580,10 @@ class SystemPagesTest {
     private static final class RecordingTemplate extends SilentTemplate {
 
         private GenerationContext context;
-        private DocumentedSystem system;
+        private SystemDocumentation system;
 
         @Override
-        public void writeSystem(DocumentedSystem system, GenerationContext context, Path systemDirectory) {
+        public void writeSystem(SystemDocumentation system, GenerationContext context, Path systemDirectory) {
             this.context = context;
             this.system = system;
         }

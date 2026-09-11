@@ -351,7 +351,7 @@ class DocumentationBuildTriggerTest {
     private DocumentationBuildTrigger triggerFor(SiteProperties properties,
                                                  ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource model) {
         DocumentationSites configured = new DocumentationSites(properties);
-        return new DocumentationBuildTrigger(requests, configured, new SystemSitePartition(model), model,
+        return new DocumentationBuildTrigger(requests, configured, new SystemSitePartition(model, new NoCustomDocumentation()), model,
                 metrics, pickup, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

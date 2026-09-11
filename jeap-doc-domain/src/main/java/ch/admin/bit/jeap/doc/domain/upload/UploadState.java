@@ -1,8 +1,8 @@
 package ch.admin.bit.jeap.doc.domain.upload;
 
 /**
- * Where an upload stands. The generator picks up what is {@link #PENDING}; everything else is either still on
- * its way or did not make it.
+ * Where an upload stands. {@link #PENDING} is an upload that arrived and was taken over; everything else is
+ * either still on its way or did not make it.
  */
 public enum UploadState {
 
@@ -13,12 +13,15 @@ public enum UploadState {
     UPLOADING,
 
     /**
-     * The bundle is completely stored: the upload is waiting for the documentation generator.
+     * The bundle is completely stored and its set is the current documentation of its subject, waiting to be
+     * published by the next build. <b>Nothing reads uploads to find it</b>: the set was taken over when the
+     * upload arrived, and a build reads the sets.
      */
     PENDING,
 
     /**
-     * Storing the bundle failed. Nothing picks the upload up, and a retry under the same upload id replaces it.
+     * Storing the bundle failed, or the set it carried would not be published as it is. Nothing picks the
+     * upload up, and a retry under the same upload id replaces it.
      */
     FAILED
 }

@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 /**
  * The values the {@code source-format} parameter of an upload accepts, and the domain format each of them names.
  */
-enum SourceFormatDto {
+public enum SourceFormatDto {
 
     MARKDOWN("markdown", SourceFormat.MARKDOWN),
     HTML("html", SourceFormat.HTML);
@@ -26,11 +26,11 @@ enum SourceFormatDto {
         return parameterValue;
     }
 
-    SourceFormat toDomain() {
+    public SourceFormat toDomain() {
         return sourceFormat;
     }
 
-    static SourceFormatDto fromParameterValue(String value) {
+    public static SourceFormatDto fromParameterValue(String value) {
         return Arrays.stream(values())
                 .filter(format -> format.parameterValue.equals(value))
                 .findFirst()

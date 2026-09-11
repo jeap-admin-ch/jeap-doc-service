@@ -97,11 +97,17 @@ class UploadValidationDocsTest {
      * it is the one a reader would otherwise take for an oversight.
      */
     @Test
-    void thePageSaysThatNothingIsGeneratedForALibrary() {
-        assertThat(page).contains("Nothing is generated for a library");
+    void thePageSaysWhatALibraryGets() {
+        assertThat(page).contains("A library gets one generated page");
+        assertThat(template.generatedNames(Arc42Chapters.INTRODUCTION, SubjectKind.LIBRARY))
+                .describedAs("and that is still the one")
+                .containsExactly("library-overview");
         for (StructureChapter chapter : Arc42Chapters.ALL) {
+            if (chapter.equals(Arc42Chapters.INTRODUCTION)) {
+                continue;
+            }
             assertThat(template.generatedNames(chapter, SubjectKind.LIBRARY))
-                    .describedAs("and that is still true of %s", chapter.folder())
+                    .describedAs("and nothing else, in %s", chapter.folder())
                     .isEmpty();
         }
     }

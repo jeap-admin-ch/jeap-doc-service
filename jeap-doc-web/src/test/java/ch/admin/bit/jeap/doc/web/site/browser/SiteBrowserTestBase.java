@@ -19,6 +19,7 @@ import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.ReactionGraphContent;
 import ch.admin.bit.jeap.doc.domain.port.ReactionGraphRepository;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import ch.admin.bit.jeap.doc.sitegenerator.GeneratorProperties;
 import ch.admin.bit.jeap.doc.sitegenerator.SystemPages;
@@ -187,6 +188,13 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      */
     private static String publishedPrefix;
 
+    /**
+     * The class the prefix above was published for. The hook this suite overrides runs before every
+     * <b>test</b>, and the copy is the whole built site - so without this the fixture would be published
+     * again per test method rather than per class, for a risk that only exists between classes.
+     */
+    private static Class<?> publishedFor;
+
     /** What the build produced, kept so that the row can be written again without building anything. */
     private static BuiltSite builtSite;
 
@@ -233,8 +241,13 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * The rows are written per test rather than once, because <b>the newest successful build is the published
      * one</b> and the other integration tests of this module publish sites of their own for the same site id.
      * Nothing orders the test classes, so a suite that published once would be driving another test's four
-     * fixture files as soon as one of them happened to run in between. Only the rows are new - the objects are
-     * already in the storage under the same prefix.
+     * fixture files as soon as one of them happened to run in between.
+     * <p>
+     * <b>And the objects with them, once per class.</b> Pointing new rows at the prefix this suite published
+     * once is only safe while that prefix is still there - and it is not: a build of this site by any other
+     * class supersedes it, and the runner removes what it superseded. The site is generated once, which is
+     * what costs the minute; publishing it again for each class costs a copy, and no more than that -
+     * {@link #prepareWhatIsServed()} is called before every test.
      * <p>
      * The service's own {@link SiteUrls} is used to build rather than a second one assembled here: the site
      * carries the base URL it was built for into every asset path it emits, and a copy of that reasoning in the
@@ -248,21 +261,28 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     private void serveThisSuitesSite() {
         Site site = defaultSite();
         synchronized (BUILDING) {
-            if (publishedPrefix == null) {
+            if (builtSite == null) {
                 builtSite = buildTheSite(site);
-                DocumentationBuild first = builds.start(ch.admin.bit.jeap.doc.domain.PartKey.shellOf(site.id()),
-                        BuildTrigger.IMPORT, INSTANCE, Instant.now(), null);
-                publishedPrefix = site.id() + "/" + first.id();
-                publication.publish(new ch.admin.bit.jeap.doc.domain.port.PartPublication(publishedPrefix,
-                        ch.admin.bit.jeap.doc.domain.SharedAssets.prefixOf(site.id())),
-                        builtSite.directory());
-                recordAsPublished(first);
-                discard(workspaceRoot);
-            } else {
-                recordAsPublished(builds.start(ch.admin.bit.jeap.doc.domain.PartKey.shellOf(site.id()),
-                        BuildTrigger.IMPORT, INSTANCE, Instant.now(), null));
             }
+            if (getClass().equals(publishedFor)) {
+                // Already this class's own publication, and nothing between two of its tests can have taken
+                // it: the classes of this module run one after another.
+                return;
+            }
+            // The objects too, and not only the rows. A build of this site by another class - the runner
+            // picks up every part that is owed one, whichever class asked - publishes a newer prefix and
+            // removes the superseded one, which is this fixture: 'Removed the published site under
+            // default/284 (263 files)'. So each class publishes the site it built again, under its own
+            // prefix, and nothing it drives can be served by a prefix somebody else has taken away.
+            DocumentationBuild own = builds.start(ch.admin.bit.jeap.doc.domain.PartKey.shellOf(site.id()),
+                    BuildTrigger.IMPORT, INSTANCE, Instant.now(), null);
+            publishedPrefix = site.id() + "/" + own.id();
+            publication.publish(new ch.admin.bit.jeap.doc.domain.port.PartPublication(publishedPrefix,
+                    ch.admin.bit.jeap.doc.domain.SharedAssets.prefixOf(site.id())),
+                    builtSite.directory());
+            recordAsPublished(own);
             serveEveryPartOfItFromThisBuildToo(site);
+            publishedFor = getClass();
         }
     }
 
@@ -300,29 +320,6 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 builtSite.docusaurusMillis(), "digest-of-the-suites-site", Instant.now());
     }
 
-    /**
-     * The workspace has been read into the object storage and nothing needs it again. It is tens of megabytes
-     * of generated site beside a linked {@code node_modules}, and this suite does not go through the runner
-     * that would otherwise sweep it.
-     */
-    private static void discard(Path root) {
-        List<Path> entries;
-        // Walked into a list first, so that the directory is not being read while it is being removed. Links
-        // are not followed: node_modules is one, and its target is this module's own install.
-        try (Stream<Path> walk = Files.walk(root)) {
-            entries = walk.sorted(Comparator.reverseOrder()).toList();
-        } catch (IOException e) {
-            log.warn("The build workspace of the browser tests could not be walked: {}", root, e);
-            return;
-        }
-        for (Path path : entries) {
-            try {
-                Files.deleteIfExists(path);
-            } catch (IOException e) {
-                log.warn("The build workspace of the browser tests could not be removed entirely: {}", path, e);
-            }
-        }
-    }
 
     /**
      * What this suite's fixture site is made of: the pages the generator writes, plus a guide page in every
@@ -334,7 +331,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     protected SiteSources fixtureSources(SiteUrls urls, BuildProperties properties) {
         return new SiteSources(urls, new DefaultResourceLoader(), withoutSystemPages(),
                 new DocumentationSites(new SiteProperties()),
-                new SystemSitePartition(NO_MODEL), properties, provenance(),
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties, provenance(),
                 new AboutThisDocumentation()) {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,
@@ -344,6 +341,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                     writeGuidePage(content.resolve(environment.id()), environment);
                     writeComponentPage(content.resolve(environment.id()));
                     writeReactingSystem(content.resolve(environment.id()), environment);
+                    writeDocumentedSystem(content.resolve(environment.id()), environment);
                 }
                 return sources;
             }
@@ -358,9 +356,18 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     private SystemPages withoutSystemPages() {
         Reactions reactions = new Reactions();
         return new SystemPages(withoutArchitectureModel(), withoutMessageSchemas(), withoutArtifacts(),
-                withoutArtifacts(), reactions, reactions, new StructureTemplates(List.of()),
+                withoutArtifacts(), reactions, reactions, new NoCustomDocumentation(),
+                new NoCustomStorage(), new CustomProperties(), new StructureTemplates(List.of()),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, urls);
+    }
+
+    /** A system with nothing uploaded for it: this suite writes its pages by hand. */
+    private static ch.admin.bit.jeap.doc.domain.template.SystemDocumentation withoutUploads(
+            ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem system) {
+        return ch.admin.bit.jeap.doc.domain.template.SystemDocumentation.of(Site.DEFAULT_SITE, system,
+                ch.admin.bit.jeap.doc.domain.custom.CustomDocumentation.nothing(),
+                (subject, chapter, directory) -> 0);
     }
 
     /**
@@ -697,6 +704,21 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
             "orders_order" }o--|| "orders_party" : party_id
             @enduml""";
 
+    /** The system nothing has deployed and a team has documented - see {@code CustomDocsBrowserIT}. */
+    protected static final String DOCUMENTED_SYSTEM = "catalog";
+
+    /** Its library, which no architecture model could ever hold. */
+    protected static final String DOCUMENTED_LIBRARY = "catalog-client";
+
+    /** Where a reader finds that system's uploaded pages. */
+    protected static final String DOCUMENTED_CHAPTER_ROUTE =
+            "systems/" + DOCUMENTED_SYSTEM + "/system-architecture/glossary";
+
+    /** And its library's tree, beside the components of its system. */
+    protected static final String DOCUMENTED_LIBRARY_ROUTE =
+            "systems/" + DOCUMENTED_SYSTEM + "/system-architecture/building-block-view/libraries/"
+            + DOCUMENTED_LIBRARY + "/library-architecture";
+
     /** Shared with {@link SiteSearchBrowserIT}, which indexes the same pages the site is built from. */
     protected static void writeGuidePage(Path environmentTree, SiteEnvironment environment) throws IOException {
         Files.writeString(environmentTree.resolve(GUIDE_ROUTE + ".md"), """
@@ -782,7 +804,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 GENERATED_AT, GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200), linkPrefix)
                 .withReactions(reactions);
         writeSystemPage(environmentTree, REACTING_SYSTEM, "Ships what was ordered");
-        new Arc42Template().writeSystem(shipping, context,
+        new Arc42Template().writeSystem(withoutUploads(shipping), context,
                 environmentTree.resolve("systems").resolve(REACTING_SYSTEM));
 
         // The other system's tree, with its own reactions - which is what makes crossing from one system's
@@ -793,7 +815,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 Map.of("BillingSettledEvent", List.of(new ReactionViews.VariantView("", answering))),
                 componentsWithAGraph);
         writeSystemPage(environmentTree, OTHER_SYSTEM, "Settles what was shipped");
-        new Arc42Template().writeSystem(billing,
+        new Arc42Template().writeSystem(withoutUploads(billing),
                 new GenerationContext(model, environment.id(), "https://archrepo.example", GENERATED_AT,
                         GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200), linkPrefix, null,
                         billingReactions),
@@ -806,6 +828,20 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * link to a page nothing wrote fails the whole site build, which is the rule these pages are subject to as
      * much as a real build's.
      */
+    /**
+     * A system whose documentation a team wrote: no architecture model holds it, it has a library, and its
+     * pages are the ones an upload brings. Written through the template and the real page writer, so what a
+     * browser sees here is what an upload produces.
+     */
+    private void writeDocumentedSystem(Path environmentTree, SiteEnvironment environment) throws IOException {
+        GenerationContext context = new GenerationContext(new ArchitectureModel(List.of()), environment.id(),
+                "https://archrepo.example", GENERATED_AT, GENERATED_AT,
+                new DiagramLimits(100, 4, 40, 100, 200), "/");
+        writeSystemPage(environmentTree, DOCUMENTED_SYSTEM, "Documented by hand");
+        new Arc42Template().writeSystem(UploadedDocumentation.of(DOCUMENTED_SYSTEM, DOCUMENTED_LIBRARY),
+                context, environmentTree.resolve("systems").resolve(DOCUMENTED_SYSTEM));
+    }
+
     private static void writeSystemPage(Path environmentTree, String slug, String description)
             throws IOException {
         Path systemDirectory = environmentTree.resolve("systems").resolve(slug);

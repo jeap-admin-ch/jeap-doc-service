@@ -56,8 +56,9 @@ class DocumentationUploadController {
     @Operation(summary = "Upload a documentation set",
             description = "Uploads the ZIP bundle of one documentation set of the given system. Which parameters " +
                           "are required depends on the type of the documentation set and on the format of its " +
-                          "documents. Answers 201 when the bundle was stored, and 200 when the upload had " +
-                          "already been stored under the same upload id.")
+                          "documents. Answers 201 when the set was taken over, 200 when the upload had " +
+                          "already been stored under the same upload id, and 422 with the findings when the " +
+                          "set would not be published as it is - nothing is stored then.")
     @PutMapping(path = "/{uploadId}", consumes = "application/zip", produces = "application/json")
     @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM)
     public ResponseEntity<DocumentationUploadResultDto> upload(

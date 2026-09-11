@@ -35,6 +35,21 @@ A pipeline holding `<system-name>_%orders_@uploads_#write` can upload documentat
 receives `403` for every other system. Granting the role without a tenant part makes it a wildcard over all
 systems, which is what an administrative client would hold.
 
+**Removing documentation takes the same role**, granted for the same system: `DELETE /api/docs/custom/sets`
+and `/api/docs/custom/subjects` are a system changing its own documentation, which is what the write role
+says. A resource of their own would have to be rolled out to every pipeline before either could be used, and
+would say nothing the tenant part does not already say.
+
+**Or the sites administrator**, on both of them. The write role is the right rule while there is a pipeline
+holding it, and there is not always: a repository gets archived, a component gets renamed, a team is
+disbanded, and the set stays current with nobody able to remove it. Removing documentation is not a step
+towards reading anything else, so accepting `<system-name>_@sites_#admin` there grants no access it did not
+already imply.
+
+**And `DELETE /api/docs/custom/systems` is the administrator's alone.** It removes everything documented for
+a system - its own documentation and that of every component and library under it, which several teams may
+own - so it is not something one system's pipeline may do.
+
 ## Authentication
 
 The REST API is an OAuth2 resource server: clients authenticate with a bearer token, in the `SYS` context for a
@@ -115,6 +130,7 @@ which skips the API and the actuator paths.
 ## Related
 
 - [API](api.md)
+- [The documentation a team writes](custom-documentation.md) - what the write role lets a system remove
 - [Configuration](configuration.md)
 - [Generating the documentation](generation.md)
 - [Observability](observability.md)

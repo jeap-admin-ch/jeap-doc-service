@@ -53,6 +53,19 @@ public record DocumentationPlacement(
         requireSlug(template, "template");
         requirePresent(sourceFormat, "source-format", "to know how the documents are written");
 
+        checkSubject(type, component, library);
+
+        if (sourceFormat == SourceFormat.HTML) {
+            requireSlug(location, "location");
+            requireSlug(topic, "topic");
+        } else {
+            requireAbsent(location, "location", MARKDOWN_DOCUMENTATION);
+            requireAbsent(topic, "topic", MARKDOWN_DOCUMENTATION);
+        }
+    }
+
+    /** Which of {@code component} and {@code library} goes with which type, and neither with a system. */
+    private static void checkSubject(DocumentationType type, String component, String library) {
         switch (type) {
             case SYSTEM_DOCS -> {
                 requireAbsent(component, COMPONENT_PARAMETER, "system documentation");
@@ -67,14 +80,32 @@ public record DocumentationPlacement(
                 requireAbsent(component, COMPONENT_PARAMETER, "library documentation");
             }
         }
+    }
 
-        if (sourceFormat == SourceFormat.HTML) {
-            requireSlug(location, "location");
-            requireSlug(topic, "topic");
-        } else {
-            requireAbsent(location, "location", MARKDOWN_DOCUMENTATION);
-            requireAbsent(topic, "topic", MARKDOWN_DOCUMENTATION);
-        }
+    /**
+     * What is documented, for a caller that names a subject and not a set.
+     * <p>
+     * <b>Here because the rules are here.</b> Removing everything documented for a component names no
+     * template and no source format - it removes them all - and building a placement with invented ones only
+     * to throw them away would put a template's name in a caller that must not know one.
+     *
+     * @throws InvalidUploadException if the three parameters do not describe a subject
+     */
+    public static Subject subjectOf(DocumentationType type, String system, String component, String library) {
+        requirePresent(type, "type", "to know what the documents document");
+        requireSlug(system, "system");
+        checkSubject(type, component, library);
+        return new Subject(SubjectKind.of(type), system, subjectNameOf(type, component, library));
+    }
+
+    /**
+     * What a set of documents documents, without saying how it is written.
+     *
+     * @param kind   whether it is a system, a component or a library
+     * @param system the system it belongs to, also for a component and for a library
+     * @param name   the component or the library, null for a system
+     */
+    public record Subject(SubjectKind kind, String system, String name) {
     }
 
     /** What kind of thing this documents - what the template is asked about the names it generates. */
@@ -84,6 +115,10 @@ public record DocumentationPlacement(
 
     /** The component or library the documents belong to, or null for system documentation. */
     public String subjectName() {
+        return subjectNameOf(type, component, library);
+    }
+
+    private static String subjectNameOf(DocumentationType type, String component, String library) {
         return switch (type) {
             case SYSTEM_DOCS -> null;
             case COMPONENT_DOCS -> component;

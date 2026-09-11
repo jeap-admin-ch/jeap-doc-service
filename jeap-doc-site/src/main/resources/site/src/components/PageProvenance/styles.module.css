@@ -1,0 +1,21 @@
+/* Under the page and quieter than it: provenance is what a reader checks, not what they read. */
+.provenance {
+    margin-top: 2rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--ifm-toc-border-color);
+    font-size: 0.85rem;
+    color: var(--ifm-color-emphasis-700);
+}
+
+.generated,
+.custom {
+    font-weight: 600;
+}
+
+.custom {
+    color: var(--ifm-color-primary);
+}
+
+.detail code {
+    font-size: 0.85em;
+}

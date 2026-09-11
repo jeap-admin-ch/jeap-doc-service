@@ -1,8 +1,9 @@
 package ch.admin.bit.jeap.doc.objectstorage;
 
 import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage;
+import ch.admin.bit.jeap.doc.domain.port.BundleLimits;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
+import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -39,7 +40,7 @@ import java.util.HexFormat;
  */
 @Slf4j
 @RequiredArgsConstructor
-class S3DocumentationBundleStorage implements DocumentationBundleStorage {
+class S3DocumentationBundleStorage implements UploadedBundles {
 
     /**
      * The tag every uploaded bundle carries. It is what a lifecycle rule of the bucket selects on to expire the
@@ -56,27 +57,42 @@ class S3DocumentationBundleStorage implements DocumentationBundleStorage {
     private final S3Client s3Client;
     private final DocObjectStorageProperties properties;
 
+    /**
+     * Reads the bundle onto a file and lists what it holds, so that what is between reading and storing can
+     * decide whether it is stored at all.
+     */
     @Override
-    public StoredBundle store(long uploadId, int attempt, InputStream bundle, long sizeInBytes) {
-        String objectKey = objectKey(uploadId, attempt);
+    public UploadedBundles.ReceivedBundle receive(InputStream bundle, long sizeInBytes, BundleLimits limits) {
         MessageDigest digest = sha256();
         Path spooled = spool(new DigestInputStream(bundle, digest), sizeInBytes);
         try {
-            s3Client.putObject(PutObjectRequest.builder()
-                    .bucket(properties.getBucket())
-                    .key(objectKey)
-                    .contentType(CONTENT_TYPE)
-                    .contentLength(sizeInBytes)
-                    .tagging(Tagging.builder()
-                            .tagSet(Tag.builder().key(CONTENT_TAG_KEY).value(CONTENT_TAG_VALUE).build())
-                            .build())
-                    .build(), RequestBody.fromFile(spooled));
-            String sha256 = HexFormat.of().formatHex(digest.digest());
-            log.debug("Stored the bundle of the upload {} as {} (sha-256 {}).", uploadId, objectKey, sha256);
-            return new StoredBundle(objectKey, sha256);
-        } finally {
+            return SpooledBundle.of(spooled, HexFormat.of().formatHex(digest.digest()), sizeInBytes, limits);
+        } catch (RuntimeException e) {
+            // The archive was refused, so nothing will store it and nothing else will close it.
             delete(spooled);
+            throw e;
         }
+    }
+
+    @Override
+    public StoredBundle store(long uploadId, int attempt, UploadedBundles.ReceivedBundle received) {
+        SpooledBundle spooled = (SpooledBundle) received;
+        return put(uploadId, attempt, spooled.file(), spooled.sizeInBytes(), spooled.sha256());
+    }
+
+    private StoredBundle put(long uploadId, int attempt, Path spooled, long sizeInBytes, String sha256) {
+        String objectKey = objectKey(uploadId, attempt);
+        s3Client.putObject(PutObjectRequest.builder()
+                .bucket(properties.getBucket())
+                .key(objectKey)
+                .contentType(CONTENT_TYPE)
+                .contentLength(sizeInBytes)
+                .tagging(Tagging.builder()
+                        .tagSet(Tag.builder().key(CONTENT_TAG_KEY).value(CONTENT_TAG_VALUE).build())
+                        .build())
+                .build(), RequestBody.fromFile(spooled));
+        log.debug("Stored the bundle of the upload {} as {} (sha-256 {}).", uploadId, objectKey, sha256);
+        return new StoredBundle(objectKey, sha256);
     }
 
     /**

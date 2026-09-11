@@ -49,9 +49,12 @@ Those three are **provenance**: they say *this content is as of then*, which sta
 built again. Nothing else about a run is written into a page. Anything that would go stale in a page nobody
 rebuilds - when the architecture repository was last read, whether the import is behind, when the schedule
 fires next - is not generated at all but answered live, and fetched by the page that shows it. That is the rule
-to follow when adding something a page says about the service: **provenance goes in the page and into the
-volatile set; status is served beside the site.** Hiding a status value from the hash instead would freeze the
-page that is meant to report a broken import, which is the one page that has to keep working when one breaks.
+to follow when adding something a page says about the service: **provenance goes in the page's front matter
+and into the volatile set; status is served beside the site.** The front matter is where it goes because the
+site template renders it from there, the same way for a page the service generated and for one a team
+uploaded - and nothing rewrites an uploaded page's body, so nothing can be added to it. Hiding a status value
+from the hash instead would freeze the page that is meant to report a broken import, which is the one page
+that has to keep working when one breaks.
 
 The order of steps 3 and 4 is not a detail either. **The content is written first and the site template is
 copied over it**, and everything at the top level of the workspace that is neither the content nor the
@@ -76,11 +79,25 @@ Two kinds of documentation end up on one site. A page is one or the other, never
 |               |                                                                                                                                                                                                       |
 |---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Generated** | Written by the doc service from the architecture model of the environment being built: what the systems are, who owns them, how they are decomposed, what they exchange. Rewritten whole on every run |
-| **Custom**    | Written by the team that owns a system, next to its code, and uploaded by its pipeline. The generator never writes those pages and never reads them                                                   |
+| **Custom**    | Written by the team that owns a system, next to its code, and uploaded by its pipeline. The generator never writes those pages and never reads their bodies - it copies them into the chapter their folder names |
 
-A generated page says so. Its front matter carries `doc_status: generated` and where the content came from, and
-its foot names the environment it was generated from and when - when the model was imported and when the page
-was built. A page that would be half generated is two pages instead.
+A page says which it is. Its front matter carries `doc_status`, `generated` or `custom`, and where the content
+came from; the site template renders that under the page, the same way for both. A page that would be half
+generated is two pages instead.
+
+**Two models are joined, per system, while a part is built.** The architecture model of the environment says
+what the systems are; the documentation a team uploaded says what has been written about them. Nothing links
+the two in the database, and a subject can be in either without being in the other:
+
+| The system is in | What is built |
+|---|---|
+| both | The generated chapters, and the uploaded pages beside them |
+| the uploaded documentation only | One page in chapter 1 saying the model does not hold it, and the chapters the team wrote |
+| the architecture model only | The generated chapters, and nothing else |
+
+The second of those is why a part exists for a system nothing has deployed: the site partition takes the union
+of the two, or nothing would ask for that part to be built. See
+[The documentation a team writes](custom-documentation.md).
 
 ### The structure template
 
@@ -274,9 +291,11 @@ in the table and simply has no section. A replication that is behind never costs
 
 A component already has a page in the tree of its system - its identity card, where a reader finds it in the
 decomposition. Below that page it carries its own arc42 tree, with the four chapters the generator writes
-into. **Which of them exist depends on what the architecture repository knows about the component**: 1, 3 and 6
-can always be written, and 5 appears when there is a database schema, a REST API or a message contract to put
-in it. A component the architecture repository knows only the name of gets three chapters and no empty folder.
+into and any its team filled itself. **Which of the generated ones exist depends on what the architecture
+repository knows about the component**: 1, 3 and 6 can always be written, and 5 appears when there is a
+database schema, a REST API or a message contract to put in it. A component the architecture repository knows
+only the name of gets three chapters and no empty folder - and a component it does not know at all gets one
+page saying so, with whatever its team wrote beside it.
 
 | Page                        | What it shows                                                                                                                                                                                                              |
 |-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

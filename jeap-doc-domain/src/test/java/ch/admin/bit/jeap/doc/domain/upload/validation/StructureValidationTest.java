@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.domain.upload.validation;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
+import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationPlacement;
@@ -536,6 +537,16 @@ class StructureValidationTest {
         }
 
         @Override
+        public String libraryPathSegment() {
+            return "library-architecture";
+        }
+
+        @Override
+        public String libraryLabel() {
+            return "Library Architecture";
+        }
+
+        @Override
         public List<StructureChapter> chapters() {
             return List.of(INTRO, STRATEGY, BUILDING_BLOCKS);
         }
@@ -558,7 +569,7 @@ class StructureValidationTest {
         }
 
         @Override
-        public void writeSystem(DocumentedSystem system, GenerationContext context, Path directory)
+        public void writeSystem(SystemDocumentation system, GenerationContext context, Path directory)
                 throws IOException {
             // Nothing is generated here; what this template is for is the rules.
         }

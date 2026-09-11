@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureReport;
+import org.springframework.http.ProblemDetail;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
@@ -38,5 +39,22 @@ record StructureReportDto(
                 report.allowedFolders(), report.allowedExtensions(),
                 report.findings().stream().map(StructureFindingDto::of).toList(),
                 report.findingsOmitted());
+    }
+
+    /**
+     * Writes the report into a problem document as extension members, which is what RFC 9457 extension
+     * members are for.
+     * <p>
+     * <b>One shape for both endpoints.</b> A set can be refused by the validation endpoint or by the upload
+     * itself, and a pipeline that prints the findings should not have to know which of the two answered.
+     */
+    void into(ProblemDetail problem) {
+        problem.setProperty("template", template);
+        problem.setProperty("pathsChecked", pathsChecked);
+        problem.setProperty("pathsIgnored", pathsIgnored);
+        problem.setProperty("allowedFolders", allowedFolders);
+        problem.setProperty("allowedExtensions", allowedExtensions);
+        problem.setProperty("findings", findings);
+        problem.setProperty("findingsOmitted", findingsOmitted);
     }
 }

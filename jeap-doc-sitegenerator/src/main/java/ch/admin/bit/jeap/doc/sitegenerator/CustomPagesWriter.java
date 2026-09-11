@@ -1,0 +1,279 @@
+package ch.admin.bit.jeap.doc.sitegenerator;
+
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
+import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentation;
+import ch.admin.bit.jeap.doc.domain.custom.CustomPage;
+import ch.admin.bit.jeap.doc.domain.custom.CustomPages;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.custom.UploadedFrontMatter;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
+import ch.admin.bit.jeap.doc.domain.template.ReservedNames;
+import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
+import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
+import lombok.extern.slf4j.Slf4j;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Writes the pages a team uploaded into the tree a build is generating.
+ * <p>
+ * One of these per build of one part. It holds the sets of that part open while the templates walk their
+ * chapters and ask for what belongs in each: a set is one object, so it is fetched once and read many times
+ * rather than once per page.
+ * <p>
+ * <b>What it decides is nothing about the structure.</b> Where a page goes is the template's answer - it
+ * passes the directory - and what a page may be was decided when the set was received. This writes the file:
+ * the body byte for byte, the front matter generated, and a name the template generates dropped rather than
+ * published over it.
+ */
+@Slf4j
+class CustomPagesWriter implements CustomPages, AutoCloseable {
+
+    /** What a custom page says it is, against the {@code generated} of a page the service wrote itself. */
+    static final String DOC_STATUS = "custom";
+
+    /**
+     * The most of one file that is ever held at once, whatever the budget of its set allows.
+     * <p>
+     * A byte array cannot be larger than an int anyway, and a single documentation file of even this size is
+     * already absurd - the bound that decides is the set's, and this only keeps one entry from being the
+     * whole of it.
+     */
+    private static final int MAX_FILE_BYTES = 64 * 1024 * 1024;
+
+    private final CustomDocumentation documentation;
+    private final CustomDocumentationStorage storage;
+    private final StructureTemplate template;
+    private final long maxUnpackedSize;
+
+    /** The bundle of each set, opened when the set is first read from and closed with this writer. */
+    private final Map<Long, CustomDocumentationStorage.OpenedBundle> opened = new HashMap<>();
+
+    /**
+     * How much each set has unpacked, against {@code max-unpacked-size} - the bytes, not what it claimed.
+     * <p>
+     * Per set, because that is what the property bounds and what the upload applies it to. One writer writes
+     * the system's set, every component's and every library's, and a budget shared between them would abandon
+     * the later ones over what the earlier ones are - and say so naming the wrong set.
+     */
+    private final Map<Long, Long> unpacked = new HashMap<>();
+
+    /** The sets this writer has given up on, so a set past the bound is reported once and then skipped. */
+    private final Set<Long> abandoned = new HashSet<>();
+
+    CustomPagesWriter(CustomDocumentation documentation, CustomDocumentationStorage storage,
+                      StructureTemplate template, CustomProperties properties) {
+        // Narrowed here as well as by the caller, so this writes the pages of its own template whatever it is
+        // handed: a subject may carry a second methodology and an HTML microsite beside its Markdown, and
+        // asking for the set of a subject alone would answer with whichever of them came back first.
+        this.documentation = documentation.publishedBy(template.id());
+        this.storage = storage;
+        this.template = template;
+        this.maxUnpackedSize = properties.getMaxUnpackedSize().toBytes();
+    }
+
+    @Override
+    public int writeInto(CustomSubject subject, String chapterFolder, Path chapterDirectory) {
+        Optional<CustomSet> set = documentation.setOf(subject);
+        if (set.isEmpty()) {
+            return 0;
+        }
+        int written = 0;
+        for (CustomPage page : set.get().pagesOf(chapterFolder)) {
+            if (write(set.get(), page, chapterDirectory)) {
+                written++;
+            }
+        }
+        // The images beside them. They are not pages and are not counted, but a page that shows one needs it
+        // in the same directory.
+        for (CustomPage asset : set.get().assetsOf(chapterFolder)) {
+            write(set.get(), asset, chapterDirectory);
+        }
+        return written;
+    }
+
+    /**
+     * Writes one file, and answers whether it was written.
+     * <p>
+     * A file that is not written is never a failed build: a page that the archive does not hold, a name the
+     * template generates, or a set that has grown past what a set may unpack to are all one page missing from
+     * one part, and the log line says which.
+     */
+    private boolean write(CustomSet set, CustomPage page, Path chapterDirectory) {
+        if (abandoned.contains(set.id())) {
+            return false;
+        }
+        if (!page.asset() && isGeneratedByTheTemplate(set, page)) {
+            log.warn("The uploaded page {} of {} is not published: {} generates a page of that name into "
+                     + "that chapter, and a page has one source.",
+                    page.path(), set.subject().slug(), template.id());
+            return false;
+        }
+        Optional<CustomDocumentationStorage.OpenedBundle> bundle = bundleOf(set);
+        if (bundle.isEmpty()) {
+            // The object is gone - taken by a removal or by the upload that replaced this set. Its own log
+            // line has been written; giving up on the set keeps this build from writing half of it.
+            abandoned.add(set.id());
+            return false;
+        }
+        Optional<InputStream> content = bundle.get().read(page.path());
+        if (content.isEmpty()) {
+            log.warn("The uploaded file {} of {} is recorded and its bundle does not hold it. The page is "
+                     + "left out; the next upload of that set repairs it.", page.path(), set.subject().slug());
+            return false;
+        }
+        try (InputStream in = content.get()) {
+            // Never more than what is left of this set's budget, and one byte to tell "at the bound" from
+            // "past it". A ZIP states the size of an entry and the uploader writes that statement, so the
+            // bound the upload checked is the archive's word - this is the one that measures, and reading
+            // the entry whole before measuring it is how a bundle of a few megabytes becomes gigabytes of
+            // heap in the service that is generating the site.
+            long left = maxUnpackedSize - unpacked.getOrDefault(set.id(), 0L);
+            // One past each bound, so that reaching one is told from standing at it. Reading exactly the
+            // per-file cap would make a file that is larger than it look like a file of exactly that size,
+            // and the page or the image would be published cut in half.
+            byte[] bytes = in.readNBytes((int) Math.min(left + 1, (long) MAX_FILE_BYTES + 1));
+            if (bytes.length > MAX_FILE_BYTES) {
+                log.warn("The uploaded file {} of {} is larger than the {} bytes this service reads of one "
+                         + "file. It is not published: half a file is worse than none.",
+                        page.path(), set.subject().slug(), MAX_FILE_BYTES);
+                return false;
+            }
+            if (tooMuchUnpacked(set, page, bytes.length)) {
+                return false;
+            }
+            Optional<String> uploaded = page.asset() ? Optional.of("") : textOf(set, page, bytes);
+            if (uploaded.isEmpty()) {
+                return false;
+            }
+            Files.createDirectories(chapterDirectory);
+            Path file = chapterDirectory.resolve(page.fileName());
+            if (page.asset()) {
+                Files.write(file, bytes);
+            } else {
+                Files.writeString(file, pageOf(set, page, uploaded.get()), StandardCharsets.UTF_8);
+            }
+            return true;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * Whether the template writes a page of this name into this chapter itself.
+     * <p>
+     * The upload API refuses such a set, so this is the backstop: a set stored before a rule existed, or a
+     * template that starts generating a name it did not generate before. Without it the build fails on a
+     * duplicate route twenty minutes in, naming a route rather than an upload.
+     */
+    private boolean isGeneratedByTheTemplate(CustomSet set, CustomPage page) {
+        Optional<StructureChapter> chapter = template.chapterOfFolder(page.chapter());
+        if (chapter.isEmpty()) {
+            return false;
+        }
+        SubjectKind kind = set.key().kind();
+        // Through the rule the upload applies, and not a comparison of its own: the landing-page names, the
+        // folded case and the number prefix a document loses are all part of what is occupied, and a backstop
+        // that knew only the last of them would let through exactly what it is there to catch.
+        return ReservedNames.isTaken(template, chapter.get(), kind, page.fileName());
+    }
+
+    /**
+     * Whether this set has now unpacked to more than a set may.
+     * <p>
+     * <b>Counted while writing, because the declared sizes are the uploader's to state.</b> The upload
+     * refuses what an archive says it unpacks to; only this knows what it really does. Past the bound the set
+     * is abandoned and the build goes on: half a set published is better than a part that cannot be built,
+     * and the log line says which set to look at.
+     */
+    private boolean tooMuchUnpacked(CustomSet set, CustomPage page, int bytes) {
+        long ofThisSet = unpacked.merge(set.id(), (long) bytes, Long::sum);
+        if (ofThisSet <= maxUnpackedSize) {
+            return false;
+        }
+        // Read short of the whole file, so what it really unpacks to is unknown - and does not need to be.
+        abandoned.add(set.id());
+        log.error("The uploaded documentation of {} unpacks to more than the {} bytes a documentation set may "
+                  + "be, at {}. The rest of that set is not published.",
+                set.subject().slug(), maxUnpackedSize, page.path());
+        return true;
+    }
+
+    /**
+     * The page as text, or nothing when it is not UTF-8.
+     * <p>
+     * <b>Refused rather than repaired.</b> A lenient decoding replaces every byte it cannot read with a
+     * replacement character, which publishes a page nobody wrote and says nothing about it - and what this
+     * service promises about an uploaded body is that it goes through unchanged. A page that cannot be read
+     * is one page missing from one part, with a line saying which.
+     */
+    private Optional<String> textOf(CustomSet set, CustomPage page, byte[] bytes) {
+        try {
+            return Optional.of(StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes))
+                    .toString());
+        } catch (CharacterCodingException e) {
+            log.warn("The uploaded page {} of {} is not published: it is not UTF-8 text, and a page this "
+                     + "service cannot read is not a page it rewrites.", page.path(), set.subject().slug());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * The page as it is written: the body as it was uploaded, and a front matter this service decides.
+     * <p>
+     * The values go in as the values they are - a position as a number, an instant as its text - and the
+     * quoting is {@link UploadedFrontMatter}'s: a repository URL holds a colon, a title may hold anything,
+     * and an instant written plainly would be read back as a date.
+     */
+    private String pageOf(CustomSet set, CustomPage page, String uploaded) {
+        CustomProvenance provenance = set.provenance();
+        Map<String, Object> generated = UploadedFrontMatter.keys();
+        // Past whatever the template generates into this chapter: Docusaurus breaks a tie between two equal
+        // positions by file name, which is the one thing assigning a position is meant to take out of it.
+        generated.put("sidebar_position", template.firstCustomPagePosition() + page.position());
+        generated.put("doc_status", DOC_STATUS);
+        generated.put("doc_source", "upload");
+        generated.put("doc_source_repository", provenance.sourceRepository());
+        generated.put("doc_source_ref", provenance.sourceRef());
+        generated.put("doc_source_revision", provenance.sourceRevision());
+        if (provenance.version() != null) {
+            generated.put("doc_version", provenance.version());
+        }
+        generated.put("doc_uploaded_at", provenance.uploadedAt().toString());
+        generated.put("doc_uploaded_at_display", DisplayTime.of(provenance.uploadedAt()));
+        return UploadedFrontMatter.rewritten(uploaded, generated);
+    }
+
+    /** The bundle of a set, opened once, or nothing where its object is no longer there. */
+    private Optional<CustomDocumentationStorage.OpenedBundle> bundleOf(CustomSet set) {
+        return Optional.ofNullable(
+                opened.computeIfAbsent(set.id(), id -> storage.open(set).orElse(null)));
+    }
+
+    @Override
+    public void close() {
+        opened.values().stream().filter(java.util.Objects::nonNull)
+                .forEach(CustomDocumentationStorage.OpenedBundle::close);
+        opened.clear();
+    }
+}

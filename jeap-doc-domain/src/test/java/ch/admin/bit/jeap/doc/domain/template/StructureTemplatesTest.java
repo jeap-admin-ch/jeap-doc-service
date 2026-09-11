@@ -183,6 +183,16 @@ class StructureTemplatesTest {
                 return "Component Architecture";
             }
 
+        @Override
+        public String libraryPathSegment() {
+            return "library-architecture";
+        }
+
+        @Override
+        public String libraryLabel() {
+            return "Library Architecture";
+        }
+
             @Override
             public List<StructureChapter> chapters() {
                 return List.of(chapters);
@@ -194,7 +204,7 @@ class StructureTemplatesTest {
             }
 
             @Override
-            public void writeSystem(DocumentedSystem system, GenerationContext context, Path directory) {
+            public void writeSystem(SystemDocumentation system, GenerationContext context, Path directory) {
                 // nothing: the registry is what is under test
             }
         };

@@ -73,7 +73,7 @@ jeap:
         retention: P14D
         cron: "0 30 2 * * *"
       validation:
-        max-paths: 10000
+        max-paths: 200
         max-findings: 50
 ```
 
@@ -82,13 +82,31 @@ jeap:
 | `jeap.doc.upload.housekeeping.enabled`   | `true`         | Whether old uploads are removed at all                |
 | `jeap.doc.upload.housekeeping.retention` | `P14D`         | How long an upload is kept after it was last received |
 | `jeap.doc.upload.housekeeping.cron`      | `0 30 2 * * *` | When to look, in the time zone of the service         |
-| `jeap.doc.upload.validation.max-paths`   | `10000`        | The most paths one structure validation may carry. Past it the request is refused with `413` rather than answered: a tree of that size is a `path` pointing at more than the documentation. **It also bounds the request body**: a body announcing more than this many paths of 1024 characters could ever need is refused on its `Content-Length`, before it is read, because counting paths means having parsed them all into the heap first. Below 1 or above 100000 stops the startup |
+| `jeap.doc.upload.validation.max-paths`   | `200`          | The most files a documentation set may hold. Past it a validation is refused with `413` and an **upload** with the same, rather than answered: a tree of that size is a `path` pointing at more than the documentation. The sets that exist hold twelve to seventeen pages, and a page per chapter with thirty screenshots is about fifty files. It also bounds the validation request body, which is derived from it. Below 1 or above 100000 stops the startup |
 | `jeap.doc.upload.validation.max-findings` | `50`          | The most findings one report carries. A report of forty problems is already unreadable; what is left out is counted in `findingsOmitted` rather than dropped in silence. Below 1 stops the startup - a report that may carry no finding could not say what is wrong |
 
 The job removes the uploads **from the database only**, whatever state they are in; the bundles are expired by a
 lifecycle rule of the bucket, which has to be set a little longer than the retention - see
 [Uploads](uploads.md#how-an-upload-is-cleaned-up-again). Of several instances only one runs it, using a lock in
 the `shedlock` table.
+
+## The documentation a team writes
+
+What an uploaded documentation set may be, and what becomes of the objects nothing references. See
+[The documentation a team writes](custom-documentation.md).
+
+```yaml
+jeap:
+  doc:
+    custom:
+      max-unpacked-size: 200MB
+      sweep-cron: "0 50 2 * * *"
+```
+
+| Property                            | Default        | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `jeap.doc.custom.max-unpacked-size` | `200MB`        | The most a documentation set may unpack to, added up over its files and counted **per set** - one build writes the system's set, every component's and every library's, and each has this budget of its own. A build writes every file of a set into the tree it generates, so a bundle that unpacks to far more than it weighs would fill the disk of a build task long after the upload was accepted. **Checked twice**: against what the archive declares when the set is received, which answers the uploading pipeline with `413`, and against the bytes actually written when a build writes them - the declared sizes are the uploader's to state, so only the second one measures. Past it during a build the rest of that set is left out and the build goes on |
+| `jeap.doc.custom.sweep-cron`        | `0 50 2 * * *` | When the objects that no documentation set names are removed. `-` switches it off. It selects on **references, never on age** - nothing under the current documentation is removed for being old - and it leaves alone anything written in the last six hours, which is an upload that may still be committing the rows that name it rather than an orphan                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## Documentation sites
 

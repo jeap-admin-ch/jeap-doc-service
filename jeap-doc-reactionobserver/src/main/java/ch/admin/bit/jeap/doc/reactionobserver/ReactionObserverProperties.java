@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.reactionobserver;
 
 import ch.admin.bit.jeap.doc.upstream.UpstreamClientSettings;
+import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.unit.DataSize;
@@ -49,6 +50,19 @@ public class ReactionObserverProperties {
      * observer's read timeout under {@code jeap.doc.archrepo}, which is a name that lies about what it does.
      */
     private UpstreamClientSettings client = new UpstreamClientSettings();
+
+    // A configuration error should stop the deployment, not the first import an hour later - and this one
+    // would not stop it either: a graph over the bound is skipped, so a zero reports every run as having
+    // found nothing to do, hour after hour, with nothing to see.
+    @PostConstruct
+    void check() {
+        if (maxGraphSize == null || maxGraphSize.toBytes() < 1) {
+            throw new IllegalStateException(
+                    "jeap.doc.reactions.max-graph-size is " + maxGraphSize + ". It is the size a reaction "
+                    + "graph may have, and nothing is smaller than one byte - a value of zero would skip "
+                    + "every graph of every environment, quietly.");
+        }
+    }
 
     @Data
     public static class Environment {

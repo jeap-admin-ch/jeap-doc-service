@@ -12,6 +12,12 @@ import ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
+import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentation;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
+import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
@@ -55,6 +61,8 @@ import java.util.Objects;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -90,6 +98,13 @@ public class SystemPages {
     private final ArchitectureArtifactContent artifactContent;
     private final ReactionGraphRepository reactionGraphs;
     private final ReactionGraphContent reactionContent;
+
+    /** What has been uploaded, and where its bundles are read from - the other half of what a page shows. */
+    private final CustomDocumentationRepository documentation;
+
+    private final CustomDocumentationStorage documentationStorage;
+
+    private final CustomProperties customProperties;
 
     private final StructureTemplates templates;
     private final GeneratorProperties properties;
@@ -154,12 +169,27 @@ public class SystemPages {
 
     Optional<EnvironmentModel> write(String site, String environment, SitePart part, String diagramLinkPrefix,
                                      Path environmentDirectory, Instant generatedAt) throws IOException {
+        // What has been uploaded for this part, whatever the architecture model of this environment holds.
+        // It is per site rather than per environment: an upload names no environment, so the same
+        // documentation is written into every tree of the site.
+        List<String> documentedSlugs = documentedSlugsOf(site, part);
+
         if (!architectureModel.isConfiguredFor(environment)) {
-            log.debug("No architecture repository is configured for the environment {}; no system "
-                      + "documentation is generated into it.", environment);
-            // Not the same as none: an environment that reads no model has nothing to say about how many
-            // systems there are, and the root page must not claim there are zero.
-            return Optional.empty();
+            if (documentedSlugs.isEmpty()) {
+                log.debug("No architecture repository is configured for the environment {} and nothing is "
+                          + "documented for {}; nothing is generated into that tree.", environment, part.key());
+                // Not the same as none: an environment that reads no model has nothing to say about how many
+                // systems there are, and the root page must not claim there are zero.
+                return Optional.empty();
+            }
+            // Nothing to generate from and something to publish: what a team uploaded is written into this
+            // tree on its own. A site whose environments have no architecture repository is a legitimate
+            // instance, and its documentation is all custom.
+            log.debug("No architecture repository is configured for the environment {}; the {} documented "
+                      + "system(s) of {} are written from what was uploaded.",
+                    environment, documentedSlugs.size(), part.key());
+            return Optional.of(writeSystems(site, environment, part, diagramLinkPrefix, environmentDirectory,
+                    generatedAt, ArchitectureSnapshot.empty(), documentedSlugs));
         }
         long startedAt = System.nanoTime();
         // One call, so that the landscape and the import it came from are one moment. Reading them separately
@@ -170,12 +200,28 @@ public class SystemPages {
         // the build is published - a failure between here and there must not move that gauge.
         metrics.modelRead(site, environment, elapsedSince(startedAt));
         ArchitectureModel model = snapshot.model();
-        if (model.isEmpty()) {
-            log.warn("The architecture repository of the environment {} reports no system at all. Nothing is "
-                     + "generated into that tree.", environment);
+        if (model.isEmpty() && documentedSlugs.isEmpty()) {
+            log.warn("The architecture repository of the environment {} reports no system at all, and nothing "
+                     + "is documented for {}. Nothing is generated into that tree.", environment, part.key());
             return Optional.of(EnvironmentModel.empty(snapshot.importedAt()));
         }
         warnWhenTheImportIsBehind(environment, generatedAt);
+        return Optional.of(writeSystems(site, environment, part, diagramLinkPrefix, environmentDirectory,
+                generatedAt, snapshot, documentedSlugs));
+    }
+
+    /**
+     * Writes the systems of one environment tree: those the architecture model holds, and those only the
+     * uploaded documentation knows.
+     *
+     * @param snapshot        what the import stored, which is empty for an environment that reads no model
+     * @param documentedSlugs the systems of this part something has been uploaded for
+     */
+    private EnvironmentModel writeSystems(String site, String environment, SitePart part,
+                                          String diagramLinkPrefix, Path environmentDirectory,
+                                          Instant generatedAt, ArchitectureSnapshot snapshot,
+                                          List<String> documentedSlugs) throws IOException {
+        ArchitectureModel model = snapshot.model();
         GenerationContext context = new GenerationContext(model, environment,
                 architectureModel.sourceUrlOf(environment).orElse(""),
                 snapshot.importedAt(), generatedAt,
@@ -193,52 +239,105 @@ public class SystemPages {
             Files.writeString(systems.resolve(CategoryFile.NAME),
                     CategoryFile.marked(SYSTEMS_LABEL, 1, SYSTEMS_INDEX_PROPERTY),
                     StandardCharsets.UTF_8);
-            writeIndex(model, context, systems);
+            writeIndex(model, documentedSlugs, context, systems);
         }
         if (!part.carriesSystems()) {
             log.debug("Wrote the index of {} systems into the {} tree of {}.",
                     model.systems().size(), environment, part.key());
-            return Optional.of(counted(model, snapshot));
+            return counted(model, documentedSlugs, snapshot);
         }
 
         // Once for the environment, ahead of the systems: what it answers is the same for every one of them,
         // and most landscapes run no reaction observer at all.
         EnvironmentReactions reactions = reactionsOfEnvironment(environment, model);
 
-        for (DocumentedSystem documented : systemsOf(model, part)) {
+        List<String> slugs = slugsToWrite(model, part, documentedSlugs);
+        for (String slug : slugs) {
+            Optional<DocumentedSystem> found = model.find(slug);
             // The schemas of this system, and only this system: the renderings of a whole landscape have no
             // business being held while the site generator runs for minutes afterwards.
-            DocumentedSystem system = withArtifacts(withSchemas(documented, environment), environment);
+            Optional<DocumentedSystem> system =
+                    found.map(one -> withArtifacts(withSchemas(one, environment), environment));
             // The reaction graphs of this system, and only this system's: they are handed to the templates
             // and let go when the system has been written, exactly as its artifacts are.
-            GenerationContext systemContext =
-                    context.withReactions(reactionsOf(system, environment, reactions));
+            GenerationContext systemContext = system
+                    .map(one -> context.withReactions(reactionsOf(one, environment, reactions)))
+                    .orElse(context);
             // Where this part mounts its content. A part carrying a whole environment writes the system
             // below the systems directory of that tree; a part carrying one system writes it at the tree it
             // is mounted at - the same path either way, and the one the site template points its docs plugin
             // at.
             Path directory = part.carriesWholeEnvironments()
-                    ? environmentDirectory.resolve(DocumentationPaths.SYSTEMS_SEGMENT).resolve(system.slug())
+                    ? environmentDirectory.resolve(DocumentationPaths.SYSTEMS_SEGMENT).resolve(slug)
                     : environmentDirectory.resolve(part.tree());
             Files.createDirectories(directory);
-            Files.writeString(directory.resolve(CategoryFile.NAME), CategoryFile.of(system.name()),
+            String name = system.map(DocumentedSystem::name).orElse(slug);
+            Files.writeString(directory.resolve(CategoryFile.NAME), CategoryFile.of(name),
                     StandardCharsets.UTF_8);
             // The templates first, so the landing page links only to the subtrees that exist. A template is
             // allowed to write nothing, and a link to a page nothing wrote fails the whole site build.
             List<StructureTemplate> written = new ArrayList<>();
+            CustomDocumentation uploaded = documentation.of(site, slug);
             for (StructureTemplate template : templates.all()) {
-                template.writeSystem(system, systemContext, directory);
+                // Narrowed to what this template publishes before anything asks it a question: which chapters
+                // carry pages, which components have any and where a library's version comes from are all
+                // about one tree, and a subject may carry a second methodology or a microsite beside its
+                // Markdown.
+                CustomDocumentation ofTemplate = uploaded.publishedBy(template.id());
+                // One writer per template: it holds the bundles of that template's sets open while the
+                // template walks, and closing it is what lets go of them.
+                try (CustomPagesWriter pages = new CustomPagesWriter(ofTemplate, documentationStorage,
+                        template, customProperties)) {
+                    SystemDocumentation documented = system
+                            .map(one -> SystemDocumentation.of(site, one, ofTemplate, pages))
+                            .orElseGet(() -> SystemDocumentation.ofUploadsOnly(site, slug, ofTemplate, pages));
+                    template.writeSystem(documented, systemContext, directory);
+                }
                 if (Files.isDirectory(directory.resolve(template.systemPathSegment()))) {
                     written.add(template);
                 }
             }
-            writeLandingPage(system, systemContext, directory, written);
+            writeLandingPage(name, slug, system, systemContext, directory, written);
         }
         log.debug("Generated the documentation of {} system(s) into the {} tree of {}.",
-                systemsOf(model, part).size(), environment, part.key());
+                slugs.size(), environment, part.key());
         // Counted off the landscape this run has just generated from, so that the page describing the
         // documentation says what is in it without asking the database again.
-        return Optional.of(counted(model, snapshot));
+        return counted(model, documentedSlugs, snapshot);
+    }
+
+    /**
+     * The systems this part writes into this tree: those of the landscape, and those something has been
+     * uploaded for. Sorted and without duplicates, so a system that is both is written once.
+     */
+    private static List<String> slugsToWrite(ArchitectureModel model, SitePart part,
+                                             List<String> documentedSlugs) {
+        SortedSet<String> slugs = new TreeSet<>(documentedSlugs);
+        if (part.carriesWholeEnvironments()) {
+            model.systems().forEach(system -> slugs.add(system.slug()));
+            return List.copyOf(slugs);
+        }
+        String slug = part.tree().substring(part.tree().lastIndexOf('/') + 1);
+        model.find(slug).ifPresent(system -> slugs.add(system.slug()));
+        return List.copyOf(slugs);
+    }
+
+    /**
+     * The systems of this part that something has been uploaded for.
+     * <p>
+     * Per site rather than per environment, because an upload names no environment: the same documentation
+     * is written into every tree of the site.
+     */
+    private List<String> documentedSlugsOf(String site, SitePart part) {
+        SortedSet<String> slugs = new TreeSet<>();
+        for (CustomSubject subject : documentation.subjectsOf(site)) {
+            slugs.add(subject.system());
+        }
+        if (part.carriesWholeEnvironments()) {
+            return List.copyOf(slugs);
+        }
+        String slug = part.tree().substring(part.tree().lastIndexOf('/') + 1);
+        return slugs.contains(slug) ? List.of(slug) : List.of();
     }
 
     /**
@@ -246,32 +345,26 @@ public class SystemPages {
      * this part wrote. The page describing the documentation says how large the landscape is, which is the same
      * answer whichever part is being built.
      */
-    private static EnvironmentModel counted(ArchitectureModel model, ArchitectureSnapshot snapshot) {
+    private static EnvironmentModel counted(ArchitectureModel model, List<String> documentedSlugs,
+                                            ArchitectureSnapshot snapshot) {
         // The systems themselves and not only their number: the shell's sidebar lists them, and they are in
         // other parts' builds - so the only place that can name them is the run that read the landscape.
-        List<EnvironmentModel.DocumentedSystemEntry> systems = model.systems().stream()
+        List<EnvironmentModel.DocumentedSystemEntry> systems = new ArrayList<>(model.systems().stream()
                 .map(system -> new EnvironmentModel.DocumentedSystemEntry(system.name(),
                         DocumentationPaths.system(system.slug())))
-                .toList();
-        return new EnvironmentModel(systems,
+                .toList());
+        // And the ones only the uploads know, after them. They are written into this tree exactly as the
+        // others are, so leaving them out here would publish a system the sidebar, the footer and the systems
+        // index all fail to link - reachable only by typing its URL.
+        for (String slug : documentedSlugs) {
+            if (model.find(slug).isEmpty()) {
+                systems.add(new EnvironmentModel.DocumentedSystemEntry(slug, DocumentationPaths.system(slug)));
+            }
+        }
+        return new EnvironmentModel(List.copyOf(systems), model.systems().size(),
                 countOf(model, system -> system.components().size()),
                 countOf(model, system -> system.messages().size()),
                 snapshot.importedAt());
-    }
-
-    /**
-     * The systems this part writes: every one of them where it carries whole environment trees, and the one
-     * its tree names otherwise.
-     * <p>
-     * A part whose system is not in this environment's landscape writes nothing into that tree, which is a
-     * system that is not deployed on that stage - not an error.
-     */
-    private static List<DocumentedSystem> systemsOf(ArchitectureModel model, SitePart part) {
-        if (part.carriesWholeEnvironments()) {
-            return model.systems();
-        }
-        String slug = part.tree().substring(part.tree().lastIndexOf('/') + 1);
-        return model.find(slug).map(List::of).orElseGet(List::of);
     }
 
     private static int countOf(ArchitectureModel model, java.util.function.ToIntFunction<DocumentedSystem> of) {
@@ -500,7 +593,8 @@ public class SystemPages {
     }
 
     /** Every system of the landscape, with who owns it and how much of it is documented. */
-    private void writeIndex(ArchitectureModel model, GenerationContext context, Path systems)
+    private void writeIndex(ArchitectureModel model, List<String> documentedSlugs,
+                            GenerationContext context, Path systems)
             throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(frontMatter()
@@ -508,7 +602,9 @@ public class SystemPages {
                         .put("sidebar_label", SYSTEMS_LABEL)
                         .put("sidebar_position", 0)
                         .put("doc_status", "generated")
-                        .put("doc_source", "archrepo")
+                        // The doc service's own page: it lists what the model holds and what has been
+                        // uploaded, and neither half alone is where it comes from.
+                        .put("doc_source", "doc-service")
                         .put("doc_environment", context.environment())
                         .put("doc_generated_at", context.generatedAt().toString()))
                 .heading(1, SYSTEMS_LABEL)
@@ -526,10 +622,20 @@ public class SystemPages {
                     Md.text(String.valueOf(system.commands().size())),
                     Md.text(system.description())));
         }
+        // The systems only the uploads know, which this tree publishes exactly as it does the others. No
+        // counts: a system the model does not hold has no team, no components and no messages to count, and
+        // zeros would read as a system that has none rather than as one nothing knows about.
+        for (String slug : documentedSlugs) {
+            if (model.find(slug).isPresent()) {
+                continue;
+            }
+            rows.add(List.of(
+                    Md.link(DocumentationPaths.system(slug), slug),
+                    Md.italic("unknown"),
+                    Md.text(""), Md.text(""), Md.text(""),
+                    Md.italic("The architecture model of this environment does not hold this system.")));
+        }
         page.table(List.of("System", "Team", "Components", "Events", "Commands", "Description"), rows);
-        page.admonition("info", "Generated page", Md.sentence(
-                "Generated by the jEAP Doc Service from the architecture model of the {} environment on {}.",
-                Md.bold(context.environment()), Md.text(context.generatedAtDisplay())));
         Files.writeString(systems.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
     }
 
@@ -537,45 +643,56 @@ public class SystemPages {
      * What a system is, who owns it, and which documentation structures it carries. It is where a reader
      * arrives from the system list.
      */
-    private void writeLandingPage(DocumentedSystem system, GenerationContext context, Path directory,
+    private void writeLandingPage(String name, String slug, Optional<DocumentedSystem> found,
+                                  GenerationContext context, Path directory,
                                   List<StructureTemplate> written)
             throws IOException {
+        String description = found.map(DocumentedSystem::description).orElse(null);
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(frontMatter()
-                        .put("title", system.name())
-                        .put("sidebar_label", system.name())
+                        .put("title", name)
+                        .put("sidebar_label", name)
                         .put("sidebar_position", 0)
-                        .put("description", system.description())
+                        .put("description", description)
                         .put("doc_status", "generated")
-                        .put("doc_source", "archrepo")
+                        // Where the facts on this page come from. A system the architecture model does not
+                        // hold has none from it, and a page saying otherwise would name a source it has not
+                        // read.
+                        .put("doc_source", found.isPresent() ? "archrepo" : "doc-service")
                         .put("doc_environment", context.environment())
                         .put("doc_generated_at", context.generatedAt().toString()))
-                .heading(1, system.name())
-                .paragraphOrNothing(Md.text(system.description()),
-                        "The architecture repository holds no description of this system.");
+                .heading(1, name)
+                .paragraphOrNothing(Md.text(description),
+                        found.isPresent()
+                                ? "The architecture repository holds no description of this system."
+                                : "The architecture model of this environment does not hold this system. "
+                                  + "What is documented here was written by the team that owns it.");
 
-        List<List<Markdown>> rows = new ArrayList<>();
-        rows.add(List.of(Md.text("Responsible team"), teamOf(system.team())));
-        if (!system.aliases().isEmpty()) {
-            rows.add(List.of(Md.text("Also known as"),
-                    Md.joinWith(", ", system.aliases().stream().map(Md::code).toList())));
+        // The facts of the model, and only where there is one: a system that is documented and deployed
+        // nowhere has no team, no components and no messages to count, and a table of zeros would read as
+        // a system that has none rather than as one nothing knows about.
+        if (found.isPresent()) {
+            DocumentedSystem system = found.get();
+            List<List<Markdown>> rows = new ArrayList<>();
+            rows.add(List.of(Md.text("Responsible team"), teamOf(system.team())));
+            if (!system.aliases().isEmpty()) {
+                rows.add(List.of(Md.text("Also known as"),
+                        Md.joinWith(", ", system.aliases().stream().map(Md::code).toList())));
+            }
+            rows.add(List.of(Md.text("Components"), Md.text(String.valueOf(system.components().size()))));
+            rows.add(List.of(Md.text("Events"), Md.text(String.valueOf(system.events().size()))));
+            rows.add(List.of(Md.text("Commands"), Md.text(String.valueOf(system.commands().size()))));
+            page.table(List.of("", ""), rows);
         }
-        rows.add(List.of(Md.text("Components"), Md.text(String.valueOf(system.components().size()))));
-        rows.add(List.of(Md.text("Events"), Md.text(String.valueOf(system.events().size()))));
-        rows.add(List.of(Md.text("Commands"), Md.text(String.valueOf(system.commands().size()))));
-        page.table(List.of("", ""), rows);
 
         if (!written.isEmpty()) {
             page.heading(2, "Documentation");
             page.bulletList(written.stream()
                     .map(template -> Md.link(
-                            DocumentationPaths.structure(system.slug(), template.systemPathSegment()),
+                            DocumentationPaths.structure(slug, template.systemPathSegment()),
                             template.systemLabel()))
                     .toList());
         }
-        page.admonition("info", "Generated page", Md.sentence(
-                "Generated by the jEAP Doc Service from the architecture model of the {} environment on {}.",
-                Md.bold(context.environment()), Md.text(context.generatedAtDisplay())));
         Files.writeString(directory.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
     }
 

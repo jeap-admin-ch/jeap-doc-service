@@ -18,6 +18,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -85,7 +86,7 @@ class SiteSourcesTest {
         sources = new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
                 NoArchitectureModel.systemPages(new SiteUrls(publication, "")),
                 new DocumentationSites(siteProperties),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), buildProperties,
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
                 TestProvenance.of(siteProperties, NoArchitectureModel.INSTANCE,
                         new StructureTemplates(List.of())),
                 new AboutThisDocumentation());
@@ -155,7 +156,7 @@ class SiteSourcesTest {
         return new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
                 NoArchitectureModel.systemPages(new SiteUrls(publication, "")),
                 new DocumentationSites(siteProperties),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), buildProperties,
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
                 TestProvenance.of(siteProperties, configured, new StructureTemplates(List.of()), imports),
                 new AboutThisDocumentation());
     }
@@ -210,10 +211,11 @@ class SiteSourcesTest {
                 new SystemPages(new OneSystemIn(modelled), NoMessageSchemas.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         NoReactions.INSTANCE, NoReactions.INSTANCE,
+                        new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                         new StructureTemplates(List.of()), new GeneratorProperties(),
                         new ArchitectureImportProperties(), BuildMetrics.NONE, urls),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), new BuildProperties(),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), new BuildProperties(),
                 TestProvenance.of(new OneSystemIn(modelled)), new AboutThisDocumentation());
     }
 
@@ -225,10 +227,11 @@ class SiteSourcesTest {
         return new SiteSources(urls, new DefaultResourceLoader(),
                 new SystemPages(landscape, NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
+                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of()),
                         new GeneratorProperties(), new ArchitectureImportProperties(), BuildMetrics.NONE, urls),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(landscape), new BuildProperties(),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(landscape, new NoCustomDocumentation()), new BuildProperties(),
                 TestProvenance.of(landscape), new AboutThisDocumentation());
     }
 

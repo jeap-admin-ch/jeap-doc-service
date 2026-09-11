@@ -10,6 +10,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.view.WhiteboxView;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
+import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.markdown.Md;
@@ -60,18 +61,110 @@ final class Arc42SystemPages {
     }
 
     /**
-     * The whole subtree of one system: the landing page of the structure, and the chapters this template
-     * generates into.
+     * The whole subtree of one system: the landing page of the structure, the chapters this template
+     * generates into, and the chapters a team filled itself.
+     * <p>
+     * <b>A system the architecture model does not hold is written here too.</b> There is nothing to generate
+     * from, so it gets one page saying so and its uploaded chapters beside it - see
+     * {@link Arc42UnknownSubjectPage}.
      */
-    static void write(Arc42Template template, DocumentedSystem system, GenerationContext context,
+    static void write(Arc42Template template, SystemDocumentation system, GenerationContext context,
                       Path systemDirectory) throws IOException {
         Path structure = systemDirectory.resolve(SYSTEM_SEGMENT);
         Arc42Pages.writeCategory(structure, template.systemLabel(), 1, true);
-        writeStructureLandingPage(template, system, context, structure);
-        writeIntroduction(template, system, context, structure);
-        writeContextAndScope(template, system, context, structure);
-        writeBuildingBlockView(template, system, context, structure);
-        writeRuntimeView(template, system, context, structure);
+        List<StructureChapter> generated = generatedChaptersOf(system, context);
+        List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
+                system.customChaptersOfTheSystem());
+        writeStructureLandingPage(template, system, context, structure,
+                Arc42CustomChapters.merged(template, generated, uploaded));
+
+        if (system.isInTheArchitectureModel()) {
+            DocumentedSystem model = system.model().orElseThrow();
+            writeIntroduction(template, model, context, structure);
+            writeContextAndScope(template, model, context, structure);
+            writeBuildingBlockView(template, system, model, context, structure);
+            writeRuntimeView(template, model, context, structure);
+        } else {
+            Arc42UnknownSubjectPage.writeForSystem(template, system, context, structure);
+            // Its components and libraries all the same. A system nothing has deployed can have documented
+            // components - the model holds neither - and they would otherwise be written nowhere, because
+            // what writes them for a known system is its building block view.
+            writeWhatOnlyTheUploadsKnow(template, system, context, structure);
+        }
+
+        // The uploaded pages last, into the chapters this template named. A generated chapter gets them too:
+        // the generator owns a chapter's index page and an upload owns the pages beside it.
+        Arc42CustomChapters.write(template, system.pages(), system.subject(), context, structure,
+                Arc42CustomChapters.of(template, system.customChaptersOfTheSystem()));
+    }
+
+    /**
+     * The chapters this run generates. A system the architecture model does not hold gets chapter 1, where
+     * the page saying so goes - and chapter 5 as well when it has documented components or libraries, since
+     * that is where both are served.
+     */
+    private static List<StructureChapter> generatedChaptersOf(SystemDocumentation system,
+                                                              GenerationContext context) {
+        if (system.isInTheArchitectureModel()) {
+            return chaptersOf(context);
+        }
+        return hasBuildingBlocks(system) ? List.of(INTRODUCTION, BUILDING_BLOCK_VIEW) : List.of(INTRODUCTION);
+    }
+
+    private static boolean hasBuildingBlocks(SystemDocumentation system) {
+        return !system.components().isEmpty() || !system.libraries().isEmpty();
+    }
+
+    /**
+     * The building block view of a system the architecture model does not hold: its documented components and
+     * its libraries, and nothing that would have come from a model.
+     */
+    private static void writeWhatOnlyTheUploadsKnow(Arc42Template template, SystemDocumentation system,
+                                                    GenerationContext context, Path structure)
+            throws IOException {
+        if (!hasBuildingBlocks(system)) {
+            return;
+        }
+        Path buildingBlock = Arc42Pages.chapterDirectory(template, structure, BUILDING_BLOCK_VIEW);
+        writeBuildingBlockIndexOfUploadsOnly(system, context, buildingBlock);
+        if (!system.components().isEmpty()) {
+            Path components = buildingBlock.resolve(DocumentationPaths.COMPONENTS_SEGMENT);
+            Arc42Pages.writeCategory(components, COMPONENTS_LABEL, 2, true);
+            writeComponentIndexOfUploadsOnly(system, context, components);
+            for (SystemDocumentation.ComponentDocumentation component : system.components()) {
+                Arc42UnknownSubjectPage.writeForComponent(template, system, component, context,
+                        components.resolve(component.slug()));
+            }
+        }
+        Arc42LibraryPages.write(template, system, context, buildingBlock);
+    }
+
+    /** The chapter's own page, saying what is in it - there is no whitebox view to write. */
+    private static void writeBuildingBlockIndexOfUploadsOnly(SystemDocumentation system,
+                                                             GenerationContext context, Path buildingBlock)
+            throws IOException {
+        MarkdownWriter page = new MarkdownWriter()
+                .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context))
+                .heading(1, BUILDING_BLOCK_VIEW.label())
+                .paragraph(Md.sentence("The parts of {} that are documented. The architecture model of this "
+                                       + "environment does not hold this system, so how it is decomposed is "
+                                       + "what its team has written down and nothing more.",
+                        Md.code(system.name())));
+        Arc42Pages.write(buildingBlock, Arc42Pages.INDEX, page);
+    }
+
+    /** The components group's own page, for a system whose components only an upload knows. */
+    private static void writeComponentIndexOfUploadsOnly(SystemDocumentation system,
+                                                         GenerationContext context, Path components)
+            throws IOException {
+        MarkdownWriter page = new MarkdownWriter()
+                .frontMatter(Arc42Pages.generated(COMPONENTS_LABEL, 0, context))
+                .heading(1, COMPONENTS_LABEL)
+                .paragraph(Md.sentence("The components of {} that are documented.", Md.code(system.name())));
+        page.bulletList(system.components().stream()
+                .map(component -> Md.link("./" + component.slug() + "/", component.name()))
+                .toList());
+        Arc42Pages.write(components, Arc42Pages.INDEX, page);
     }
 
     /**
@@ -87,7 +180,9 @@ final class Arc42SystemPages {
     }
 
     /** What this tree answers, and which of the twelve chapters exist. */
-    private static void writeStructureLandingPage(Arc42Template template, DocumentedSystem system, GenerationContext context, Path structure)
+    private static void writeStructureLandingPage(Arc42Template template, SystemDocumentation system,
+                                                  GenerationContext context, Path structure,
+                                                  List<StructureChapter> chapters)
             throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(template.systemLabel(), 0, context))
@@ -98,16 +193,27 @@ final class Arc42SystemPages {
                 .paragraph("Chapters with nothing in them do not appear. A gap in the numbering means the "
                            + "chapter has not been written, not that it is empty.");
 
-        // Only the chapters this run wrote. A link to a missing page fails the site build.
+        // Only the chapters this run wrote - generated or uploaded. A link to a missing page fails the
+        // whole site build.
         List<List<Markdown>> rows = new ArrayList<>();
-        for (StructureChapter chapter : chaptersOf(context)) {
+        for (StructureChapter chapter : chapters) {
             rows.add(List.of(
                     Md.link(DocumentationPaths.chapter(system.slug(), SYSTEM_SEGMENT, chapter),
                             chapter.label()),
                     Md.text(Arc42Chapters.summaryOf(chapter))));
         }
         page.table(List.of("Chapter", "What it answers"), rows);
-        Arc42Pages.provenance(page, context);
+
+        // Beside the chapters, because a library is a building block of this system and its tree is inside
+        // chapter 5. The sidebar lists them too - the tree is enough for that - and this is what makes the
+        // group readable rather than only expandable.
+        List<List<Markdown>> libraries = Arc42LibraryPages.rowsFor(system);
+        if (!libraries.isEmpty()) {
+            page.heading(2, Arc42LibraryPages.LIBRARIES_LABEL);
+            page.paragraph(Md.sentence("Documented by hand: a library publishes no artifact this service can "
+                                       + "see and is deployed nowhere, so no architecture model holds one."));
+            page.table(List.of("Library", "Version"), libraries);
+        }
         Arc42Pages.write(structure, Arc42Pages.INDEX, page);
     }
 
@@ -141,7 +247,6 @@ final class Arc42SystemPages {
                                    + "stakeholders are, are written by the team that owns it and appear "
                                    + "beside this page."));
 
-        Arc42Pages.provenance(page, context);
         // The arc42 attribution, once per system and nowhere else on the site.
         page.paragraph(Md.sentence("Structured according to {} by Gernot Starke and Peter Hruschka, used "
                                    + "under {}.",
@@ -165,7 +270,6 @@ final class Arc42SystemPages {
                 .paragraph(Md.sentence("Who {} talks to, and about what.", Md.code(system.name())))
                 .bulletList(List.of(Md.link(DocumentationPaths.page(system.slug(), SYSTEM_SEGMENT,
                         CONTEXT_AND_SCOPE, CONTEXT_VIEW_PAGE), CONTEXT_VIEW_LABEL)));
-        Arc42Pages.provenance(index, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         MarkdownWriter view = new MarkdownWriter()
@@ -192,7 +296,6 @@ final class Arc42SystemPages {
                             Md.joinWith(", ", edge.labels().stream().map(Md::code).toList())))
                     .toList());
         }
-        Arc42Pages.provenance(view, context);
         Arc42Pages.write(directory, CONTEXT_VIEW_PAGE + ".md", view);
     }
 
@@ -200,7 +303,13 @@ final class Arc42SystemPages {
      * Chapter 5: the inside view, with the components, the events and the commands below it. A component is
      * one of the building blocks, so its documentation lives where the decomposition is described.
      */
-    private static void writeBuildingBlockView(Arc42Template template, DocumentedSystem system, GenerationContext context, Path structure)
+    /** Inside chapter 5, after the components and the libraries: what the system publishes. */
+    static final int EVENTS_POSITION = 4;
+    static final int COMMANDS_POSITION = 5;
+
+    private static void writeBuildingBlockView(Arc42Template template, SystemDocumentation documented,
+                                               DocumentedSystem system, GenerationContext context,
+                                               Path structure)
             throws IOException {
         Path directory = Arc42Pages.chapterDirectory(template, structure, BUILDING_BLOCK_VIEW);
         WhiteboxView whitebox = WhiteboxView.of(context.model(), system, context.limits().maxDiagramNodes());
@@ -208,10 +317,12 @@ final class Arc42SystemPages {
         // The message groups are written before the listing that links to them, and the listing goes by what
         // they answer: a system defines no events, or no commands, more often than not, and a link to a
         // directory nothing wrote fails the build of every site of the environment.
-        boolean events = Arc42MessagePages.write(system, MessageKind.EVENT, Arc42MessagePages.EVENTS, 3,
-                context, directory);
-        boolean commands = Arc42MessagePages.write(system, MessageKind.COMMAND, Arc42MessagePages.COMMANDS, 4,
-                context, directory);
+        // Four and five, after the building blocks: the components stand at two and the libraries at three,
+        // and two groups of one position would be ordered by their folder names instead.
+        boolean events = Arc42MessagePages.write(system, MessageKind.EVENT, Arc42MessagePages.EVENTS,
+                EVENTS_POSITION, context, directory);
+        boolean commands = Arc42MessagePages.write(system, MessageKind.COMMAND, Arc42MessagePages.COMMANDS,
+                COMMANDS_POSITION, context, directory);
 
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context))
@@ -234,11 +345,11 @@ final class Arc42SystemPages {
                     Arc42MessagePages.COMMANDS), "Commands"));
         }
         index.bulletList(contents);
-        Arc42Pages.provenance(index, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         writeWhiteboxView(system, context, whitebox, directory);
-        writeComponents(template, system, context, directory);
+        writeComponents(template, documented, context, directory);
+        Arc42LibraryPages.write(template, documented, context, directory);
     }
 
     /**
@@ -292,7 +403,6 @@ final class Arc42SystemPages {
                     .toList());
             writeRelations(system, context, whitebox, page);
         }
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, WHITEBOX_PAGE + ".md", page);
     }
 
@@ -354,15 +464,29 @@ final class Arc42SystemPages {
         return kind == MessageKind.COMMAND ? Arc42MessagePages.COMMANDS : Arc42MessagePages.EVENTS;
     }
 
-    /** The root page of a component, and its own arc42 tree below it. */
-    private static void writeComponents(Arc42Template template, DocumentedSystem system,
+    /**
+     * The root page of a component, and its own arc42 tree below it.
+     * <p>
+     * Two loops rather than one: a component the architecture model holds is written from the model, and a
+     * component only the uploaded documentation knows has nothing to be written from - so it gets what a
+     * system in that position gets, one page saying so and its own chapters beside it.
+     */
+    private static void writeComponents(Arc42Template template, SystemDocumentation documented,
                                         GenerationContext context, Path buildingBlock) throws IOException {
-        if (system.components().isEmpty()) {
+        DocumentedSystem system = documented.model().orElseThrow();
+        List<SystemDocumentation.ComponentDocumentation> all = documented.components();
+        if (all.isEmpty()) {
             return;
         }
         Path components = buildingBlock.resolve(DocumentationPaths.COMPONENTS_SEGMENT);
         Arc42Pages.writeCategory(components, COMPONENTS_LABEL, 2, true);
-        writeComponentIndex(system, context, components);
+        writeComponentIndex(documented, system, context, components);
+        for (SystemDocumentation.ComponentDocumentation onlyDocumented : all) {
+            if (!onlyDocumented.isInTheArchitectureModel()) {
+                Arc42UnknownSubjectPage.writeForComponent(template, documented, onlyDocumented, context,
+                        components.resolve(onlyDocumented.slug()));
+            }
+        }
         for (DocumentedComponent component : system.components()) {
             Path directory = components.resolve(component.slug());
             Arc42Pages.writeCategory(directory, component.name(), 0, true);
@@ -398,33 +522,37 @@ final class Arc42SystemPages {
 
             // The subtree first and the link to it after, the way a system's landing page is written: a link
             // to a page nothing wrote fails the build of every site of the environment.
-            Arc42ComponentPages.write(template, system, component, context, directory);
+            Arc42ComponentPages.write(template, documented, system, component, context, directory);
             page.heading(2, "Documentation");
             page.bulletList(List.of(Md.link(
                     Arc42ComponentPages.pathsOf(template, system, component).structure(),
                     template.componentLabel())));
 
-            Arc42Pages.provenance(page, context);
             Arc42Pages.write(directory, Arc42Pages.INDEX, page);
         }
     }
 
-    /** The landing page of the components group: every component of the system, each linked to its own page. */
-    private static void writeComponentIndex(DocumentedSystem system, GenerationContext context, Path components)
+    /**
+     * The landing page of the components group: every component of the system, each linked to its own page.
+     * <p>
+     * Every component, which is more than the model's: one that is documented and deployed nowhere is listed
+     * here too, with the columns the model would have filled left empty.
+     */
+    private static void writeComponentIndex(SystemDocumentation documented, DocumentedSystem system,
+                                            GenerationContext context, Path components)
             throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(COMPONENTS_LABEL, 0, context))
                 .heading(1, COMPONENTS_LABEL)
                 .paragraph(Md.sentence("The components of {}.", Md.code(system.name())));
-        page.table(List.of("Component", "Type", OWNER_LABEL, "Description"), system.components().stream()
+        page.table(List.of("Component", "Type", OWNER_LABEL, "Description"), documented.components().stream()
                 .map(component -> List.of(
                         Md.link(DocumentationPaths.component(system.slug(), SYSTEM_SEGMENT,
                                 BUILDING_BLOCK_VIEW, component.slug()), component.name()),
-                        Md.text(component.type().label()),
-                        teamOf(component.team()),
-                        Md.text(component.description())))
+                        component.model().map(model -> Md.text(model.type().label())).orElse(Markdown.EMPTY),
+                        component.model().map(model -> teamOf(model.team())).orElse(Markdown.EMPTY),
+                        component.model().map(model -> Md.text(model.description())).orElse(Markdown.EMPTY)))
                 .toList());
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(components, Arc42Pages.INDEX, page);
     }
 
@@ -452,7 +580,6 @@ final class Arc42SystemPages {
                 .paragraph(Md.sentence("How {} behaves while it runs.", Md.code(system.name())))
                 .bulletList(List.of(Md.link(DocumentationPaths.page(system.slug(), SYSTEM_SEGMENT,
                         RUNTIME_VIEW, SYSTEM_REACTIONS_PAGE), SYSTEM_REACTIONS_LABEL)));
-        Arc42Pages.provenance(index, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         MarkdownWriter page = new MarkdownWriter()

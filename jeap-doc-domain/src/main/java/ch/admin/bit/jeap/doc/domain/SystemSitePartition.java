@@ -1,6 +1,8 @@
 package ch.admin.bit.jeap.doc.domain;
 
+import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,16 +35,29 @@ public class SystemSitePartition implements SitePartition {
 
     private final ArchitectureModelSource architectureModel;
 
+    /**
+     * What has been documented on this site, which is the other half of what parts there are.
+     * <p>
+     * A system can be documented before anything is deployed, so the architecture model does not know every
+     * system a site publishes. Without this, such a system has no part: nothing would ask for it to be
+     * built, an operator could not see it, and the sweep of departed parts would take what one upload
+     * managed to publish.
+     */
+    private final CustomDocumentationRepository documentation;
+
     @Override
     public String axis() {
         return "system";
     }
 
     /**
-     * The shell, then one part per system slug the model of any environment knows, in alphabetical order.
+     * The shell, then one part per system, in alphabetical order.
      * <p>
-     * The union across the environments and not one part per environment and system: a system deployed on dev
-     * only is one part all the same, with one of its trees empty.
+     * <b>The union of the two models</b>: every system the architecture model of any environment knows, and
+     * every system something has been uploaded for. The union across environments and not one part per
+     * environment and system - a system deployed on dev only is one part all the same, with one of its trees
+     * empty - and the union across the models for the same reason: a system that is documented and not
+     * deployed is still one part.
      */
     @Override
     public List<SitePart> partsOf(Site site) {
@@ -117,8 +132,9 @@ public class SystemSitePartition implements SitePartition {
     }
 
     /**
-     * Every system slug of the site, from every environment that reads an architecture model. Sorted and
-     * without duplicates, so two runs produce the same parts in the same order.
+     * Every system slug of the site: from every environment that reads an architecture model, and from what
+     * has been documented. Sorted and without duplicates, so two runs produce the same parts in the same
+     * order and a system that is both documented and deployed is one part.
      */
     private SortedSet<String> systemSlugsOf(Site site) {
         SortedSet<String> slugs = new TreeSet<>();
@@ -126,6 +142,9 @@ public class SystemSitePartition implements SitePartition {
             if (architectureModel.isConfiguredFor(environment.id())) {
                 slugs.addAll(architectureModel.systemSlugsOf(environment.id()));
             }
+        }
+        for (CustomSubject documented : documentation.subjectsOf(site.id())) {
+            slugs.add(documented.system());
         }
         return slugs;
     }

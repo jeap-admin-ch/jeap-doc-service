@@ -4,7 +4,15 @@ import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
+import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
+import ch.admin.bit.jeap.doc.domain.upload.validation.FindingCode;
+import ch.admin.bit.jeap.doc.domain.upload.validation.StructureFinding;
+import ch.admin.bit.jeap.doc.domain.upload.validation.StructureReport;
+import ch.admin.bit.jeap.doc.domain.upload.validation.StructureValidation;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationSubjectRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
@@ -12,6 +20,7 @@ import ch.admin.bit.jeap.doc.domain.port.UploadClaim;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -23,12 +32,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -54,7 +65,13 @@ class DocumentationUploadServiceTest {
     @Mock
     private DocumentationSubjectRepository subjectRepository;
     @Mock
-    private DocumentationBundleStorage bundleStorage;
+    private UploadedBundles bundles;
+    @Mock
+    private CustomDocumentationRepository documentation;
+    @Mock
+    private CustomDocumentationStorage documentationStorage;
+    @Mock
+    private StructureValidation validation;
     @Mock
     private DocumentationBuildTrigger buildTrigger;
 
@@ -64,9 +81,226 @@ class DocumentationUploadServiceTest {
     @BeforeEach
     void setUp() {
         metrics = new RecordingUploadMetrics();
-        service = new DocumentationUploadService(uploadRepository, subjectRepository, bundleStorage,
-                new UploadProperties(), new DocumentationSites(new SiteProperties()), buildTrigger,
-                metrics, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new DocumentationUploadService(uploadRepository, subjectRepository, bundles, documentation,
+                documentationStorage, validation, new UploadProperties(), new CustomProperties(),
+                new DocumentationSites(new SiteProperties()), buildTrigger, metrics,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    /**
+     * A bundle that reads as one page in one chapter, and a validation that accepts it. Every test about the
+     * upload path needs both; what the rules are is {@code StructureValidationTest}'s.
+     */
+    /** A bundle that is read and a set that passes the structure rules. */
+    private void acceptsTheSet() {
+        when(bundles.receive(any(), anyLong(), any())).thenReturn(new ReceivedOnePage());
+        when(validation.validate(any(), any()))
+                .thenReturn(new StructureReport("arc42", 1, 0, List.of(), List.of(), List.of(), 0));
+    }
+
+    /**
+     * And the set is taken over: the attempt still holds the upload, and the set it writes replaced nothing.
+     * Separate from {@link #acceptsTheSet()}, because the tests about a bundle that is refused never get this
+     * far.
+     */
+    private void takesTheSetOver() {
+        when(uploadRepository.isHeldBy(UPLOAD_ID, 1)).thenReturn(true);
+        when(documentation.replace(any())).thenAnswer(call ->
+                CustomDocumentationRepository.Replaced.first(call.getArgument(0)));
+    }
+
+    /** The one page a received bundle holds in these tests. */
+    private record ReceivedOnePage() implements UploadedBundles.ReceivedBundle {
+
+        @Override
+        public List<String> paths() {
+            return List.of("1-intro/goals.md");
+        }
+
+        @Override
+        public long declaredUnpackedSize() {
+            return BUNDLE.length;
+        }
+
+        @Override
+        public String sha256() {
+            return STORED.sha256();
+        }
+
+        @Override
+        public long sizeInBytes() {
+            return BUNDLE.length;
+        }
+
+        @Override
+        public byte[] head(String path, int maxBytes) {
+            return "---\ntitle: Goals\n---\n".getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        public void close() {
+            // nothing to release: this bundle is one page in memory.
+        }
+    }
+
+    /**
+     * A set that would not be published is refused, and refused before anything is stored: the paths are read
+     * off the archive on the request thread, so there is no object and no set to undo.
+     */
+    @Test
+    void receive_whenTheSetWouldNotBePublished_thenRefusedAndNothingIsStored() {
+        DocumentationUpload claimed = claimed();
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed));
+        when(bundles.receive(any(), anyLong(), any())).thenReturn(new ReceivedOnePage());
+        when(validation.validate(any(), any())).thenReturn(new StructureReport("arc42", 1, 0, List.of(),
+                List.of(), List.of(new StructureFinding(FindingCode.UNKNOWN_CHAPTER, "nowhere/page.md",
+                "there is no such chapter")), 0));
+
+        assertThatThrownBy(() -> service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length))
+                .isInstanceOfSatisfying(InvalidUploadException.class, refused -> {
+                    assertThat(refused.getCode()).isEqualTo(InvalidUploadException.Code.STRUCTURE_INVALID);
+                    assertThat(refused.getReport()).describedAs("the caller gets the findings, not a sentence")
+                            .isNotNull();
+                });
+
+        verify(bundles, never()).store(anyLong(), anyInt(), any());
+        verifyNoInteractions(documentationStorage, documentation);
+        verify(uploadRepository).save(argThat(upload -> upload.state() == UploadState.FAILED));
+    }
+
+    /**
+     * What <i>taking the set over</i> is: the bundle is copied to the set's own key, and the files it holds
+     * are recorded - both before the upload is completed, so an upload that is pending always has a set.
+     */
+    @Test
+    void receive_whenTheSetIsAccepted_thenItIsCurrentBeforeTheUploadIsCompleted() {
+        DocumentationUpload claimed = claimed();
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed));
+        acceptsTheSet();
+        takesTheSetOver();
+        when(bundles.store(eq(42L), eq(1), any())).thenReturn(STORED);
+        when(documentationStorage.promote(eq(STORED), any(), eq(42L), eq(1)))
+                .thenReturn("current/docs/x/42/1/bundle.zip");
+        when(uploadRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
+
+        InOrder inOrder = inOrder(bundles, documentationStorage, documentation, uploadRepository);
+        inOrder.verify(bundles).store(eq(42L), eq(1), any());
+        inOrder.verify(documentationStorage).promote(eq(STORED), any(), eq(42L), eq(1));
+        inOrder.verify(documentation).replace(any());
+        inOrder.verify(uploadRepository).save(any());
+    }
+
+    @Test
+    void receive_whenTheSetIsAccepted_thenItCarriesWhereItCameFromAndItsPages() {
+        DocumentationUpload claimed = claimed();
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed));
+        acceptsTheSet();
+        takesTheSetOver();
+        when(bundles.store(eq(42L), eq(1), any())).thenReturn(STORED);
+        when(documentationStorage.promote(any(), any(), anyLong(), anyInt()))
+                .thenReturn("current/docs/x/42/1/bundle.zip");
+        when(uploadRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
+
+        ArgumentCaptor<CustomSet> set = ArgumentCaptor.forClass(CustomSet.class);
+        verify(documentation).replace(set.capture());
+        assertThat(set.getValue().revision()).describedAs("the upload the set came from").isEqualTo(42L);
+        assertThat(set.getValue().sha256()).isEqualTo(STORED.sha256());
+        assertThat(set.getValue().provenance().sourceRevision()).isEqualTo("9a1c2f8");
+        assertThat(set.getValue().provenance().uploadedAt()).isEqualTo(NOW);
+        assertThat(set.getValue().pages()).singleElement().satisfies(page -> {
+            assertThat(page.chapter()).isEqualTo("1-intro");
+            assertThat(page.fileName()).isEqualTo("goals.md");
+            assertThat(page.title()).isEqualTo("Goals");
+        });
+    }
+
+    /**
+     * <b>An attempt that was given up on must not publish over the one that took over.</b> Nothing can stop a
+     * slow attempt: it keeps running, and by the time it gets here the attempt that replaced it may have made
+     * its own bundle current. So the set is not written, and the object this attempt copied is left to the
+     * sweep of what nothing references.
+     */
+    @Test
+    void receive_whenTheAttemptWasTakenOverWhileItRan_thenItsSetIsNotMadeCurrent() {
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed()));
+        acceptsTheSet();
+        when(uploadRepository.isHeldBy(UPLOAD_ID, 1)).thenReturn(false);
+        when(bundles.store(eq(42L), eq(1), any())).thenReturn(STORED);
+        when(documentationStorage.promote(any(), any(), anyLong(), anyInt()))
+                .thenReturn("current/docs/x/42/1/bundle.zip");
+        when(uploadRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
+
+        verify(documentation, never()).replace(any());
+        verify(documentationStorage, never()).delete(anyString());
+    }
+
+    /**
+     * The object a replaced set used to lie in is deleted, and only the replacement knows which one it was:
+     * the row is what names an object, so once it names the new one the old one cannot be found again. Every
+     * re-upload would otherwise double a subject's stored bytes until the nightly sweep.
+     */
+    @Test
+    void receive_whenTheSetReplacesAnother_thenThePredecessorsObjectIsRemoved() {
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed()));
+        acceptsTheSet();
+        when(uploadRepository.isHeldBy(UPLOAD_ID, 1)).thenReturn(true);
+        when(bundles.store(eq(42L), eq(1), any())).thenReturn(STORED);
+        when(documentationStorage.promote(any(), any(), anyLong(), anyInt()))
+                .thenReturn("current/docs/x/42/1/bundle.zip");
+        when(documentation.replace(any())).thenAnswer(call ->
+                new CustomDocumentationRepository.Replaced(call.getArgument(0),
+                        Optional.of("current/docs/x/17/1/bundle.zip")));
+        when(uploadRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        UploadReceipt receipt = service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
+
+        verify(documentationStorage).delete("current/docs/x/17/1/bundle.zip");
+        assertThat(receipt.stored()).isTrue();
+    }
+
+    /** And an object that will not go is the sweep's problem, not the upload's: the set is already current. */
+    @Test
+    void receive_whenThePredecessorsObjectCannotBeRemoved_thenTheUploadStillSucceeds() {
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed()));
+        acceptsTheSet();
+        when(uploadRepository.isHeldBy(UPLOAD_ID, 1)).thenReturn(true);
+        when(bundles.store(eq(42L), eq(1), any())).thenReturn(STORED);
+        when(documentationStorage.promote(any(), any(), anyLong(), anyInt()))
+                .thenReturn("current/docs/x/42/1/bundle.zip");
+        when(documentation.replace(any())).thenAnswer(call ->
+                new CustomDocumentationRepository.Replaced(call.getArgument(0),
+                        Optional.of("current/docs/x/17/1/bundle.zip")));
+        org.mockito.Mockito.doThrow(new IllegalStateException("the bucket went away"))
+                .when(documentationStorage).delete(anyString());
+        when(uploadRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        UploadReceipt receipt = service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
+
+        assertThat(receipt.stored()).isTrue();
     }
 
     /**
@@ -80,15 +314,17 @@ class DocumentationUploadServiceTest {
         when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
         when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
                 .thenReturn(new UploadClaim.Claimed(claimed));
-        when(bundleStorage.store(eq(42L), eq(1), any(), anyLong())).thenReturn(STORED);
+        acceptsTheSet();
+        takesTheSetOver();
+        when(bundles.store(eq(42L), eq(1), any())).thenReturn(STORED);
         when(uploadRepository.save(any())).thenAnswer(call -> call.getArgument(0));
 
         UploadReceipt receipt = service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
         DocumentationUpload received = receipt.upload();
 
-        InOrder inOrder = inOrder(uploadRepository, bundleStorage);
+        InOrder inOrder = inOrder(uploadRepository, bundles);
         inOrder.verify(uploadRepository).claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any());
-        inOrder.verify(bundleStorage).store(eq(42L), eq(1), any(), eq((long) BUNDLE.length));
+        inOrder.verify(bundles).store(eq(42L), eq(1), any());
         inOrder.verify(uploadRepository).save(any());
         assertThat(receipt.stored()).isTrue();
         assertThat(received.isPending()).isTrue();
@@ -107,7 +343,7 @@ class DocumentationUploadServiceTest {
 
         assertThat(receipt.stored()).isFalse();
         assertThat(receipt.upload()).isEqualTo(stored);
-        verifyNoInteractions(bundleStorage, subjectRepository);
+        verifyNoInteractions(bundles, subjectRepository);
         verify(uploadRepository, never()).save(any());
         assertThat(bundle).asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(ByteArrayInputStream.class))
                 .satisfies(drained -> assertThat(drained.available()).isZero());
@@ -126,7 +362,7 @@ class DocumentationUploadServiceTest {
                     assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.UPLOAD_IN_PROGRESS);
                     assertThat(e.getRetryAfter()).isEqualTo(Duration.ofMinutes(2));
                 });
-        verifyNoInteractions(bundleStorage);
+        verifyNoInteractions(bundles);
     }
 
     /**
@@ -145,7 +381,7 @@ class DocumentationUploadServiceTest {
 
         assertThat(receipt.stored()).isFalse();
         assertThat(receipt.upload()).isEqualTo(stored);
-        verifyNoInteractions(bundleStorage);
+        verifyNoInteractions(bundles);
         verify(uploadRepository, never()).save(any());
     }
 
@@ -178,7 +414,8 @@ class DocumentationUploadServiceTest {
         when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
         when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
                 .thenReturn(new UploadClaim.Claimed(claimed));
-        when(bundleStorage.store(anyLong(), anyInt(), any(), anyLong())).thenThrow(new InvalidUploadException(
+        acceptsTheSet();
+        when(bundles.store(anyLong(), anyInt(), any())).thenThrow(new InvalidUploadException(
                 InvalidUploadException.Code.CONTENT_LENGTH_MISMATCH, "the bundle is shorter than announced"));
 
         assertThatThrownBy(() -> service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length))
@@ -195,7 +432,8 @@ class DocumentationUploadServiceTest {
         when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
         when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
                 .thenReturn(new UploadClaim.Claimed(claimed));
-        when(bundleStorage.store(anyLong(), anyInt(), any(), anyLong())).thenThrow(new IllegalStateException());
+        acceptsTheSet();
+        when(bundles.store(anyLong(), anyInt(), any())).thenThrow(new IllegalStateException());
 
         assertThatThrownBy(() -> service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length))
                 .isInstanceOfSatisfying(InvalidUploadException.class,
@@ -212,7 +450,7 @@ class DocumentationUploadServiceTest {
                 bundle(), BUNDLE.length))
                 .isInstanceOfSatisfying(InvalidUploadException.class,
                         e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.UPLOAD_ID_CONFLICT));
-        verifyNoInteractions(bundleStorage, subjectRepository);
+        verifyNoInteractions(bundles, subjectRepository);
     }
 
     @Test
@@ -222,7 +460,8 @@ class DocumentationUploadServiceTest {
         when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
         when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
                 .thenReturn(new UploadClaim.Claimed(claimed));
-        when(bundleStorage.store(anyLong(), anyInt(), any(), anyLong())).thenThrow(new IllegalStateException("no storage"));
+        acceptsTheSet();
+        when(bundles.store(anyLong(), anyInt(), any())).thenThrow(new IllegalStateException("no storage"));
 
         assertThatThrownBy(() -> service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length))
                 .isInstanceOfSatisfying(InvalidUploadException.class,
@@ -264,7 +503,9 @@ class DocumentationUploadServiceTest {
         when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
         when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
                 .thenReturn(new UploadClaim.Claimed(claimed()));
-        when(bundleStorage.store(eq(42L), eq(1), any(), anyLong())).thenReturn(STORED);
+        acceptsTheSet();
+        takesTheSetOver();
+        when(bundles.store(eq(42L), eq(1), any())).thenReturn(STORED);
         when(uploadRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
@@ -286,7 +527,7 @@ class DocumentationUploadServiceTest {
         service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);
 
         verify(uploadRepository, never()).save(any());
-        verifyNoInteractions(bundleStorage);
+        verifyNoInteractions(bundles);
         verify(buildTrigger).requestBecauseOfUpload(eq(Site.DEFAULT_SITE), anyString());
         assertThat(metrics.results).containsExactly("repeated:COMPONENT_DOCS");
     }
@@ -300,7 +541,9 @@ class DocumentationUploadServiceTest {
         when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
         when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
                 .thenReturn(new UploadClaim.Claimed(claimed()));
-        when(bundleStorage.store(eq(42L), eq(1), any(), anyLong())).thenReturn(STORED);
+        acceptsTheSet();
+        takesTheSetOver();
+        when(bundles.store(eq(42L), eq(1), any())).thenReturn(STORED);
         when(uploadRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         org.mockito.Mockito.doThrow(new IllegalStateException("the database went away"))
                 .when(buildTrigger).requestBecauseOfUpload(anyString(), anyString());
@@ -355,7 +598,7 @@ class DocumentationUploadServiceTest {
                 .extracting(failure -> ((InvalidUploadException) failure).getCode())
                 .isEqualTo(InvalidUploadException.Code.UNKNOWN_SITE);
 
-        verifyNoInteractions(bundleStorage);
+        verifyNoInteractions(bundles);
         verify(uploadRepository, never()).claim(any(), any(), any(), any(), any());
     }
 

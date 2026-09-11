@@ -144,13 +144,7 @@ class DocumentationValidationController {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, detail);
         problem.setType(URI.create(PROBLEM_TYPE));
         problem.setTitle("The documentation structure is invalid");
-        problem.setProperty("template", report.template());
-        problem.setProperty("pathsChecked", report.pathsChecked());
-        problem.setProperty("pathsIgnored", report.pathsIgnored());
-        problem.setProperty("allowedFolders", report.allowedFolders());
-        problem.setProperty("allowedExtensions", report.allowedExtensions());
-        problem.setProperty("findings", report.findings());
-        problem.setProperty("findingsOmitted", report.findingsOmitted());
+        report.into(problem);
         return problem;
     }
 

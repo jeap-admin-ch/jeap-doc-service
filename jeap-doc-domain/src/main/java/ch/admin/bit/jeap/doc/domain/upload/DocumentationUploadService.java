@@ -2,7 +2,16 @@ package ch.admin.bit.jeap.doc.domain.upload;
 
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
+import ch.admin.bit.jeap.doc.domain.custom.UploadedSet;
+import ch.admin.bit.jeap.doc.domain.upload.validation.StructureReport;
+import ch.admin.bit.jeap.doc.domain.upload.validation.StructureValidation;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
+import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationSubjectRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
@@ -48,8 +57,12 @@ public class DocumentationUploadService {
 
     private final DocumentationUploadRepository uploadRepository;
     private final DocumentationSubjectRepository subjectRepository;
-    private final DocumentationBundleStorage bundleStorage;
+    private final UploadedBundles bundles;
+    private final CustomDocumentationRepository documentation;
+    private final CustomDocumentationStorage documentationStorage;
+    private final StructureValidation validation;
     private final UploadProperties uploadProperties;
+    private final CustomProperties customProperties;
     private final DocumentationSites sites;
     private final DocumentationBuildTrigger buildTrigger;
     private final UploadMetrics metrics;
@@ -143,31 +156,131 @@ public class DocumentationUploadService {
                 .filter(upload -> upload.descriptor().system().equals(system));
     }
 
+    /**
+     * Reads the bundle, refuses a set that would not be published, and otherwise stores it and makes it the
+     * current documentation of its subject.
+     * <p>
+     * <b>The order is the point.</b> The bundle is read onto a file first, because nothing can be said about
+     * an archive that is still arriving; then its list of paths decides whether it is accepted; and only a set
+     * that is accepted is stored. So a misfiled page costs the upload and leaves no object behind.
+     */
     private DocumentationUpload store(DocumentationUpload upload, InputStream bundle, long sizeInBytes) {
-        StoredBundle stored = storeBundle(upload, bundle, sizeInBytes);
-        DocumentationUpload recorded = uploadRepository.save(upload.completed(stored, sizeInBytes, clock.instant()));
-        log.info("Stored the upload {} ({}) of the system {} as {} ({} bytes, sha-256 {}), pending generation.",
-                recorded.uploadId(), recorded.id(), recorded.descriptor().system(), stored.objectKey(),
-                sizeInBytes, stored.sha256());
-        // Asking for a build is the last thing an upload does. Guarded, because the bundle is already stored
-        // and the upload already recorded: answering 500 for an upload that worked would make the client retry,
-        // and the retry is a repetition, which asks for nothing - so the failure would cost the publication
-        // rather than the upload.
-        askForABuild(recorded);
-        return recorded;
+        try (UploadedBundles.ReceivedBundle received = receive(upload, bundle, sizeInBytes)) {
+            requireAPublishableSet(upload, received);
+            StoredBundle stored = putAway(upload, received);
+            takeOver(upload, stored, received);
+            DocumentationUpload recorded =
+                    uploadRepository.save(upload.completed(stored, sizeInBytes, clock.instant()));
+            log.info("Stored the upload {} ({}) of the system {} as {} ({} bytes, sha-256 {}), pending "
+                     + "publication.", recorded.uploadId(), recorded.id(), recorded.descriptor().system(),
+                    stored.objectKey(), sizeInBytes, stored.sha256());
+            // Asking for a build is the last thing an upload does. Guarded, because the set is already current
+            // and the upload already recorded: answering 500 for an upload that worked would make the client
+            // retry, and the retry is a repetition, which asks for nothing - so the failure would cost the
+            // publication rather than the upload.
+            askForABuild(recorded);
+            return recorded;
+        }
+    }
+
+    /**
+     * Reads the bundle onto a file, and records the upload as failed if it cannot be read at all.
+     */
+    private UploadedBundles.ReceivedBundle receive(DocumentationUpload upload, InputStream bundle,
+                                                   long sizeInBytes) {
+        try {
+            return bundles.receive(bundle, sizeInBytes, customProperties.limitsWith(uploadProperties));
+        } catch (InvalidUploadException e) {
+            throw recordRejectedBundle(upload, e);
+        } catch (RuntimeException e) {
+            throw recordStorageFailure(upload, e);
+        }
+    }
+
+    /**
+     * Refuses a set that would not be published as it is.
+     * <p>
+     * The same rules the structure validation endpoint applies, on the same paths - a pipeline may skip that
+     * endpoint, and a set that got past it must not be able to put a page in a chapter nothing serves or a
+     * page over one the generator writes itself.
+     */
+    private void requireAPublishableSet(DocumentationUpload upload, UploadedBundles.ReceivedBundle received) {
+        StructureReport report = validation.validate(upload.descriptor().placement(), received.paths());
+        if (report.isValid()) {
+            return;
+        }
+        InvalidUploadException refused = InvalidUploadException.structureInvalid(report);
+        throw recordRejectedBundle(upload, refused);
     }
 
     /**
      * Writes the bundle away, and records the upload as failed if it cannot be. Whichever way it fails, the
      * upload is left in a state a retry can take over.
      */
-    private StoredBundle storeBundle(DocumentationUpload upload, InputStream bundle, long sizeInBytes) {
+    private StoredBundle putAway(DocumentationUpload upload, UploadedBundles.ReceivedBundle received) {
         try {
-            return bundleStorage.store(upload.id(), upload.attempt(), bundle, sizeInBytes);
+            return bundles.store(upload.id(), upload.attempt(), received);
         } catch (InvalidUploadException e) {
             throw recordRejectedBundle(upload, e);
         } catch (RuntimeException e) {
             throw recordStorageFailure(upload, e);
+        }
+    }
+
+    /**
+     * Takes the set over into the current documentation: the bundle is copied to the set's own key, and the
+     * files it holds are recorded.
+     * <p>
+     * The object first and the rows second. The key of a set carries the upload and the attempt it came from,
+     * so the copy adds an object rather than replacing one - and a build reading the rows in between still
+     * finds the object they name. What the rows stopped naming is deleted last, when nothing can read it any
+     * more.
+     */
+    private void takeOver(DocumentationUpload upload, StoredBundle stored,
+                          UploadedBundles.ReceivedBundle received) {
+        DocumentationUploadDescriptor descriptor = upload.descriptor();
+        CustomSetKey key = CustomSetKey.of(descriptor.site(), descriptor.placement());
+        try {
+            String objectKey =
+                    documentationStorage.promote(stored, key, upload.id(), upload.attempt());
+            // Asked rather than trusted: an attempt that was given up on keeps running, and the one that
+            // took over may already have made its own bundle current. It leaves a window of one write, in
+            // place of the whole of an upload.
+            if (!uploadRepository.isHeldBy(upload.uploadId(), upload.attempt())) {
+                // This attempt was given up on and another one has taken the upload over - and by now made its
+                // own bundle current. Writing these rows would publish the older set over the newer one, so the
+                // object just copied is left for the sweep of what nothing references.
+                log.warn("The attempt {} of the upload {} was taken over while it was running; its set is not "
+                         + "made current, and the object {} it wrote is left to the sweep.",
+                        upload.attempt(), upload.uploadId(), objectKey);
+                return;
+            }
+            CustomDocumentationRepository.Replaced replaced =
+                    documentation.replace(new CustomSet(null, key, upload.id(), objectKey, stored.sha256(),
+                            upload.sizeInBytes() > 0 ? upload.sizeInBytes() : received.sizeInBytes(),
+                            new CustomProvenance(descriptor.sourceRepository(), descriptor.sourceRef(),
+                                    descriptor.sourceRevision(), descriptor.sourceTimestamp(),
+                                    descriptor.version(), clock.instant()),
+                            UploadedSet.pagesOf(received.paths(), received)));
+            replaced.previousObjectKey().ifPresent(this::forgetTheReplacedObject);
+        } catch (RuntimeException e) {
+            throw recordStorageFailure(upload, e);
+        }
+    }
+
+    /**
+     * Removes the object the set this upload replaced lay in.
+     * <p>
+     * Guarded, and after the rows: the row is what names an object, so once it names another one the old
+     * object is unreachable either way - and the nightly sweep of what nothing references takes what this
+     * could not. Failing the upload over it would fail an upload that is published and correct.
+     */
+    private void forgetTheReplacedObject(String objectKey) {
+        try {
+            documentationStorage.delete(objectKey);
+        } catch (RuntimeException e) {
+            log.warn("The set this upload replaced is no longer named by anything, but its bundle {} could "
+                     + "not be deleted. The sweep of unreferenced objects takes it.", objectKey, e);
         }
     }
 

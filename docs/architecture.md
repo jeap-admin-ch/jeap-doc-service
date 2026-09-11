@@ -71,8 +71,15 @@ The domain is the largest module, so it is divided by what a class is about rath
 | `…doc.domain.architecture` | The architecture model as a page needs it: the `Documented…` records and the enums they carry |
 | `…doc.domain.architecture.view` | `SystemContext` and `WhiteboxView` - what a diagram of one system shows, computed across the whole landscape |
 | `…doc.domain.architecture.imports` | How that model is replicated: the job, its schedule, the four kinds and the step for each, the deadline and the outcome |
+| `…doc.domain.custom` | The documentation a team uploaded, as the service holds it: a set, its pages, the subject it documents, and how a page's front matter is rewritten |
 | `…doc.domain.port` | Every interface the domain needs from the outside, and the records they answer with |
 | `…doc.domain.template` | The `StructureTemplate` plugin point - see [Structure templates](structure-templates.md) |
+
+**`custom` and `architecture` do not know about each other either.** One is what a team wrote and the other
+is a replica of an upstream; nothing links them in the database, and they are joined per system while a part
+is generated - see [The documentation a team writes](custom-documentation.md). `CustomDocumentation` and
+`CustomPages` are values of one build rather than beans, so the *one adapter per port* rule does not reach
+them: they are not in `port`.
 
 **`architecture` does not depend on `architecture.imports`, and that is the point of the split.** The records a
 page is written from do not know they were replicated, so how the landscape is fetched can change without

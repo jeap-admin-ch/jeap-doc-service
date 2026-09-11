@@ -151,11 +151,53 @@ class BuildShutdownIT {
     @SpringBootApplication
     static class ShutdownTestApplication {
 
-        /** Uploads play no part here; the upload service wants its storage port satisfied all the same. */
+        /** Uploads play no part here; the upload service wants its ports satisfied all the same. */
         @Bean
-        ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage bundleStorage() {
-            return (uploadId, attempt, bundle, sizeInBytes) -> {
-                throw new UnsupportedOperationException("No upload happens in this test.");
+        ch.admin.bit.jeap.doc.domain.port.UploadedBundles uploadedBundles() {
+            return new ch.admin.bit.jeap.doc.domain.port.UploadedBundles() {
+                @Override
+                public ReceivedBundle receive(java.io.InputStream bundle, long sizeInBytes,
+                                              ch.admin.bit.jeap.doc.domain.port.BundleLimits limits) {
+                    throw new UnsupportedOperationException("No upload happens in this test.");
+                }
+
+                @Override
+                public ch.admin.bit.jeap.doc.domain.port.StoredBundle store(long uploadId, int attempt,
+                                                                            ReceivedBundle received) {
+                    throw new UnsupportedOperationException("No upload happens in this test.");
+                }
+            };
+        }
+
+        /**
+         * And the documentation it would become. The object storage adapter is not on this module's
+         * classpath, so the port is answered by a stub that refuses - nothing here uploads or generates.
+         */
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage customDocumentationStorage() {
+            return new ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage() {
+                @Override
+                public String promote(ch.admin.bit.jeap.doc.domain.port.StoredBundle stored,
+                                      ch.admin.bit.jeap.doc.domain.custom.CustomSetKey key, long revision,
+                                      int attempt) {
+                    throw new UnsupportedOperationException("No upload happens in this test.");
+                }
+
+                @Override
+                public java.util.Optional<OpenedBundle> open(
+                        ch.admin.bit.jeap.doc.domain.custom.CustomSet set) {
+                    throw new UnsupportedOperationException("Nothing is generated in this test.");
+                }
+
+                @Override
+                public void delete(String objectKey) {
+                    throw new UnsupportedOperationException("Nothing is removed in this test.");
+                }
+
+                @Override
+                public java.util.List<String> listWrittenBefore(Instant writtenBefore) {
+                    return java.util.List.of();
+                }
             };
         }
 

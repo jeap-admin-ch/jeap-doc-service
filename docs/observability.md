@@ -25,6 +25,21 @@ The split matters: a typo in a doc workflow configuration is refused before the 
 otherwise be invisible. Each outcome is counted **once** - what the service timed is not counted again where it is
 answered.
 
+**A `failed` upload is usually not an error of this service but an invalid request from a client**, which is
+why one is logged at warn rather than at error. `reason` says which it is:
+
+| `reason`                                                        | Whose it is                                                         |
+| --------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `STRUCTURE_INVALID`                                             | the uploading repository - a misfiled or misnamed page              |
+| `TOO_MANY_PATHS`, `UNPACKS_TO_TOO_MUCH`, `INVALID_BUNDLE`       | the uploading repository - a bundle that is not a documentation set |
+| `CONTENT_LENGTH_MISMATCH`, `UPLOAD_ID_CONFLICT`, `UNKNOWN_SITE` | the uploading pipeline - a request that is wrong                    |
+| `STORAGE_FAILED`                                                | **this service**                                                    |
+
+All but the last are answered to the caller that caused them and are that caller's to fix. That is why there
+is no alarm on the upload-failure rate below: it says how many teams have a misfiled page, not whether the
+service is working. `STORAGE_FAILED` is the one worth waking someone for, and it is logged at error with its
+cause where it happens.
+
 ## Builds
 
 | Meter                             | Type            | Tags                                                                                                             |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |

@@ -34,6 +34,16 @@ public class DocObjectStorageProperties {
     private String sitePrefix = "sites";
 
     /**
+     * Prefix the documentation sets currently being published are kept under, e.g.
+     * {@code current/docs/default/SYSTEM/orders/…/7/bundle.zip}.
+     * <p>
+     * <b>Nothing under it may be expired by age.</b> An upload's bundle is a staging copy and the bucket
+     * expires it; a set is the only copy there is, and a component that publishes once and stays stable for a
+     * year is the normal case. See {@code docs/operating-the-bucket.md}.
+     */
+    private String currentPrefix = "current";
+
+    /**
      * Directory the uploaded bundles are spooled to while they are transferred to the object storage. Without it
      * the temporary directory of the JVM is used.
      * <p>

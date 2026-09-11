@@ -10,9 +10,12 @@ UI at `/swagger-ui.html`; both are switched off unless the instance sets `jeap.s
 
 | Method | Path                                                  | Role                                     | Answers      | What it does                                                                                                |
 |--------|-------------------------------------------------------|------------------------------------------|--------------|-------------------------------------------------------------------------------------------------------------|
-| `PUT`  | `/api/uploads/docs/{uploadId}`                        | `<system-name>_%<system>_@uploads_#write` | `201`, `200` | Stores a documentation set - [Uploading a documentation set](#uploading-a-documentation-set)                |
+| `PUT`  | `/api/uploads/docs/{uploadId}`                        | `<system-name>_%<system>_@uploads_#write` | `201`, `200`, `422` | Stores a documentation set - [Uploading a documentation set](#uploading-a-documentation-set)         |
 | `GET`  | `/api/uploads/docs/{uploadId}?system=`                | `<system-name>_%<system>_@uploads_#write` | `200`        | The state of one upload - [Reading the state of an upload](#reading-the-state-of-an-upload)                 |
 | `POST` | `/api/uploads/docs/validation`                        | `<system-name>_%<system>_@uploads_#write` | `200`, `422` | Whether a path tree would be accepted - [Validating a documentation set](#validating-a-documentation-set)   |
+| `DELETE` | `/api/docs/custom/sets`                             | `<system-name>_%<system>_@uploads_#write` or `<system-name>_@sites_#admin` | `200`, `400`, `404` | Removes one documentation set - [Removing custom documentation](#removing-custom-documentation)             |
+| `DELETE` | `/api/docs/custom/subjects`                         | `<system-name>_%<system>_@uploads_#write` or `<system-name>_@sites_#admin` | `200`, `400` | Removes everything documented for one subject - [Removing custom documentation](#removing-custom-documentation) |
+| `DELETE` | `/api/docs/custom/systems`                          | `<system-name>_@sites_#admin`             | `200`, `400` | Removes everything documented for one system - [Removing custom documentation](#removing-custom-documentation) |
 | `POST` | `/api/sites/{site}/builds`                            | `<system-name>_@sites_#admin`             | `202`        | Asks for the site to be published - [Asking for a site to be published](#asking-for-a-site-to-be-published) |
 | `POST` | `/api/sites/{site}/parts/{part}/builds`               | `<system-name>_@sites_#admin`             | `202`        | Asks for one part to be published - [Asking for one part to be published](#asking-for-one-part-to-be-published) |
 | `GET`  | `/api/sites`                                          | `<system-name>_@sites_#read`              | `200`        | The state of every configured site - [Reading the state of the sites](#reading-the-state-of-the-sites)     |
@@ -45,6 +48,11 @@ Authorization: Bearer ...
 The body is the ZIP archive of the documentation set. Everything that describes it travels as query parameters,
 named like the keys of the doc workflow configuration a repository writes, so the workflow passes its
 configuration through instead of translating it.
+
+**The set is checked before it is stored.** Its list of paths is read off the archive and held against the
+rules of its structure template, and a set that breaks one is answered `422` with the findings, having stored
+nothing - see [the responses](#responses) and
+[What an upload is validated against](upload-validation.md).
 
 `{uploadId}` is a UUID the client chooses, and it is the **idempotency key**: repeating an upload under the same
 id never publishes a second documentation set - see [Uploads](uploads.md#idempotency-what-a-retry-does).
@@ -105,8 +113,10 @@ in both cases - the result of the attempt whose bundle lies in the storage.
 ```
 
 `id` is the identifier the doc service gave the upload, and the path its bundle is stored under - a build log
-naming it is enough to find the bundle again. `PENDING` means the bundle is stored and waiting for the
-documentation generator; the states are described in [Uploads](uploads.md#the-state-of-an-upload).
+naming it is enough to find the bundle again. `PENDING` means the set is **current** and waiting to be
+published: a build was asked for, and the pages appear when it runs. The states are described in
+[Uploads](uploads.md#the-state-of-an-upload), and what the set becomes in
+[The documentation a team writes](custom-documentation.md).
 
 ## Reading the state of an upload
 
@@ -200,9 +210,21 @@ workflow can tell a misconfigured upload from a failing service:
 | `LENGTH_REQUIRED`         | The request announces no `Content-Length`                                                                 |
 | `CONTENT_LENGTH_MISMATCH` | The body is not as long as `Content-Length` announced - see the note below                                |
 | `SIZE_LIMIT_EXCEEDED`     | The bundle is larger than `jeap.doc.upload.max-size`                                                      |
+| `INVALID_BUNDLE`          | The bundle cannot be read as a ZIP archive at all                                                         |
+| `TOO_MANY_PATHS`          | The set holds more files than [`max-paths`](configuration.md#uploads)                                     |
+| `UNPACKS_TO_TOO_MUCH`     | The archive says its files unpack to more than `jeap.doc.custom.max-unpacked-size`                        |
+| `STRUCTURE_INVALID`       | The set would not be published as it is: **422**, and the findings travel with the answer - see below     |
 | `UPLOAD_IN_PROGRESS`      | Another attempt of this upload is being received; the answer carries `Retry-After`                        |
 | `UPLOAD_ID_CONFLICT`      | The upload id was already used for an upload that describes something else                                |
 | `STORAGE_FAILED`          | The bundle could not be stored - the upload is recorded as failed and can be retried                      |
+
+**A set that breaks a structure rule is answered `422` with the findings**, in the same shape the
+[validation endpoint](#validating-a-documentation-set) answers them - `template`, `pathsChecked`,
+`allowedFolders`, `allowedExtensions` and one entry per misfiled file in `findings` - so a pipeline that
+prints them does not have to know which of the two refused the set. **Nothing is stored for such an upload**:
+the list of paths is read off the archive before the bundle is put anywhere, so there is no object, no
+documentation set, and an upload a retry can take over once the set is fixed. The rules are on
+[What an upload is validated against](upload-validation.md).
 
 A body that ends before its announced length is rejected with `400`, but usually **not** with a problem document:
 the servlet container notices the connection ending early and answers first. The service records the upload as
@@ -625,6 +647,68 @@ generated still reports why, and it is never cached. It belongs to the site and 
 the page describing the documentation fetches it, because those statements would freeze into a page that is not
 rebuilt. What it may carry is the same decision as for that page; the administration API above is where a
 failure reason and the upstream URL stay.
+
+## Removing custom documentation
+
+Three calls remove what a team uploaded, and they are different things. `DELETE /api/docs/custom/sets` removes
+**one set** - one subject, in one format, under one structure template. `DELETE /api/docs/custom/subjects`
+removes **every set of one subject** and the subject with them - which is also how the documentation of one
+component or one library is removed, by naming it with `type` and `component` or `library`. And `DELETE
+/api/docs/custom/systems` removes **everything documented for one system**: its own documentation and that of
+all its components and libraries, in one call. A subject that has been documented stays in the catalogue with
+no set until it is removed itself, which keeps the record of what was once published.
+
+**Not below `/api/uploads`**, because a set outlives every upload that wrote it, and `custom` because what is
+removable is the documentation a team wrote: the generated documentation is not addressable at all, since
+nothing uploaded it.
+
+The parameters are the ones an upload carries, so a workflow passes what it already knows:
+
+| Parameter              | Sets                       | Subjects             | Systems      |
+| ---------------------- | -------------------------- | -------------------- | ------------ |
+| `site`                 | optional, the default site | optional             | optional     |
+| `type`                 | required                   | required             | not accepted |
+| `system`               | required                   | required             | required     |
+| `component`, `library` | as the type requires       | as the type requires | not accepted |
+| `template`             | required                   | not accepted         | not accepted |
+| `source-format`        | required                   | not accepted         | not accepted |
+| `location`, `topic`    | for an HTML microsite      | not accepted         | not accepted |
+
+**A parameter the endpoint does not take is refused**, with `400` and `UNKNOWN_PARAMETER`, exactly as on an
+upload - and for a sharper reason: a misspelt `site` would otherwise fall through to the default site and
+remove *that* site's documentation. Removing a subject removes every set of it whatever their format and
+template, and removing a system takes not even a type, so passing one does not narrow the call and is refused
+rather than ignored.
+
+**The roles.** A set and a subject are removed by the pipeline of that system - the same write role an upload
+needs - **or** by an administrator of the sites. The administrator is there for documentation no pipeline can
+reach any more: a repository that has been archived, a component that was renamed, a team that has been
+disbanded. Removing every set of a system is the administrator's alone, because it takes away the
+documentation of every component and library of that system, which several teams may own.
+
+Both answer `200` with what was removed and whether a build was asked for, and a set that does not exist
+answers `404`. A request that does not describe a subject - a misspelt `type` or `source-format`, a missing
+`component` where the type needs one, a `location` passed with Markdown, a site this instance does not serve -
+answers `400` with the same problem document an upload is refused with, carrying the same `code`.
+
+**Both ask for the part to be built**: nothing takes a page off a part that is already published, so the pages
+disappear with the next build rather than with the call. `buildAsked` says whether that request was accepted;
+`false` means the pages stay published until something else asks, not that the removal failed.
+
+```bash
+# one set of one component
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  "$DOC_SERVICE/api/docs/custom/sets?type=component-docs&system=orders&component=orders-intake\
+&template=arc42&source-format=markdown"
+
+# everything documented for one component, whatever its format and structure template
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  "$DOC_SERVICE/api/docs/custom/subjects?type=component-docs&system=orders&component=orders-intake"
+
+# everything documented for one system, its components and its libraries
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  "$DOC_SERVICE/api/docs/custom/systems?system=orders"
+```
 
 ## Related
 

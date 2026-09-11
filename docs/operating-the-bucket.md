@@ -1,6 +1,6 @@
 # Operating the bucket
 
-The doc service keeps four kinds of thing in one bucket, and they have different lifetimes. The uploaded
+The doc service keeps five kinds of thing in one bucket, and they have different lifetimes. The uploaded
 bundles are expired by a lifecycle rule; the published sites are removed by the service and by nothing else, and
 there is deliberately **no age rule over them at all** - see below. So on that prefix there is no fallback for
 what the service never gets to remove, and the little that escapes it has to be removed by hand.
@@ -12,14 +12,16 @@ what the service never gets to remove, and the little that escapes it has to be 
 | Prefix     | What it is                                | Removed by                                                                                                                                                   |
 |------------|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `uploads/` | The bundles as they arrived               | The bucket. The service removes the *record* of an upload after `jeap.doc.upload.housekeeping.retention`; the bundle it points at has to outlive that record |
+| `current/` | The documentation sets being published: one object per set, copied from the upload that brought it | The service, and only when somebody removes a set or a subject. **Nothing here may be expired by age** - see below. A nightly sweep removes objects that no set *references*, which is a different question from how old they are |
 | `sites/<site>/<build>/` | The generated parts of a site, one prefix per build | The service, down to `jeap.doc.build.retention` per part, after every successful build. A build that *fails* removes its own prefix; one whose instance is killed cannot, and leaves it behind |
 | `sites/<site>/shared/`  | The files every part of a site emits identically - the bundles, the site's images and its branding. Written by whichever part build finds them changed or missing; one that is already stored with the same bytes is not written again | **Nothing.** See [The shared prefix grows](#the-shared-prefix-grows) below |
 | `sites/<site>/search/<index>/` | One search index of a site, one prefix per index - [Search](search.md). Written by the pass that published the site, not by a build | The service. It keeps `jeap.doc.search.retention` of them and deletes the rest as soon as the replacement is being served. What an **interrupted** run left - an instance killed between writing its files and recording that it had - is removed by `SearchIndexHousekeeping` on the nightly clean-up |
 
-`uploads` is `jeap.doc.storage.upload-prefix` and `sites` is `jeap.doc.storage.site-prefix`, and an instance
-may set either to something else - which is why the rules below name a tag rather than a prefix.
+`uploads` is `jeap.doc.storage.upload-prefix`, `current` is `jeap.doc.storage.current-prefix` and `sites` is
+`jeap.doc.storage.site-prefix`, and an instance may set any of them to something else - which is why the rules
+below name a tag rather than a prefix.
 
-**Every object the service writes carries the tag `jeap-doc-content`** - `upload` or `site` - so that a rule can
+**Every object the service writes carries the tag `jeap-doc-content`** - `upload`, `current` or `site` - so that a rule can
 name what it is expiring rather than a prefix an instance configures for itself. A search index is tagged
 `site`, and the rule below therefore covers it: an age rule would take the search off a site nobody has had to
 republish, for the same reason it would take the site itself off.
@@ -32,6 +34,9 @@ republish, for the same reason it would take the site itself off.
 
 **No rule over `jeap-doc-content=site`** - see below. The service's own retention removes what it superseded,
 and nothing else may.
+
+**No rule over `jeap-doc-content=current` either, at any value** - see the last section. It used to be a
+warning about a state the service had not reached; it is now the state the service is in.
 
 Two more that are always safe and easy to forget:
 
@@ -92,20 +97,32 @@ references the bundles of the template it was built with.
 
 ## The rule that must not be written
 
-> **No age-based rule over the uploaded documentation once it is more than a staging area.**
+> **No age-based rule over `current/`, at any value.**
 
-Today `uploads/` holds bundles that are read once and can expire. When the doc service starts taking uploaded
-documentation over into a *current* set of documentation sources, those sources become the only copy - the bundle
-they came from has its own, shorter expiry - and the current version of a set can be arbitrarily old, because a
-component that publishes once and stays stable for a year is the normal case. An age rule over that prefix would
-delete exactly the documentation of the teams who got it right and left it alone.
+`uploads/` holds bundles that are read once and can expire. `current/` holds what those bundles became, and it
+is the **only copy**: the bundle a set came from has its own, shorter expiry, and the current version of a set
+can be arbitrarily old - a component that publishes once and is not touched again for a year is entirely
+legitimate, and nothing about it is broken. An age rule over that prefix would delete exactly the
+documentation of the teams who got it right and left it alone.
 
 Age cannot tell an orphan document from a well-kept one - and, since a part that has not changed is no longer
 rebuilt, it can no longer tell a superseded build from a current one either.
+
+**What can be answered is whether anything references an object**, and that is what the service's own nightly
+sweep does (`jeap.doc.custom.sweep-cron`): the database rows are what name an object, so one that no row names
+can never be read again. It spares anything written in the last six hours, because an upload copies its object
+before it commits the rows that name it - that is the difference between an orphan and an upload in flight,
+and it is the only place age comes into it at all.
+
+The sweep is the backstop rather than the rule: an upload that replaces a set deletes the object its
+predecessor lay in, in the one moment anything still knows which object that was. What the sweep finds is
+what nothing could delete - an instance that died between copying an object and committing the rows, or an
+attempt that was given up on and finished writing anyway.
 
 ## Related
 
 - [Generating the documentation](generation.md) - what writes under `sites/`
 - [Uploads](uploads.md) - what writes under `uploads/`
+- [The documentation a team writes](custom-documentation.md) - what writes under `current/`, and what may remove it
 - [Observability](observability.md) - the alarm the site rule relies on
 - [Configuration](configuration.md)

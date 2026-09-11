@@ -7,9 +7,12 @@ import java.util.Arrays;
 import java.util.stream.Collectors;
 
 /**
- * The values the {@code type} parameter of an upload accepts, and the domain type each of them names.
+ * The values the {@code type} parameter accepts, and the domain type each of them names.
+ * <p>
+ * Public because every endpoint that names a placement reads it - the upload, the structure validation and
+ * the removal - and one mapping of the parameter vocabulary is what keeps their answers the same.
  */
-enum DocumentationTypeDto {
+public enum DocumentationTypeDto {
 
     SYSTEM_DOCS("system-docs", DocumentationType.SYSTEM_DOCS),
     COMPONENT_DOCS("component-docs", DocumentationType.COMPONENT_DOCS),
@@ -27,7 +30,7 @@ enum DocumentationTypeDto {
         return parameterValue;
     }
 
-    DocumentationType toDomain() {
+    public DocumentationType toDomain() {
         return type;
     }
 
@@ -38,7 +41,7 @@ enum DocumentationTypeDto {
                 .orElseThrow(() -> new IllegalStateException("No parameter value names %s.".formatted(type)));
     }
 
-    static DocumentationTypeDto fromParameterValue(String value) {
+    public static DocumentationTypeDto fromParameterValue(String value) {
         return Arrays.stream(values())
                 .filter(type -> type.parameterValue.equals(value))
                 .findFirst()

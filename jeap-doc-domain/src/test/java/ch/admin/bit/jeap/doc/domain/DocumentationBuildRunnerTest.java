@@ -88,7 +88,7 @@ class DocumentationBuildRunnerTest {
         metrics = new RecordingBuildMetrics();
         searchIndexing = new RecordingSearchIndexing();
         runner = new DocumentationBuildRunner(requests, builds, sites,
-                new SystemSitePartition(NoArchitectureRepository.INSTANCE), siteBuilder, publication,
+                new SystemSitePartition(NoArchitectureRepository.INSTANCE, new NoCustomDocumentation()), siteBuilder, publication,
                 properties, metrics, locks, readiness, searchIndexing, Clock.fixed(NOW, ZoneOffset.UTC));
 
         when(builds.start(any(), any(), anyString(), any(), any())).thenReturn(build(7L, BuildState.RUNNING));
@@ -254,7 +254,7 @@ class DocumentationBuildRunnerTest {
                 "governance", new SiteProperties.Site())));
         sites = new DocumentationSites(configured);
         runner = new DocumentationBuildRunner(requests, builds, sites,
-                new SystemSitePartition(NoArchitectureRepository.INSTANCE), siteBuilder, publication,
+                new SystemSitePartition(NoArchitectureRepository.INSTANCE, new NoCustomDocumentation()), siteBuilder, publication,
                 properties, metrics, locks, readiness, searchIndexing, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

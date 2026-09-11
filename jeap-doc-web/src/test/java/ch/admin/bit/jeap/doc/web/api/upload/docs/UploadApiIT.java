@@ -31,6 +31,9 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
 
     private static final String SYSTEM = "orders";
 
+    /** The second site, which one case uploads to so that the `site` parameter is shown to be honoured. */
+    private static final String OTHER_SITE = "governance";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -67,7 +70,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
     @Test
     void upload_whenSiteIsGiven_thenAccepted() throws Exception {
         Map<String, String> parameters = systemDocs();
-        parameters.put("site", "governance");
+        parameters.put("site", OTHER_SITE);
 
         mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isCreated());
@@ -291,9 +294,12 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
     }
 
     private static MockHttpServletRequestBuilder uploadOf(Map<String, String> parameters) {
+        // The bundle has to match what the parameters describe: the endpoint checks the structure of a set
+        // now, and a microsite of Markdown pages would be refused for the right reason at the wrong moment.
+        boolean html = "html".equals(parameters.get("source-format"));
         MockHttpServletRequestBuilder request = put(UploadPaths.DOCS + "/{uploadId}", UUID.randomUUID())
                 .contentType("application/zip")
-                .content(documentationSetBundle());
+                .content(html ? micrositeBundle() : documentationSetBundle());
         parameters.forEach(request::param);
         return request;
     }
@@ -310,6 +316,22 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
             random.nextBytes(content);
             zip.putNextEntry(new ZipEntry("6-runtime-view/diagram.png"));
             zip.write(content);
+            zip.closeEntry();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return bytes.toByteArray();
+    }
+
+    /** What a build of a microsite produces: an entry point, and the assets it references. */
+    private static byte[] micrositeBundle() {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            zip.putNextEntry(new ZipEntry("index.html"));
+            zip.write("<!doctype html><title>Reference</title>".getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("styles.css"));
+            zip.write("body { font-family: sans-serif; }".getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
         } catch (IOException e) {
             throw new UncheckedIOException(e);

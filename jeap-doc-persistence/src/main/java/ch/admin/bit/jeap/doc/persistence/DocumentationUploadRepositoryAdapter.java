@@ -73,6 +73,14 @@ class DocumentationUploadRepositoryAdapter implements DocumentationUploadReposit
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public boolean isHeldBy(UUID uploadId, int attempt) {
+        return uploads.findByUploadId(uploadId)
+                .map(entity -> entity.getAttempt() == attempt)
+                .orElse(false);
+    }
+
+    @Override
     @Transactional
     public int deleteReceivedBefore(Instant receivedBefore) {
         return uploads.deleteReceivedBefore(receivedBefore);

@@ -75,7 +75,7 @@ class MicrometerBuildMetricsTest {
     private MicrometerBuildMetrics buildMetrics(MeterRegistry into) {
         DocumentationSites sites = new DocumentationSites(new SiteProperties());
         MicrometerBuildMetrics bound = new MicrometerBuildMetrics(buildProperties, builds, requests, sites,
-                new SystemSitePartition(new NoArchitectureModel()), Clock.fixed(NOW, ZoneOffset.UTC));
+                new SystemSitePartition(new NoArchitectureModel(), new NoCustomDocumentation()), Clock.fixed(NOW, ZoneOffset.UTC));
         bound.bindTo(into);
         return bound;
     }

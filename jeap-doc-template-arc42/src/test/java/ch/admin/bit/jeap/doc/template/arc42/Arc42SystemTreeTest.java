@@ -81,7 +81,7 @@ class Arc42SystemTreeTest {
     private static final Instant REACTIONS_IMPORTED_AT = Instant.parse("2026-09-09T06:00:00Z");
 
     private void generate() throws IOException {
-        template.writeSystem(orders, context, systemDirectory);
+        template.writeSystem(Documented.of(orders), context, systemDirectory);
     }
 
     /**
@@ -158,8 +158,14 @@ class Arc42SystemTreeTest {
                         }
                         """);
         assertThat(read("system-architecture/_category_.json")).contains("\"label\": \"System Architecture\"");
+        // Every group of chapter 5 has a position of its own: two equal ones would be ordered by their folder
+        // names instead, and the components, the libraries, the events and the commands have an order.
+        assertThat(read("system-architecture/5-building-block-view/components/_category_.json"))
+                .contains("\"label\": \"Components\"", "\"position\": 2");
         assertThat(read("system-architecture/5-building-block-view/events/_category_.json"))
-                .contains("\"label\": \"Events\"", "\"position\": 3");
+                .contains("\"label\": \"Events\"", "\"position\": 4");
+        assertThat(read("system-architecture/5-building-block-view/commands/_category_.json"))
+                .contains("\"label\": \"Commands\"", "\"position\": 5");
     }
 
     /**
@@ -231,7 +237,11 @@ class Arc42SystemTreeTest {
                 .contains("doc_source: \"archrepo\"")
                 .contains("doc_source_url: \"https://archrepo.example.com/archrepo\"")
                 .contains("doc_environment: \"dev\"")
-                .contains(":::info[Generated page]"));
+                .describedAs("in the front matter, which is where the site template reads it from - a "
+                             + "page's own body says nothing about where it came from, because an uploaded "
+                             + "page's body is copied byte for byte and could not")
+                .contains("doc_status: \"generated\"")
+                .doesNotContain(":::info[Generated page]"));
     }
 
     @Test
@@ -336,7 +346,7 @@ class Arc42SystemTreeTest {
                 "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
-        template.writeSystem(lonely, landscape, content.resolve("systems").resolve("lonely"));
+        template.writeSystem(Documented.of(lonely), landscape, content.resolve("systems").resolve("lonely"));
 
         String page = Files.readString(content.resolve(
                 "systems/lonely/system-architecture/5-building-block-view/whitebox-view.md"));
@@ -355,7 +365,7 @@ class Arc42SystemTreeTest {
                 "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
                 new DiagramLimits(100, 0, 40, 100, 200), "/docs/dev/");
 
-        template.writeSystem(orders, capped, systemDirectory);
+        template.writeSystem(Documented.of(orders), capped, systemDirectory);
 
         assertThat(read("system-architecture/5-building-block-view/whitebox-view.md"))
                 .contains(" : 1 Event");
@@ -386,7 +396,7 @@ class Arc42SystemTreeTest {
                 "dev", narrow.archRepoUrl(), MODEL_IMPORTED_AT, GENERATED_AT,
                 new DiagramLimits(1, 4, 40, 100, 200), "/docs/dev/");
 
-        template.writeSystem(crowded, landscape, systemDirectory);
+        template.writeSystem(Documented.of(crowded), landscape, systemDirectory);
 
         String page = read("system-architecture/5-building-block-view/whitebox-view.md");
         assertThat(page).contains(":::note[Not every neighbour is drawn]");
@@ -427,7 +437,7 @@ class Arc42SystemTreeTest {
                 "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
                 new DiagramLimits(1, 4, 40, 100, 200), "/docs/dev/");
 
-        template.writeSystem(crowded, landscape, systemDirectory);
+        template.writeSystem(Documented.of(crowded), landscape, systemDirectory);
 
         assertThat(read("system-architecture/5-building-block-view/whitebox-view.md"))
                 .contains("2 further systems exchange something with this one")
@@ -472,7 +482,7 @@ class Arc42SystemTreeTest {
                         : message)
                 .toList());
 
-        template.writeSystem(withSchemas, context, systemDirectory);
+        template.writeSystem(Documented.of(withSchemas), context, systemDirectory);
 
         String page = read("system-architecture/5-building-block-view/commands/"
                            + "orders-check-erp-availability-v2-command.md");
@@ -507,7 +517,7 @@ class Arc42SystemTreeTest {
                         : message)
                 .toList());
 
-        template.writeSystem(withABadUrl, context, systemDirectory);
+        template.writeSystem(Documented.of(withABadUrl), context, systemDirectory);
 
         String page = read("system-architecture/5-building-block-view/commands/"
                            + "orders-check-erp-availability-v2-command.md");
@@ -575,7 +585,7 @@ class Arc42SystemTreeTest {
                 "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
-        template.writeSystem(alpha, twoSystems, content.resolve("systems").resolve("alpha"));
+        template.writeSystem(Documented.of(alpha), twoSystems, content.resolve("systems").resolve("alpha"));
 
         String page = Files.readString(content.resolve(
                 "systems/alpha/system-architecture/5-building-block-view/events/alpha-thing-done-event.md"));
@@ -769,7 +779,7 @@ class Arc42SystemTreeTest {
                 "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
-        template.writeSystem(empty, emptyContext, content.resolve("systems").resolve("lonely"));
+        template.writeSystem(Documented.of(empty), emptyContext, content.resolve("systems").resolve("lonely"));
 
         Path structure = content.resolve("systems/lonely/system-architecture");
         assertThat(Files.readString(structure.resolve("3-context-and-scope/system-context-view.md")))
@@ -799,7 +809,7 @@ class Arc42SystemTreeTest {
                 "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
-        template.writeSystem(quiet, quietContext, content.resolve("systems").resolve("quiet"));
+        template.writeSystem(Documented.of(quiet), quietContext, content.resolve("systems").resolve("quiet"));
 
         Path view = content.resolve("systems/quiet/system-architecture/5-building-block-view");
         assertThat(view.resolve("events")).doesNotExist();
@@ -818,7 +828,7 @@ class Arc42SystemTreeTest {
                 "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
                 "/docs/dev/");
 
-        template.writeSystem(named, namedContext, content.resolve("systems").resolve("named"));
+        template.writeSystem(Documented.of(named), namedContext, content.resolve("systems").resolve("named"));
 
         Path events = content.resolve("systems/named/system-architecture/5-building-block-view/events");
         assertThat(events.resolve("named-thing-happened.md")).exists();

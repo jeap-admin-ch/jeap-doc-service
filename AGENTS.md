@@ -158,6 +158,12 @@ it", the answer is a port and an adapter.
 Adding a port means the wiring can now break without a compile error, so `DocServiceWiringIT` asserts that every
 port has exactly one adapter in the real application context. **Add the new port to it.**
 
+**Every public interface directly in `…domain.port` is taken to be a driven port**, and `DocServiceWiringIT`
+enumerates the package rather than a list. So a value a port *hands back* - a handle, an open resource - is
+**nested inside that port** rather than put beside it, or the wiring test asks for an adapter of a thing that
+is not a port. `UploadedBundles.ReceivedBundle` and `CustomDocumentationStorage.OpenedBundle` are the two;
+a sealed type beside them is the other way of saying the same thing, as `UploadClaim` does.
+
 **And the same port breaks the contexts that are deliberately partial.** The shutdown tests of
 `jeap-doc-persistence` start the domain with this module and no upstream adapters at all - which is the shape of
 an instance that imports nothing - so a domain service that requires a new port stops those contexts from
@@ -220,12 +226,36 @@ requires goes there too**, and `./mvnw verify` over the whole build is what says
   in `jeap-doc-web` on `DocServiceIntegrationTestBase`, which starts both containers once per JVM and disables the
   permit-all chain of the jEAP security test starter, so they see production security.
 
-- **The upload rules have two callers, and only one of them exists.** `StructureValidation`, `IgnoredPaths`
-  and `MicrositeRules` are in `jeap-doc-domain` because the *publication* has to apply the same rules while a
-  build runs - the validation endpoint is advisory, and a hand-made ZIP would otherwise publish `.DS_Store`
-  into a site or a page over a generated one. Today the endpoint is the only caller, so nothing enforces
-  that: when the publication writes uploads into the tree, it calls these and does not re-derive them, and the test
-  that says so is the one to write with it. `docs/upload-validation.md` already promises it.
+- **The upload rules have three callers, and they all call the same code.** `StructureValidation`,
+  `ReservedNames`, `IgnoredPaths` and `MicrositeRules` are in `jeap-doc-domain` because the validation
+  endpoint, the upload itself and the build all ask the same question. The endpoint is advisory; the
+  **upload** refuses a set that breaks a rule, before anything is stored; and `CustomPagesWriter` asks once
+  more while it writes, as the backstop for a set that entered before a rule existed. **None of the three
+  derives a rule of its own** - which is what `ReservedNames` is for: the backstop used to compare a raw file
+  name where the validation folds the landing-page names and strips the number prefix a document loses, so
+  it let through exactly the page it exists to catch.
+
+- **The front matter of an uploaded page is parsed as YAML, not read line by line.** `UploadedFrontMatter` is
+  the only place that reads or writes it - `UploadedTitles` asks it too - and it is why `snakeyaml` is the one
+  dependency the domain declares beyond the starter. A hand-rolled reader is a second implementation of the
+  format Docusaurus will parse, and the values it mishandles fail no test here: they fail the build of a whole
+  part, twenty minutes later. It reads with a `SafeConstructor` and bounded aliases, nesting and size, because
+  the content is a team's upload; it writes through a dumper, so the quoting of a colon, of a version and of
+  an instant is nobody's rule to keep.
+
+- **A documentation set is two things in two places.** The bytes are one object under
+  `jeap.doc.storage.current-prefix` and the *model* of the set - its pages, their titles, their order - is
+  rows. The object key carries the **upload and the attempt the set came from**, so a replaced set is a new
+  object rather than the same one overwritten: a build reads the rows and then fetches the object they name,
+  and could otherwise see a set that is half replaced - and an attempt that was given up on and kept running
+  cannot copy its own bytes over what took over from it. What that costs is an object nothing references when an instance
+  dies between the copy and the commit, which the nightly sweep takes.
+
+- **The two models are joined by the generator and by nothing else.** `…domain.custom` is what a team
+  uploaded, `…domain.architecture` is a replica of an upstream, and nothing links them in the database. A
+  subject can be in either alone, so `SystemSitePartition` takes the **union** of the two - a system that is
+  documented and deployed nowhere would otherwise have no part, and `DepartedParts` would eventually remove
+  what one upload published.
 
 - **`-pl <module>` builds against the jars in `~/.m2`, not against your working tree.** A test in
   `jeap-doc-web` sees the last *installed* `jeap-doc-domain` or `jeap-doc-site`, so a change there is invisible

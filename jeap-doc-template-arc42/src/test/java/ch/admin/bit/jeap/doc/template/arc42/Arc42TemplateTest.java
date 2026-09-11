@@ -118,7 +118,7 @@ class Arc42TemplateTest {
         assertThat(template.generatedNames(Arc42Chapters.BUILDING_BLOCK_VIEW, SubjectKind.SYSTEM))
                 .describedAs("the whitebox view, and the three folders beside it - a group and a page of one "
                              + "name are one URL")
-                .containsExactlyInAnyOrder("whitebox-view", "components", "events", "commands");
+                .containsExactlyInAnyOrder("whitebox-view", "components", "libraries", "events", "commands");
         assertThat(template.generatedNames(Arc42Chapters.RUNTIME_VIEW, SubjectKind.SYSTEM))
                 .containsExactly("system-reactions");
     }
@@ -134,17 +134,35 @@ class Arc42TemplateTest {
     }
 
     /**
-     * <b>Nothing is generated for a library.</b> The upload API accepts library documentation and no template
-     * writes a page for one, so a library upload is bounded by what the domain reserves everywhere and
-     * nothing else.
+     * <b>One page is generated for a library</b>, from what its upload said about it. No architecture model
+     * holds a library, so every other chapter of one is the team's to write.
      */
     @Test
-    void generatedNames_forALibrary_areNone() {
+    void generatedNames_forALibrary_areTheOnePageWrittenFromItsUpload() {
+        assertThat(template.generatedNames(Arc42Chapters.INTRODUCTION, SubjectKind.LIBRARY))
+                .containsExactly("library-overview");
         for (StructureChapter chapter : Arc42Chapters.ALL) {
+            if (chapter.equals(Arc42Chapters.INTRODUCTION)) {
+                continue;
+            }
             assertThat(template.generatedNames(chapter, SubjectKind.LIBRARY))
-                    .describedAs("nothing is generated for a library, in %s", chapter.folder())
+                    .describedAs("nothing else is generated for a library, in %s", chapter.folder())
                     .isEmpty();
         }
+    }
+
+    /**
+     * The page a subject gets when the architecture model does not hold it, reserved <b>whether or not</b>
+     * the model holds it. This is a declaration read by the upload validation, which knows nothing about a
+     * landscape - reserved only while the model is silent, one and the same upload would be valid on one day
+     * and refused on the next, decided by an import.
+     */
+    @Test
+    void generatedNames_reserveTheUnknownSubjectPage_forASystemAndAComponent() {
+        assertThat(template.generatedNames(Arc42Chapters.INTRODUCTION, SubjectKind.SYSTEM))
+                .contains("not-in-the-architecture-model");
+        assertThat(template.generatedNames(Arc42Chapters.INTRODUCTION, SubjectKind.COMPONENT))
+                .contains("not-in-the-architecture-model");
     }
 
     /** A chapter this template writes nothing into occupies no name in it. */

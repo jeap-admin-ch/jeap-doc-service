@@ -1,6 +1,6 @@
 package ch.admin.bit.jeap.doc.template.arc42;
 
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
@@ -73,6 +73,12 @@ public class Arc42Template implements StructureTemplate {
     /** The component's counterpart of {@link #SYSTEM_REACTIONS_PAGE}, empty for the same reason. */
     static final String COMPONENT_REACTIONS_PAGE = "component-reactions";
 
+    /** The path segment below a library, named for what it describes there. */
+    public static final String LIBRARY_SEGMENT = "library-architecture";
+
+    /** Where what the doc service knows about a library is served, inside its introduction. */
+    static final String LIBRARY_OVERVIEW_PAGE = "library-overview";
+
     /**
      * The four chapters this template generates into. A gap in the numbering is how a reader sees that a
      * chapter has not been written.
@@ -120,6 +126,16 @@ public class Arc42Template implements StructureTemplate {
     }
 
     @Override
+    public String libraryPathSegment() {
+        return LIBRARY_SEGMENT;
+    }
+
+    @Override
+    public String libraryLabel() {
+        return "Library Architecture";
+    }
+
+    @Override
     public List<StructureChapter> chapters() {
         return Arc42Chapters.ALL;
     }
@@ -138,9 +154,10 @@ public class Arc42Template implements StructureTemplate {
      * {@code Arc42ComponentTreeTest} walk the generated tree and fail if a file appears that nothing here
      * reserves.
      * <p>
-     * <b>Nothing is generated for a library.</b> The upload API accepts library documentation and no template
-     * writes a page for one, so a library upload is bounded by what the domain reserves everywhere and
-     * nothing else.
+     * <b>The introduction reserves a name for every kind of subject</b>, and it does so whether or not the
+     * architecture model happens to hold that subject. This is a declaration read by the upload validation,
+     * which knows nothing about a landscape - a name reserved only while the model is silent would let an
+     * import decide whether one and the same upload is valid.
      */
     @Override
     public Set<String> generatedNames(StructureChapter chapter, SubjectKind subject) {
@@ -150,17 +167,21 @@ public class Arc42Template implements StructureTemplate {
         return switch (subject) {
             case SYSTEM -> generatedForSystem(chapter);
             case COMPONENT -> generatedForComponent(chapter);
-            case LIBRARY -> Set.of();
+            case LIBRARY -> generatedForLibrary(chapter);
         };
     }
 
     private static Set<String> generatedForSystem(StructureChapter chapter) {
+        if (INTRODUCTION.equals(chapter)) {
+            return Set.of(Arc42UnknownSubjectPage.PAGE);
+        }
         if (CONTEXT_AND_SCOPE.equals(chapter)) {
             return Set.of(CONTEXT_VIEW_PAGE);
         }
         if (BUILDING_BLOCK_VIEW.equals(chapter)) {
-            // The pages, and the three folders beside them: a group and a page of the same name are one URL.
-            return Set.of(WHITEBOX_PAGE, DocumentationPaths.COMPONENTS_SEGMENT, Arc42MessagePages.EVENTS,
+            // The pages, and the folders beside them: a group and a page of the same name are one URL.
+            return Set.of(WHITEBOX_PAGE, DocumentationPaths.COMPONENTS_SEGMENT,
+                    DocumentationPaths.LIBRARIES_SEGMENT, Arc42MessagePages.EVENTS,
                     Arc42MessagePages.COMMANDS);
         }
         if (RUNTIME_VIEW.equals(chapter)) {
@@ -170,6 +191,9 @@ public class Arc42Template implements StructureTemplate {
     }
 
     private static Set<String> generatedForComponent(StructureChapter chapter) {
+        if (INTRODUCTION.equals(chapter)) {
+            return Set.of(Arc42UnknownSubjectPage.PAGE);
+        }
         if (CONTEXT_AND_SCOPE.equals(chapter)) {
             return Set.of(COMPONENT_CONTEXT_VIEW_PAGE);
         }
@@ -183,6 +207,16 @@ public class Arc42Template implements StructureTemplate {
     }
 
     /**
+     * What is generated for a library: the page written from what the upload said about it.
+     * <p>
+     * Reserved so that an upload carrying that name is refused at the API rather than colliding into a
+     * duplicate route twenty minutes into a build.
+     */
+    private static Set<String> generatedForLibrary(StructureChapter chapter) {
+        return INTRODUCTION.equals(chapter) ? Set.of(LIBRARY_OVERVIEW_PAGE) : Set.of();
+    }
+
+    /**
      * Writes the arc42 subtree of one system, by handing it to {@link Arc42SystemPages}.
      * <p>
      * <b>The structure is this class, the Markdown is that one.</b> What arc42 is - the twelve chapters, the
@@ -191,7 +225,7 @@ public class Arc42Template implements StructureTemplate {
      * pages is a different job, and it is the larger of the two by an order of magnitude.
      */
     @Override
-    public void writeSystem(DocumentedSystem system, GenerationContext context, Path systemDirectory)
+    public void writeSystem(SystemDocumentation system, GenerationContext context, Path systemDirectory)
             throws IOException {
         Arc42SystemPages.write(this, system, context, systemDirectory);
     }

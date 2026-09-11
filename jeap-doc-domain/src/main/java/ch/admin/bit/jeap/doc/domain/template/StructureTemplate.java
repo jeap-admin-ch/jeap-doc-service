@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.domain.template;
 
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 
 import java.io.IOException;
@@ -41,6 +40,18 @@ public interface StructureTemplate {
 
     /** What the navigation calls this template below a component. */
     String componentLabel();
+
+    /**
+     * The path segment below a library.
+     * <p>
+     * A library is a building block of the system that owns it, and the same structure reads as <i>Library
+     * Architecture</i> there. No architecture model holds a library, so every chapter of one is written by
+     * the team - which is what makes it the purest case of what this service is for.
+     */
+    String libraryPathSegment();
+
+    /** What the navigation calls this template below a library. */
+    String libraryLabel();
 
     /**
      * The chapters of this template. Nothing else writes a chapter folder name.
@@ -93,12 +104,20 @@ public interface StructureTemplate {
      * it.
      * <p>
      * A template with nothing to generate writes nothing, so no empty folder appears.
+     * <p>
+     * <b>One entry point, and the subject says which case it is.</b> What is handed in carries the
+     * architecture model's system where there is one and what has been uploaded either way, so a system that
+     * is documented and deployed nowhere is written by this same call - and a template branches once rather
+     * than checking for a missing model on every page. The uploaded pages are written by the writer on it,
+     * into the chapter folders this template names: only a template may name a chapter, and the front matter
+     * and the ordering of an uploaded page are one implementation for every methodology.
      *
-     * @param system          the system to document
+     * @param system          the system to document, as both models know it
      * @param context         the landscape it sits in, and what a page says about where it came from
      * @param systemDirectory {@code content/<environment>/systems/<slug>}
      */
-    void writeSystem(DocumentedSystem system, GenerationContext context, Path systemDirectory) throws IOException;
+    void writeSystem(SystemDocumentation system, GenerationContext context, Path systemDirectory)
+            throws IOException;
 
     /**
      * The file extensions an upload to this template may carry, lower case and without the dot.
@@ -125,5 +144,20 @@ public interface StructureTemplate {
      */
     default Set<String> generatedNames(StructureChapter chapter, SubjectKind subject) {
         return Set.of();
+    }
+
+    /**
+     * The sidebar position the first uploaded page of a chapter takes.
+     * <p>
+     * <b>Uploaded pages stand after the ones this template generates.</b> The upload numbers the pages of a
+     * chapter from one, in the order of their titles, and Docusaurus breaks a tie between two equal positions
+     * by file name - so without an offset the first uploaded page of a chapter would tie with the first
+     * generated one and the order would silently depend on what the files are called, which is the one thing
+     * assigning a position is meant to take out of it.
+     * <p>
+     * A hundred, because no chapter of a template generates that many pages. One that does says so here.
+     */
+    default int firstCustomPagePosition() {
+        return 100;
     }
 }

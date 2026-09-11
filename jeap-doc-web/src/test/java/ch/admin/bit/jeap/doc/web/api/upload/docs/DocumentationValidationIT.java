@@ -1,5 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
+import ch.admin.bit.jeap.doc.web.api.UploadProblems;
+
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -189,7 +191,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
     /** A tree of that size is a path pointing at more than the documentation, so it is refused. */
     @Test
     void morePathsThanTheLimit_isRefusedRatherThanAnswered() throws Exception {
-        String paths = IntStream.rangeClosed(0, 10_000)
+        String paths = IntStream.rangeClosed(0, 250)
                 .mapToObj("\"1-intro/page-%d.md\""::formatted)
                 .collect(Collectors.joining(","));
 
@@ -205,7 +207,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
      */
     @Test
     void aBodyOfVeryManyTinyPaths_isRefusedOnTheirNumber() throws Exception {
-        mockMvc.perform(validationOf(tree(200_000, "a")).with(mayUpload()))
+        mockMvc.perform(validationOf(tree(500, "a")).with(mayUpload()))
                 .andExpect(status().isPayloadTooLarge())
                 .andExpect(jsonPath("$.code").value("TOO_MANY_PATHS"));
     }

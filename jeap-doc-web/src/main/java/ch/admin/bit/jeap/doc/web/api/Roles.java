@@ -45,6 +45,20 @@ public final class Roles {
      */
     public static final String HAS_SITES_READ_ROLE = CHECKING + RESOURCE_SITES + THEN + OPERATION_READ + DONE;
 
+    /**
+     * Removing the documentation of one system: the pipeline of that system, or an administrator of the
+     * sites.
+     * <p>
+     * <b>The administrator is there for the documentation nobody's pipeline can reach any more.</b> A
+     * repository that has been archived, a component that was renamed, a team that has been disbanded - the
+     * set stays current until somebody says otherwise, and by then there may be no pipeline left holding the
+     * write role of that system. Removing documentation is not a step towards reading anything else, so
+     * accepting the sites administrator here grants no access the role did not already imply.
+     */
+    public static final String HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM_OR_IS_SITES_ADMIN =
+            CHECKING_FOR_THE_SYSTEM_PARAMETER + RESOURCE_UPLOADS + THEN + OPERATION_WRITE + DONE
+            + " or " + CHECKING + RESOURCE_SITES + THEN + OPERATION_ADMIN + DONE;
+
     private Roles() {
     }
 }

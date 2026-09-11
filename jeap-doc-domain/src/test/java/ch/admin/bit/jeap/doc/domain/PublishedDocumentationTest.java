@@ -63,7 +63,7 @@ class PublishedDocumentationTest {
         clock = new MovableClock(NOW);
         properties = new PublicationProperties();
         documentation = new PublishedDocumentation(builds, searchIndexes, new DocumentationSites(new SiteProperties()),
-                new SystemSitePartition(new TwoSystems()), storage, properties, clock);
+                new SystemSitePartition(new TwoSystems(), new NoCustomDocumentation()), storage, properties, clock);
     }
 
     /**

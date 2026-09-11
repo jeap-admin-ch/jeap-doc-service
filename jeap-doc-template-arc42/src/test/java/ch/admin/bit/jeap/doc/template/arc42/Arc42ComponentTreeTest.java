@@ -119,7 +119,8 @@ class Arc42ComponentTreeTest {
     }
 
     private void generate(DocumentedComponent component) throws IOException {
-        Arc42ComponentPages.write(template, orders, component, context, componentDirectory);
+        Arc42ComponentPages.write(template, Documented.of(orders), orders, component, context,
+                componentDirectory);
     }
 
     /** A component with everything the architecture repository can know about one. */
@@ -797,7 +798,8 @@ class Arc42ComponentTreeTest {
                 orders.description(), orders.aliases(), orders.team(), orders.components(),
                 orders.relations(), List.of());
 
-        Arc42ComponentPages.write(template, withoutMessages, componentOf(withoutMessages, "orders-intake"),
+        Arc42ComponentPages.write(template, Documented.of(withoutMessages), withoutMessages,
+                componentOf(withoutMessages, "orders-intake"),
                 contextOf(withoutMessages, LIMITS), componentDirectory);
 
         assertThat(read("component-architecture/5-building-block-view/messages.md"))
@@ -879,7 +881,11 @@ class Arc42ComponentTreeTest {
                 .contains("doc_status: \"generated\"")
                 .contains("doc_source: \"archrepo\"")
                 .contains("doc_environment: \"dev\"")
-                .contains(":::info[Generated page]"));
+                .describedAs("in the front matter, which is where the site template reads it from - a "
+                             + "page's own body says nothing about where it came from, because an uploaded "
+                             + "page's body is copied byte for byte and could not")
+                .contains("doc_status: \"generated\"")
+                .doesNotContain(":::info[Generated page]"));
     }
 
     /**

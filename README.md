@@ -16,6 +16,7 @@ to their code, their build pipelines upload it, and the doc service combines it 
 | [Configuration](docs/configuration.md)               | The configuration properties, with their defaults                                      |
 | [API](docs/api.md)                                   | The REST API and its OpenAPI description                                               |
 | [Uploads](docs/uploads.md)                           | What happens to an uploaded bundle, the state of an upload, and what a retry does      |
+| [The documentation a team writes](docs/custom-documentation.md) | Where an uploaded page lands, what the service adds to it, and a subject the architecture model does not know |
 | [What an upload is validated against](docs/upload-validation.md) | The structural rules an upload is checked against, per template, and the finding codes |
 | [Security](docs/security.md)                         | The semantic roles and the rule that a system may only change its own documentation    |
 | [Generation](docs/generation.md)                     | How the documentation site is generated, what triggers a build and how it is published |

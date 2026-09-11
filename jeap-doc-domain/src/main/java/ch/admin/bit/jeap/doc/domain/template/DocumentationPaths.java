@@ -19,6 +19,14 @@ public final class DocumentationPaths {
     public static final String COMPONENTS_SEGMENT = "components";
 
     /**
+     * The group the libraries of a system are served under, beside its components.
+     * <p>
+     * A library is a building block of the system that owns it: the building block view decomposes a system
+     * into its parts, and a library is one of them whether or not it runs anywhere.
+     */
+    public static final String LIBRARIES_SEGMENT = "libraries";
+
+    /**
      * The one segment no derived slug may be: {@code index.md} is the listing of every directory the generator
      * writes, so a page named after it would be written over that listing. The importer refuses a name that
      * yields it, and a template writes its listings under it - the two have to agree, which is why it is here.
@@ -80,6 +88,12 @@ public final class DocumentationPaths {
     public static String component(String systemSlug, String structureSegment, StructureChapter chapter,
                                    String componentName) {
         return page(systemSlug, structureSegment, chapter, COMPONENTS_SEGMENT, componentName);
+    }
+
+    /** The page of one library, inside the group its system's building block view holds them in. */
+    public static String library(String systemSlug, String structureSegment, StructureChapter chapter,
+                                 String librarySlug) {
+        return page(systemSlug, structureSegment, chapter, LIBRARIES_SEGMENT, librarySlug);
     }
 
     /**

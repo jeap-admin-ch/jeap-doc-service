@@ -2,7 +2,8 @@ package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationUpload;
 import ch.admin.bit.jeap.doc.domain.upload.UploadState;
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBundleStorage;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
+import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static ch.admin.bit.jeap.doc.web.api.upload.docs.DocumentationUploads.SYSTEM;
 import static ch.admin.bit.jeap.doc.web.api.upload.docs.DocumentationUploads.bundle;
+import static ch.admin.bit.jeap.doc.web.api.upload.docs.DocumentationUploads.received;
 import static ch.admin.bit.jeap.doc.web.api.upload.docs.DocumentationUploads.componentDocs;
 import static ch.admin.bit.jeap.doc.web.api.upload.docs.DocumentationUploads.uploadOf;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,20 +49,31 @@ class UploadTransactionBoundaryIT extends DocServiceIntegrationTestBase {
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
-    private DocumentationBundleStorage bundleStorage;
+    private UploadedBundles bundles;
+
+    /**
+     * Mocked too: the bundle this test's store never wrote cannot be copied, and what is under test is when
+     * the upload row is committed rather than what the object storage does.
+     */
+    @MockitoBean
+    private CustomDocumentationStorage documentationStorage;
 
     @Test
     void upload_whileTheBundleIsStored_thenTheUploadIsAlreadyCommittedAsUploading() throws Exception {
         UUID uploadId = UUID.randomUUID();
         AtomicReference<String> seenWhileStoring = new AtomicReference<>();
-        when(bundleStorage.store(anyLong(), anyInt(), any(), anyLong())).thenAnswer(call -> {
+        byte[] bundle = bundle("# a component");
+        when(bundles.receive(any(), anyLong(), any())).thenReturn(received(bundle));
+        when(bundles.store(anyLong(), anyInt(), any())).thenAnswer(call -> {
             seenWhileStoring.set(stateOf(uploadId));
             return new StoredBundle("uploads/docs/%d/%d/bundle.zip".formatted(
                     call.<Long>getArgument(0), call.<Integer>getArgument(1)),
                     "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b");
         });
+        when(documentationStorage.promote(any(), any(), anyLong(), anyInt()))
+                .thenReturn("current/docs/x/1/1/bundle.zip");
 
-        mockMvc.perform(uploadOf(uploadId, componentDocs(), bundle("# a component"))
+        mockMvc.perform(uploadOf(uploadId, componentDocs(), bundle)
                         .with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isCreated());
 

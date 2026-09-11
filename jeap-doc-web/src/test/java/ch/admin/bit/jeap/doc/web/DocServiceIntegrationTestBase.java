@@ -1,11 +1,17 @@
 package ch.admin.bit.jeap.doc.web;
 
+import ch.admin.bit.jeap.doc.domain.DocumentationSites;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 import ch.admin.bit.jeap.security.resource.semanticAuthentication.SemanticApplicationRole;
 import ch.admin.bit.jeap.security.resource.token.JeapAuthenticationToken;
 import ch.admin.bit.jeap.security.test.resource.JeapAuthenticationTestTokenBuilder;
 import ch.admin.bit.jeap.security.test.resource.configuration.DisableJeapPermitAllSecurityConfiguration;
+import org.junit.jupiter.api.AfterAll;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -123,6 +129,51 @@ public abstract class DocServiceIntegrationTestBase {
     }
 
     private static Path installedTemplate;
+
+    /**
+     * Clears the documentation of every site, so the next class does not inherit what an earlier one wrote.
+     * <p>
+     * <b>Everything, not only this class's own rows.</b> The classes of this module run one after another and
+     * share one database, so after the last test of a class what is in it is what that class left - and
+     * removing all of it is the same thing, said more simply. It would not be, were this module ever to run
+     * its classes in parallel.
+     * <p>
+     * <b>A documented system is a part of its site</b>, and the Spring context - with its database - is shared
+     * by every class here. So a set one class leaves behind is a further part for every later class, and a
+     * class that builds a whole site then really generates that part too: in CI, where the classes run in
+     * alphabetical order, four of the seven parts {@code DocumentationGenerationIT} rebuilt sixty times over
+     * were sets three earlier classes had left standing - an hour of site generation for documentation no
+     * test was asserting anything about.
+     * <p>
+     * <b>After the class and not after each test</b>, so that what a class sets up survives its own methods,
+     * and through the repository rather than the removal service, which would ask for a build of what is
+     * being torn down.
+     */
+    @AfterAll
+    static void forgetEverythingDocumentedSoFar() {
+        if (sharedContext == null) {
+            return;
+        }
+        CustomDocumentationRepository documentation =
+                sharedContext.getBean(CustomDocumentationRepository.class);
+        DocumentationSites sites = sharedContext.getBean(DocumentationSites.class);
+        for (String site : sites.ids()) {
+            for (CustomSubject subject : documentation.subjectsOf(site)) {
+                documentation.removeSubject(subject);
+            }
+        }
+    }
+
+    /**
+     * The context, kept for the tear-down above, which has to be static and therefore cannot be injected.
+     * It is the same context for every class here - that is what makes the tear-down necessary at all.
+     */
+    private static ApplicationContext sharedContext;
+
+    @Autowired
+    void rememberTheSharedContext(ApplicationContext context) {
+        sharedContext = context;
+    }
 
     protected static JeapAuthenticationToken tokenWithRoles(SemanticApplicationRole... roles) {
         return JeapAuthenticationTestTokenBuilder.create().withUserRoles(roles).build();

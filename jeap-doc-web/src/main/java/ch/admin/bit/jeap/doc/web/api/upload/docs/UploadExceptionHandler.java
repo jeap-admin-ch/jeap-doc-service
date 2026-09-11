@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
+import ch.admin.bit.jeap.doc.web.api.UploadProblems;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -62,6 +63,12 @@ class UploadExceptionHandler {
         logRejection(exception.getCode(), exception.getMessage(), request);
         countIfRejectedBeforeTheDomain(exception.getCode());
         ProblemDetail problem = problem(exception.getCode(), exception.getMessage());
+        if (exception.getReport() != null) {
+            // A set refused over its structure is answered with the findings, in the same shape the
+            // validation endpoint answers them: a pipeline that prints them should not have to know which of
+            // the two refused the set.
+            StructureReportDto.of(exception.getReport()).into(problem);
+        }
         BodyBuilder response = ResponseEntity.status(problem.getStatus());
         if (exception.getRetryAfter() != null) {
             // Seconds, as RFC 9110 defines the header - a pipeline that retries can wait for what it says.

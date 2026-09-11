@@ -100,7 +100,6 @@ final class Arc42MessagePages {
                     Md.text(message.description())));
         }
         page.table(List.of(kind.label(), kind.producerRole(), kind.consumerRole(), "Description"), rows);
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, Arc42Pages.INDEX, page);
     }
 
@@ -208,7 +207,6 @@ final class Arc42MessagePages {
 
         writeReactions(page, message, context);
 
-        Arc42Pages.provenance(page, context);
         Arc42Pages.write(directory, message.slug() + ".md", page);
     }
 

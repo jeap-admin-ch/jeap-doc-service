@@ -1,10 +1,13 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,7 +27,19 @@ class SystemSitePartitionTest {
     }
 
     private static SystemSitePartition partitionOf(Map<String, List<String>> slugsByEnvironment) {
-        return new SystemSitePartition(new StubModel(slugsByEnvironment));
+        return new SystemSitePartition(new StubModel(slugsByEnvironment), new NoCustomDocumentation());
+    }
+
+    /** A partition of a site where the given systems have documentation and no architecture model at all. */
+    private static SystemSitePartition partitionOfDocumented(String... systems) {
+        return new SystemSitePartition(new StubModel(Map.of()), new NoCustomDocumentation() {
+            @Override
+            public List<CustomSubject> subjectsOf(String site) {
+                return Arrays.stream(systems)
+                        .map(system -> new CustomSubject(site, SubjectKind.SYSTEM, system, null))
+                        .toList();
+            }
+        });
     }
 
     /** The shell first, then one part per system, whatever order the environments answered in. */
@@ -67,10 +82,40 @@ class SystemSitePartitionTest {
     /** An environment with no architecture repository contributes no part, and no build fails over it. */
     @Test
     void partsOf_whenNothingIsConfigured_thenOnlyTheShellIsAPart() {
-        SystemSitePartition partition = new SystemSitePartition(new StubModel(Map.of()));
+        SystemSitePartition partition = new SystemSitePartition(new StubModel(Map.of()),
+                new NoCustomDocumentation());
 
         assertThat(partition.partsOf(siteWith(DEV, PROD))).extracting(SitePart::id)
                 .containsExactly(SitePart.SHELL);
+    }
+
+    /**
+     * A system that has been documented and is in no architecture model is a part all the same. Without it
+     * nothing would ask for that part to be built, an operator could not force it, and the sweep of departed
+     * parts would take what one upload managed to publish.
+     */
+    @Test
+    void partsOf_thenASystemThatIsOnlyDocumentedIsAPartToo() {
+        SystemSitePartition partition = partitionOfDocumented("nobody-has-deployed-this");
+
+        assertThat(partition.partsOf(siteWith(DEV, PROD))).extracting(SitePart::id)
+                .containsExactly(SitePart.SHELL, "system-nobody-has-deployed-this");
+    }
+
+    @Test
+    void partsOf_thenASystemThatIsBothDeployedAndDocumentedIsOnePart() {
+        SystemSitePartition partition = new SystemSitePartition(
+                new StubModel(Map.of("dev", List.of("orders"))), new NoCustomDocumentation() {
+            @Override
+            public List<CustomSubject> subjectsOf(String site) {
+                return List.of(new CustomSubject(site, SubjectKind.SYSTEM, "orders", null),
+                        new CustomSubject(site, SubjectKind.COMPONENT, "orders", "orders-intake"));
+            }
+        });
+
+        assertThat(partition.partsOf(siteWith(DEV, PROD))).extracting(SitePart::id)
+                .describedAs("a component's documentation belongs to its system's part")
+                .containsExactly(SitePart.SHELL, "system-orders");
     }
 
     /**
@@ -83,6 +128,11 @@ class SystemSitePartitionTest {
             @Override
             public List<String> systemSlugsOf(String environment) {
                 throw new AssertionError("the model must not be read to resolve a request");
+            }
+        }, new NoCustomDocumentation() {
+            @Override
+            public List<CustomSubject> subjectsOf(String site) {
+                throw new AssertionError("nor the documentation");
             }
         });
 

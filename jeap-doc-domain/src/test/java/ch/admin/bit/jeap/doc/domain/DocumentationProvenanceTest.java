@@ -10,6 +10,7 @@ import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
+import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -434,12 +435,22 @@ class DocumentationProvenanceTest {
         }
 
         @Override
+        public String libraryPathSegment() {
+            return "library-architecture";
+        }
+
+        @Override
+        public String libraryLabel() {
+            return "Library Architecture";
+        }
+
+        @Override
         public List<StructureChapter> chapters() {
             return List.of(StructureChapter.numbered(1, "1-intro", "Introduction and Goals"));
         }
 
         @Override
-        public void writeSystem(DocumentedSystem system, GenerationContext context, Path systemDirectory) {
+        public void writeSystem(SystemDocumentation system, GenerationContext context, Path systemDirectory) {
             // nothing: what is under test is what the service says about itself
         }
     }

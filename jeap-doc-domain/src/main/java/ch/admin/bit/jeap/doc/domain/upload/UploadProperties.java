@@ -87,10 +87,14 @@ public class UploadProperties {
     public static class Validation {
 
         /**
-         * The most paths one request may carry. Past it the request is refused rather than answered, because
-         * a tree of that size is a mistake in the workflow configuration and not a documentation set.
+         * The most files a documentation set may hold. Past it the request is refused rather than answered,
+         * because a tree of that size is a mistake in the workflow configuration and not a documentation set.
+         * <p>
+         * It bounds an upload as well as the validation endpoint, so it is a limit on what a set may be. The
+         * sets that exist hold twelve to seventeen pages, and a set with a page per chapter and thirty
+         * screenshots is about fifty files.
          */
-        private int maxPaths = 10_000;
+        private int maxPaths = 200;
 
         /**
          * The most findings one report carries. A report of forty problems is already unreadable, and what is

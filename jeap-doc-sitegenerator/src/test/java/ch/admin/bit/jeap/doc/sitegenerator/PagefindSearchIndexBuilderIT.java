@@ -53,7 +53,7 @@ class PagefindSearchIndexBuilderIT {
         DefaultResourceLoader resources = new DefaultResourceLoader();
         SiteSources sources = new SiteSources(urls, resources,
                 NoArchitectureModel.systemPages(urls), new DocumentationSites(new SiteProperties()),
-                new SystemSitePartition(NoArchitectureModel.INSTANCE), properties,
+                new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()), properties,
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation());
         builder = new PagefindSearchIndexBuilder(properties, new BuildWorkspaces(properties), sources,
                 new NodeProcess(properties), resources, CLOCK);

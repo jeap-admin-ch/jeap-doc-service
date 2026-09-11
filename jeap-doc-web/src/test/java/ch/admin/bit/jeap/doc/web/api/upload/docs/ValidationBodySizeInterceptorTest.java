@@ -31,7 +31,7 @@ class ValidationBodySizeInterceptorTest {
     /** Derived from the cap, so there is one property to set wrong rather than two that have to agree. */
     @Test
     void theLimitIsWhatTheCappedNumberOfPathsCouldBe() {
-        assertThat(interceptor.limit()).isEqualTo(10_000L * (1024 + 8) + 1024);
+        assertThat(interceptor.limit()).isEqualTo(200L * (1024 + 8) + 1024);
 
         properties.getValidation().setMaxPaths(10);
 

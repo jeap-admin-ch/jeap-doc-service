@@ -11,13 +11,16 @@ import java.util.List;
  * an environment that reads no model has <b>no</b> {@code EnvironmentModel} rather than an empty one - empty
  * says the landscape has nothing in it, and nothing was looked at.
  *
- * @param systems    the systems the environment documents, in the order the index lists them
- * @param components how many components they have between them
- * @param messages   how many events and commands they define between them
- * @param importedAt when the content of that landscape was imported, or null where it has never been
+ * @param systems      the systems this tree documents, in the order the index lists them - those of the
+ *                     landscape, and those only the uploaded documentation knows
+ * @param modelSystems how many of them the architecture model holds, which is a different number the moment
+ *                     something is documented before it is deployed
+ * @param components   how many components the model's systems have between them
+ * @param messages     how many events and commands they define between them
+ * @param importedAt   when the content of that landscape was imported, or null where it has never been
  */
-public record EnvironmentModel(List<DocumentedSystemEntry> systems, int components, int messages,
-                               Instant importedAt) {
+public record EnvironmentModel(List<DocumentedSystemEntry> systems, int modelSystems, int components,
+                               int messages, Instant importedAt) {
 
     public EnvironmentModel {
         systems = systems == null ? List.of() : List.copyOf(systems);
@@ -25,10 +28,14 @@ public record EnvironmentModel(List<DocumentedSystemEntry> systems, int componen
 
     /** An environment whose architecture repository reports no system at all. */
     static EnvironmentModel empty(Instant importedAt) {
-        return new EnvironmentModel(List.of(), 0, 0, importedAt);
+        return new EnvironmentModel(List.of(), 0, 0, 0, importedAt);
     }
 
-    /** How many systems it documents, which is what the counts on a page and the gauges are. */
+    /**
+     * How many systems this tree documents, which is what the root page counts and what the gauges read.
+     * <b>Not the size of the landscape</b> - that is {@link #modelSystems()}, and the page describing the
+     * documentation is the one place that has to tell the two apart.
+     */
     public int systemCount() {
         return systems.size();
     }

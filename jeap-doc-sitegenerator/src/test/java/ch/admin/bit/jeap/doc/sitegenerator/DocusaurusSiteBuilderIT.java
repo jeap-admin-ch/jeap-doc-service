@@ -60,7 +60,7 @@ class DocusaurusSiteBuilderIT {
         resourceLoader = new org.springframework.core.io.DefaultResourceLoader();
         sources = new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), properties,
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation());
         builder = builderWriting(sources);
     }
@@ -247,12 +247,14 @@ class DocusaurusSiteBuilderIT {
                 new SystemPages(OneSystemEverywhere.INSTANCE, NoMessageSchemas.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         NoReactions.INSTANCE, NoReactions.INSTANCE,
+                        new NoCustomDocumentation(), NoCustomStorage.INSTANCE,
+                        new ch.admin.bit.jeap.doc.domain.custom.CustomProperties(),
                         new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
                         new GeneratorProperties(),
                         new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
                         ch.admin.bit.jeap.doc.domain.port.BuildMetrics.NONE, urls),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(OneSystemEverywhere.INSTANCE), properties,
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(OneSystemEverywhere.INSTANCE, new NoCustomDocumentation()), properties,
                 TestProvenance.of(OneSystemEverywhere.INSTANCE), new AboutThisDocumentation());
     }
 
@@ -305,7 +307,7 @@ class DocusaurusSiteBuilderIT {
     private SiteSources sourcesAlsoWriting(ExtraPages extra) {
         return new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL), properties,
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation()) {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,

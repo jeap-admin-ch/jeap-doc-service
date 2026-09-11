@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-09-11
+
+- Uploaded Markdown documentation is published: a set is taken over when it is uploaded and written into the
+  chapters of the generated site - see [The documentation a team writes](docs/custom-documentation.md).
+- A system, component or library the architecture model does not hold is published all the same, from what was
+  uploaded for it, and libraries have a place beside the components of their system.
+- An upload is refused with `422` if its set would not be published; `jeap.doc.upload.validation.max-paths` is
+  `200`, down from `10000`, because it now bounds an upload rather than only the advisory endpoint.
+- `DELETE /api/docs/custom/{sets,subjects,systems}` remove what a team uploaded - see [the API](docs/api.md) -
+  and a nightly job sweeps the objects no set references.
+- The bucket gains a `current/` prefix tagged `jeap-doc-content=current`, which **no lifecycle rule may
+  expire** - see [Operating the bucket](docs/operating-the-bucket.md).
+
 ## [2.1.0] - 2026-09-10
 
 - Reactions are imported from the reaction observer service, as steps of the architecture import.

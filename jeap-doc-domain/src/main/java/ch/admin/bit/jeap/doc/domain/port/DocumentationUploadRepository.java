@@ -41,6 +41,19 @@ public interface DocumentationUploadRepository {
     DocumentationUpload save(DocumentationUpload upload);
 
     /**
+     * Whether this attempt still holds the upload, rather than having been taken over by a later one.
+     * <p>
+     * <b>Asked before an attempt makes its set current.</b> An attempt slower than the in-progress timeout is
+     * taken over and keeps running - nothing can stop it - and the attempt that took over may have published
+     * its own bundle in the meantime. Its own question rather than a read of the upload, so that the answer
+     * cannot be mistaken for the lookup an attempt makes before it claims anything.
+     *
+     * @param uploadId the upload id the attempt is writing under
+     * @param attempt  the attempt asking
+     */
+    boolean isHeldBy(UUID uploadId, int attempt);
+
+    /**
      * Removes the uploads that were last received before the given instant, whatever state they are in, and
      * reports how many there were. What they document is kept: a system, component or library stays in the
      * catalogue of the documentation once it has been documented.
