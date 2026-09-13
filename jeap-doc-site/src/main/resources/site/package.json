@@ -17,7 +17,7 @@
     "@docusaurus/faster": "3.10.2",
     "@docusaurus/preset-classic": "3.10.2",
     "@docusaurus/theme-mermaid": "3.10.2",
-    "@matfsw/docusaurus-plantuml-plugin": "1.8.1",
+    "@matfsw/docusaurus-plantuml-plugin": "1.8.5",
     "@mdx-js/react": "3.1.1",
     "clsx": "2.1.1",
     "pagefind": "1.5.2",
@@ -27,7 +27,7 @@
     "unist-util-visit": "5.1.0"
   },
   "overrides": {
-    "js-yaml": "5.4.1",
+    "js-yaml": "5.4.2",
     "qs": "6.16.0",
     "serialize-javascript": "7.1.1",
     "sockjs": {

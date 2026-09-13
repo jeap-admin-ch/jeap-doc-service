@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-09-13
+
+### Dependencies
+- **ch.admin.bit.jeap:jeap-spring-boot-parent**: 40.11.0 → 41.1.0 (major)
+- **js-yaml**: 5.4.1 → 5.4.2 (patch)
+- **@matfsw/docusaurus-plantuml-plugin**: 1.8.1 → 1.8.5 (patch)
+
 ## [2.2.0] - 2026-09-11
 
 - Uploaded Markdown documentation is published: a set is taken over when it is uploaded and written into the
