@@ -159,16 +159,21 @@ class MicrositeResponse {
 
     /** Where the ASCII needle starts in the bytes, ignoring ASCII case, from the given offset on. */
     private static int indexOfIgnoringCase(byte[] haystack, byte[] needle, int from) {
-        outer:
         for (int i = from; i <= haystack.length - needle.length; i++) {
-            for (int j = 0; j < needle.length; j++) {
-                if (lowerAscii(haystack[i + j]) != needle[j]) {
-                    continue outer;
-                }
+            if (startsWithIgnoringCase(haystack, needle, i)) {
+                return i;
             }
-            return i;
         }
         return -1;
+    }
+
+    private static boolean startsWithIgnoringCase(byte[] haystack, byte[] needle, int at) {
+        for (int j = 0; j < needle.length; j++) {
+            if (lowerAscii(haystack[at + j]) != needle[j]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static byte lowerAscii(byte b) {

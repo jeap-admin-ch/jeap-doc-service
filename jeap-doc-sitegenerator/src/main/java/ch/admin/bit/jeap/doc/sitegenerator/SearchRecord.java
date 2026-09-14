@@ -12,8 +12,9 @@ import java.util.List;
  * @param body        everything else, as plain text
  * @param environment the environment tree the page is in - what scopes a search to the tree the reader is in
  * @param source      what produced it: {@link #GENERATED}, {@link #MARKDOWN} or {@link #HTML}
- * @param subject     what it documents: {@link #SYSTEM}, {@link #COMPONENT}, {@link #LIBRARY}, or null for a
- *                    page of the site itself, which documents nothing and belongs to nobody
+ * @param subject     what it documents: {@link #SUBJECT_SYSTEM}, {@link #SUBJECT_COMPONENT},
+ *                    {@link #SUBJECT_LIBRARY}, or null for a page of the site itself, which documents nothing and
+ *                    belongs to nobody
  * @param system      the system it documents, or null for a page of the site itself
  * @param name        the component or the library it documents, or null for a page that is the system's own -
  *                    what tells a reader which of a system's fifty components a hit is in
@@ -37,9 +38,9 @@ public record SearchRecord(String url, String title, List<String> headings, Stri
     /** A page of an uploaded HTML microsite, and the generated page that frames it. */
     public static final String HTML = "html";
 
-    public static final String SYSTEM = "system";
-    public static final String COMPONENT = "component";
-    public static final String LIBRARY = "library";
+    public static final String SUBJECT_SYSTEM = "system";
+    public static final String SUBJECT_COMPONENT = "component";
+    public static final String SUBJECT_LIBRARY = "library";
 
     public SearchRecord {
         headings = headings == null ? List.of() : List.copyOf(headings);

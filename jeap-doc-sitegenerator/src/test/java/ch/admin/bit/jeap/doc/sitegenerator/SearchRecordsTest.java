@@ -120,10 +120,10 @@ class SearchRecordsTest {
                 | tenant_reference | varchar(64) |
                 """);
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.body()).contains("tenant_reference").contains("varchar(64)");
-        assertThat(record.body()).doesNotContain("|").doesNotContain("---");
-        assertThat(record.content()).contains("tenant_reference");
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.body()).contains("tenant_reference").contains("varchar(64)");
+        assertThat(searchRecord.body()).doesNotContain("|").doesNotContain("---");
+        assertThat(searchRecord.content()).contains("tenant_reference");
     }
 
     /**
@@ -162,9 +162,9 @@ class SearchRecordsTest {
                 ```
                 """);
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.content()).contains("talks to billing");
-        assertThat(record.content()).doesNotContain("skinparam").doesNotContain("startuml");
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.content()).contains("talks to billing");
+        assertThat(searchRecord.content()).doesNotContain("skinparam").doesNotContain("startuml");
     }
 
     /**
@@ -198,9 +198,9 @@ class SearchRecordsTest {
                 And it is sent with PUT.
                 """);
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.content()).contains("The upload is a ZIP file").contains("it is sent with PUT");
-        assertThat(record.content()).doesNotContain("skinparam").doesNotContain("echo hello");
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.content()).contains("The upload is a ZIP file").contains("it is sent with PUT");
+        assertThat(searchRecord.content()).doesNotContain("skinparam").doesNotContain("echo hello");
     }
 
     /** A fence indented inside a list item is a fence too, and its body is no more indexable for it. */
@@ -220,9 +220,9 @@ class SearchRecordsTest {
                 2. Push the branch.
                 """);
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.content()).contains("Configure the workflow").contains("Push the branch");
-        assertThat(record.content()).doesNotContain("jeap-doc-upload");
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.content()).contains("Configure the workflow").contains("Push the branch");
+        assertThat(searchRecord.content()).doesNotContain("jeap-doc-upload");
     }
 
     /** A `#` inside a fence is a comment in some language, and never a heading of the page. */
@@ -258,10 +258,10 @@ class SearchRecordsTest {
                 The parts of it.
                 """);
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.headings()).containsExactly("Orders", "Building Block View");
-        assertThat(record.body()).isEqualTo("The parts of it.");
-        assertThat(record.content()).startsWith("Orders. Orders. Building Block View. The parts of it.");
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.headings()).containsExactly("Orders", "Building Block View");
+        assertThat(searchRecord.body()).isEqualTo("The parts of it.");
+        assertThat(searchRecord.content()).startsWith("Orders. Orders. Building Block View. The parts of it.");
     }
 
     /**
@@ -283,11 +283,11 @@ class SearchRecordsTest {
                 We deploy on Fridays.
                 """);
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.url()).isEqualTo("/systems/orders/system-architecture/constraints/team-rules/");
-        assertThat(record.title()).isEqualTo("Team Rules");
-        assertThat(record.content()).contains("We deploy on Fridays");
-        assertThat(record.system()).isEqualTo("orders");
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.url()).isEqualTo("/systems/orders/system-architecture/constraints/team-rules/");
+        assertThat(searchRecord.title()).isEqualTo("Team Rules");
+        assertThat(searchRecord.content()).contains("We deploy on Fridays");
+        assertThat(searchRecord.system()).isEqualTo("orders");
     }
 
     /** A page with no front matter at all is still a page, and still has to be findable. */
@@ -295,9 +295,9 @@ class SearchRecordsTest {
     void of_whenThereIsNoFrontMatter_thenTheFileNameIsTheTitle() throws IOException {
         write("prod/systems/orders/notes.md", "# Notes\n\nSomething.\n");
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.title()).isEqualTo("notes");
-        assertThat(record.content()).contains("Something");
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.title()).isEqualTo("notes");
+        assertThat(searchRecord.content()).contains("Something");
     }
 
     @Test
@@ -318,9 +318,9 @@ class SearchRecordsTest {
         page("prod/systems/orders/system-architecture/5-building-block-view/components/orders-intake/"
              + "component-architecture/index.md", "Component Architecture", "How it is built.");
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.system()).isEqualTo("orders");
-        assertThat(record.name()).isEqualTo("orders-intake");
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.system()).isEqualTo("orders");
+        assertThat(searchRecord.name()).isEqualTo("orders-intake");
     }
 
     /** A page that merely mentions the components is not in one of them - the whitebox view is the system's. */
@@ -329,9 +329,9 @@ class SearchRecordsTest {
         page("prod/systems/orders/system-architecture/5-building-block-view/whitebox-view.md",
                 "Level 1: Whitebox View", "The parts.");
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.system()).isEqualTo("orders");
-        assertThat(record.name()).isNull();
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.system()).isEqualTo("orders");
+        assertThat(searchRecord.name()).isNull();
     }
 
     /** The generator escapes what would otherwise stop being text; a reader should see it as it was written. */
@@ -347,9 +347,9 @@ class SearchRecordsTest {
                 A generic type.
                 """);
 
-        SearchRecord record = records().getFirst();
-        assertThat(record.title()).isEqualTo("List&lt;Order&gt;");
-        assertThat(record.headings()).containsExactly("List<Order>");
+        SearchRecord searchRecord = records().getFirst();
+        assertThat(searchRecord.title()).isEqualTo("List&lt;Order&gt;");
+        assertThat(searchRecord.headings()).containsExactly("List<Order>");
     }
 
     /**
@@ -417,9 +417,9 @@ class SearchRecordsTest {
         assertThat(records()).extracting(SearchRecord::title, SearchRecord::subject, SearchRecord::name)
                 .containsExactlyInAnyOrder(
                         tuple("Documentation", null, null),
-                        tuple("Orders", SearchRecord.SYSTEM, null),
-                        tuple("Orders Intake", SearchRecord.COMPONENT, "orders-intake"),
-                        tuple("Orders Client", SearchRecord.LIBRARY, "orders-client"));
+                        tuple("Orders", SearchRecord.SUBJECT_SYSTEM, null),
+                        tuple("Orders Intake", SearchRecord.SUBJECT_COMPONENT, "orders-intake"),
+                        tuple("Orders Client", SearchRecord.SUBJECT_LIBRARY, "orders-client"));
     }
 
     /**
@@ -447,7 +447,8 @@ class SearchRecordsTest {
     }
 
     private static String frontMatter(String title, String... keys) {
-        return "---\ntitle: %s\n%s\n---\n\n# %s\n\nWhat it says.\n"
+        // The file content is Markdown with LF line endings on every platform, which %n would not give.
+        return "---\ntitle: %s\n%s\n---\n\n# %s\n\nWhat it says.\n" // NOSONAR
                 .formatted(title, String.join("\n", keys), title);
     }
 
@@ -464,7 +465,7 @@ class SearchRecordsTest {
     }
 
     private void page(String path, String title, String body) throws IOException {
-        write(path, "---\ntitle: %s\n---\n\n# %s\n\n%s\n".formatted(title, title, body));
+        write(path, "---\ntitle: %s\n---\n\n# %s\n\n%s\n".formatted(title, title, body)); // NOSONAR LF, as above
     }
 
     private void write(String path, String text) throws IOException {

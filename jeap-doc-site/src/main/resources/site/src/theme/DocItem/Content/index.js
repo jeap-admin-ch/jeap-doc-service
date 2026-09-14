@@ -55,7 +55,7 @@ function Microsite({frontMatter, children}) {
             return;
         }
         const message = event.data;
-        if (!message || message.type !== HEIGHT_MESSAGE || typeof message.height !== 'number') {
+        if (message?.type !== HEIGHT_MESSAGE || typeof message.height !== 'number') {
             return;
         }
         const cap = window.innerHeight * MAX_HEIGHT_FACTOR;

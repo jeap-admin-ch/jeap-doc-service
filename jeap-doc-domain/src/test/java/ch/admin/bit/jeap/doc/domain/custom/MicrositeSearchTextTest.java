@@ -128,6 +128,7 @@ class MicrositeSearchTextTest {
 
         @Override
         public void close() {
+            // Nothing to release: the content is held in memory.
         }
     }
 }

@@ -653,9 +653,9 @@ class SiteSearchBrowserIT extends SiteBrowserTestBase {
         BuildProperties properties = new BuildProperties();
         properties.setNodeModulesDirectory(Path.of("target/site-install/node_modules").toAbsolutePath());
         properties.setWorkspaceDirectory(searchWorkspace());
-        PublicationProperties publication = new PublicationProperties();
-        publication.setUrl("http://localhost");
-        SiteUrls urls = new SiteUrls(publication, "");
+        PublicationProperties publicationProperties = new PublicationProperties();
+        publicationProperties.setUrl("http://localhost");
+        SiteUrls urls = new SiteUrls(publicationProperties, "");
         return new PagefindSearchIndexBuilder(properties, new BuildWorkspaces(properties),
                 fixtureSources(urls, properties), new NodeProcess(properties), documentation,
                 documentationStorage, new DefaultResourceLoader(), Clock.systemUTC());

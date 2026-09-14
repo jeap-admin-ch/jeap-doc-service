@@ -183,7 +183,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
             if (page.asset()) {
                 Files.write(file, bytes);
             } else {
-                Files.writeString(file, pageOf(set, page, position, uploaded.get()), StandardCharsets.UTF_8);
+                Files.writeString(file, pageOf(set, position, uploaded.get()), StandardCharsets.UTF_8);
             }
             return true;
         } catch (IOException e) {
@@ -260,7 +260,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
      * quoting is {@link UploadedFrontMatter}'s: a repository URL holds a colon, a title may hold anything,
      * and an instant written plainly would be read back as a date.
      */
-    private String pageOf(CustomSet set, CustomPage page, int position, String uploaded) {
+    private String pageOf(CustomSet set, int position, String uploaded) {
         CustomProvenance provenance = set.provenance();
         Map<String, Object> generated = UploadedFrontMatter.keys();
         // Past whatever the template generates into this chapter: Docusaurus breaks a tie between two equal

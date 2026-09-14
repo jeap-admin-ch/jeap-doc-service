@@ -85,8 +85,10 @@ export function Excerpt({excerpt, className}) {
         <span className={clsx(styles.excerpt, className)}>
             {excerpt.split(/<mark>|<\/mark>/).map((piece, index) =>
                 (index % 2 === 1
-                    ? <mark key={index}>{decoded(piece)}</mark>
-                    : <React.Fragment key={index}>{decoded(piece)}</React.Fragment>))}
+                    // The pieces of one excerpt never move, so where a piece is is what it is.
+                    ? <mark key={index}>{decoded(piece)}</mark> // NOSONAR
+                    : <React.Fragment key={index}>{decoded(piece)}</React.Fragment> // NOSONAR
+                ))}
         </span>
     );
 }
@@ -104,12 +106,12 @@ export function Excerpt({excerpt, className}) {
 const NAMED = {amp: '&', lt: '<', gt: '>', quot: '"', apos: "'"};
 
 function decoded(text) {
-    return text.replace(/&(#\d+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);/g, (reference, name) => {
+    return text.replaceAll(/&(#\d+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);/g, (reference, name) => {
         if (!name.startsWith('#')) {
             return NAMED[name] ?? reference;
         }
         const hexadecimal = name[1] === 'x' || name[1] === 'X';
-        const code = parseInt(hexadecimal ? name.slice(2) : name.slice(1), hexadecimal ? 16 : 10);
+        const code = Number.parseInt(hexadecimal ? name.slice(2) : name.slice(1), hexadecimal ? 16 : 10);
         // A reference outside the code points there are is not a character - and it would throw rather than
         // render. Uploaded documentation is what this reads, so it may say anything.
         return Number.isInteger(code) && code >= 0 && code <= 0x10ffff

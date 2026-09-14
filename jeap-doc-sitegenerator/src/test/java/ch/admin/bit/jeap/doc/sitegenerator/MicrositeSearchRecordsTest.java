@@ -64,7 +64,7 @@ class MicrositeSearchRecordsTest {
                 .orElseThrow();
         assertThat(inside.environment()).isEqualTo("prod");
         assertThat(inside.system()).isEqualTo("orders");
-        assertThat(inside.subject()).isEqualTo(SearchRecord.SYSTEM);
+        assertThat(inside.subject()).isEqualTo(SearchRecord.SUBJECT_SYSTEM);
         assertThat(inside.microsite()).describedAs("which uploaded documentation a hit is inside")
                 .isEqualTo("Configuration Reference");
     }
@@ -112,7 +112,7 @@ class MicrositeSearchRecordsTest {
     @Test
     void expand_whenThereIsNoMicrosite_thenThePagesAreWhatTheyWere() {
         List<SearchRecord> pages = List.of(new SearchRecord("/prod/systems/orders/", "Orders", List.of(),
-                "The system.", "prod", SearchRecord.GENERATED, SearchRecord.SYSTEM, "orders", null, null,
+                "The system.", "prod", SearchRecord.GENERATED, SearchRecord.SUBJECT_SYSTEM, "orders", null, null,
                 null));
 
         assertThat(MicrositeSearchRecords.expand(pages, List.of(), new NoCustomStorage())).isEqualTo(pages);
@@ -124,7 +124,7 @@ class MicrositeSearchRecordsTest {
 
     private static SearchRecord framingPage(String url, String environment) {
         return new SearchRecord(url, "Configuration Reference", List.of(),
-                "Published by the team that owns it.", environment, SearchRecord.HTML, SearchRecord.SYSTEM,
+                "Published by the team that owns it.", environment, SearchRecord.HTML, SearchRecord.SUBJECT_SYSTEM,
                 "orders", null, MICROSITE_URL, null);
     }
 

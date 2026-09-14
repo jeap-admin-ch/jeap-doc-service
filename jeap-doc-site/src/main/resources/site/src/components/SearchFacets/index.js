@@ -15,7 +15,7 @@ import styles from './styles.module.css';
  */
 export default function SearchFacets({groups, selection, counts, onToggle, onReset, showReset = true}) {
     return (
-        <div className={styles.facets} role="group" aria-label="Narrow the results">
+        <div className={styles.facets} role="group" aria-label="Narrow the results">{/* NOSONAR a fieldset brings a border and legend the chips do not want */}
             {groups.map((group) => (
                 <div key={group.key} className={clsx(styles.group, styles[group.key])}>
                     {group.values.map((value) => {

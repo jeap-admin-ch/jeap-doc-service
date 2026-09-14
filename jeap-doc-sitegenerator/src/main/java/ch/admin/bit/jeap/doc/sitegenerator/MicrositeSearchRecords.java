@@ -53,33 +53,39 @@ final class MicrositeSearchRecords {
 
         List<SearchRecord> records = new ArrayList<>(pages.size());
         for (SearchRecord page : pages) {
-            if (page.micrositeUrl() == null) {
-                records.add(page);
-                continue;
-            }
-            CustomSet set = byUrl.get(page.micrositeUrl());
-            if (set == null) {
-                // A page written from a row that is no longer there: an upload removed the set between the
-                // content pass and now. The page stays findable, its content is not.
-                log.debug("The page {} frames {}, which is no longer a set of this site.",
-                        page.url(), page.micrositeUrl());
-                records.add(page);
-                continue;
-            }
-            List<MicrositePageText> text = textByUrl.computeIfAbsent(page.micrositeUrl(),
-                    url -> storage.readSearchText(set.objectKey()));
-            if (text.isEmpty()) {
-                // Uploaded before the text was extracted, or to an instance that was not indexing. Only a new
-                // upload can produce it, and docs/search.md says so.
-                log.info("The microsite {} carries no extracted text, so only the page that frames it is "
-                         + "indexed.", page.micrositeUrl());
-                records.add(page);
-                continue;
-            }
-            records.add(theFramingPage(page, text));
-            records.addAll(insideTheMicrosite(page, text));
+            records.addAll(recordsOf(page, byUrl, textByUrl, storage));
         }
         return List.copyOf(records);
+    }
+
+    /** The records one page contributes: itself, or - where it frames a microsite with text - that text too. */
+    private static List<SearchRecord> recordsOf(SearchRecord page, Map<String, CustomSet> byUrl,
+                                                Map<String, List<MicrositePageText>> textByUrl,
+                                                CustomDocumentationStorage storage) {
+        if (page.micrositeUrl() == null) {
+            return List.of(page);
+        }
+        CustomSet set = byUrl.get(page.micrositeUrl());
+        if (set == null) {
+            // A page written from a row that is no longer there: an upload removed the set between the
+            // content pass and now. The page stays findable, its content is not.
+            log.debug("The page {} frames {}, which is no longer a set of this site.",
+                    page.url(), page.micrositeUrl());
+            return List.of(page);
+        }
+        List<MicrositePageText> text = textByUrl.computeIfAbsent(page.micrositeUrl(),
+                url -> storage.readSearchText(set.objectKey()));
+        if (text.isEmpty()) {
+            // Uploaded before the text was extracted, or to an instance that was not indexing. Only a new
+            // upload can produce it, and docs/search.md says so.
+            log.info("The microsite {} carries no extracted text, so only the page that frames it is "
+                     + "indexed.", page.micrositeUrl());
+            return List.of(page);
+        }
+        List<SearchRecord> records = new ArrayList<>();
+        records.add(theFramingPage(page, text));
+        records.addAll(insideTheMicrosite(page, text));
+        return records;
     }
 
     /**

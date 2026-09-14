@@ -163,13 +163,13 @@ public final class SearchRecords {
         }
         for (int i = 0; i < segments.length - 1; i++) {
             if (DocumentationPaths.COMPONENTS_SEGMENT.equals(segments[i])) {
-                return SearchRecord.COMPONENT;
+                return SearchRecord.SUBJECT_COMPONENT;
             }
             if (DocumentationPaths.LIBRARIES_SEGMENT.equals(segments[i])) {
-                return SearchRecord.LIBRARY;
+                return SearchRecord.SUBJECT_LIBRARY;
             }
         }
-        return SearchRecord.SYSTEM;
+        return SearchRecord.SUBJECT_SYSTEM;
     }
 
     /**
@@ -204,10 +204,12 @@ public final class SearchRecords {
         String withoutExtension = relativePath.substring(
                 0, relativePath.length() - DocumentationPaths.MARKDOWN_EXTENSION.length() - 1);
         String index = DocumentationPaths.INDEX_SEGMENT;
-        String route = withoutExtension.equals(index) ? ""
-                : withoutExtension.endsWith("/" + index)
-                ? withoutExtension.substring(0, withoutExtension.length() - index.length() - 1)
-                : withoutExtension;
+        String route = withoutExtension;
+        if (withoutExtension.equals(index)) {
+            route = "";
+        } else if (withoutExtension.endsWith("/" + index)) {
+            route = withoutExtension.substring(0, withoutExtension.length() - index.length() - 1);
+        }
         route = NumberPrefixes.strippedFromEverySegment(route);
         return route.isEmpty() ? prefix + "/" : prefix + "/" + route + "/";
     }

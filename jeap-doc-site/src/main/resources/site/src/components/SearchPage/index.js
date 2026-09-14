@@ -90,7 +90,7 @@ function Results() {
             }
             setResults(shown);
             setState('done');
-        } catch (e) {
+        } catch {
             if (run === latest.current) {
                 setState('unavailable');
             }
@@ -108,7 +108,7 @@ function Results() {
             if (run === latest.current) {
                 setCounts(counted.filters);
             }
-        } catch (e) {
+        } catch {
             if (run === latest.current) {
                 setCounts(null);
             }

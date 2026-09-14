@@ -78,11 +78,11 @@ class SiteHeaders implements HttpHeaderFilterPostProcessor {
         String sitePrefix = Site.SITE_SEGMENT + "/";
         if (rest.startsWith(sitePrefix)) {
             int endOfSiteId = rest.indexOf('/', sitePrefix.length());
-            if (endOfSiteId > 0 && MicrositePath.keyPartsOf(rest.substring(endOfSiteId + 1)) != null) {
+            if (endOfSiteId > 0 && MicrositePath.keyPartsOf(rest.substring(endOfSiteId + 1)).isPresent()) {
                 return true;
             }
         }
-        return MicrositePath.keyPartsOf(rest) != null;
+        return MicrositePath.keyPartsOf(rest).isPresent();
     }
 
     private static boolean rendersAsADocument(String path) {

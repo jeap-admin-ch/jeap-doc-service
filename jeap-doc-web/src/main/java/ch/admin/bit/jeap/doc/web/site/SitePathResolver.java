@@ -70,20 +70,26 @@ public class SitePathResolver {
     }
 
     private Optional<MicrositePath> micrositeOf(Site site, String rest) {
-        String[] segments = MicrositePath.keyPartsOf(rest);
-        if (segments == null) {
-            return Optional.empty();
-        }
+        return MicrositePath.keyPartsOf(rest).map(segments -> micrositeOf(site, segments));
+    }
+
+    private MicrositePath micrositeOf(Site site, String[] segments) {
         boolean named = MicrositePath.isNamed(segments);
         int parts = MicrositePath.partsOf(segments);
-        SubjectKind kind = !named ? SubjectKind.SYSTEM
-                : COMPONENTS.equals(segments[1]) ? SubjectKind.COMPONENT : SubjectKind.LIBRARY;
+        SubjectKind kind = kindOf(segments, named);
         String name = named ? segments[2] : null;
         int at = named ? 3 : 1;
         CustomSetKey key = new CustomSetKey(site.id(), kind, segments[0], name, SourceFormat.HTML,
                 segments[at], segments[at + 1], segments[at + 2]);
         String file = String.join("/", java.util.Arrays.copyOfRange(segments, parts, segments.length));
-        return Optional.of(new MicrositePath(site, key, fileOfMicrosite(file)));
+        return new MicrositePath(site, key, fileOfMicrosite(file));
+    }
+
+    private static SubjectKind kindOf(String[] segments, boolean named) {
+        if (!named) {
+            return SubjectKind.SYSTEM;
+        }
+        return COMPONENTS.equals(segments[1]) ? SubjectKind.COMPONENT : SubjectKind.LIBRARY;
     }
 
     /** A microsite is opened at its entry point, so a path that names no file addresses the index. */

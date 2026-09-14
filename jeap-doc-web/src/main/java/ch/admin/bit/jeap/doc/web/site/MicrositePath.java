@@ -4,6 +4,8 @@ import ch.admin.bit.jeap.doc.domain.custom.Microsite;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 
+import java.util.Optional;
+
 /**
  * One file of one uploaded HTML microsite, as a request addresses it.
  * <p>
@@ -28,7 +30,7 @@ public record MicrositePath(Site site, CustomSetKey key, String file) {
     static final String LIBRARIES = "libraries";
 
     /**
-     * The parts of a microsite's key in a path below a site's root, or null where the path does not have the
+     * The parts of a microsite's key in a path below a site's root, or empty where the path does not have the
      * shape of one: the segment, the subject, the template, the location and the topic.
      * <p>
      * <b>Structural only, and the one definition of it.</b> The router resolves a request by it and the
@@ -37,13 +39,13 @@ public record MicrositePath(Site site, CustomSetKey key, String file) {
      *
      * @param rest the path below the site's root, without a leading slash
      */
-    static String[] keyPartsOf(String rest) {
+    static Optional<String[]> keyPartsOf(String rest) {
         String prefix = SEGMENT + "/";
         if (!rest.startsWith(prefix)) {
-            return null;
+            return Optional.empty();
         }
         String[] segments = rest.substring(prefix.length()).split("/", -1);
-        return segments.length >= partsOf(segments) ? segments : null;
+        return segments.length >= partsOf(segments) ? Optional.of(segments) : Optional.empty();
     }
 
     /** How many segments name the set: four for a system's microsite, six where a component or library is named. */

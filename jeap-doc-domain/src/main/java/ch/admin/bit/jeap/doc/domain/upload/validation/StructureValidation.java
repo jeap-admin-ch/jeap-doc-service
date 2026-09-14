@@ -222,23 +222,7 @@ public class StructureValidation {
         // Distinct, so a path that appears three times is one finding rather than three - and so that a
         // second guard against reporting it twice is not needed.
         for (String path : new LinkedHashSet<>(checked)) {
-            Optional<StructureFinding> pathFinding = pathHygiene(path, duplicated);
-            if (pathFinding.isPresent()) {
-                findings.add(pathFinding.get());
-                continue;
-            }
-            if (MicrositeRules.SEARCH_TEXT.equals(path)) {
-                findings.add(StructureFinding.of(FindingCode.RESERVED_PATH, path,
-                        ("'%s' is written by the doc service itself, beside the files of this set, and a "
-                         + "set may not carry it. Rename the file.").formatted(MicrositeRules.SEARCH_TEXT)));
-                continue;
-            }
-            String extension = extensionOf(path.substring(path.lastIndexOf('/') + 1));
-            if (!MicrositeRules.allows(extension, customProperties.getRefusedExtensions())) {
-                findings.add(StructureFinding.of(FindingCode.FORBIDDEN_EXTENSION, path,
-                        ("'.%s' is not a file a published microsite may carry. The extensions it refuses "
-                         + "are on this report.").formatted(extension)));
-            }
+            micrositeFinding(path, duplicated).ifPresent(findings::add);
         }
         if (checked.stream().noneMatch(MicrositeRules.ENTRY_POINT::equals)) {
             findings.add(StructureFinding.ofTree(FindingCode.MISSING_ENTRY_POINT,
@@ -251,6 +235,26 @@ public class StructureValidation {
                      + "are on this report.").formatted(placement.location(), template.id())));
         }
         return findings;
+    }
+
+    /** The first rule one path of a microsite breaks, if it breaks any. */
+    private Optional<StructureFinding> micrositeFinding(String path, Set<String> duplicated) {
+        Optional<StructureFinding> pathFinding = pathHygiene(path, duplicated);
+        if (pathFinding.isPresent()) {
+            return pathFinding;
+        }
+        if (MicrositeRules.SEARCH_TEXT.equals(path)) {
+            return Optional.of(StructureFinding.of(FindingCode.RESERVED_PATH, path,
+                    ("'%s' is written by the doc service itself, beside the files of this set, and a "
+                     + "set may not carry it. Rename the file.").formatted(MicrositeRules.SEARCH_TEXT)));
+        }
+        String extension = extensionOf(path.substring(path.lastIndexOf('/') + 1));
+        if (!MicrositeRules.allows(extension, customProperties.getRefusedExtensions())) {
+            return Optional.of(StructureFinding.of(FindingCode.FORBIDDEN_EXTENSION, path,
+                    ("'.%s' is not a file a published microsite may carry. The extensions it refuses "
+                     + "are on this report.").formatted(extension)));
+        }
+        return Optional.empty();
     }
 
     /**

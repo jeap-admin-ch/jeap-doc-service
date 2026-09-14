@@ -110,7 +110,8 @@ public class PagefindSearchIndexBuilder implements SearchIndexBuilder {
 
             extractScript(workspace);
             linkDependencies(workspace);
-            String bundlePath = PUBLISH_DIRECTORY + "/" + SearchIndex.DIRECTORY;
+            // An argument to the indexer, which Node reads with a forward slash on every platform.
+            String bundlePath = PUBLISH_DIRECTORY + "/" + SearchIndex.DIRECTORY; // NOSONAR
             String output = node.runAndCapture(workspace, SCRIPT, RECORDS_FILE, bundlePath);
             log.debug("The indexer said: {}", output);
 
@@ -145,27 +146,27 @@ public class PagefindSearchIndexBuilder implements SearchIndexBuilder {
      */
     private static void writeRecords(List<SearchRecord> records, Path file) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
-            for (SearchRecord record : records) {
+            for (SearchRecord searchRecord : records) {
                 ObjectNode json = JSON.createObjectNode()
-                        .put("url", record.url())
-                        .put("title", record.title())
-                        .put("content", record.content())
-                        .put("environment", record.environment())
-                        .put("source", record.source());
+                        .put("url", searchRecord.url())
+                        .put("title", searchRecord.title())
+                        .put("content", searchRecord.content())
+                        .put("environment", searchRecord.environment())
+                        .put("source", searchRecord.source());
                 // Absent rather than empty, both of them: a record with no value for a key a query names is
                 // excluded by the index, and that is exactly what should happen to the site's own pages when
                 // a reader narrows the search to a subject.
-                if (record.subject() != null) {
-                    json.put("subject", record.subject());
+                if (searchRecord.subject() != null) {
+                    json.put("subject", searchRecord.subject());
                 }
-                if (record.system() != null) {
-                    json.put("system", record.system());
+                if (searchRecord.system() != null) {
+                    json.put("system", searchRecord.system());
                 }
-                if (record.name() != null) {
-                    json.put("name", record.name());
+                if (searchRecord.name() != null) {
+                    json.put("name", searchRecord.name());
                 }
-                if (record.microsite() != null) {
-                    json.put("microsite", record.microsite());
+                if (searchRecord.microsite() != null) {
+                    json.put("microsite", searchRecord.microsite());
                 }
                 writer.write(JSON.writeValueAsString(json));
                 writer.newLine();

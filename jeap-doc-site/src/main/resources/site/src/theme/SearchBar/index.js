@@ -5,7 +5,7 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {useEnvironment} from '@site/src/data/environments';
 import {Excerpt, Kind, titleOf, Where} from '@site/src/components/SearchHit';
 import SearchFacets from '@site/src/components/SearchFacets';
-import {SOURCE, everything, filtersOf, selectionFrom, toggled, writeInto}
+import {SOURCE, everything, filtersOf, toggled, writeInto}
     from '@site/src/data/searchFacets';
 import styles from './styles.module.css';
 
@@ -81,7 +81,7 @@ function SearchBarInBrowser() {
             await module.options({baseUrl});
             pagefind.current = module;
             return module;
-        } catch (e) {
+        } catch {
             // A site that has never been indexed answers 404 here. There is nothing to search, and a box that
             // never finds anything is worse than none.
             setUnavailable(true);
@@ -158,7 +158,7 @@ function SearchBarInBrowser() {
         setOpen(false);
         setQuery('');
         input.current?.blur();
-        window.location.assign(url);
+        globalThis.location.assign(url);
     }, []);
 
     const onKeyDown = (event) => {
@@ -231,15 +231,15 @@ function SearchBarInBrowser() {
                         selection={selection}
                         onToggle={(group, value) => setSelection(toggled(selection, group, value))}
                         showReset={false}/>
-                    <div id="search-results-list" role="listbox">
+                    <div id="search-results-list" role="listbox">{/* NOSONAR the combobox pattern: a select cannot hold these hits */}
                     {loading && !results && <div className={styles.message}>Searching…</div>}
-                    {results && results.length === 0 && (
+                    {results?.length === 0 && (
                         <div className={styles.message}>
                             No page of {environment.label} matches <strong>{query}</strong>.
                         </div>
                     )}
                     {results?.map((result, index) => (
-                        <button
+                        <button // NOSONAR a hit is a button in the combobox pattern, which an option element cannot be
                             type="button"
                             role="option"
                             aria-selected={index === active}
