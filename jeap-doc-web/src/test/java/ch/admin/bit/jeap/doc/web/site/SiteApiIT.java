@@ -57,6 +57,8 @@ class SiteApiIT extends DocServiceIntegrationTestBase {
                 StandardCharsets.UTF_8);
         Files.createDirectories(site.resolve("assets/js"));
         Files.writeString(site.resolve("assets/js/main.abc123.js"), "console.log('hello')", StandardCharsets.UTF_8);
+        Files.createDirectories(site.resolve("assets/files"));
+        Files.writeString(site.resolve("assets/files/spec.abc123.pdf"), "%PDF-1.4", StandardCharsets.UTF_8);
         Files.createDirectories(site.resolve("dev"));
         Files.writeString(site.resolve("dev/index.html"), "<html><body>Development</body></html>",
                 StandardCharsets.UTF_8);
@@ -104,6 +106,22 @@ class SiteApiIT extends DocServiceIntegrationTestBase {
         mockMvc.perform(get("/dev"))
                 .andExpect(status().isMovedPermanently())
                 .andExpect(redirectedUrl("/dev/"));
+    }
+
+    /**
+     * Docusaurus writes a link to a file a page links to - a PDF, a JSON file - with the trailing slash of a
+     * route, and without the redirect the reader following it gets the not-found page.
+     */
+    @Test
+    void get_whenAFileWithATrailingSlash_thenRedirectedToTheFile() throws Exception {
+        mockMvc.perform(get("/assets/files/spec.abc123.pdf/?download=1"))
+                .andExpect(status().isMovedPermanently())
+                .andExpect(header().string("Location", "/assets/files/spec.abc123.pdf?download=1"));
+        mockMvc.perform(get("/assets/files/nothing.abc123.pdf/"))
+                .andExpect(status().isNotFound());
+        // An index written out is a request for that index, not for the file.
+        mockMvc.perform(get("/assets/files/spec.abc123.pdf/index.html"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

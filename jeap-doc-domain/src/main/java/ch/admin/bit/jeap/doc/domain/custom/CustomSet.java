@@ -48,7 +48,10 @@ public record CustomSet(
                 .toList();
     }
 
-    /** The images of one chapter, which are beside a page rather than in the navigation. */
+    /**
+     * The assets of one chapter: the files its pages show or link to, beside them or in folders inside the
+     * chapter, and never in the navigation.
+     */
     public List<CustomPage> assetsOf(String chapterFolder) {
         return pages.stream()
                 .filter(page -> page.chapter().equals(chapterFolder) && page.asset())

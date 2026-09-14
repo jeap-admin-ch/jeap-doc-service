@@ -116,8 +116,8 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
                 written++;
             }
         }
-        // The images beside them. They are not pages and are not counted, but a page that shows one needs it
-        // in the same directory.
+        // The assets beside them. They are not pages and are not counted, but a page that shows one needs it
+        // at the same place relative to itself.
         for (CustomPage asset : set.get().assetsOf(chapterFolder)) {
             write(set.get(), asset, 0, chapterDirectory);
         }
@@ -139,6 +139,26 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
             log.warn("The uploaded page {} of {} is not published: {} generates a page of that name into "
                      + "that chapter, and a page has one source.",
                     page.path(), set.subject().slug(), template.id());
+            return false;
+        }
+        if (page.asset() && liesInAFolderTheTemplateGenerates(set, page)) {
+            log.warn("The uploaded file {} of {} is not published: its folder is one {} generates into that "
+                     + "chapter, and what it generates is not written over.",
+                    page.path(), set.subject().slug(), template.id());
+            return false;
+        }
+        Path file = chapterDirectory.resolve(page.fileName()).normalize();
+        if (!file.startsWith(chapterDirectory.normalize())) {
+            // The upload refuses such a path; this is the backstop.
+            log.warn("The uploaded file {} of {} is not published: it would lie outside its chapter.",
+                    page.path(), set.subject().slug());
+            return false;
+        }
+        if (isBothAFileAndAFolder(file, chapterDirectory.normalize())) {
+            // The upload refuses a set that uses one name for both; this is the backstop for one stored before
+            // it did, which would otherwise fail the build of the whole part on an I/O error.
+            log.warn("The uploaded file {} of {} is not published: the same path is a file and a folder in "
+                     + "that chapter.", page.path(), set.subject().slug());
             return false;
         }
         Optional<CustomDocumentationStorage.OpenedBundle> bundle = bundleOf(set);
@@ -178,8 +198,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
             if (uploaded.isEmpty()) {
                 return false;
             }
-            Files.createDirectories(chapterDirectory);
-            Path file = chapterDirectory.resolve(page.fileName());
+            Files.createDirectories(file.getParent());
             if (page.asset()) {
                 Files.write(file, bytes);
             } else {
@@ -208,6 +227,32 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         // folded case and the number prefix a document loses are all part of what is occupied, and a backstop
         // that knew only the last of them would let through exactly what it is there to catch.
         return ReservedNames.isTaken(template, chapter.get(), kind, page.fileName());
+    }
+
+    /** Whether the file is already a folder, or one of the folders it lies in below the chapter is a file. */
+    private static boolean isBothAFileAndAFolder(Path file, Path chapterDirectory) {
+        if (Files.isDirectory(file)) {
+            return true;
+        }
+        for (Path folder = file.getParent(); folder != null && !folder.equals(chapterDirectory);
+             folder = folder.getParent()) {
+            if (Files.exists(folder) && !Files.isDirectory(folder)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether an asset lies in a folder whose name the template writes into this chapter itself, such as the
+     * {@code components} group of a system's building block view. The upload refuses such a set; this is the
+     * backstop, by the same rule.
+     */
+    private boolean liesInAFolderTheTemplateGenerates(CustomSet set, CustomPage page) {
+        int slash = page.fileName().indexOf('/');
+        Optional<StructureChapter> chapter = template.chapterOfFolder(page.chapter());
+        return slash > 0 && chapter.isPresent() && ReservedNames.isTaken(template, chapter.get(),
+                set.key().kind(), page.fileName().substring(0, slash));
     }
 
     /**

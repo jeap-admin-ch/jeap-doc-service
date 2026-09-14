@@ -15,7 +15,7 @@ import java.util.Map;
 /**
  * Turns the paths of an uploaded archive into the files of a documentation set.
  * <p>
- * Two things happen here and nowhere else: a path becomes a chapter and a file name, and the pages of a
+ * Two things happen here and nowhere else: a path becomes a chapter and a file name below it, and the pages of a
  * chapter are put in the order the navigation shows them.
  */
 public final class UploadedSet {
@@ -50,12 +50,13 @@ public final class UploadedSet {
         Map<String, List<CustomPage>> byChapter = new LinkedHashMap<>();
         List<CustomPage> assets = new ArrayList<>();
         for (String path : paths) {
-            int slash = path.lastIndexOf('/');
+            // The first slash, not the last: an asset may lie in a folder inside its chapter.
+            int slash = path.indexOf('/');
             // Two kinds of path that place nothing. A file nobody wrote - the validation drops it before any
             // rule runs, and this is the other half of that, so it is never copied into a site nor charged to
             // what a set may unpack to. And a file belonging to no chapter, which the validation has already
             // refused the upload over; this is the ordering, and it has nothing to place.
-            if (IgnoredPaths.isIgnored(path) || slash <= 0 || slash == path.length() - 1) {
+            if (IgnoredPaths.isIgnored(path) || slash <= 0 || path.endsWith("/")) {
                 continue;
             }
             String chapter = path.substring(0, slash);

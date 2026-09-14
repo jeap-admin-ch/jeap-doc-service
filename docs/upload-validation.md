@@ -51,10 +51,10 @@ These rules are the doc service's, whatever template an upload names.
 | 1 | The path is relative and normalized: no leading `/`, no `..`, no `.`, no empty segment, no backslash, no control character, no trailing `/`, at most 1024 characters | `INVALID_PATH` |
 | 2 | No path appears twice | `DUPLICATE_PATH` |
 | 3 | The path has at least two segments - a file at the root of the set belongs to no chapter, so nothing publishes it | `FILE_OUTSIDE_CHAPTER` |
-| 4 | No folder inside a chapter: the pages of a chapter lie directly in it | `NESTED_FOLDER` |
-| 5 | No file name begins with `.` or `_` - see below | `HIDDEN_NAME`, `UNPUBLISHABLE_NAME` |
-| 6 | No file name is one the site generator reads as the chapter's landing page - `index`, `readme` or the chapter folder's own name, in any case - because the doc service writes that page | `RESERVED_NAME` |
-| 7 | No two documents of one chapter carry the same name once a leading number is taken off it - see below | `COLLIDING_NAME` |
+| 4 | A page lies directly in its chapter. An asset may lie in a folder inside the chapter, at most five folders below it | `NESTED_FOLDER` |
+| 5 | No file or folder name begins with `.` or `_` - see below | `HIDDEN_NAME`, `UNPUBLISHABLE_NAME` |
+| 6 | No file name is one the site generator reads as the chapter's landing page - `index`, `readme` or the chapter folder's own name, in any case - because the doc service writes that page. No folder right below the chapter carries a name the doc service writes there | `RESERVED_NAME` |
+| 7 | No two documents of one chapter carry the same name once a leading number is taken off it - see below - and no file has the path of a folder another file of the set lies in | `COLLIDING_NAME` |
 | 8 | The set holds at least one path that was not ignored | `EMPTY_TREE` |
 
 Rules 3 to 7 are about a *chapter*, so they apply to a Markdown upload and not to an HTML one, which follows
@@ -78,7 +78,8 @@ chapter's landing page, while `intro.md` in the same folder is an ordinary page 
 
 ### A name that will not be published
 
-Two prefixes are refused, for two different reasons.
+Two prefixes are refused, for two different reasons. They apply to the name of a file and to the name of every
+folder an asset lies in.
 
 **`_` - because the site generator drops it.** Docusaurus excludes `_*.md` from a docs build, and the names it
 keeps for itself - `_category_.json`, which is a chapter's navigation - are its own. Either way an upload
@@ -125,19 +126,31 @@ folder written in another language.
 ### The files it takes
 
 ```
-md    png jpg jpeg gif webp avif svg
+md    png jpg jpeg gif webp avif svg    pdf txt csv json yaml yml
 ```
 
 `mdx` is **not** among them and will not be: MDX is a programming language, and documentation the doc service
-did not write itself is not trusted with one. Anything else is `FORBIDDEN_EXTENSION`.
+did not write itself is not trusted with one. Anything else is `FORBIDDEN_EXTENSION`, unless the instance adds
+it with `jeap.doc.custom.additional-asset-extensions` - see [Configuration](configuration.md).
 
-**An image lies beside the page that shows it.** `5-building-block-view/overview.png` next to
-`5-building-block-view/design.md`, referenced as `![Overview](overview.png)`. arc42 has no subfolders, so the
-`images/` folder a repository reaches for by habit is a `NESTED_FOLDER` finding.
+**An image lies beside the page that shows it, or in a folder inside the chapter.**
+`5-building-block-view/overview.png` next to `5-building-block-view/design.md` is referenced as
+`![Overview](overview.png)`, and `5-building-block-view/img/overview.png` as `![Overview](img/overview.png)`.
+A folder holds assets only, and at most five folders deep: a page in a folder is a `NESTED_FOLDER` finding,
+because a folder of pages would become a section of the navigation that the template does not have.
+
+A folder is a name like a file's. **The folder right below the chapter may not carry a name the doc service
+writes into that chapter** - `5-building-block-view/components/overview.png` in a system's set would put the
+picture into the generated tree of its components - and that is `RESERVED_NAME`. **And one path is not both a
+file and a folder**: `1-intro/overview.png` beside `1-intro/overview.png/small.png` is `COLLIDING_NAME` on the
+file, since no file system writes both.
 
 A diagram is better written as a fenced `plantuml`, `mermaid` or `dot` block than uploaded as a picture: the
 site renders it in the reader's browser, so it stays diffable, searchable and legible in both themes. The
 image formats are for the pictures that have no source - a screenshot, a photograph, a scan.
+
+The other files are ones a page links to rather than shows - a specification, sample data, an example payload or
+configuration: `[The API specification](files/api-spec.pdf)`.
 
 ### What the generator writes, and an upload may not
 
@@ -221,12 +234,12 @@ as a whole.
 | `DUPLICATE_PATH` | The same path appears more than once |
 | `FILE_OUTSIDE_CHAPTER` | A file at the root of the set, belonging to no chapter |
 | `UNKNOWN_CHAPTER` | The first segment is not a chapter of the template |
-| `NESTED_FOLDER` | A folder inside a chapter |
-| `HIDDEN_NAME` | A file name beginning with a dot |
-| `UNPUBLISHABLE_NAME` | A file name beginning with an underscore |
+| `NESTED_FOLDER` | A page in a folder inside a chapter, or an asset more than five folders below it |
+| `HIDDEN_NAME` | A file or folder name beginning with a dot |
+| `UNPUBLISHABLE_NAME` | A file or folder name beginning with an underscore |
 | `FORBIDDEN_EXTENSION` | An extension the template does not take, or one a microsite refuses |
-| `RESERVED_NAME` | A document of a name the doc service generates into that chapter, or one the site generator reads as the chapter's landing page - a leading number is taken off the name first |
-| `COLLIDING_NAME` | Two documents of one chapter that the site generator would publish at one URL, because a leading number is not part of a page's name |
+| `RESERVED_NAME` | A document of a name the doc service generates into that chapter, or one the site generator reads as the chapter's landing page - a leading number is taken off the name first. Or a folder right below the chapter of such a name |
+| `COLLIDING_NAME` | Two documents of one chapter that the site generator would publish at one URL, because a leading number is not part of a page's name. Or a file at the path of a folder another file of the set lies in |
 | `UNKNOWN_TEMPLATE` | *Set-level.* No template of that name exists; the message names the ones that do |
 | `EMPTY_TREE` | *Set-level.* Nothing in the set would be published |
 | `MISSING_ENTRY_POINT` | *Set-level.* An HTML upload with no `index.html` at its root |

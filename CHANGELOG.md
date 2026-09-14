@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.0] - unreleased
+## [3.2.0] - 2026-09-15
+
+- An asset of a Markdown set may lie in a folder inside its chapter, up to five folders deep; a page still lies directly in its chapter - see [What an upload is validated against](docs/upload-validation.md).
+- The folder right below a chapter may not carry a name the doc service writes into it (`RESERVED_NAME`), and a file may not have the path of a folder of its set (`COLLIDING_NAME`); the site generator skips such a file of a set stored earlier instead of failing the build.
+- arc42 takes `pdf`, `txt`, `csv`, `json`, `yaml` and `yml` files beside its Markdown and images.
+- A link to such a file works: Docusaurus writes it with a trailing slash, and the service redirects that URL to the file instead of answering `404`.
+- New property `jeap.doc.custom.additional-asset-extensions` adds asset types to a Markdown set - see [Configuration](docs/configuration.md).
+
+## [3.1.0] - 2026-09-14
 
 - Uploaded HTML is published as a sandboxed microsite under `/microsites/`, framed in a page of the site - see [The documentation a team writes](docs/custom-documentation.md).
 - Every microsite HTML page gets one injected script: an in-memory storage and cookie shim for the sandboxed document.

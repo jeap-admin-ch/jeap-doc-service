@@ -24,11 +24,14 @@ final class MediaTypes {
     /**
      * What Spring's table has no entry for. The source maps come out of every documentation build, beside the
      * bundles. Markdown does not - the generator's {@code .md} files are its input and are not published - and
-     * the entry is kept for the uploaded custom documentation, which is served from the same bucket.
+     * the entry is kept for the uploaded custom documentation, which is served from the same bucket. So are
+     * the YAML files a page may link to.
      */
     private static final Map<String, String> ALSO_KNOWN = Map.of(
             "map", MediaType.APPLICATION_JSON_VALUE,
-            "md", "text/markdown");
+            "md", "text/markdown",
+            "yaml", "application/yaml",
+            "yml", "application/yaml");
 
     private MediaTypes() {
     }

@@ -72,9 +72,10 @@ public class StructureValidation {
         List<String> ignored = given.stream().filter(StructureValidation::isDropped).toList();
         List<String> checked = given.stream().filter(path -> !isDropped(path)).toList();
         boolean html = placement.sourceFormat() == SourceFormat.HTML;
-        // Markdown is bounded by its template's allowlist, a microsite by the instance's denylist: a
-        // microsite follows no template, and a build emits file types nobody listed in advance.
-        List<String> allowedExtensions = html ? List.of() : sorted(template.get().allowedFileExtensions());
+        // Markdown is bounded by its template's allowlist and what the instance adds to it, a microsite by the
+        // instance's denylist: a microsite follows no template, and a build emits file types nobody listed.
+        Set<String> allowed = allowedExtensionsOf(template.get());
+        List<String> allowedExtensions = html ? List.of() : sorted(allowed);
         List<String> refusedExtensions = html ? sorted(customProperties.getRefusedExtensions()) : List.of();
         List<String> allowedFolders = template.get().orderedChapters().stream()
                 .map(StructureChapter::folder)
@@ -90,10 +91,17 @@ public class StructureValidation {
         } else if (html) {
             findings.addAll(micrositeFindings(placement, template.get(), checked));
         } else {
-            findings.addAll(markdownFindings(placement, template.get(), checked));
+            findings.addAll(markdownFindings(placement, template.get(), allowed, checked));
         }
         return report(template.get().id(), checked.size(), ignored.size(), allowedFolders, allowedExtensions,
                 refusedExtensions, findings);
+    }
+
+    /** The template's extensions and the asset types this instance adds. The only place an extension is decided. */
+    private Set<String> allowedExtensionsOf(StructureTemplate template) {
+        Set<String> allowed = new HashSet<>(template.allowedFileExtensions());
+        allowed.addAll(customProperties.getAdditionalAssetExtensions());
+        return allowed;
     }
 
     /**
@@ -110,10 +118,11 @@ public class StructureValidation {
     // Guard clauses: one continue per rule, so the first finding about a path is the only one reported.
     @SuppressWarnings("java:S135")
     private List<StructureFinding> markdownFindings(DocumentationPlacement placement, StructureTemplate template,
-                                                    List<String> checked) {
+                                                    Set<String> allowed, List<String> checked) {
         List<StructureFinding> findings = new ArrayList<>();
         Set<String> duplicated = duplicatesOf(checked);
         Set<String> colliding = collidingDocumentsOf(checked);
+        Set<String> folders = foldersOf(checked);
         // Distinct, so a path that appears three times is one finding rather than three - and so that a
         // second guard against reporting it twice is not needed.
         for (String path : new LinkedHashSet<>(checked)) {
@@ -136,40 +145,92 @@ public class StructureValidation {
                 continue;
             }
             if (segments.length > 2) {
-                findings.add(StructureFinding.of(FindingCode.NESTED_FOLDER, path,
-                        ("'%s' is a folder inside a chapter. %s has no subfolders; the pages of a chapter lie "
-                         + "directly in it, and an image lies beside the page that shows it.")
-                                .formatted(segments[1], template.id())));
+                Optional<StructureFinding> folderFinding =
+                        folderFinding(path, segments, template, chapter.get(), placement);
+                if (folderFinding.isPresent()) {
+                    findings.add(folderFinding.get());
+                    continue;
+                }
+            }
+            if (folders.contains(path)) {
+                findings.add(StructureFinding.of(FindingCode.COLLIDING_NAME, path,
+                        ("'%s' is a file, and other files of the set lie in a folder of that name. One path "
+                         + "cannot be both, and the build of this part would fail writing it. Rename the file "
+                         + "or the folder.").formatted(segments[segments.length - 1])));
                 continue;
             }
-            nameFinding(path, segments[1], template, chapter.get(), placement, colliding)
-                    .ifPresent(findings::add);
+            nameFinding(path, segments[segments.length - 1], template, allowed, chapter.get(), placement,
+                    colliding).ifPresent(findings::add);
         }
         return findings;
     }
 
-    /** The rules about a file's own name: hidden, unpublishable, its extension, and what is reserved. */
-    private Optional<StructureFinding> nameFinding(String path, String name, StructureTemplate template,
-                                                   StructureChapter chapter, DocumentationPlacement placement,
-                                                   Set<String> colliding) {
+    /**
+     * The rules about the folders between a chapter and a file: only an asset lies in one, not too deep, each
+     * folder's name follows the rules of a file's name, and the folder right below the chapter is not one of
+     * the names the doc service writes there itself.
+     */
+    private static Optional<StructureFinding> folderFinding(String path, String[] segments,
+                                                            StructureTemplate template, StructureChapter chapter,
+                                                            DocumentationPlacement placement) {
+        String name = segments[segments.length - 1];
+        int depth = segments.length - 2;
+        if (DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(name))) {
+            return Optional.of(StructureFinding.of(FindingCode.NESTED_FOLDER, path,
+                    ("'%s' is a page in the folder '%s'. A page lies directly in its chapter; a folder inside "
+                     + "a chapter holds assets only.").formatted(name, segments[1])));
+        }
+        if (depth > MarkdownAssetRules.MAX_FOLDER_DEPTH) {
+            return Optional.of(StructureFinding.of(FindingCode.NESTED_FOLDER, path,
+                    "'%s' is %d folders below its chapter, and at most %d are allowed."
+                            .formatted(name, depth, MarkdownAssetRules.MAX_FOLDER_DEPTH)));
+        }
+        for (int i = 1; i < segments.length - 1; i++) {
+            Optional<StructureFinding> finding = prefixFinding(path, segments[i], "folder");
+            if (finding.isPresent()) {
+                return finding;
+            }
+        }
+        // Only the first folder: below it the tree is the set's own, and a generated group such as
+        // 'components' is a folder of the chapter, so an asset folder of that name would write into it.
+        if (ReservedNames.isTaken(template, chapter, placement.subject(), segments[1])) {
+            return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
+                    ("'%s' is a name the doc service writes into %s itself, and a folder of that name would put "
+                     + "this file among what it generates. Rename the folder.")
+                            .formatted(segments[1], chapter.folder())));
+        }
+        return Optional.empty();
+    }
+
+    /** A hidden or an underscore name, for a file and a folder alike. */
+    private static Optional<StructureFinding> prefixFinding(String path, String name, String kind) {
         if (name.startsWith(".")) {
             return Optional.of(StructureFinding.of(FindingCode.HIDDEN_NAME, path,
-                    ("'%s' is a hidden file. The ones a tool writes are ignored; this one was not, so it is "
-                     + "either a file that does not belong in the documentation or a page that needs a name.")
-                            .formatted(name)));
+                    ("'%s' is a hidden %s. The ones a tool writes are ignored; this one was not, so it is "
+                     + "either a %s that does not belong in the documentation or one that needs a name.")
+                            .formatted(name, kind, kind)));
         }
         if (name.startsWith("_")) {
-            // True of both readings: the site generator drops _*.md from a build, and the names it keeps for
-            // itself - _category_.json - are its own. Either way the upload succeeds and does not publish
-            // what the author meant.
+            // The site generator drops _*.md and _*/ from a build, and keeps _category_.json for itself.
             return Optional.of(StructureFinding.of(FindingCode.UNPUBLISHABLE_NAME, path,
-                    ("'%s' begins with an underscore, and the site generator keeps those names for itself: a "
-                     + "page of that name is left out of the build, and a navigation file of that name would "
-                     + "change the chapter. Either way the upload publishes something other than the page. "
-                     + "Rename it.").formatted(name)));
+                    ("'%s' begins with an underscore, and the site generator keeps those names for itself: "
+                     + "what carries one is left out of the build or changes the chapter. Either way the "
+                     + "upload publishes something other than what was meant. Rename the %s.")
+                            .formatted(name, kind)));
+        }
+        return Optional.empty();
+    }
+
+    /** The rules about a file's own name: hidden, unpublishable, its extension, and what is reserved. */
+    private Optional<StructureFinding> nameFinding(String path, String name, StructureTemplate template,
+                                                   Set<String> allowed, StructureChapter chapter,
+                                                   DocumentationPlacement placement, Set<String> colliding) {
+        Optional<StructureFinding> prefix = prefixFinding(path, name, "file");
+        if (prefix.isPresent()) {
+            return prefix;
         }
         String extension = extensionOf(name);
-        if (extension == null || !template.allowedFileExtensions().contains(extension)) {
+        if (extension == null || !allowed.contains(extension)) {
             return Optional.of(StructureFinding.of(FindingCode.FORBIDDEN_EXTENSION, path,
                     ("'%s' is not a file %s documents with. The extensions it takes are on this report.")
                             .formatted(extension == null ? name : "." + extension, template.id())));
@@ -378,6 +439,26 @@ public class StructureValidation {
     /** How a document of a chapter is named in {@link #collidingDocumentsOf}. */
     private static String documentKeyOf(String chapterFolder, String document) {
         return chapterFolder + "/" + document.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Every folder inside a chapter that a path of the set lies in, as {@code <chapter>/<folder>/...}.
+     * <p>
+     * A file at one of these paths would be a file and a folder at once - {@code 1-intro/a.png} beside
+     * {@code 1-intro/a.png/b.png} - which no file system writes.
+     */
+    private static Set<String> foldersOf(List<String> paths) {
+        Set<String> folders = new HashSet<>();
+        for (String path : paths) {
+            String[] segments = path.split("/");
+            StringBuilder folder = new StringBuilder(segments[0]);
+            // From the first folder below the chapter: the chapter itself is a folder every file lies in.
+            for (int i = 1; i < segments.length - 1; i++) {
+                folder.append('/').append(segments[i]);
+                folders.add(folder.toString());
+            }
+        }
+        return folders;
     }
 
     private static Set<String> duplicatesOf(List<String> paths) {

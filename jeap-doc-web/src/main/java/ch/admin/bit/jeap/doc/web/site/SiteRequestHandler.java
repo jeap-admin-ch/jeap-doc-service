@@ -113,6 +113,10 @@ public class SiteRequestHandler implements HttpRequestHandler {
             redirectToTheCanonicalForm(request, response);
             return;
         }
+        if (isAFileAddressedWithATrailingSlash(sitePath, path, siteId)) {
+            redirectToTheFile(request, response);
+            return;
+        }
         // The site is recorded as published and its own front page is not there. That is not a wrong URL - the
         // objects are gone, removed out of step with the row it is still recorded in - and answering 404 would
         // send an operator looking for a typo.
@@ -151,6 +155,33 @@ public class SiteRequestHandler implements HttpRequestHandler {
     private boolean isARouteMissingItsTrailingSlash(SitePath sitePath, String path, String siteId) {
         return sitePath.looksLikeADirectory() && !path.endsWith("/")
                && documentation.exists(siteId, sitePath.file() + "/" + SitePath.INDEX);
+    }
+
+    /**
+     * A file a page links to rather than shows - a PDF, a JSON or a YAML file - and addressed as a route.
+     * <p>
+     * <b>Docusaurus writes such a link with a trailing slash.</b> With {@code trailingSlash: true} its links get
+     * one, the files it emits under {@code assets/files/} included, so {@code spec-1a2b.pdf/} would be looked up as
+     * a directory's {@code index.html} and a reader following the link would get the not-found page. The file is
+     * checked first, for the same reason as the route above: a 301 is cached for ever.
+     */
+    private boolean isAFileAddressedWithATrailingSlash(SitePath sitePath, String path, String siteId) {
+        String suffix = "/" + SitePath.INDEX;
+        // The path as requested: '…/spec.pdf/index.html' written out is a request for that index, not for the file.
+        if (!path.endsWith("/") || !sitePath.file().endsWith(suffix)) {
+            return false;
+        }
+        SitePath file = new SitePath(sitePath.site(),
+                sitePath.file().substring(0, sitePath.file().length() - suffix.length()));
+        return !file.file().isEmpty() && !file.looksLikeADirectory() && documentation.exists(siteId, file.file());
+    }
+
+    private static void redirectToTheFile(HttpServletRequest request, HttpServletResponse response) {
+        response.setStatus(HttpStatus.MOVED_PERMANENTLY.value());
+        String uri = request.getRequestURI();
+        String query = request.getQueryString();
+        response.setHeader(HttpHeaders.LOCATION,
+                uri.substring(0, uri.length() - 1) + (query == null ? "" : "?" + query));
     }
 
     private static void redirectToTheCanonicalForm(HttpServletRequest request, HttpServletResponse response) {

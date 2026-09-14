@@ -89,13 +89,13 @@ class UploadValidationEnforcementIT extends DocServiceIntegrationTestBase {
     }
 
     @Test
-    void upload_ofAFolderInsideAChapter_isRefused() throws Exception {
+    void upload_ofAPageInAFolderInsideAChapter_isRefused() throws Exception {
         refuse("NESTED_FOLDER", "1-intro/deeper/page.md");
     }
 
     @Test
     void upload_ofAFileNoTemplateAccepts_isRefused() throws Exception {
-        refuse("FORBIDDEN_EXTENSION", "1-intro/notes.txt");
+        refuse("FORBIDDEN_EXTENSION", "1-intro/budget.xlsx");
     }
 
     /**

@@ -24,6 +24,8 @@ class MediaTypesTest {
             "search-index.json, application/json;charset=UTF-8",
             "sitemap.xml,       application/xml;charset=UTF-8",
             "robots.txt,        text/plain;charset=UTF-8",
+            "samples.csv,       text/csv;charset=UTF-8",
+            "api-spec.pdf,      application/pdf",
             // SVG is XML, so it carries the charset like the other text types.
             "logo.svg,          image/svg+xml;charset=UTF-8",
             "favicon.ico,       image/x-icon",
@@ -35,12 +37,14 @@ class MediaTypesTest {
     }
 
     /**
-     * The two Spring's table has no entry for, and which a documentation build does emit.
+     * The ones Spring's table has no entry for: what a documentation build emits, and YAML a page links to.
      */
     @ParameterizedTest
     @CsvSource({
             "main.js.map,      application/json;charset=UTF-8",
-            "architecture.md,  text/markdown;charset=UTF-8"})
+            "architecture.md,  text/markdown;charset=UTF-8",
+            "config.yaml,      application/yaml",
+            "config.yml,       application/yaml"})
     void of_whenSpringHasNoEntry_thenTheOnesKeptHereAnswer(String fileName, String expected) {
         assertThat(MediaTypes.of(fileName)).isEqualTo(expected);
     }

@@ -161,6 +161,31 @@ class UploadedSetTest {
     }
 
     @Test
+    void anAssetInAFolder_belongsToTheChapterItLiesIn() {
+        String path = "5-building-block-view/img/a/overview.png";
+        List<CustomPage> pages = UploadedSet.pagesOf(List.of(path), new Titles(Map.of()));
+
+        assertThat(pages).singleElement().satisfies(asset -> {
+            assertThat(asset.chapter()).isEqualTo("5-building-block-view");
+            assertThat(asset.fileName()).isEqualTo("img/a/overview.png");
+            assertThat(asset.asset()).isTrue();
+            assertThat(asset.path()).isEqualTo(path);
+        });
+    }
+
+    /** Split at the last slash, the asset was placed in a chapter called {@code 5-building-block-view/img}. */
+    @Test
+    void anAssetInAFolder_isAmongTheAssetsOfItsChapter() {
+        List<CustomPage> pages = UploadedSet.pagesOf(
+                List.of("5-building-block-view/design.md", "5-building-block-view/img/overview.png"),
+                new Titles(Map.of("5-building-block-view/design.md", "Design")));
+        CustomSet set = new CustomSet(1L, null, null, 1L, "current/whatever", "abc", 10, null, pages);
+
+        assertThat(set.assetsOf("5-building-block-view"))
+                .extracting(CustomPage::path).containsExactly("5-building-block-view/img/overview.png");
+    }
+
+    @Test
     void aFileBelongingToNoChapter_isNotPlaced() {
         List<CustomPage> pages = UploadedSet.pagesOf(List.of("README.md", "1-intro/goals.md"),
                 new Titles(Map.of("1-intro/goals.md", "Goals")));

@@ -272,7 +272,7 @@ a different one.
   "pathsChecked": 42,
   "pathsIgnored": 2,
   "allowedFolders": ["1-intro", "2-constraints", "…", "12-glossary"],
-  "allowedExtensions": ["avif", "gif", "jpeg", "jpg", "md", "png", "svg", "webp"],
+  "allowedExtensions": ["avif", "csv", "gif", "jpeg", "jpg", "json", "md", "pdf", "png", "svg", "txt", "webp", "yaml", "yml"],
   "refusedExtensions": [],
   "findings": [],
   "findingsOmitted": 0

@@ -10,17 +10,23 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -46,6 +52,7 @@ class CustomDocsGenerationIT extends DocServiceIntegrationTestBase {
     private static final String SITE = "uploaded";
     private static final String SYSTEM = "catalog";
     private static final String COMPONENT = "catalog-search";
+    private static final String ASSET_COMPONENT = "catalog-media";
     private static final String BASE = "/site/" + SITE;
 
     /** A tick builds one part, and this site has a shell and one system. */
@@ -276,6 +283,113 @@ class CustomDocsGenerationIT extends DocServiceIntegrationTestBase {
                 .andExpect(status().isNotFound());
         mockMvc.perform(get(BASE + "/systems/" + SYSTEM + "/system-architecture/intro/goals/"))
                 .andExpect(status().isOk());
+    }
+
+    /**
+     * <b>What a page shows or links to arrives with it, from a folder inside the chapter.</b> The upload takes
+     * the files, the writer puts them in their folders, and Docusaurus has to resolve every reference relative
+     * to the page and emit each file under a URL of its own - which only a real build says, and only the served
+     * files prove.
+     * <p>
+     * <b>The picture is over 10 KB on purpose.</b> Docusaurus inlines a smaller image into the page as a data
+     * URL, and an inlined picture would pass without any file having been published.
+     */
+    @Test
+    @Order(50)
+    void theAssetsOfAPage_areServedFromTheFoldersTheyWereUploadedIn() throws Exception {
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        files.put("1-intro/pictures.md", ("""
+                ---
+                title: Pictures and files
+                description: written by the team
+                ---
+
+                # Pictures and files
+
+                ![The overview](img/diagrams/overview.png)
+
+                [The specification](files/spec.pdf), [a sample](files/data/sample.json) and
+                [the configuration](config.yaml).
+                """).getBytes(StandardCharsets.UTF_8));
+        files.put("1-intro/img/diagrams/overview.png", picture());
+        files.put("1-intro/files/spec.pdf", "%PDF-1.4\n% the specification\n".getBytes(StandardCharsets.UTF_8));
+        files.put("1-intro/files/data/sample.json", "{\"sample\": true}\n".getBytes(StandardCharsets.UTF_8));
+        files.put("1-intro/config.yaml", "timeout: 5s\n".getBytes(StandardCharsets.UTF_8));
+        Map<String, String> parameters = componentDocs();
+        parameters.put("component", ASSET_COMPONENT);
+        upload(parameters, zipOf(files));
+
+        String route = BASE + "/systems/" + SYSTEM + "/system-architecture/building-block-view/components/"
+                       + ASSET_COMPONENT + "/component-architecture/intro/pictures/";
+        buildUntilServed(route);
+        String page = mockMvc.perform(get(route)).andReturn().getResponse().getContentAsString();
+
+        assertServed(page, "src", "overview", "png", files.get("1-intro/img/diagrams/overview.png"), "image/png");
+        assertServed(page, "href", "spec", "pdf", files.get("1-intro/files/spec.pdf"), "application/pdf");
+        assertServed(page, "href", "sample", "json", files.get("1-intro/files/data/sample.json"),
+                "application/json");
+        assertServed(page, "href", "config", "yaml", files.get("1-intro/config.yaml"), "application/yaml");
+    }
+
+    /**
+     * The file the page references is published as a file of its own and served as it was uploaded.
+     * <p>
+     * <b>Followed the way a browser follows it.</b> Docusaurus names the emitted file after the uploaded one
+     * with a content hash, writes the attribute unquoted where it can, and gives a link the trailing slash of a
+     * route - which the service answers with a redirect to the file.
+     */
+    private void assertServed(String page, String attribute, String name, String extension, byte[] uploaded,
+                              String mediaType) throws Exception {
+        Matcher matcher = Pattern.compile(attribute + "=\"?([^\"\\s>]*/" + name + "[^\"\\s>/]*\\." + extension
+                                          + "/?)[\"\\s>]").matcher(page);
+        assertThat(matcher.find()).describedAs("the page references %s.%s", name, extension).isTrue();
+        String location = matcher.group(1);
+        assertThat(location).describedAs("published as a file of its own rather than inlined into the page")
+                .startsWith(BASE + "/");
+
+        MockHttpServletResponse served = mockMvc.perform(get(location)).andReturn().getResponse();
+        if (served.getStatus() == 301) {
+            location = served.getHeader("Location");
+            served = mockMvc.perform(get(location)).andReturn().getResponse();
+        }
+        assertThat(served.getStatus()).describedAs("%s is served", location).isEqualTo(200);
+        assertThat(served.getContentType()).describedAs("the media type of %s", location).contains(mediaType);
+        assertThat(served.getContentAsByteArray()).describedAs("%s as it was uploaded", location)
+                .isEqualTo(uploaded);
+    }
+
+    private static byte[] zipOf(Map<String, byte[]> files) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            for (Map.Entry<String, byte[]> file : files.entrySet()) {
+                ZipEntry entry = new ZipEntry(file.getKey());
+                entry.setTime(0L);
+                zip.putNextEntry(entry);
+                zip.write(file.getValue());
+                zip.closeEntry();
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return bytes.toByteArray();
+    }
+
+    /** A PNG of noise, which does not compress below the size Docusaurus would inline. */
+    private static byte[] picture() {
+        BufferedImage image = new BufferedImage(128, 128, BufferedImage.TYPE_INT_RGB);
+        Random random = new Random(7);
+        for (int x = 0; x < image.getWidth(); x++) {
+            for (int y = 0; y < image.getHeight(); y++) {
+                image.setRGB(x, y, random.nextInt(0x1000000));
+            }
+        }
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try {
+            ImageIO.write(image, "png", bytes);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return bytes.toByteArray();
     }
 
     /**

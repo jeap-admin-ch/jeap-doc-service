@@ -21,7 +21,7 @@ public enum FindingCode {
     /** The first segment is not a chapter folder of the named template. */
     UNKNOWN_CHAPTER,
 
-    /** A folder inside a chapter. The pages of a chapter lie directly in it. */
+    /** A page in a folder inside a chapter, or an asset more than five folders below it. */
     NESTED_FOLDER,
 
     /**

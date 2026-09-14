@@ -297,6 +297,91 @@ class CustomPagesWriterTest {
         assertThat(Files.readAllBytes(chapterDirectory.resolve("sketch.png"))).isEqualTo(png);
     }
 
+    @Test
+    void writeInto_whenAnAssetLiesInAFolder_thenItIsWrittenThereWithItsFolders() throws IOException {
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G'};
+        CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
+                page("1-intro", "why.md", "Why", 1),
+                new CustomPage("1-intro", "img/a/overview.png", null, 0, true));
+        InMemoryStorage storage = new InMemoryStorage()
+                .with(set, "1-intro/why.md", "# Why\n")
+                .withBytes(set, "1-intro/img/a/overview.png", png);
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
+            writer.writeInto(SYSTEM, "1-intro", chapterDirectory);
+        }
+
+        assertThat(Files.readAllBytes(chapterDirectory.resolve("img/a/overview.png"))).isEqualTo(png);
+    }
+
+    /** A stored path went through the upload's checks. This is the backstop if one did not. */
+    @Test
+    void writeInto_whenAnAssetPathLeavesTheChapter_thenItIsNotWritten() {
+        CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
+                page("1-intro", "why.md", "Why", 1),
+                new CustomPage("1-intro", "img/../../escaped.png", null, 0, true));
+        InMemoryStorage storage = new InMemoryStorage()
+                .with(set, "1-intro/why.md", "# Why\n")
+                .with(set, "1-intro/img/../../escaped.png", "not really a png");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
+            writer.writeInto(SYSTEM, "1-intro", chapterDirectory);
+        }
+
+        assertThat(chapterDirectory.resolveSibling("escaped.png")).doesNotExist();
+        assertThat(chapterDirectory.resolve("why.md")).exists();
+    }
+
+    /**
+     * <b>A name that is a file and a folder costs that file, not the build.</b> The upload refuses such a set;
+     * one stored before it did would otherwise fail the whole part on an I/O error.
+     */
+    @Test
+    void writeInto_whenAPathIsAFileAndAFolder_thenThatFileIsLeftOutAndTheRestIsWritten() {
+        CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
+                page("1-intro", "why.md", "Why", 1),
+                new CustomPage("1-intro", "why.md/sketch.png", null, 0, true),
+                new CustomPage("1-intro", "a.png", null, 0, true),
+                new CustomPage("1-intro", "a.png/b.png", null, 0, true),
+                new CustomPage("1-intro", "img/overview.png", null, 0, true));
+        InMemoryStorage storage = new InMemoryStorage()
+                .with(set, "1-intro/why.md", "# Why\n")
+                .with(set, "1-intro/why.md/sketch.png", "not really a png")
+                .with(set, "1-intro/a.png", "not really a png")
+                .with(set, "1-intro/a.png/b.png", "not really a png")
+                .with(set, "1-intro/img/overview.png", "not really a png");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
+            assertThat(writer.writeInto(SYSTEM, "1-intro", chapterDirectory)).isEqualTo(1);
+        }
+
+        assertThat(chapterDirectory.resolve("why.md")).isRegularFile();
+        assertThat(chapterDirectory.resolve("a.png")).isRegularFile();
+        assertThat(chapterDirectory.resolve("img/overview.png")).isRegularFile();
+    }
+
+    /** A folder the template generates into the chapter is its own, and an asset is not written into it. */
+    @Test
+    void writeInto_whenAnAssetLiesInAFolderTheTemplateGenerates_thenItIsNotWritten() {
+        CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
+                page("1-intro", "why.md", "Why", 1),
+                new CustomPage("1-intro", "whitebox/overview.png", null, 0, true),
+                new CustomPage("1-intro", "img/whitebox/overview.png", null, 0, true));
+        InMemoryStorage storage = new InMemoryStorage()
+                .with(set, "1-intro/why.md", "# Why\n")
+                .with(set, "1-intro/whitebox/overview.png", "not really a png")
+                .with(set, "1-intro/img/whitebox/overview.png", "not really a png");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
+            writer.writeInto(SYSTEM, "1-intro", chapterDirectory);
+        }
+
+        assertThat(chapterDirectory.resolve("whitebox")).doesNotExist();
+        assertThat(chapterDirectory.resolve("img/whitebox/overview.png"))
+                .describedAs("deeper down the tree is the set's own")
+                .exists();
+    }
+
     /**
      * <b>A set whose object is gone costs that set, and is only looked for once.</b> A removal deletes the
      * object straight after the row, and so does an upload that replaced one - while a build that has already

@@ -1043,8 +1043,8 @@ class Arc42SystemTreeTest {
      * without being declared fails here, in the module that added it, rather than as a duplicate route in a
      * site build twenty minutes after somebody uploaded a page of the same name.
      * <p>
-     * The chapter's own level and no deeper - that is the level an upload can write to, because a chapter has
-     * no subfolders.
+     * The chapter's own level and no deeper - that is the level an uploaded page lies at. An asset may lie
+     * deeper, and an asset occupies no name.
      */
     @Test
     void everyFileWrittenIntoAChapterIsAReservedName() throws IOException {

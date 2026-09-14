@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.domain.custom;
 import ch.admin.bit.jeap.doc.domain.port.BundleLimits;
 import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
+import ch.admin.bit.jeap.doc.domain.upload.validation.MarkdownAssetRules;
 import ch.admin.bit.jeap.doc.domain.upload.validation.MicrositeRules;
 import jakarta.annotation.PostConstruct;
 import lombok.Data;
@@ -43,10 +44,15 @@ public class CustomProperties {
      * <p>
      * A microsite follows no template, so there is no allowlist to bound it: a build emits file types
      * nobody listed in advance. This refuses what has no business in documentation - see
-     * {@link MicrositeRules#REFUSED_BY_DEFAULT}. A markdown set is bounded by its template's own list,
-     * which no property widens.
+     * {@link MicrositeRules#REFUSED_BY_DEFAULT}.
      */
     private Set<String> refusedExtensions = MicrositeRules.REFUSED_BY_DEFAULT;
+
+    /**
+     * Asset types a Markdown set may carry on top of its template's list. It only adds, and it cannot add
+     * anything on {@link MarkdownAssetRules#NEVER_ALLOWED}. An HTML microsite ignores it.
+     */
+    private Set<String> additionalAssetExtensions = Set.of();
 
     /**
      * What a bundle may hold, for whoever reads one. The path count is the validation's own bound, and it
@@ -63,9 +69,30 @@ public class CustomProperties {
         refusedExtensions = refusedExtensions.stream()
                 .map(extension -> extension.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toUnmodifiableSet());
+        additionalAssetExtensions = normalized(additionalAssetExtensions);
+        for (String extension : additionalAssetExtensions) {
+            if (MarkdownAssetRules.NEVER_ALLOWED.contains(extension)) {
+                throw new IllegalStateException(("jeap.doc.custom.additional-asset-extensions names '%s', which "
+                        + "can never be an asset: it is a page type, a document or code the site would render or "
+                        + "run, or an executable.").formatted(extension));
+            }
+        }
         if (maxUnpackedSize.toBytes() < 1) {
             throw new IllegalStateException("jeap.doc.custom.max-unpacked-size is " + maxUnpackedSize
                                             + ". A documentation set holds at least one file.");
         }
+    }
+
+    /** Lower-cased, without a leading dot, and without blank entries. */
+    private static Set<String> normalized(Set<String> extensions) {
+        if (extensions == null) {
+            return Set.of();
+        }
+        return extensions.stream()
+                .filter(extension -> extension != null && !extension.isBlank())
+                .map(extension -> extension.strip().toLowerCase(Locale.ROOT))
+                .map(extension -> extension.startsWith(".") ? extension.substring(1) : extension)
+                .filter(extension -> !extension.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
     }
 }

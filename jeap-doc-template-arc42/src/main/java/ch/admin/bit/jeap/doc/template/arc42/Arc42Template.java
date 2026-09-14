@@ -87,7 +87,7 @@ public class Arc42Template implements StructureTemplate {
             List.of(INTRODUCTION, CONTEXT_AND_SCOPE, BUILDING_BLOCK_VIEW, RUNTIME_VIEW);
 
     /**
-     * Markdown, and the pictures that have no source.
+     * Markdown, the pictures that have no source, and the files a page links to.
      * <p>
      * A page that cannot show a screenshot is a page a team keeps in Confluence, which is what this enabler
      * is against. {@code mdx} is not here and must not be: MDX is a programming language, and documentation
@@ -95,10 +95,15 @@ public class Arc42Template implements StructureTemplate {
      * <p>
      * <b>A diagram is still better as a fenced block</b>: PlantUML, Mermaid and GraphViz are rendered from
      * their source in the reader's browser, so they stay diffable, searchable and legible in both themes. An
-     * uploaded picture of a diagram is none of those. This list is for the screenshots and the scans.
+     * uploaded picture of a diagram is none of those. The image formats are for the screenshots and the scans.
+     * <p>
+     * The rest are files a page links to rather than shows: a specification, sample data, an example payload
+     * or configuration. An instance may add more - see {@code jeap.doc.custom.additional-asset-extensions}.
      */
-    static final Set<String> ALLOWED_FILE_EXTENSIONS =
-            Set.of("md", "png", "jpg", "jpeg", "gif", "webp", "avif", "svg");
+    static final Set<String> ALLOWED_FILE_EXTENSIONS = Set.of(
+            "md",
+            "png", "jpg", "jpeg", "gif", "webp", "avif", "svg",
+            "pdf", "txt", "csv", "json", "yaml", "yml");
 
     @Override
     public String id() {

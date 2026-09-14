@@ -194,21 +194,97 @@ class StructureValidationTest {
     }
 
     @Test
-    void aFolderInsideAChapter_isRefused() {
+    void aPageInAFolderInsideAChapter_isRefused() {
         StructureReport report = validate(systemDocs(), "5-building-block-view/notes/design.md");
 
         assertThat(codesOf(report)).containsExactly(FindingCode.NESTED_FOLDER);
-        assertThat(report.findings().getFirst().message()).contains("notes").contains("beside the page");
+        assertThat(report.findings().getFirst().message()).contains("notes").contains("assets only");
+        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/notes/DESIGN.MD")))
+                .describedAs("the extension is folded")
+                .containsExactly(FindingCode.NESTED_FOLDER);
+    }
+
+    @Test
+    void anAssetInAFolderInsideAChapter_isAccepted() {
+        assertThat(codesOf(validate(systemDocs(),
+                "5-building-block-view/design.md",
+                "5-building-block-view/img/overview.png",
+                "5-building-block-view/img/a/b/c/d/deep.png"))).isEmpty();
+    }
+
+    @Test
+    void anAssetMoreThanFiveFoldersBelowItsChapter_isRefused() {
+        StructureReport report = validate(systemDocs(), "5-building-block-view/img/a/b/c/d/e/deeper.png");
+
+        assertThat(codesOf(report)).containsExactly(FindingCode.NESTED_FOLDER);
+        assertThat(report.findings().getFirst().message()).contains("6 folders").contains("at most 5");
+    }
+
+    @Test
+    void aFolderWithAHiddenOrAnUnderscoreName_isRefusedLikeAFile() {
+        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/.cache/overview.png")))
+                .containsExactly(FindingCode.HIDDEN_NAME);
+        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/img/_drafts/sketch.png")))
+                .containsExactly(FindingCode.UNPUBLISHABLE_NAME);
     }
 
     /**
-     * <b>The images folder a repository reaches for by habit.</b> It is the most likely mistake of all, so the
-     * message has to say where the picture goes instead.
+     * <b>One path cannot be a file and a folder.</b> Each of these paths passes every rule alone, and the
+     * build that writes them fails on an I/O error - so the file is named, and which of the two to rename is
+     * the author's choice.
      */
     @Test
-    void theImagesFolder_isRefusedWithSomewhereToPutThePicture() {
-        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/images/overview.png")))
-                .containsExactly(FindingCode.NESTED_FOLDER);
+    void aFileOfTheNameOfAFolderOfTheSet_collides() {
+        assertThat(validate(systemDocs(), "5-building-block-view/a.png", "5-building-block-view/a.png/b.png")
+                .findings())
+                .extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactly(tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/a.png"));
+        assertThat(validate(systemDocs(), "1-intro/goals.md", "1-intro/goals.md/img/x.png").findings())
+                .extracting(StructureFinding::code, StructureFinding::path)
+                .describedAs("a page too, and a folder deeper down")
+                .containsExactly(tuple(FindingCode.COLLIDING_NAME, "1-intro/goals.md"));
+        assertThat(validate(systemDocs(), "1-intro/img.png", "4-solution-strategy/img.png/x.png").findings())
+                .describedAs("but only within one chapter")
+                .isEmpty();
+    }
+
+    /**
+     * <b>A folder right below the chapter may not carry a name the doc service writes there.</b> A generated
+     * group such as a system's {@code components} is a folder of the chapter, and an asset folder of that name
+     * would write into it; a folder of a generated page's or the landing page's name would sit where that file
+     * is written.
+     */
+    @Test
+    void aFolderOfANameTheGeneratorWrites_isRefused() {
+        StructureReport report = validate(systemDocs(), "5-building-block-view/whitebox-view/x.png");
+
+        assertThat(codesOf(report)).containsExactly(FindingCode.RESERVED_NAME);
+        assertThat(report.findings().getFirst().message()).contains("whitebox-view")
+                .contains("5-building-block-view").contains("folder");
+        assertThat(codesOf(validate(systemDocs(), "1-intro/index.md/x.png")))
+                .describedAs("the landing page, which is written after the uploaded files")
+                .containsExactly(FindingCode.RESERVED_NAME);
+        assertThat(validate(systemDocs(), "5-building-block-view/img/whitebox-view/x.png").findings())
+                .describedAs("deeper down the tree is the set's own")
+                .isEmpty();
+        assertThat(validate(componentDocs(), "5-building-block-view/whitebox-view/x.png").findings())
+                .describedAs("and what is reserved depends on the kind of subject, as for a page")
+                .isEmpty();
+    }
+
+    @Test
+    void aFileNoToolWroteInAFolder_isStillIgnored() {
+        StructureReport report = validate(systemDocs(),
+                "5-building-block-view/design.md", "5-building-block-view/img/.DS_Store");
+
+        assertThat(codesOf(report)).isEmpty();
+        assertThat(report.pathsIgnored()).isEqualTo(1);
+    }
+
+    @Test
+    void anAssetInAFolder_isStillCheckedForItsExtension() {
+        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/img/tool.exe")))
+                .containsExactly(FindingCode.FORBIDDEN_EXTENSION);
     }
 
     @Test
@@ -459,6 +535,29 @@ class StructureValidationTest {
         assertThat(report.findings()).hasSize(2);
         assertThat(report.findingsOmitted()).isEqualTo(2);
         assertThat(codesOf(report)).containsOnly(FindingCode.FILE_OUTSIDE_CHAPTER);
+    }
+
+    @Test
+    void anAssetTypeTheInstanceAdds_isAcceptedAndReported() {
+        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/files/budget.xlsx")))
+                .describedAs("not without the property")
+                .containsExactly(FindingCode.FORBIDDEN_EXTENSION);
+
+        customProperties.setAdditionalAssetExtensions(Set.of("xlsx"));
+        StructureReport report = validate(systemDocs(), "5-building-block-view/files/budget.xlsx");
+
+        assertThat(report.findings()).isEmpty();
+        assertThat(report.allowedExtensions()).containsExactly("md", "png", "xlsx");
+    }
+
+    @Test
+    void anAssetTypeTheInstanceAdds_doesNotChangeAMicrosite() {
+        customProperties.setAdditionalAssetExtensions(Set.of("exe"));
+
+        StructureReport report = validate(html("5-building-block-view"), "index.html", "install.exe");
+
+        assertThat(codesOf(report)).containsExactly(FindingCode.FORBIDDEN_EXTENSION);
+        assertThat(report.allowedExtensions()).isEmpty();
     }
 
     @Test

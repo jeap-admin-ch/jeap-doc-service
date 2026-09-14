@@ -92,13 +92,14 @@ class Arc42TemplateTest {
     }
 
     /**
-     * The extensions an upload may carry. Markdown and the pictures that have no source - a page that cannot
-     * show a screenshot is a page a team keeps in Confluence.
+     * The extensions an upload may carry: Markdown, the image formats, and the files a page links to.
      */
     @Test
-    void allowedFileExtensions_areMarkdownAndTheImageFormats() {
-        assertThat(template.allowedFileExtensions())
-                .containsExactlyInAnyOrder("md", "png", "jpg", "jpeg", "gif", "webp", "avif", "svg");
+    void allowedFileExtensions_areMarkdownTheImageFormatsAndLinkedFiles() {
+        assertThat(template.allowedFileExtensions()).containsExactlyInAnyOrder(
+                "md",
+                "png", "jpg", "jpeg", "gif", "webp", "avif", "svg",
+                "pdf", "txt", "csv", "json", "yaml", "yml");
     }
 
     /**
@@ -107,7 +108,8 @@ class Arc42TemplateTest {
      */
     @Test
     void allowedFileExtensions_doNotIncludeMdx() {
-        assertThat(template.allowedFileExtensions()).doesNotContain("mdx", "html", "json", "js");
+        // json is allowed: _category_.json and _category_.yml are refused for their underscore, not their type.
+        assertThat(template.allowedFileExtensions()).doesNotContain("mdx", "html", "js");
     }
 
     /** What the template writes for a system, chapter by chapter - the names an upload may not reuse. */
