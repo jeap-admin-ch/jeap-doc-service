@@ -1,7 +1,6 @@
 package ch.admin.bit.jeap.doc.template.arc42;
 
 import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
-import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
@@ -118,7 +117,7 @@ final class Arc42LibraryPages {
                                       CustomSubject library, GenerationContext context, Path structure)
             throws IOException {
         Path introduction = Arc42Pages.chapterDirectory(template, structure, INTRODUCTION);
-        Optional<CustomSet> set = system.custom().setOf(library);
+        Optional<CustomProvenance> uploaded = system.custom().provenanceOf(library);
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generatedWithoutTheModel("Library Overview", 0, context))
                 .heading(1, "Library Overview")
@@ -129,7 +128,7 @@ final class Arc42LibraryPages {
         rows.add(List.of(Md.text("Library"), Md.code(library.name())));
         rows.add(List.of(Md.text("System"),
                 Md.link(DocumentationPaths.system(system.slug()), system.name())));
-        set.map(CustomSet::provenance).ifPresent(provenance -> {
+        uploaded.ifPresent(provenance -> {
             rows.add(List.of(Md.text("Version"), Md.textOr(provenance.version(), "not stated")));
             rows.add(List.of(Md.text("Repository"), Md.code(provenance.sourceRepository())));
             rows.add(List.of(Md.text("Branch or tag"), Md.code(provenance.sourceRef())));
@@ -181,6 +180,6 @@ final class Arc42LibraryPages {
     }
 
     private static Optional<String> versionOf(SystemDocumentation system, CustomSubject library) {
-        return system.custom().setOf(library).map(CustomSet::provenance).map(CustomProvenance::version);
+        return system.custom().provenanceOf(library).map(CustomProvenance::version);
     }
 }

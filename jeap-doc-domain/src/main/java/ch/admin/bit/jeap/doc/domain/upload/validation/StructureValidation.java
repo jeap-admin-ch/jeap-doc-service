@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.upload.validation;
 
 import ch.admin.bit.jeap.doc.domain.Slugs;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.NumberPrefixes;
 import ch.admin.bit.jeap.doc.domain.template.ReservedNames;
@@ -48,6 +49,7 @@ public class StructureValidation {
 
     private final StructureTemplates templates;
     private final UploadProperties properties;
+    private final CustomProperties customProperties;
 
     /**
      * Checks a tree against where it would be placed.
@@ -61,7 +63,7 @@ public class StructureValidation {
         if (template.isEmpty()) {
             // Nothing else can be said: the chapters, the extensions and the generated names are all the
             // template's, and there is none.
-            return report(placement.template(), 0, 0, List.of(), List.of(),
+            return report(placement.template(), 0, 0, List.of(), List.of(), List.of(),
                     List.of(StructureFinding.ofTree(FindingCode.UNKNOWN_TEMPLATE,
                             "'%s' is not a structure template of this doc service. It offers %s."
                                     .formatted(placement.template(), String.join(", ", sorted(templates.ids()))))));
@@ -70,8 +72,10 @@ public class StructureValidation {
         List<String> ignored = given.stream().filter(StructureValidation::isDropped).toList();
         List<String> checked = given.stream().filter(path -> !isDropped(path)).toList();
         boolean html = placement.sourceFormat() == SourceFormat.HTML;
-        List<String> allowedExtensions =
-                sorted(html ? MicrositeRules.allowedFileExtensions() : template.get().allowedFileExtensions());
+        // Markdown is bounded by its template's allowlist, a microsite by the instance's denylist: a
+        // microsite follows no template, and a build emits file types nobody listed in advance.
+        List<String> allowedExtensions = html ? List.of() : sorted(template.get().allowedFileExtensions());
+        List<String> refusedExtensions = html ? sorted(customProperties.getRefusedExtensions()) : List.of();
         List<String> allowedFolders = template.get().orderedChapters().stream()
                 .map(StructureChapter::folder)
                 .toList();
@@ -89,7 +93,7 @@ public class StructureValidation {
             findings.addAll(markdownFindings(placement, template.get(), checked));
         }
         return report(template.get().id(), checked.size(), ignored.size(), allowedFolders, allowedExtensions,
-                findings);
+                refusedExtensions, findings);
     }
 
     /**
@@ -223,11 +227,17 @@ public class StructureValidation {
                 findings.add(pathFinding.get());
                 continue;
             }
+            if (MicrositeRules.SEARCH_TEXT.equals(path)) {
+                findings.add(StructureFinding.of(FindingCode.RESERVED_PATH, path,
+                        ("'%s' is written by the doc service itself, beside the files of this set, and a "
+                         + "set may not carry it. Rename the file.").formatted(MicrositeRules.SEARCH_TEXT)));
+                continue;
+            }
             String extension = extensionOf(path.substring(path.lastIndexOf('/') + 1));
-            if (!MicrositeRules.allows(extension)) {
+            if (!MicrositeRules.allows(extension, customProperties.getRefusedExtensions())) {
                 findings.add(StructureFinding.of(FindingCode.FORBIDDEN_EXTENSION, path,
-                        ("'%s' is not a file a published microsite is made of. The extensions it may carry "
-                         + "are on this report.").formatted(extension == null ? path : "." + extension)));
+                        ("'.%s' is not a file a published microsite may carry. The extensions it refuses "
+                         + "are on this report.").formatted(extension)));
             }
         }
         if (checked.stream().noneMatch(MicrositeRules.ENTRY_POINT::equals)) {
@@ -383,11 +393,12 @@ public class StructureValidation {
 
     /** Orders the findings, applies the cap, and says how many it left out. */
     private StructureReport report(String template, int checked, int ignored, List<String> folders,
-                                   List<String> extensions, List<StructureFinding> findings) {
+                                   List<String> extensions, List<String> refused,
+                                   List<StructureFinding> findings) {
         List<StructureFinding> ordered = findings.stream().sorted(StructureReport.ORDER).toList();
         int max = properties.getValidation().getMaxFindings();
         List<StructureFinding> kept = ordered.size() <= max ? ordered : ordered.subList(0, max);
-        return new StructureReport(template, checked, ignored, folders, extensions, kept,
+        return new StructureReport(template, checked, ignored, folders, extensions, refused, kept,
                 ordered.size() - kept.size());
     }
 }

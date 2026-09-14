@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * What ends up in the search index, page by page.
@@ -304,7 +305,7 @@ class SearchRecordsTest {
         page("prod/about-this-documentation.md", "About This Documentation", "What this is.");
 
         assertThat(records().getFirst().system()).isNull();
-        assertThat(records().getFirst().component()).isNull();
+        assertThat(records().getFirst().name()).isNull();
     }
 
     /**
@@ -319,7 +320,7 @@ class SearchRecordsTest {
 
         SearchRecord record = records().getFirst();
         assertThat(record.system()).isEqualTo("orders");
-        assertThat(record.component()).isEqualTo("orders-intake");
+        assertThat(record.name()).isEqualTo("orders-intake");
     }
 
     /** A page that merely mentions the components is not in one of them - the whitebox view is the system's. */
@@ -330,7 +331,7 @@ class SearchRecordsTest {
 
         SearchRecord record = records().getFirst();
         assertThat(record.system()).isEqualTo("orders");
-        assertThat(record.component()).isNull();
+        assertThat(record.name()).isNull();
     }
 
     /** The generator escapes what would otherwise stop being text; a reader should see it as it was written. */
@@ -363,6 +364,91 @@ class SearchRecordsTest {
         write("static/branding/logo.svg", "<svg/>");
 
         assertThat(urls()).containsExactly("/");
+    }
+
+    /**
+     * <b>What produced a page is what the page says about itself.</b> Every page the service writes carries
+     * {@code doc_status}, which is also what the provenance block under it is built from - so the badge on a
+     * search result and the line on the page can never say different things.
+     */
+    @Test
+    void of_thenEveryRecordSaysWhatProducedIt() throws IOException {
+        write("prod/systems/orders/index.md", frontMatter("Orders", "doc_status: generated"));
+        write("prod/systems/orders/5-building-block-view/written.md",
+                frontMatter("Written By The Team", "doc_status: custom", "doc_source: upload"));
+        write("prod/systems/orders/5-building-block-view/reference-microsite.md",
+                frontMatter("Configuration Reference", "doc_status: custom", "doc_source: upload",
+                        "doc_microsite_url: /microsites/orders/arc42/5-building-block-view/reference/"));
+
+        assertThat(records()).extracting(SearchRecord::title, SearchRecord::source)
+                .containsExactlyInAnyOrder(
+                        tuple("Orders", SearchRecord.GENERATED),
+                        tuple("Written By The Team", SearchRecord.MARKDOWN),
+                        tuple("Configuration Reference", SearchRecord.HTML));
+    }
+
+    /** And the page that frames a microsite carries where that microsite is served, for the records inside it. */
+    @Test
+    void of_whenThePageFramesAMicrosite_thenItSaysWhereThatMicrositeIs() throws IOException {
+        write("prod/systems/orders/5-building-block-view/reference-microsite.md",
+                frontMatter("Configuration Reference", "doc_status: custom",
+                        "doc_microsite_url: /microsites/orders/arc42/5-building-block-view/reference/"));
+
+        assertThat(records().getFirst().micrositeUrl())
+                .isEqualTo("/microsites/orders/arc42/5-building-block-view/reference/");
+        assertThat(records().getFirst().microsite())
+                .describedAs("a page of the site, not a page inside a microsite").isNull();
+    }
+
+    /**
+     * <b>A library is a subject of its own.</b> It publishes no artifact and is deployed nowhere, so no
+     * architecture model holds one and every chapter of it was written by hand - and a reader narrowing a
+     * search to components should not be shown one.
+     */
+    @Test
+    void of_thenEveryRecordSaysWhatItDocuments() throws IOException {
+        page("prod/index.md", "Documentation", "The site itself.");
+        page("prod/systems/orders/index.md", "Orders", "The system.");
+        page("prod/systems/orders/system-architecture/5-building-block-view/components/orders-intake/"
+             + "index.md", "Orders Intake", "The component.");
+        page("prod/systems/orders/system-architecture/5-building-block-view/libraries/orders-client/"
+             + "index.md", "Orders Client", "The library.");
+
+        assertThat(records()).extracting(SearchRecord::title, SearchRecord::subject, SearchRecord::name)
+                .containsExactlyInAnyOrder(
+                        tuple("Documentation", null, null),
+                        tuple("Orders", SearchRecord.SYSTEM, null),
+                        tuple("Orders Intake", SearchRecord.COMPONENT, "orders-intake"),
+                        tuple("Orders Client", SearchRecord.LIBRARY, "orders-client"));
+    }
+
+    /**
+     * <b>A slug is relative unless it starts with a slash</b>, which is what Docusaurus does with it. The
+     * page that frames a microsite carries {@code microsites/<topic>} inside its chapter, and reading that as
+     * a route from the root of the environment pointed every search hit inside a microsite at a page that
+     * does not exist.
+     */
+    @Test
+    void of_whenTheSlugIsRelative_thenItIsResolvedInsideTheFolderThePageIsIn() throws IOException {
+        write("prod/systems/orders/system-architecture/2-constraints/reference-microsite.md",
+                frontMatter("Configuration Reference", "slug: microsites/reference"));
+
+        assertThat(records().getFirst().url())
+                .isEqualTo("/systems/orders/system-architecture/constraints/microsites/reference/");
+    }
+
+    /** And one that starts with a slash is the route from the root of the environment, as it always was. */
+    @Test
+    void of_whenTheSlugIsAbsolute_thenItIsTheRouteItself() throws IOException {
+        write("prod/systems/orders/system-architecture/2-constraints/elsewhere.md",
+                frontMatter("Somewhere Else", "slug: /somewhere-else"));
+
+        assertThat(records().getFirst().url()).isEqualTo("/somewhere-else/");
+    }
+
+    private static String frontMatter(String title, String... keys) {
+        return "---\ntitle: %s\n%s\n---\n\n# %s\n\nWhat it says.\n"
+                .formatted(title, String.join("\n", keys), title);
     }
 
     private List<SearchRecord> records() {

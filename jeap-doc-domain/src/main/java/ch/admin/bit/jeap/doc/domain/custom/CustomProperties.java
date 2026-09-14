@@ -1,11 +1,17 @@
 package ch.admin.bit.jeap.doc.domain.custom;
 
 import ch.admin.bit.jeap.doc.domain.port.BundleLimits;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
+import ch.admin.bit.jeap.doc.domain.upload.validation.MicrositeRules;
 import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.unit.DataSize;
+
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * What the doc service accepts as a documentation set.
@@ -32,13 +38,31 @@ public class CustomProperties {
      */
     private String sweepCron = "0 50 2 * * *";
 
-    /** What a bundle may hold, for whoever reads one. The path count is the validation's own bound. */
-    public BundleLimits limitsWith(UploadProperties uploadProperties) {
-        return new BundleLimits(uploadProperties.getValidation().getMaxPaths(), maxUnpackedSize.toBytes());
+    /**
+     * What an HTML microsite may <b>not</b> carry.
+     * <p>
+     * A microsite follows no template, so there is no allowlist to bound it: a build emits file types
+     * nobody listed in advance. This refuses what has no business in documentation - see
+     * {@link MicrositeRules#REFUSED_BY_DEFAULT}. A markdown set is bounded by its template's own list,
+     * which no property widens.
+     */
+    private Set<String> refusedExtensions = MicrositeRules.REFUSED_BY_DEFAULT;
+
+    /**
+     * What a bundle may hold, for whoever reads one. The path count is the validation's own bound, and it
+     * differs per source format: a microsite is a built site, a markdown set a chapter of pages.
+     */
+    public BundleLimits limitsWith(UploadProperties uploadProperties, SourceFormat sourceFormat) {
+        return new BundleLimits(uploadProperties.getValidation().maxPathsOf(sourceFormat),
+                maxUnpackedSize.toBytes());
     }
 
     @PostConstruct
     void check() {
+        // Compared against an extension that was lower-cased, so a list written in capitals still applies.
+        refusedExtensions = refusedExtensions.stream()
+                .map(extension -> extension.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toUnmodifiableSet());
         if (maxUnpackedSize.toBytes() < 1) {
             throw new IllegalStateException("jeap.doc.custom.max-unpacked-size is " + maxUnpackedSize
                                             + ". A documentation set holds at least one file.");

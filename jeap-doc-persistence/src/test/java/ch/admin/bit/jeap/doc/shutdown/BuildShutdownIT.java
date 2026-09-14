@@ -169,6 +169,12 @@ class BuildShutdownIT {
             };
         }
 
+        /** Reading an uploaded document: nothing is uploaded here, so nothing is ever read. */
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.HtmlText htmlText() {
+            return html -> ch.admin.bit.jeap.doc.domain.port.HtmlText.Extracted.NOTHING;
+        }
+
         /**
          * And the documentation it would become. The object storage adapter is not on this module's
          * classpath, so the port is answered by a stub that refuses - nothing here uploads or generates.
@@ -187,6 +193,32 @@ class BuildShutdownIT {
                 public java.util.Optional<OpenedBundle> open(
                         ch.admin.bit.jeap.doc.domain.custom.CustomSet set) {
                     throw new UnsupportedOperationException("Nothing is generated in this test.");
+                }
+
+                @Override
+                public String promoteFiles(
+                        ch.admin.bit.jeap.doc.domain.port.UploadedBundles.ReceivedBundle received,
+                        ch.admin.bit.jeap.doc.domain.custom.CustomSetKey key, long revision, int attempt,
+                        ch.admin.bit.jeap.doc.domain.port.BundleLimits limits) {
+                    throw new UnsupportedOperationException("No upload happens in this test.");
+                }
+
+                @Override
+                public void storeSearchText(String prefix, java.util.List<
+                        ch.admin.bit.jeap.doc.domain.custom.MicrositePageText> pages) {
+                    throw new UnsupportedOperationException("No upload happens in this test.");
+                }
+
+                @Override
+                public java.util.List<ch.admin.bit.jeap.doc.domain.custom.MicrositePageText> readSearchText(
+                        String prefix) {
+                    return java.util.List.of();
+                }
+
+                @Override
+                public java.util.Optional<ch.admin.bit.jeap.doc.domain.port.StoredObject> openFile(
+                        String prefix, String path) {
+                    return java.util.Optional.empty();
                 }
 
                 @Override

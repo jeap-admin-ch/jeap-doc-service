@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import org.junit.jupiter.api.Test;
 
@@ -29,15 +30,16 @@ class PathTreeReaderTest {
 
     @Test
     void aPathTree_isRead() {
-        assertThat(reader.read(json("{\"paths\": [\"1-intro/goals.md\", \"5-building-block-view/design.md\"]}")))
+        assertThat(reader.read(json("{\"paths\": [\"1-intro/goals.md\", \"5-building-block-view/design.md\"]}"),
+                SourceFormat.MARKDOWN))
                 .containsExactly("1-intro/goals.md", "5-building-block-view/design.md");
     }
 
     @Test
     void aBodyThatNamesNoPaths_isAnEmptyTree() {
-        assertThat(reader.read(json("{}"))).isEmpty();
-        assertThat(reader.read(json("{\"paths\": []}"))).isEmpty();
-        assertThat(reader.read(json("{\"other\": {\"nested\": [1, 2]}}")))
+        assertThat(reader.read(json("{}"), SourceFormat.MARKDOWN)).isEmpty();
+        assertThat(reader.read(json("{\"paths\": []}"), SourceFormat.MARKDOWN)).isEmpty();
+        assertThat(reader.read(json("{\"other\": {\"nested\": [1, 2]}}"), SourceFormat.MARKDOWN))
                 .describedAs("a property this endpoint does not read is skipped")
                 .isEmpty();
     }
@@ -46,7 +48,8 @@ class PathTreeReaderTest {
     void exactlyTheCappedNumberOfPaths_isRead() {
         properties.getValidation().setMaxPaths(2);
 
-        assertThat(reader.read(json("{\"paths\": [\"a\", \"b\"]}"))).containsExactly("a", "b");
+        assertThat(reader.read(json("{\"paths\": [\"a\", \"b\"]}"), SourceFormat.MARKDOWN))
+                .containsExactly("a", "b");
     }
 
     /**
@@ -59,10 +62,10 @@ class PathTreeReaderTest {
         properties.getValidation().setMaxPaths(2);
         CountingStream body = new CountingStream(endless("{\"paths\": [\"", "a"));
 
-        assertThatThrownBy(() -> reader.read(body))
+        assertThatThrownBy(() -> reader.read(body, SourceFormat.MARKDOWN))
                 .isInstanceOf(InvalidUploadException.class)
                 .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.SIZE_LIMIT_EXCEEDED);
-        assertThat(body.read).isLessThanOrEqualTo(PathTreeReader.maxBytes(properties) + 1);
+        assertThat(body.read).isLessThanOrEqualTo(PathTreeReader.maxBytes(properties, SourceFormat.MARKDOWN) + 1);
     }
 
     /**
@@ -76,11 +79,11 @@ class PathTreeReaderTest {
         properties.getValidation().setMaxPaths(2);
         CountingStream body = new CountingStream(endless("{\"paths\": [", "\"a\","));
 
-        assertThatThrownBy(() -> reader.read(body))
+        assertThatThrownBy(() -> reader.read(body, SourceFormat.MARKDOWN))
                 .isInstanceOf(InvalidUploadException.class)
                 .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.TOO_MANY_PATHS)
                 .hasMessageContaining("more than 2 paths");
-        assertThat(body.read).isLessThanOrEqualTo(PathTreeReader.maxBytes(properties) + 1);
+        assertThat(body.read).isLessThanOrEqualTo(PathTreeReader.maxBytes(properties, SourceFormat.MARKDOWN) + 1);
     }
 
     /**
@@ -102,9 +105,25 @@ class PathTreeReaderTest {
                 .isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE);
     }
 
+    /** An HTML set is many more files, so its body may be larger - and is still bounded. */
+    @Test
+    void theBoundFollowsTheSourceFormat() {
+        assertThat(PathTreeReader.maxBytes(properties, SourceFormat.HTML))
+                .isGreaterThan(PathTreeReader.maxBytes(properties, SourceFormat.MARKDOWN));
+
+        properties.getValidation().setMaxMicrositePaths(3);
+
+        assertThat(reader.read(json("{\"paths\": [\"a\", \"b\", \"c\"]}"), SourceFormat.HTML))
+                .hasSize(3);
+        assertThatThrownBy(() ->
+                reader.read(json("{\"paths\": [\"a\", \"b\", \"c\", \"d\"]}"), SourceFormat.HTML))
+                .isInstanceOf(InvalidUploadException.class)
+                .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.TOO_MANY_PATHS);
+    }
+
     private InvalidUploadException.Code unreadable(String body) {
         try {
-            reader.read(json(body));
+            reader.read(json(body), SourceFormat.MARKDOWN);
         } catch (InvalidUploadException e) {
             assertThat(e.getMessage()).describedAs("and nothing of the parser's own text is echoed")
                     .isEqualTo("The request body is not a readable path tree.");

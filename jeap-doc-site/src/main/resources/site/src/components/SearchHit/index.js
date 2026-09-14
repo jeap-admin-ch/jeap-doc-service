@@ -22,16 +22,36 @@ export function titleOf(result) {
 }
 
 /**
+ * <b>What kind of documentation a result is</b>, as a badge beside its title.
+ *
+ * It is what connects the filters to the list: without it a reader cannot see why a result disappeared when
+ * they turned a chip off. The words are the chips' own, so the two can only ever say the same thing.
+ */
+export function Kind({source}) {
+    const label = KINDS[source];
+    if (!label) {
+        return null;
+    }
+    return <span className={clsx(styles.kind, styles[source])}>{label}</span>;
+}
+
+const KINDS = {generated: 'Generated', markdown: 'Uploaded', html: 'HTML'};
+
+/**
  * <b>Where the hit is.</b>
  *
  * A generated page's title is its chapter - "Component Architecture", "3. Context and Scope" - which on a site
- * of fifty components says nothing at all about which of them the reader has found. The system and the
- * component the page documents are what make a result identifiable, and the index carries both as meta.
+ * of fifty components says nothing at all about which of them the reader has found. The system, the component
+ * or library the page documents, and the uploaded microsite it was found inside are what make a result
+ * identifiable, and the index carries all three as meta.
  *
- * A page of the site itself belongs to neither and gets nothing rather than an empty line.
+ * A page of the site itself belongs to none of them and gets nothing rather than an empty line.
+ *
+ * `component` is read as well as `name`, because an index published by an older version of the service is
+ * served by this template until the site is next built.
  */
 export function Where({meta}) {
-    const trail = [meta?.system, meta?.component].filter(Boolean);
+    const trail = [meta?.system, meta?.name ?? meta?.component, meta?.microsite].filter(Boolean);
     if (trail.length === 0) {
         return null;
     }

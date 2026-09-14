@@ -26,6 +26,7 @@ import java.util.zip.ZipOutputStream;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -100,12 +101,43 @@ class CustomDocsGenerationIT extends DocServiceIntegrationTestBase {
         return "The team wrote this about " + title + ".";
     }
 
+    /** A microsite as a build publishes one: an entry point, and a page below it. */
+    private static byte[] micrositeBundle() {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            write(zip, "index.html", "<!doctype html><title>Configuration</title><h1>Configuration</h1>");
+            write(zip, "pages/timeouts.html",
+                    "<!doctype html><title>Timeouts</title><h1>Timeouts</h1><p>Every request is idempotent.</p>");
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return bytes.toByteArray();
+    }
+
+    private static void write(ZipOutputStream zip, String path, String content) throws IOException {
+        ZipEntry entry = new ZipEntry(path);
+        entry.setTime(0L);
+        zip.putNextEntry(entry);
+        zip.write(content.getBytes(StandardCharsets.UTF_8));
+        zip.closeEntry();
+    }
+
+    private static Map<String, String> micrositeDocs() {
+        Map<String, String> parameters = systemDocs();
+        parameters.put("source-format", "html");
+        parameters.put("location", "8-crosscutting-concepts");
+        parameters.put("topic", "configuration-reference");
+        parameters.put("label", "Configuration Reference");
+        return parameters;
+    }
+
     private void upload(Map<String, String> parameters, byte[] bundle) throws Exception {
         MockHttpServletRequestBuilder request =
                 put(UploadPaths.DOCS + "/{uploadId}", UUID.randomUUID()).contentType("application/zip")
                         .content(bundle);
         parameters.forEach(request::param);
-        mockMvc.perform(request.with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
+        mockMvc.perform(request.with(authentication(tokenWithRoles(
+                        uploadsRole(parameters.getOrDefault("system", SYSTEM), "write")))))
                 .andExpect(status().isCreated());
     }
 
@@ -245,4 +277,84 @@ class CustomDocsGenerationIT extends DocServiceIntegrationTestBase {
         mockMvc.perform(get(BASE + "/systems/" + SYSTEM + "/system-architecture/intro/goals/"))
                 .andExpect(status().isOk());
     }
+
+    /**
+     * <b>A chapter whose only documentation is a microsite is still a chapter.</b> An HTML set has no page
+     * rows by design - it is served file by file - so nothing but the microsite itself says that its chapter
+     * exists, and the page that frames it is the only thing the reader can reach it through.
+     */
+    @Test
+    @Order(60)
+    void anUploadedMicrosite_isFramedByAPageInTheChapterItNames() throws Exception {
+        upload(micrositeDocs(), micrositeBundle());
+
+        buildUntilServed(BASE + "/systems/" + SYSTEM + "/system-architecture/crosscutting-concepts/"
+                         + "microsites/configuration-reference/");
+
+        String page = mockMvc.perform(get(BASE + "/systems/" + SYSTEM + "/system-architecture/"
+                                          + "crosscutting-concepts/microsites/configuration-reference/"))
+                .andReturn().getResponse().getContentAsString();
+        // Named by the label the upload gave it. Where its frame points is not in this HTML: the frame is
+        // rendered once the page has mounted, and MicrositeBrowserIT asserts it in a browser.
+        assertThat(page).describedAs("the page is the one for the microsite the upload named")
+                .contains("<title data-rh=true>Configuration Reference");
+        // Under the site it belongs to: the page carries the path within the service, and the site's own base
+        // URL - its context path, and the /site/<id>/ of a site that is not the default one - stands in front.
+        assertThat(mockMvc.perform(get(BASE + "/microsites/" + SYSTEM + "/arc42/8-crosscutting-concepts/"
+                                       + "configuration-reference/pages/timeouts.html"))
+                .andReturn().getResponse().getStatus())
+                .describedAs("and its files are served under the site it belongs to").isEqualTo(200);
+    }
+
+    /**
+     * <b>A subject whose only documentation is a microsite is still a subject.</b> A system nothing has
+     * deployed, a component the model does not hold, and a library - none of them has a page row, so nothing
+     * but the microsite says they exist, and each one's tree has to be written for its framing page to be
+     * reachable at all.
+     */
+    @Test
+    @Order(70)
+    void aSubjectDocumentedOnlyByAMicrosite_isPublishedWithItsFramingPage() throws Exception {
+        Map<String, String> unknownSystem = micrositeDocs();
+        unknownSystem.put("system", "atlas");
+        unknownSystem.put("topic", "reference");
+        upload(unknownSystem, micrositeBundle());
+        Map<String, String> component = micrositeDocs();
+        component.put("type", "component-docs");
+        component.put("component", "catalog-reports");
+        component.put("version", "1.2.0");
+        component.put("topic", "reference");
+        upload(component, micrositeBundle());
+        Map<String, String> library = micrositeDocs();
+        library.put("type", "library-docs");
+        library.put("library", "catalog-client");
+        library.put("version", "3.1.0");
+        library.put("topic", "reference");
+        upload(library, micrositeBundle());
+
+        buildUntilServed(BASE + "/systems/atlas/system-architecture/crosscutting-concepts/microsites/reference/");
+        buildUntilServed(BASE + "/systems/" + SYSTEM + "/system-architecture/building-block-view/components/"
+                         + "catalog-reports/component-architecture/crosscutting-concepts/microsites/reference/");
+        buildUntilServed(BASE + LIBRARY_TREE + "crosscutting-concepts/microsites/reference/");
+    }
+
+    /**
+     * <b>And a library documented only by a microsite still says what its upload said.</b> The overview reads
+     * the version and the provenance of the library's set, and a lookup narrowed to Markdown found none - so
+     * the page said nothing about a library whose upload had stated its version.
+     */
+    @Test
+    @Order(71)
+    void aLibraryDocumentedOnlyByAMicrosite_hasAnOverviewWithItsVersionAndProvenance() throws Exception {
+        buildUntilServed(BASE + LIBRARY_TREE + "intro/library-overview/");
+
+        mockMvc.perform(get(BASE + LIBRARY_TREE + "intro/library-overview/"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("3.1.0")))
+                .andExpect(content().string(containsString("catalog-docs.git")));
+    }
+
+    /** Where the library documented only by a microsite is published. */
+    private static final String LIBRARY_TREE = "/systems/" + SYSTEM + "/system-architecture/building-block-view/"
+                                               + "libraries/catalog-client/library-architecture/";
 }

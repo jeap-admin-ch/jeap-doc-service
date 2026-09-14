@@ -54,3 +54,48 @@
     background-color: #6b5a00;
     color: #ffffff;
 }
+
+/*
+ * The kind badge. Three colours, and the HTML one is deliberately not amber: it sat next to the yellow mark
+ * of a search highlight and read as one.
+ */
+.kind {
+    display: inline-block;
+    /* Its own width, beside the title: a result is a column of flex items, which would stretch it. */
+    align-self: flex-start;
+    width: fit-content;
+    margin-left: 0.5rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 0.75rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.generated {
+    background: var(--ifm-color-emphasis-200);
+    color: var(--ifm-color-emphasis-800);
+}
+
+.markdown {
+    background: var(--ifm-color-primary-lightest);
+    color: var(--ifm-color-primary-darkest);
+}
+
+.html {
+    background: #ede9fe;
+    color: #5b21b6;
+}
+
+[data-theme='dark'] .markdown {
+    background: var(--ifm-color-primary-darkest);
+    color: var(--ifm-color-primary-lightest);
+}
+
+[data-theme='dark'] .html {
+    background: #4c1d95;
+    color: #ddd6fe;
+}

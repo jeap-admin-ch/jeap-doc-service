@@ -44,6 +44,15 @@ public interface CustomDocumentationRepository {
      */
     List<CustomSubject> subjectsOf(String site);
 
+    /**
+     * Every uploaded microsite of a site, whatever it documents.
+     * <p>
+     * <b>What the search index run reads.</b> A microsite's pages are in no content tree - they are served
+     * file by file from the prefix a row names - so indexing a site means asking for its microsites once and
+     * reading the text that was stored beside each of them.
+     */
+    List<CustomSet> micrositesOf(String site);
+
     /** Removes one set. Answers false if there was none. */
     boolean remove(CustomSetKey key);
 

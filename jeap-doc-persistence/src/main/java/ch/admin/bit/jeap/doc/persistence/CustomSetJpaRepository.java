@@ -42,6 +42,16 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
      */
     List<CustomSetEntity> findBySiteAndSystemNameOrderByIdAsc(String site, String systemName);
 
+    /**
+     * Every HTML set of a site, ordered, so that two index runs of the same site read them the same way.
+     */
+    @Query("""
+            select s from CustomSetEntity s
+            where s.site = :site and s.sourceFormat = ch.admin.bit.jeap.doc.domain.upload.SourceFormat.HTML
+            order by s.id asc
+            """)
+    List<CustomSetEntity> findMicrosites(@Param("site") String site);
+
     /** Every set of one subject, whatever its format or template. */
     @Query("""
             select s from CustomSetEntity s
@@ -109,14 +119,17 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """
             insert into custom_set (id, site, kind, system_name, name, source_format, template, location,
-                                    topic, revision, object_key, sha256, size_in_bytes, source_repository,
-                                    source_ref, source_revision, source_timestamp, version, uploaded_at)
+                                    topic, label, revision, object_key, sha256, size_in_bytes,
+                                    source_repository, source_ref, source_revision, source_timestamp,
+                                    version, uploaded_at)
             values (nextval('custom_set_id_seq'), :site, :kind, :system, :name, :sourceFormat, :template,
-                    :location, :topic, :revision, :objectKey, :sha256, :sizeInBytes, :sourceRepository,
-                    :sourceRef, :sourceRevision, :sourceTimestamp, :version, :uploadedAt)
+                    :location, :topic, :label, :revision, :objectKey, :sha256, :sizeInBytes,
+                    :sourceRepository, :sourceRef, :sourceRevision, :sourceTimestamp, :version,
+                    :uploadedAt)
             on conflict (site, kind, system_name, coalesce(name, ''), source_format, template,
                          coalesce(location, ''), coalesce(topic, ''))
-            do update set revision = excluded.revision,
+            do update set label = excluded.label,
+                          revision = excluded.revision,
                           object_key = excluded.object_key,
                           sha256 = excluded.sha256,
                           size_in_bytes = excluded.size_in_bytes,
@@ -130,7 +143,8 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
     void upsert(@Param("site") String site, @Param("kind") String kind, @Param("system") String system,
                 @Param("name") String name, @Param("sourceFormat") String sourceFormat,
                 @Param("template") String template, @Param("location") String location,
-                @Param("topic") String topic, @Param("revision") long revision,
+                @Param("topic") String topic, @Param("label") String label,
+                @Param("revision") long revision,
                 @Param("objectKey") String objectKey, @Param("sha256") String sha256,
                 @Param("sizeInBytes") long sizeInBytes, @Param("sourceRepository") String sourceRepository,
                 @Param("sourceRef") String sourceRef, @Param("sourceRevision") String sourceRevision,

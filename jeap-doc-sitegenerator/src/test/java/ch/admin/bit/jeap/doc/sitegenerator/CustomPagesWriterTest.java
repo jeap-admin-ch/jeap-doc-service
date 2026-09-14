@@ -7,6 +7,8 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
+import ch.admin.bit.jeap.doc.domain.port.BundleLimits;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
@@ -92,7 +94,7 @@ class CustomPagesWriterTest {
         CustomSet other = new CustomSet(1L,
                 new CustomSetKey(SITE, SubjectKind.SYSTEM, SYSTEM_SLUG, null, SourceFormat.MARKDOWN,
                         "something-else", null, null),
-                7L, "current/whatever", "abc", 10, PROVENANCE,
+                null, 7L, "current/whatever", "abc", 10, PROVENANCE,
                 List.of(page("1-intro", "why.md", "Why", 1)));
         InMemoryStorage storage = new InMemoryStorage().with(other, "1-intro/why.md", "# Why\n");
 
@@ -162,8 +164,8 @@ class CustomPagesWriterTest {
      */
     @Test
     void writeInto_thenTheGeneratedValuesCarryTheQuotingTheyNeed() throws IOException {
-        CustomSet set = new CustomSet(1L, keyOf(SYSTEM, SourceFormat.MARKDOWN), 7L, "current/whatever",
-                "abc", 10,
+        CustomSet set = new CustomSet(1L, keyOf(SYSTEM, SourceFormat.MARKDOWN), null, 7L,
+                "current/whatever", "abc", 10,
                 new CustomProvenance("https://github.com/orders/docs", "refs/heads/main", "cafebabe",
                         Instant.EPOCH, null, Instant.EPOCH),
                 List.of(page("1-intro", "why.md", "Why", 1)));
@@ -451,6 +453,58 @@ class CustomPagesWriterTest {
         assertThat(storage.closed).isEqualTo(1);
     }
 
+    /**
+     * <b>The page is generated, not copied.</b> A microsite's own files are served from their own prefix;
+     * this page only says where they are, and the site template turns that into the frame.
+     */
+    @Test
+    void writeMicrositesInto_thenAPagePerMicrositeSayingWhereItsFilesAre() throws IOException {
+        CustomSet microsite = micrositeOf("Configuration Reference");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(microsite)),
+                new InMemoryStorage())) {
+            assertThat(writer.writeMicrositesInto(SYSTEM, "6-runtime-view", chapterDirectory)).isEqualTo(1);
+        }
+
+        String page = Files.readString(chapterDirectory.resolve("reference-microsite.md"));
+        assertThat(page)
+                .contains("title: Configuration Reference")
+                .contains("slug: microsites/reference")
+                .contains("doc_microsite_url: /microsites/orders/" + TestTemplate.ID
+                          + "/6-runtime-view/reference/")
+                .contains("doc_microsite_label: Configuration Reference")
+                .describedAs("it is a team's documentation, so it says so like any uploaded page")
+                .contains("doc_status: custom")
+                .contains("doc_source_repository: orders-docs");
+    }
+
+    /** A chapter with neither pages nor microsites writes nothing and says so. */
+    @Test
+    void writeMicrositesInto_whenThereIsNone_thenNothingIsWritten() {
+        try (CustomPagesWriter writer = writerOver(
+                new CustomDocumentation(List.of(micrositeOf("Reference"))), new InMemoryStorage())) {
+            assertThat(writer.writeMicrositesInto(SYSTEM, "1-intro", chapterDirectory)).isZero();
+        }
+        assertThat(chapterDirectory.resolve("reference-microsite.md")).doesNotExist();
+    }
+
+    /** A row from before the label column carries none, and the topic is what names it then. */
+    @Test
+    void writeMicrositesInto_whenTheSetHasNoLabel_thenTheTopicNamesIt() throws IOException {
+        try (CustomPagesWriter writer = writerOver(
+                new CustomDocumentation(List.of(micrositeOf(null))), new InMemoryStorage())) {
+            writer.writeMicrositesInto(SYSTEM, "6-runtime-view", chapterDirectory);
+        }
+
+        assertThat(Files.readString(chapterDirectory.resolve("reference-microsite.md")))
+                .contains("title: reference").doesNotContain("title: null");
+    }
+
+    private static CustomSet micrositeOf(String label) {
+        return new CustomSet(2L, keyOf(SYSTEM, SourceFormat.HTML), label, 7L,
+                "current/docs/2/1/files/", "abc", 10, PROVENANCE, List.of());
+    }
+
     private void writeOnePage(String chapterFolder, String fileName, String content) {
         CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN, page(chapterFolder, fileName, "Whatever", 1));
         InMemoryStorage storage =
@@ -466,7 +520,8 @@ class CustomPagesWriterTest {
     }
 
     private static CustomSet setOf(long id, CustomSubject subject, SourceFormat format, CustomPage... pages) {
-        return new CustomSet(id, keyOf(subject, format), 7L, "current/docs/" + id, "abc", 10, PROVENANCE,
+        return new CustomSet(id, keyOf(subject, format), null, 7L, "current/docs/" + id, "abc", 10,
+                PROVENANCE,
                 List.of(pages));
     }
 
@@ -552,6 +607,30 @@ class CustomPagesWriterTest {
      * the read has to be checked by.
      */
     private static final class CountingStorage implements CustomDocumentationStorage {
+        @Override
+        public void storeSearchText(String prefix, java.util.List<
+                ch.admin.bit.jeap.doc.domain.custom.MicrositePageText> pages) {
+            throw new UnsupportedOperationException("Nothing is indexed in this test.");
+        }
+
+        @Override
+        public java.util.List<ch.admin.bit.jeap.doc.domain.custom.MicrositePageText> readSearchText(
+                String prefix) {
+            return java.util.List.of();
+        }
+
+        @Override
+        public String promoteFiles(UploadedBundles.ReceivedBundle received, CustomSetKey key, long revision,
+                                   int attempt, BundleLimits limits) {
+            throw new UnsupportedOperationException("No microsite is written in this test.");
+        }
+
+        @Override
+        public java.util.Optional<ch.admin.bit.jeap.doc.domain.port.StoredObject> openFile(String prefix,
+                                                                                 String path) {
+            return java.util.Optional.empty();
+        }
+
 
         private final CustomSet set;
         private final String path;
@@ -618,6 +697,30 @@ class CustomPagesWriterTest {
 
     /** The sets of a build, in memory, counting how often a bundle was opened and closed. */
     private static final class InMemoryStorage implements CustomDocumentationStorage {
+        @Override
+        public void storeSearchText(String prefix, java.util.List<
+                ch.admin.bit.jeap.doc.domain.custom.MicrositePageText> pages) {
+            throw new UnsupportedOperationException("Nothing is indexed in this test.");
+        }
+
+        @Override
+        public java.util.List<ch.admin.bit.jeap.doc.domain.custom.MicrositePageText> readSearchText(
+                String prefix) {
+            return java.util.List.of();
+        }
+
+        @Override
+        public String promoteFiles(UploadedBundles.ReceivedBundle received, CustomSetKey key, long revision,
+                                   int attempt, BundleLimits limits) {
+            throw new UnsupportedOperationException("No microsite is written in this test.");
+        }
+
+        @Override
+        public java.util.Optional<ch.admin.bit.jeap.doc.domain.port.StoredObject> openFile(String prefix,
+                                                                                 String path) {
+            return java.util.Optional.empty();
+        }
+
 
         private final Map<String, Map<String, byte[]>> bundles = new LinkedHashMap<>();
         private int opened;

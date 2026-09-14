@@ -90,6 +90,47 @@ generated, or take over a route with `slug`, by carrying the key itself.
 an uploaded one alike. It is the one place that decides what provenance looks like, and it is the only way an
 uploaded page can carry any: nothing may be appended to its body.
 
+## An HTML microsite
+
+A build that produces HTML - a generated API reference, an Allure report, Spring REST Docs output - uploads
+it with `source-format=html`. Such a set is **not** written into the site: it is published as it was built,
+served file by file under `/microsites/`, and the generator writes **one page** into the chapter the upload
+names, with the microsite in a frame and the navigation and sidebar of the site around it.
+
+| | |
+| --- | --- |
+| Where it goes | The `location` of the upload is the chapter; the `topic` is the last segment of its route, under `microsites/` within that chapter |
+| What names it | The `label` of the upload - a microsite has no pages to take a title from, so this is the only thing that can name it in the navigation |
+| Its own URL | `/microsites/<system>/components/<name>/<template>/<location>/<topic>/` - a component's and a library's name their kind, a system's own does not. This is the URL the frame opens, and the one to link to |
+| Where it is ordered | Among the uploaded pages of its chapter, by its label - the two are one list |
+| Whether it is searchable | **Yes, its content and not only its label.** The text of its pages is taken out of the bundle when it is uploaded and stored beside its files, and a hit opens the page that frames it at the file that matched. See [Search](search.md) |
+| One reserved name | `_jeap-search.tsv` at the root of the set is where that text is stored, so an upload carrying that path is refused. Anywhere deeper in the tree the name is yours |
+| What is searched of it | The first **200** `.html` and `.htm` files, the entry point first, and at most 512 KB of each. A set with more pages is published whole and searched down to the cap - it is what keeps one microsite of several hundred pages from being the whole result list |
+
+### What the sandbox takes away, and the one script that gives some of it back
+
+A microsite is served with an **opaque origin**: it cannot read the documentation site around it, cannot
+reach its storage or cookies, and cannot navigate the page that frames it. That is the point - it is code
+this service did not write - but it also means an application that reads `localStorage` while it loads never
+starts.
+
+> **The doc service therefore adds one `<script>` to every HTML page of a microsite it serves.** It is
+> injected after the opening `<head>` tag, before the page's own scripts, and it gives the document an
+> in-memory `localStorage`, `sessionStorage` and cookie jar that live as long as the page is open. Nothing is
+> persisted and the origin stays opaque. **Everything after that tag is byte for byte what was uploaded**, and
+> a page that already carries the tag is left alone.
+
+A microsite may also tell its page how tall it is, and the page will grow the frame to fit - up to four
+screens. It is opt-in and a microsite that says nothing is unaffected:
+
+```js
+parent.postMessage({type: 'jeap-doc-microsite-height', height: document.body.scrollHeight}, '*');
+```
+
+Everything that is not an HTML page is served with `Content-Disposition: attachment`, so a file a browser
+would render as a document is downloaded instead. A microsite's own stylesheets and scripts are unaffected -
+a browser ignores that header for a subresource.
+
 ## The order of the pages in a chapter
 
 **The pages of a chapter are sorted by their titles**, and the service assigns each page's

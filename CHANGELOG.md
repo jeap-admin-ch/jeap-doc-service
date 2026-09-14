@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - unreleased
+
+- Uploaded HTML is published as a sandboxed microsite under `/microsites/`, framed in a page of the site - see [The documentation a team writes](docs/custom-documentation.md).
+- Every microsite HTML page gets one injected script: an in-memory storage and cookie shim for the sandboxed document.
+- Raw HTML in Markdown is escaped, uploaded SVGs are served sandboxed, and the CSP gains `frame-src 'self'` - see [Security](docs/security.md).
+- Microsite content is searchable, and results show their kind and can be narrowed with filter chips - see [Search](docs/search.md).
+- New microsite, search and HTML properties; `microsites` and `_jeap-search.tsv` are reserved - see [Configuration](docs/configuration.md).
+- New module `jeap-doc-html` reads uploaded HTML as text behind `HtmlText`, the only module holding an HTML parser.
+
 ## [3.0.0] - 2026-09-13
 
 ### Dependencies

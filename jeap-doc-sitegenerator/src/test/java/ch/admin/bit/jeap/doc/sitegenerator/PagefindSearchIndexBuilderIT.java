@@ -56,7 +56,8 @@ class PagefindSearchIndexBuilderIT {
                 new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()), properties,
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation());
         builder = new PagefindSearchIndexBuilder(properties, new BuildWorkspaces(properties), sources,
-                new NodeProcess(properties), resources, CLOCK);
+                new NodeProcess(properties), new NoCustomDocumentation(), new NoCustomStorage(), resources,
+                CLOCK);
     }
 
     /**

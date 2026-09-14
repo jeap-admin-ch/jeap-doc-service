@@ -10,6 +10,7 @@ Apache License Version 2.0
 
  * ch.admin.bit.jeap:jeap-doc-archrepo - [ch.admin.bit.jeap:jeap-doc-archrepo](https://github.com/jeap-admin-ch/jeap-doc-service/tree/main/jeap-doc-archrepo)
  * ch.admin.bit.jeap:jeap-doc-domain - [ch.admin.bit.jeap:jeap-doc-domain](https://github.com/jeap-admin-ch/jeap-doc-service/tree/main/jeap-doc-domain)
+ * ch.admin.bit.jeap:jeap-doc-html - [ch.admin.bit.jeap:jeap-doc-html](https://github.com/jeap-admin-ch/jeap-doc-service/tree/main/jeap-doc-html)
  * ch.admin.bit.jeap:jeap-doc-markdown - [ch.admin.bit.jeap:jeap-doc-markdown](https://github.com/jeap-admin-ch/jeap-doc-service/tree/main/jeap-doc-markdown)
  * ch.admin.bit.jeap:jeap-doc-metrics - [ch.admin.bit.jeap:jeap-doc-metrics](https://github.com/jeap-admin-ch/jeap-doc-service/tree/main/jeap-doc-metrics)
  * ch.admin.bit.jeap:jeap-doc-objectstorage - [ch.admin.bit.jeap:jeap-doc-objectstorage](https://github.com/jeap-admin-ch/jeap-doc-service/tree/main/jeap-doc-objectstorage)
@@ -325,6 +326,7 @@ MIT License
 
  * Logstash Logback Encoder - [net.logstash.logback:logstash-logback-encoder](https://github.com/logfellow/logstash-logback-encoder)
  * Checker Qual - [org.checkerframework:checker-qual](https://checkerframework.org/)
+ * jsoup Java HTML Parser - [org.jsoup:jsoup](https://jsoup.org/)
  * mockito-core - [org.mockito:mockito-core](https://github.com/mockito/mockito)
  * mockito-junit-jupiter - [org.mockito:mockito-junit-jupiter](https://github.com/mockito/mockito)
  * Project Lombok - [org.projectlombok:lombok](https://projectlombok.org)

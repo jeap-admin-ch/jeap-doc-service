@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
@@ -19,7 +21,8 @@ class SecurityHeadersIT extends DocServiceIntegrationTestBase {
     private static final String EXPECTED_CONTENT_SECURITY_POLICY =
             "default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
             "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; " +
-            "worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+            "worker-src 'self' blob:; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; " +
+            "form-action 'none'";
 
     @Autowired
     private MockMvc mockMvc;
@@ -29,6 +32,28 @@ class SecurityHeadersIT extends DocServiceIntegrationTestBase {
         mockMvc.perform(get("/some-documentation-page.html")
                 )
                 .andExpect(header().string("Content-Security-Policy", EXPECTED_CONTENT_SECURITY_POLICY));
+    }
+
+    /**
+     * A page frames an uploaded HTML microsite, which is served from this origin - so the policy has to allow
+     * a frame of its own origin. It still allows nobody to frame the site.
+     */
+    @Test
+    void get_thenThePolicyAllowsAFrameOfTheSiteItselfAndNoOneToFrameIt() throws Exception {
+        mockMvc.perform(get("/some-documentation-page.html"))
+                .andExpect(header().string("Content-Security-Policy",
+                        allOf(containsString("frame-src 'self'"), containsString("frame-ancestors 'none'"))));
+    }
+
+    /**
+     * An uploaded SVG is a document on the site's origin, and opening one directly runs its script. It is
+     * served sandboxed on top of the site's policy - see {@code SiteHeaders}.
+     */
+    @Test
+    void get_whenTheFileIsADocumentABrowserRenders_thenItIsSandboxed() throws Exception {
+        mockMvc.perform(get("/systems/orders/12-glossary/diagram.svg"))
+                .andExpect(header().string("Content-Security-Policy",
+                        EXPECTED_CONTENT_SECURITY_POLICY + "; sandbox"));
     }
     /**
      * The jEAP web configuration leaves `/api` prefixes and `-api` suffixes without security headers, matched

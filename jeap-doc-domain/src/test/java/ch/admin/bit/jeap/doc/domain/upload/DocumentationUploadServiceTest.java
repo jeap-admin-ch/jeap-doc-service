@@ -2,12 +2,14 @@ package ch.admin.bit.jeap.doc.domain.upload;
 
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
+import ch.admin.bit.jeap.doc.domain.SearchProperties;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
+import ch.admin.bit.jeap.doc.domain.port.HtmlText;
 import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.upload.validation.FindingCode;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureFinding;
@@ -74,6 +76,8 @@ class DocumentationUploadServiceTest {
     private StructureValidation validation;
     @Mock
     private DocumentationBuildTrigger buildTrigger;
+    @Mock
+    private HtmlText htmlText;
 
     private DocumentationUploadService service;
     private RecordingUploadMetrics metrics;
@@ -83,8 +87,8 @@ class DocumentationUploadServiceTest {
         metrics = new RecordingUploadMetrics();
         service = new DocumentationUploadService(uploadRepository, subjectRepository, bundles, documentation,
                 documentationStorage, validation, new UploadProperties(), new CustomProperties(),
-                new DocumentationSites(new SiteProperties()), buildTrigger, metrics,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                new DocumentationSites(new SiteProperties()), htmlText, new SearchProperties(), buildTrigger,
+                metrics, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     /**
@@ -95,7 +99,8 @@ class DocumentationUploadServiceTest {
     private void acceptsTheSet() {
         when(bundles.receive(any(), anyLong(), any())).thenReturn(new ReceivedOnePage());
         when(validation.validate(any(), any()))
-                .thenReturn(new StructureReport("arc42", 1, 0, List.of(), List.of(), List.of(), 0));
+                .thenReturn(new StructureReport("arc42", 1, 0, List.of(), List.of(), List.of(),
+                        List.of(), 0));
     }
 
     /**
@@ -156,8 +161,8 @@ class DocumentationUploadServiceTest {
                 .thenReturn(new UploadClaim.Claimed(claimed));
         when(bundles.receive(any(), anyLong(), any())).thenReturn(new ReceivedOnePage());
         when(validation.validate(any(), any())).thenReturn(new StructureReport("arc42", 1, 0, List.of(),
-                List.of(), List.of(new StructureFinding(FindingCode.UNKNOWN_CHAPTER, "nowhere/page.md",
-                "there is no such chapter")), 0));
+                List.of(), List.of(), List.of(new StructureFinding(FindingCode.UNKNOWN_CHAPTER,
+                "nowhere/page.md", "there is no such chapter")), 0));
 
         assertThatThrownBy(() -> service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length))
                 .isInstanceOfSatisfying(InvalidUploadException.class, refused -> {
@@ -469,6 +474,33 @@ class DocumentationUploadServiceTest {
 
         // What the storage said is in the log; what is recorded - and answered - are the service's own words.
         verify(uploadRepository).save(claimed.failed("The bundle could not be stored."));
+    }
+
+    /**
+     * <b>A microsite that unpacks to more than it may is the uploader's to fix.</b> It is unpacked while it is
+     * taken over, and that path used to answer every exception as a storage failure - a 500 telling a team to
+     * retry an upload that can never succeed, and an error in the log for what is not the service's fault.
+     */
+    @Test
+    void receive_whenAMicrositeUnpacksToTooMuch_thenItIsRefusedAsTooLargeAndNotAsAStorageFailure() {
+        DocumentationUploadDescriptor microsite = descriptor().sourceFormat(SourceFormat.HTML)
+                .location("8-crosscutting-concepts").topic("reference").label("Reference").build();
+        DocumentationUpload claimed = new DocumentationUpload(42L, UPLOAD_ID, DocumentationSubject.of(microsite),
+                microsite, UploadState.UPLOADING, null, null, 0, 1, NOW, null, null);
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed));
+        acceptsTheSet();
+        when(bundles.store(anyLong(), anyInt(), any())).thenReturn(STORED);
+        InvalidUploadException tooLarge = new InvalidUploadException(
+                InvalidUploadException.Code.UNPACKS_TO_TOO_MUCH, "The uploaded microsite unpacks to too much.");
+        when(documentationStorage.promoteFiles(any(), any(), anyLong(), anyInt(), any())).thenThrow(tooLarge);
+
+        assertThatThrownBy(() -> service.receive(UPLOAD_ID, microsite, bundle(), BUNDLE.length))
+                .isInstanceOfSatisfying(InvalidUploadException.class, e -> assertThat(e.getCode())
+                        .isEqualTo(InvalidUploadException.Code.UNPACKS_TO_TOO_MUCH));
+        verify(uploadRepository).save(claimed.failed("The uploaded microsite unpacks to too much."));
     }
 
     @Test

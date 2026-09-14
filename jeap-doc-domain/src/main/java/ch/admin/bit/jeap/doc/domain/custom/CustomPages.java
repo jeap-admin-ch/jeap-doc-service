@@ -23,4 +23,22 @@ public interface CustomPages {
      * @return how many pages were written, assets not counted
      */
     int writeInto(CustomSubject subject, String chapterFolder, Path chapterDirectory);
+
+    /**
+     * Writes a page per microsite of one chapter of one subject: the frame, and what the reader needs
+     * around it.
+     * <p>
+     * Beside {@link #writeInto} rather than inside it, because the two are different things - one copies
+     * what a team wrote, the other generates a page that points at what a team built - and a template calls
+     * both for the same chapter.
+     *
+     * @param subject          whose documentation to write
+     * @param chapterFolder    the chapter, as {@link CustomDocumentation#chapterFoldersOf} answers it
+     * @param chapterDirectory the directory of that chapter, which already exists
+     * @return how many pages were written
+     */
+    default int writeMicrositesInto(CustomSubject subject, String chapterFolder, Path chapterDirectory) {
+        // A stand-in writes none. The one implementation that does is the site generator's.
+        return 0;
+    }
 }

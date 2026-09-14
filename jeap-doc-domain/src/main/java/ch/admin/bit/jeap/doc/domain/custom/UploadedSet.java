@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.domain.custom;
 
 import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.validation.IgnoredPaths;
 
 import java.util.ArrayList;
@@ -20,6 +21,18 @@ import java.util.Map;
 public final class UploadedSet {
 
     private UploadedSet() {
+    }
+
+    /**
+     * The files of a set, as the format it was uploaded in records them.
+     * <p>
+     * <b>An HTML set records none.</b> A microsite is published as it is and served file by file: nothing
+     * writes a page per file of it, so rows for its hundreds of assets would be rows nothing reads. What
+     * names it in the navigation is the set's label.
+     */
+    public static List<CustomPage> pagesOf(SourceFormat sourceFormat, List<String> paths,
+                                           UploadedBundles.ReceivedBundle bundle) {
+        return sourceFormat == SourceFormat.HTML ? List.of() : pagesOf(paths, bundle);
     }
 
     /**

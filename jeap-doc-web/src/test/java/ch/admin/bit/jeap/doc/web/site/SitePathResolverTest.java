@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.web.site;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -125,6 +126,56 @@ class SitePathResolverTest {
     void looksLikeADirectory_thenOnlyWhenTheLastSegmentHasNoExtension() {
         assertThat(singleSite.resolve("/systems/orders").orElseThrow().looksLikeADirectory()).isTrue();
         assertThat(singleSite.resolve("/sitemap.xml").orElseThrow().looksLikeADirectory()).isFalse();
+    }
+
+    @Test
+    void resolveMicrosite_whenASystemsOwn_thenItsSetAndFile() {
+        assertThat(singleSite.resolveMicrosite(
+                "/microsites/orders/arc42/6-runtime-view/inbox/assets/app.js")).get().satisfies(path -> {
+            assertThat(path.key().system()).isEqualTo("orders");
+            assertThat(path.key().name()).isNull();
+            assertThat(path.key().template()).isEqualTo("arc42");
+            assertThat(path.key().location()).isEqualTo("6-runtime-view");
+            assertThat(path.key().topic()).isEqualTo("inbox");
+            assertThat(path.file()).isEqualTo("assets/app.js");
+        });
+    }
+
+    /** A component called after a template would otherwise be indistinguishable from a system's own. */
+    @Test
+    void resolveMicrosite_whenAComponentsOrALibrarys_thenTheKindIsNamedInThePath() {
+        assertThat(singleSite.resolveMicrosite(
+                "/microsites/orders/components/orders-intake/arc42/6-runtime-view/inbox/"))
+                .get().satisfies(path -> {
+                    assertThat(path.key().kind()).isEqualTo(SubjectKind.COMPONENT);
+                    assertThat(path.key().name()).isEqualTo("orders-intake");
+                    assertThat(path.file()).describedAs("a microsite is opened at its entry point")
+                            .isEqualTo("index.html");
+                });
+        assertThat(singleSite.resolveMicrosite(
+                "/microsites/orders/libraries/orders-client/arc42/6-runtime-view/inbox"))
+                .get().satisfies(path -> {
+                    assertThat(path.key().kind()).isEqualTo(SubjectKind.LIBRARY);
+                    assertThat(path.key().name()).isEqualTo("orders-client");
+                    assertThat(path.file()).isEqualTo("index.html");
+                });
+    }
+
+    @Test
+    void resolveMicrosite_whenBelowASiteOfItsOwn_thenThatSiteServesIt() {
+        assertThat(severalSites.resolveMicrosite(
+                "/site/governance/microsites/orders/arc42/6-runtime-view/inbox/index.html"))
+                .get().satisfies(path -> assertThat(path.site().id()).isEqualTo("governance"));
+    }
+
+    /** Everything else is a path of a generated site, and is resolved as one. */
+    @Test
+    void resolveMicrosite_whenThePathIsNotOne_thenNothing() {
+        assertThat(singleSite.resolveMicrosite("/systems/orders/")).isEmpty();
+        assertThat(singleSite.resolveMicrosite("/microsites/"))
+                .describedAs("the segment alone names no set").isEmpty();
+        assertThat(singleSite.resolveMicrosite("/microsites/orders/arc42/6-runtime-view"))
+                .describedAs("and a path that stops before the topic names none either").isEmpty();
     }
 
     private static SiteProperties properties(String... ids) {

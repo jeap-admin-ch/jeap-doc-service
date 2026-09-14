@@ -52,8 +52,8 @@ class CustomDocumentationRepositoryAdapter implements CustomDocumentationReposit
                 .filter(objectKey -> !objectKey.equals(set.objectKey()));
         CustomProvenance provenance = set.provenance();
         sets.upsert(key.site(), key.kind().name(), key.system(), key.name(), key.sourceFormat().name(),
-                key.template(), key.location(), key.topic(), set.revision(), set.objectKey(), set.sha256(),
-                set.sizeInBytes(), provenance.sourceRepository(), provenance.sourceRef(),
+                key.template(), key.location(), key.topic(), set.label(), set.revision(), set.objectKey(),
+                set.sha256(), set.sizeInBytes(), provenance.sourceRepository(), provenance.sourceRef(),
                 provenance.sourceRevision(), provenance.sourceTimestamp(), provenance.version(),
                 provenance.uploadedAt());
         CustomSetEntity stored = findEntity(key).orElseThrow(() -> new IllegalStateException(
@@ -91,6 +91,16 @@ class CustomDocumentationRepositoryAdapter implements CustomDocumentationReposit
         return sets.subjectsOf(site).stream()
                 .sorted(Comparator.comparing(CustomSubject::system)
                         .thenComparing(subject -> subject.name() == null ? "" : subject.name()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CustomSet> micrositesOf(String site) {
+        // Without their pages: a microsite has none by design, and the rows it would join are a team's
+        // markdown.
+        return sets.findMicrosites(site).stream()
+                .map(entity -> CustomDocumentationMapper.toDomain(entity, List.of()))
                 .toList();
     }
 

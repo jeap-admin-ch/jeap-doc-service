@@ -53,4 +53,9 @@ public class NoCustomDocumentation implements CustomDocumentationRepository {
     public List<String> allObjectKeys() {
         return List.of();
     }
+
+    @Override
+    public java.util.List<ch.admin.bit.jeap.doc.domain.custom.CustomSet> micrositesOf(String site) {
+        return java.util.List.of();
+    }
 }

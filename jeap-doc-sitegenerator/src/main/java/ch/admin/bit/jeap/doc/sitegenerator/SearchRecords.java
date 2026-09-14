@@ -35,6 +35,12 @@ public final class SearchRecords {
 
     private static final Pattern KEY = Pattern.compile("^(\\w+):[ \\t]*(.*)$", Pattern.MULTILINE);
 
+    /** What an uploaded page's {@code doc_status} says, against the {@code generated} of a written one. */
+    private static final String CUSTOM = "custom";
+
+    /** The front matter key that says a page frames a microsite, and where that microsite is served. */
+    private static final String MICROSITE_URL = "doc_microsite_url";
+
     /**
      * A fenced block, whatever its language, including the fences.
      * <p>
@@ -108,14 +114,62 @@ public final class SearchRecords {
         String title = valueOf(keys, "title");
         // The fences go first, so that a `#` inside one is never read as a heading.
         String withoutFences = FENCE.matcher(body).replaceAll(" ");
+        String micrositeUrl = valueOf(keys, MICROSITE_URL);
         return new SearchRecord(
                 urlOf(relative, valueOf(keys, "slug"), environment),
                 title.isEmpty() ? fileNameAsTitle(relative) : title,
                 headingsOf(withoutFences),
                 plain(HEADING.matcher(withoutFences).replaceAll(" ")),
                 environment.id(),
+                sourceOf(valueOf(keys, "doc_status"), micrositeUrl),
+                subjectOf(relative),
                 systemOf(relative),
-                componentOf(relative));
+                nameOf(relative),
+                micrositeUrl.isEmpty() ? null : micrositeUrl,
+                // A page of the site, not a page inside a microsite: what a hit inside one says it is in is
+                // set where those records are made.
+                null);
+    }
+
+    /**
+     * What produced a page, from what the page says about itself.
+     * <p>
+     * Every page the service writes carries {@code doc_status}, and an uploaded one carries {@code custom} -
+     * which is the same key the provenance block on the page is built from, so the badge on a search result
+     * and the line under the page can never disagree. A page that frames a microsite is uploaded HTML: it
+     * says nothing of its own, and every record of the files inside it is one of these too.
+     */
+    private static String sourceOf(String status, String micrositeUrl) {
+        if (!micrositeUrl.isEmpty()) {
+            return SearchRecord.HTML;
+        }
+        return CUSTOM.equals(status) ? SearchRecord.MARKDOWN : SearchRecord.GENERATED;
+    }
+
+    /**
+     * What a page documents, from the folder it is in.
+     * <p>
+     * <b>A library is not a component.</b> It publishes no artifact and is deployed nowhere, so no
+     * architecture model holds one and all twelve of its chapters are written by hand - and a reader
+     * narrowing a search to components should not be shown one.
+     * <p>
+     * Null for the site's own pages - the root, the systems index, the page about the documentation. They
+     * document nothing, so they carry no value, and a search narrowed by subject leaves them out.
+     */
+    private static String subjectOf(String relativePath) {
+        String[] segments = relativePath.split("/");
+        if (segments.length <= 2 || !DocumentationPaths.SYSTEMS_SEGMENT.equals(segments[0])) {
+            return null;
+        }
+        for (int i = 0; i < segments.length - 1; i++) {
+            if (DocumentationPaths.COMPONENTS_SEGMENT.equals(segments[i])) {
+                return SearchRecord.COMPONENT;
+            }
+            if (DocumentationPaths.LIBRARIES_SEGMENT.equals(segments[i])) {
+                return SearchRecord.LIBRARY;
+            }
+        }
+        return SearchRecord.SYSTEM;
     }
 
     /**
@@ -137,7 +191,15 @@ public final class SearchRecords {
         String prefix = environment.routePrefix();
         if (!slug.isEmpty()) {
             String withoutSlashes = slug.replaceAll("^/+", "").replaceAll("/+$", "");
-            return withoutSlashes.isEmpty() ? prefix + "/" : prefix + "/" + withoutSlashes + "/";
+            if (withoutSlashes.isEmpty()) {
+                return prefix + "/";
+            }
+            // A slug that starts with a slash is the route from the root of the documentation; one that does
+            // not is relative to the folder the page is in, which is what Docusaurus does with it. The page
+            // that frames a microsite carries the second kind - `microsites/<topic>` inside its chapter - and
+            // reading it as the first made the search point at a route that does not exist.
+            return slug.startsWith("/") ? prefix + "/" + withoutSlashes + "/"
+                    : prefix + "/" + routeOfTheFolder(relativePath) + withoutSlashes + "/";
         }
         String withoutExtension = relativePath.substring(
                 0, relativePath.length() - DocumentationPaths.MARKDOWN_EXTENSION.length() - 1);
@@ -151,6 +213,18 @@ public final class SearchRecords {
     }
 
     /**
+     * The route of the folder a page is in, with a trailing slash, or empty for a page at the root of an
+     * environment tree. The number prefixes come off, as they do everywhere else.
+     */
+    private static String routeOfTheFolder(String relativePath) {
+        int lastSlash = relativePath.lastIndexOf('/');
+        if (lastSlash < 0) {
+            return "";
+        }
+        return NumberPrefixes.strippedFromEverySegment(relativePath.substring(0, lastSlash)) + "/";
+    }
+
+    /**
      * The system a page documents, from the folder it is in. Null for the site's own pages - the root page,
      * the systems index, the page about the documentation - which belong to no system.
      */
@@ -161,16 +235,19 @@ public final class SearchRecords {
     }
 
     /**
-     * The component a page documents, from the folder it is in, or null for a page that is the system's own.
+     * The component or the library a page documents, from the folder it is in, or null for a page that is
+     * the system's own.
      * <p>
      * <b>It is what tells a reader which of a system's fifty components a hit is in.</b> A component's tree
      * hangs inside the chapter that describes the decomposition, so the component is the segment after
-     * {@code components} - and a page that only mentions one, such as the whitebox view, is not in it.
+     * {@code components} - and a page that only mentions one, such as the whitebox view, is not in it. A
+     * library's tree hangs in the same chapter, under a group of its own.
      */
-    private static String componentOf(String relativePath) {
+    private static String nameOf(String relativePath) {
         String[] segments = relativePath.split("/");
         for (int i = 0; i < segments.length - 1; i++) {
-            if (DocumentationPaths.COMPONENTS_SEGMENT.equals(segments[i])) {
+            if (DocumentationPaths.COMPONENTS_SEGMENT.equals(segments[i])
+                || DocumentationPaths.LIBRARIES_SEGMENT.equals(segments[i])) {
                 return segments[i + 1];
             }
         }

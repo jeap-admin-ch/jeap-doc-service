@@ -64,6 +64,9 @@ final class Arc42CustomChapters {
         for (StructureChapter chapter : chapters) {
             Path directory = Arc42Pages.chapterDirectory(template, structureDirectory, chapter);
             pages.writeInto(subject, chapter.folder(), directory);
+            // And a page per microsite embedded in this chapter. It is generated rather than copied, so it
+            // is written whether or not the team uploaded any markdown into the same chapter.
+            pages.writeMicrositesInto(subject, chapter.folder(), directory);
             // Whatever was written, and even when nothing was. The landing page listing this chapter is
             // written before this runs, so it has already promised the chapter exists - and every page of a
             // set can be dropped, by a name the template generates or by a file its bundle no longer holds.

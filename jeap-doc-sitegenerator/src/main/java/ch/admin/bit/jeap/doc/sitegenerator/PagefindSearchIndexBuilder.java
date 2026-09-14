@@ -5,6 +5,8 @@ import ch.admin.bit.jeap.doc.domain.SearchIndex;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSearchIndex;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.port.SearchIndexBuilder;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
 import lombok.RequiredArgsConstructor;
@@ -75,6 +77,8 @@ public class PagefindSearchIndexBuilder implements SearchIndexBuilder {
     private final BuildWorkspaces workspaces;
     private final SiteSources sources;
     private final NodeProcess node;
+    private final CustomDocumentationRepository documentation;
+    private final CustomDocumentationStorage documentationStorage;
     private final ResourceLoader resources;
     private final Clock clock;
 
@@ -94,7 +98,10 @@ public class PagefindSearchIndexBuilder implements SearchIndexBuilder {
             // read from the published site rather than from here. Zero says "no build wrote this".
             sources.write(0L, site, part, content, clock.instant());
 
-            List<SearchRecord> records = SearchRecords.of(content, site);
+            // The pages of the site, and then the content of the microsites they frame - which is in no
+            // content tree, because a microsite is served file by file exactly as it was built.
+            List<SearchRecord> records = MicrositeSearchRecords.expand(SearchRecords.of(content, site),
+                    documentation.micrositesOf(site.id()), documentationStorage);
             if (records.isEmpty()) {
                 throw new SiteBuildException(
                         "The content of " + site.id() + " holds no page, so there is nothing to index.");
@@ -143,12 +150,22 @@ public class PagefindSearchIndexBuilder implements SearchIndexBuilder {
                         .put("url", record.url())
                         .put("title", record.title())
                         .put("content", record.content())
-                        .put("environment", record.environment());
+                        .put("environment", record.environment())
+                        .put("source", record.source());
+                // Absent rather than empty, both of them: a record with no value for a key a query names is
+                // excluded by the index, and that is exactly what should happen to the site's own pages when
+                // a reader narrows the search to a subject.
+                if (record.subject() != null) {
+                    json.put("subject", record.subject());
+                }
                 if (record.system() != null) {
                     json.put("system", record.system());
                 }
-                if (record.component() != null) {
-                    json.put("component", record.component());
+                if (record.name() != null) {
+                    json.put("name", record.name());
+                }
+                if (record.microsite() != null) {
+                    json.put("microsite", record.microsite());
                 }
                 writer.write(JSON.writeValueAsString(json));
                 writer.newLine();

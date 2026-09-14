@@ -49,7 +49,7 @@ class CustomDocsRemovalIT extends DocServiceIntegrationTestBase {
     }
 
     private void given(CustomSetKey key, long revision) {
-        documentation.replace(new CustomSet(null, key, revision,
+        documentation.replace(new CustomSet(null, key, null, revision,
                 "current/docs/removal/%d/bundle.zip".formatted(revision), "abc", 10,
                 new CustomProvenance("docs", "main", "cafe", Instant.EPOCH, null, Instant.EPOCH),
                 List.of(new CustomPage("1-intro", "goals.md", "Goals", 1, false))));

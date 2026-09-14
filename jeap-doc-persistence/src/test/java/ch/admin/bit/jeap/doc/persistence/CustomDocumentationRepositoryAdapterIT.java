@@ -24,6 +24,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 class CustomDocumentationRepositoryAdapterIT extends PostgresTestContainerBase {
 
@@ -47,12 +48,61 @@ class CustomDocumentationRepositoryAdapterIT extends PostgresTestContainerBase {
     }
 
     private static CustomSet setOf(CustomSetKey key, long revision, CustomPage... pages) {
-        return new CustomSet(null, key, revision, "current/docs/" + revision + "/bundle.zip", SHA256, 4096,
+        return new CustomSet(null, key, null, revision, "current/docs/" + revision + "/bundle.zip", SHA256,
+                4096,
                 new CustomProvenance("orders-docs", "main", "cafebabe", NOW, "1.2.3", NOW), List.of(pages));
     }
 
     private static CustomPage page(String chapter, String fileName, String title, int position) {
         return new CustomPage(chapter, fileName, title, position, false);
+    }
+
+    /** An HTML set, whose identity carries where it is embedded and whose label names it in the menu. */
+    private CustomSetKey micrositeKey() {
+        return new CustomSetKey(site, SubjectKind.COMPONENT, "orders", "orders-intake", SourceFormat.HTML,
+                "arc42", "8-crosscutting-concepts", "configuration-reference");
+    }
+
+    private static CustomSet micrositeOf(CustomSetKey key, long revision, String label) {
+        return new CustomSet(null, key, label, revision, "current/docs/" + revision + "/bundle.zip", SHA256,
+                4096,
+                new CustomProvenance("orders-docs", "main", "cafebabe", NOW, "1.2.3", NOW), List.of());
+    }
+
+    /**
+     * The label is the one thing a microsite carries that neither its key nor its files hold: an HTML set has
+     * no pages to take a title from, so without this the menu would have nothing to show.
+     */
+    @Test
+    void replace_whenTheSetIsAMicrosite_thenItsLabelIsStoredAndReadBack() {
+        CustomSetKey key = micrositeKey();
+
+        documentation.replace(micrositeOf(key, 1, "Configuration Reference"));
+
+        Optional<CustomSet> stored = documentation.find(key);
+        assertThat(stored).isPresent();
+        assertThat(stored.get().label()).isEqualTo("Configuration Reference");
+    }
+
+    /** A team may rename its microsite, and what the menu shows is what the last upload called it. */
+    @Test
+    void replace_whenTheMicrositeIsUploadedAgainUnderAnotherLabel_thenTheStoredLabelIsTheNewOne() {
+        CustomSetKey key = micrositeKey();
+        documentation.replace(micrositeOf(key, 1, "Configuration Reference"));
+
+        documentation.replace(micrositeOf(key, 2, "Configuration"));
+
+        assertThat(documentation.find(key).orElseThrow().label()).isEqualTo("Configuration");
+    }
+
+    /** Markdown has no label: every page of such a set carries its own title. */
+    @Test
+    void replace_whenTheSetIsMarkdown_thenItCarriesNoLabel() {
+        CustomSetKey key = systemKey();
+
+        documentation.replace(setOf(key, 1, page("1-intro", "why.md", "Why", 1)));
+
+        assertThat(documentation.find(key).orElseThrow().label()).isNull();
     }
 
     @Test
@@ -251,6 +301,24 @@ class CustomDocumentationRepositoryAdapterIT extends PostgresTestContainerBase {
         assertThat(documentation.of(site, "orders").documentedComponents()).isEmpty();
         assertThat(documentation.find(systemKey())).describedAs("the system's own set is another subject")
                 .isPresent();
+    }
+
+    /**
+     * <b>What the search index run asks for.</b> A microsite's pages are in no content tree, so indexing a
+     * site means asking for its microsites once - every subject's, and no markdown set among them.
+     */
+    @Test
+    void micrositesOf_isEveryUploadedMicrositeOfTheSiteAndNothingElse() {
+        documentation.replace(setOf(systemKey(), 50, page("1-intro", "goals.md", "Goals", 1)));
+        documentation.replace(micrositeOf(micrositeKey(), 51, "Configuration Reference"));
+        documentation.replace(micrositeOf(new CustomSetKey(site, SubjectKind.SYSTEM, "orders", null,
+                SourceFormat.HTML, "arc42", "6-runtime-view", "traces"), 52, "Traces"));
+
+        assertThat(documentation.micrositesOf(site))
+                .extracting(set -> set.key().topic(), CustomSet::label)
+                .containsExactly(tuple("configuration-reference", "Configuration Reference"),
+                        tuple("traces", "Traces"));
+        assertThat(documentation.micrositesOf("another-site")).isEmpty();
     }
 
     @Test

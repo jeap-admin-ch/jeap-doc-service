@@ -2,9 +2,12 @@ package ch.admin.bit.jeap.doc.domain.upload;
 
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
+import ch.admin.bit.jeap.doc.domain.SearchProperties;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
+import ch.admin.bit.jeap.doc.domain.custom.MicrositePageText;
+import ch.admin.bit.jeap.doc.domain.custom.MicrositeSearchText;
 import ch.admin.bit.jeap.doc.domain.custom.UploadedSet;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureReport;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureValidation;
@@ -14,6 +17,7 @@ import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationSubjectRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
+import ch.admin.bit.jeap.doc.domain.port.HtmlText;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
 import ch.admin.bit.jeap.doc.domain.port.UploadMetrics;
 import ch.admin.bit.jeap.doc.domain.port.UploadClaim;
@@ -27,6 +31,7 @@ import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -64,6 +69,8 @@ public class DocumentationUploadService {
     private final UploadProperties uploadProperties;
     private final CustomProperties customProperties;
     private final DocumentationSites sites;
+    private final HtmlText htmlText;
+    private final SearchProperties searchProperties;
     private final DocumentationBuildTrigger buildTrigger;
     private final UploadMetrics metrics;
     private final Clock clock;
@@ -189,7 +196,8 @@ public class DocumentationUploadService {
     private UploadedBundles.ReceivedBundle receive(DocumentationUpload upload, InputStream bundle,
                                                    long sizeInBytes) {
         try {
-            return bundles.receive(bundle, sizeInBytes, customProperties.limitsWith(uploadProperties));
+            return bundles.receive(bundle, sizeInBytes,
+                    customProperties.limitsWith(uploadProperties, upload.descriptor().sourceFormat()));
         } catch (InvalidUploadException e) {
             throw recordRejectedBundle(upload, e);
         } catch (RuntimeException e) {
@@ -228,8 +236,8 @@ public class DocumentationUploadService {
     }
 
     /**
-     * Takes the set over into the current documentation: the bundle is copied to the set's own key, and the
-     * files it holds are recorded.
+     * Takes the set over into the current documentation: the bundle is written to the set's own key, and
+     * the files it holds are recorded.
      * <p>
      * The object first and the rows second. The key of a set carries the upload and the attempt it came from,
      * so the copy adds an object rather than replacing one - and a build reading the rows in between still
@@ -241,8 +249,7 @@ public class DocumentationUploadService {
         DocumentationUploadDescriptor descriptor = upload.descriptor();
         CustomSetKey key = CustomSetKey.of(descriptor.site(), descriptor.placement());
         try {
-            String objectKey =
-                    documentationStorage.promote(stored, key, upload.id(), upload.attempt());
+            String objectKey = storeTheSet(upload, key, stored, received);
             // Asked rather than trusted: an attempt that was given up on keeps running, and the one that
             // took over may already have made its own bundle current. It leaves a window of one write, in
             // place of the whole of an upload.
@@ -256,15 +263,65 @@ public class DocumentationUploadService {
                 return;
             }
             CustomDocumentationRepository.Replaced replaced =
-                    documentation.replace(new CustomSet(null, key, upload.id(), objectKey, stored.sha256(),
+                    documentation.replace(new CustomSet(null, key, descriptor.label(), upload.id(),
+                            objectKey, stored.sha256(),
                             upload.sizeInBytes() > 0 ? upload.sizeInBytes() : received.sizeInBytes(),
                             new CustomProvenance(descriptor.sourceRepository(), descriptor.sourceRef(),
                                     descriptor.sourceRevision(), descriptor.sourceTimestamp(),
                                     descriptor.version(), clock.instant()),
-                            UploadedSet.pagesOf(received.paths(), received)));
+                            UploadedSet.pagesOf(descriptor.sourceFormat(), received.paths(), received)));
             replaced.previousObjectKey().ifPresent(this::forgetTheReplacedObject);
+        } catch (InvalidUploadException e) {
+            // A microsite is unpacked here, and one that unpacks to more than it may is the uploader's to fix,
+            // not a storage failure to retry.
+            throw recordRejectedBundle(upload, e);
         } catch (RuntimeException e) {
             throw recordStorageFailure(upload, e);
+        }
+    }
+
+    /**
+     * Where the set's bytes end up, and the key its row names.
+     * <p>
+     * A markdown set stays the one archive it arrived as - a build reads several pages out of it, so one
+     * object is one request. An HTML set is unpacked instead: a microsite is served file by file to a
+     * browser, and unpacking it per request is not something to do while a reader waits.
+     */
+    private String storeTheSet(DocumentationUpload upload, CustomSetKey key, StoredBundle stored,
+                               UploadedBundles.ReceivedBundle received) {
+        if (key.sourceFormat() == SourceFormat.HTML) {
+            String prefix = documentationStorage.promoteFiles(received, key, upload.id(), upload.attempt(),
+                    customProperties.limitsWith(uploadProperties, SourceFormat.HTML));
+            extractTheTextToSearch(prefix, received);
+            return prefix;
+        }
+        return documentationStorage.promote(stored, key, upload.id(), upload.attempt());
+    }
+
+    /**
+     * The text of the microsite's pages, taken out of the bundle and stored beside its files.
+     * <p>
+     * <b>Here rather than while the site is indexed.</b> The bundle is open, the set is immutable until the
+     * next upload, and the same set is indexed once per environment it is documented in - so this is the one
+     * place where reading the HTML happens once instead of many times.
+     * <p>
+     * <b>And it may not fail the upload.</b> The documentation is published and correct either way; what a
+     * failure here costs is that this microsite's content is not findable until it is uploaded again, which
+     * is not a reason to refuse a set a team just built.
+     */
+    private void extractTheTextToSearch(String prefix, UploadedBundles.ReceivedBundle received) {
+        if (!searchProperties.isEnabled()) {
+            // This instance indexes nothing, so there is nothing to read it. An upload to an instance that
+            // starts indexing later is one that has to be repeated - docs/search.md says so.
+            return;
+        }
+        try {
+            List<MicrositePageText> pages = MicrositeSearchText.of(received, htmlText, searchProperties);
+            documentationStorage.storeSearchText(prefix, pages);
+            log.debug("The text of {} page(s) of the microsite under {} was extracted.", pages.size(), prefix);
+        } catch (RuntimeException e) {
+            log.warn("The text of the microsite under {} could not be extracted, so its content is not "
+                     + "searchable until it is uploaded again. The set itself is published.", prefix, e);
         }
     }
 

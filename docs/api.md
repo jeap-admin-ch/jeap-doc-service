@@ -211,7 +211,7 @@ workflow can tell a misconfigured upload from a failing service:
 | `CONTENT_LENGTH_MISMATCH` | The body is not as long as `Content-Length` announced - see the note below                                |
 | `SIZE_LIMIT_EXCEEDED`     | The bundle is larger than `jeap.doc.upload.max-size`                                                      |
 | `INVALID_BUNDLE`          | The bundle cannot be read as a ZIP archive at all                                                         |
-| `TOO_MANY_PATHS`          | The set holds more files than [`max-paths`](configuration.md#uploads)                                     |
+| `TOO_MANY_PATHS`          | The set holds more files than its format's bound: [`max-paths`](configuration.md#uploads) for markdown, `max-microsite-paths` for HTML |
 | `UNPACKS_TO_TOO_MUCH`     | The archive says its files unpack to more than `jeap.doc.custom.max-unpacked-size`                        |
 | `STRUCTURE_INVALID`       | The set would not be published as it is: **422**, and the findings travel with the answer - see below     |
 | `UPLOAD_IN_PROGRESS`      | Another attempt of this upload is being received; the answer carries `Retry-After`                        |
@@ -220,7 +220,7 @@ workflow can tell a misconfigured upload from a failing service:
 
 **A set that breaks a structure rule is answered `422` with the findings**, in the same shape the
 [validation endpoint](#validating-a-documentation-set) answers them - `template`, `pathsChecked`,
-`allowedFolders`, `allowedExtensions` and one entry per misfiled file in `findings` - so a pipeline that
+`allowedFolders`, `allowedExtensions`, `refusedExtensions` and one entry per misfiled file in `findings` - so a pipeline that
 prints them does not have to know which of the two refused the set. **Nothing is stored for such an upload**:
 the list of paths is read off the archive before the bundle is put anywhere, so there is no object, no
 documentation set, and an upload a retry can take over once the set is fixed. The rules are on
@@ -273,6 +273,7 @@ a different one.
   "pathsIgnored": 2,
   "allowedFolders": ["1-intro", "2-constraints", "…", "12-glossary"],
   "allowedExtensions": ["avif", "gif", "jpeg", "jpg", "md", "png", "svg", "webp"],
+  "refusedExtensions": [],
   "findings": [],
   "findingsOmitted": 0
 }
@@ -296,6 +297,7 @@ carrying the report as extension members:
   "pathsIgnored": 2,
   "allowedFolders": ["1-intro", "…"],
   "allowedExtensions": ["md", "…"],
+  "refusedExtensions": [],
   "findings": [
     {
       "code": "UNKNOWN_CHAPTER",
@@ -319,7 +321,7 @@ because the endpoint or the token is wrong. The `200` is `application/json` and 
 | | |
 | --- | --- |
 | **Every finding, up to a cap** | Ordered so that two runs of one tree print the same list. At most [`max-findings`](configuration.md#uploads) (default 50); `findingsOmitted` says how many were left out, because a truncated list that does not say so is a lie |
-| **What is allowed is said once** | `allowedFolders` and `allowedExtensions` come from the template, so a workflow prints them at the end instead of the service repeating twelve folders in every message |
+| **What is allowed is said once** | `allowedFolders` and `allowedExtensions` come from the template, so a workflow prints them at the end instead of the service repeating twelve folders in every message. **For an HTML upload the two are the other way round**: it follows no template, so `allowedExtensions` is empty and `refusedExtensions` carries what a microsite may not hold |
 | **`pathsIgnored`** | The files a ZIP carries that nobody wrote - `.DS_Store` and its kind - are dropped before any rule runs, and counted rather than hidden |
 | **`path` is absent for a set-level finding** | An unknown template, an empty tree, a missing entry point. A workflow prints those first |
 
@@ -334,8 +336,8 @@ because the endpoint or the token is wrong. The `200` is `application/json` and 
 | A parameter this endpoint does not accept | 400 | `UNKNOWN_PARAMETER` |
 | A value that is not a slug, or a `type`/`source-format` that is not a known one | 400 | `INVALID_PARAMETER_VALUE` |
 | A body that is not a readable list of paths - malformed JSON, no body, a `paths` that is not a list | 400 | `INVALID_PARAMETER_VALUE` |
-| A body larger than a list of `max-paths` paths could be | 413 | `SIZE_LIMIT_EXCEEDED` - refused on its announced length **before the body is read**, and cut at the same limit **while it is read**, so a request that announces no length is bounded too |
-| More paths than [`max-paths`](configuration.md#uploads) | 413 | `TOO_MANY_PATHS` - counted while the list is read, so the request is refused at the path after the cap |
+| A body larger than a list of that format's paths could be | 413 | `SIZE_LIMIT_EXCEEDED` - refused on its announced length **before the body is read**, and cut at the same limit **while it is read**, so a request that announces no length is bounded too |
+| More paths than the format's bound - [`max-paths`](configuration.md#uploads), or `max-microsite-paths` for HTML | 413 | `TOO_MANY_PATHS` - counted while the list is read, so the request is refused at the path after the cap |
 | No token, or the role for another system | 401 / 403 | the security chain's own answer |
 
 A rejection here is **not** counted as a rejected upload: `jeap.doc.upload.rejected` is about uploads, and a

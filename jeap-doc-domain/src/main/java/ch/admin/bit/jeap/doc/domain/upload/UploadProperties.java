@@ -97,6 +97,19 @@ public class UploadProperties {
         private int maxPaths = 200;
 
         /**
+         * The most files an <b>HTML</b> set may hold.
+         * <p>
+         * A microsite is a built site rather than a chapter of pages: the Javadoc of one module is over
+         * five hundred files, and an Allure report about forty. The same ceiling applies.
+         */
+        private int maxMicrositePaths = 5_000;
+
+        /** The bound that applies to a set of this format. */
+        public int maxPathsOf(SourceFormat sourceFormat) {
+            return sourceFormat == SourceFormat.HTML ? maxMicrositePaths : maxPaths;
+        }
+
+        /**
          * The most findings one report carries. A report of forty problems is already unreadable, and what is
          * left out is counted rather than dropped in silence.
          */
@@ -120,6 +133,18 @@ public class UploadProperties {
                     "jeap.doc.upload.validation.max-paths is " + validation.getMaxPaths()
                     + ". No documentation set has that many files, and the bound on the request body is "
                     + "derived from this one, so a value above " + MAX_PATHS_CEILING + " bounds neither.");
+        }
+        if (validation.getMaxMicrositePaths() < 1) {
+            throw new IllegalStateException(
+                    "jeap.doc.upload.validation.max-microsite-paths is "
+                    + validation.getMaxMicrositePaths() + ". A microsite has at least its index.html.");
+        }
+        if (validation.getMaxMicrositePaths() > MAX_PATHS_CEILING) {
+            throw new IllegalStateException(
+                    "jeap.doc.upload.validation.max-microsite-paths is "
+                    + validation.getMaxMicrositePaths() + ". No microsite has that many files, and the "
+                    + "bound on the request body is derived from this one, so a value above "
+                    + MAX_PATHS_CEILING + " bounds neither.");
         }
         if (validation.getMaxFindings() < 1) {
             throw new IllegalStateException(

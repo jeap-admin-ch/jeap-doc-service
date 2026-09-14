@@ -32,8 +32,11 @@ S3, where the documentation generator will pick them up.
 ./mvnw verify -pl jeap-doc-web -Dit.test=UploadApiIT
 ./mvnw verify -pl jeap-doc-web -Dit.test=UploadApiIT#upload_whenWriteRoleForAnotherSystem_thenForbidden
 
-# Regenerate the third-party license list after a dependency change
-./mvnw org.codehaus.mojo:license-maven-plugin:aggregate-add-third-party
+# Regenerate the third-party license list after a dependency change. The whole reactor has to be built
+# first, and -Dlicense.force=true is not optional: without it the plugin answers "All files are up to date,
+# skip goal execution" and leaves the list as it was.
+./mvnw -Dmaven.test.skip=true install
+./mvnw org.codehaus.mojo:license-maven-plugin:aggregate-add-third-party -Dlicense.force=true
 ```
 
 ## Architecture
@@ -134,6 +137,32 @@ architecture repository - a descriptor, a contact address, the registry URL of a
 `linkOrCode`, which shows it as code when it cannot be a link. There is no `try` around `SiteBuilder.generate`,
 so one bad value out of one upstream ends the generation of **every** system of the environment.
 
+### Raw HTML in a page is escaped, and that is load-bearing
+
+`plugins/remark-escape-raw-html` in the site template turns every raw HTML node of a page into text before
+Docusaurus renders it. **It is what allows the site's policy to keep `'unsafe-inline'`**: a page carries
+documentation other teams uploaded, and an inline `<script>` that became markup would run on this origin.
+Removing the plugin, or ordering something before it that resolves HTML, reopens that - and the site build is
+green either way, so the test that notices is `RawHtmlEscapingBrowserIT`, in a real browser.
+
+The generator writes no raw tags, so nothing on the site needs the escaping turned off. An uploaded file a
+browser renders as a document - an SVG - is a second path to the same place, and `SiteHeaders` sandboxes it.
+
+### A microsite is contained by its origin, not by a list
+
+Uploaded HTML is served under `/microsites/` with a sandbox policy on **every response**, so a file opened
+directly is as contained as a framed one. Two rules hold that up, and both are easy to undo by accident:
+
+- **`allow-same-origin` is never granted**, in the iframe attribute or in the policy. The microsite is on
+  this service's host, so with it a framed page could remove the sandbox attribute and reload itself as a
+  same-origin document of the documentation site.
+- **`Access-Control-Allow-Origin` belongs to the microsite prefix alone.** A microsite fetches its own files
+  from an opaque origin, which makes them cross-origin requests; nothing else this service answers is one,
+  and `SiteHeadersTest` asserts that `/api` and the site's own pages never carry it.
+
+The shim the service injects into a microsite's HTML is bound by the same rules as the escaping above: it
+goes in once, after the opening head tag, and everything after it is the uploaded bytes.
+
 ## Conventions worth knowing
 
 ### Keep the domain free of infrastructure
@@ -150,6 +179,10 @@ it", the answer is a port and an adapter.
 - What the site template reads is written by `jeap-doc-sitegenerator` - a serialisation format belongs to
   whoever reads it.
 - The meters live in `jeap-doc-metrics`, behind `UploadMetrics` and `BuildMetrics`.
+- **An HTML parser lives in `jeap-doc-html`, behind `HtmlText`, and nowhere else.** Uploaded HTML is the least
+  trustworthy input this service reads, so the library that parses it is one small module's dependency rather
+  than everything's. `jeap-doc-markdown` may not take it - it has no dependencies and must keep none - and
+  `jeap-doc-objectstorage` is named for what it does.
 - Locking lives in `jeap-doc-persistence`, behind `ExclusiveWork`. ShedLock is named in that module and nowhere
   else.
 - **Where Jackson is needed it is Jackson 3**: the `tools.jackson` group and packages, never
@@ -539,6 +572,35 @@ running: retrying is what a pipeline is supposed to do, so that stays at `INFO`.
 
 Every rule below cost a review finding. They are cheap to follow and expensive to rediscover.
 
+- **A microsite has no page rows, so anything that narrows documentation by its pages hides it.** The build
+  narrowed a subject's sets to the Markdown of one template before asking which chapters it documents - and a
+  chapter holding only a microsite then did not exist, so the page that frames it was written nowhere while
+  the set was stored and its files were served. `ofTemplate` keeps both formats for that question and
+  `publishedBy` stays for everything about pages. **Found by running the service, not by the suite**: every
+  test that had a microsite also had Markdown beside it, or wrote the framing page itself.
+- **A URL a page hands to the browser is resolved against the site's base URL, never taken from the host
+  root.** The base carries the context path the service is deployed under and the `/site/<id>/` of a site that
+  is not the default one; `/microsites/…` in front matter is the path within the service and resolves only at
+  the root of a host. The same holds for anything else a component turns into a `src` or an `href`.
+- **The index answers counts only for the filter keys a query names**, and `totalFilters` ignores every
+  filter - the environment included - so on a site with four environments it reports four times what a reader
+  can see. What a chip should say comes from a second search that names every group with an empty list, which
+  narrows by nothing, and from its `filters`.
+- **A search filter group is sent as `{any: [...]}`, never as an array.** Pagefind reads an array as *all of
+  these at once*, and since every record carries one value per key, a two-value array returns **nothing** -
+  with no error anywhere. A group the reader has fully selected is not sent at all, because a record with no
+  value for a key a query names is excluded: that is what makes the site's own pages, which document no
+  subject, behave when a subject is narrowed. `src/data/searchFacets.js` is the one place this is spelled.
+- **A `slug` in front matter is relative unless it starts with a slash**, exactly as Docusaurus reads it.
+  Treating every slug as a route from the root of the environment made every search hit inside a microsite
+  point at a page that does not exist - the page that frames one carries `microsites/<topic>` inside its
+  chapter.
+- **Anything whose attribute depends on the query string is rendered after mounting, not on the server.**
+  The site is pre-rendered without the query of the link that opened a page, and React keeps an attribute the
+  server rendered instead of correcting it while it hydrates - so a frame or a link rendered on the server
+  keeps pointing at the entry point. It went unnoticed because **the browser suite runs in dark mode**, where
+  the colour mode changes right after hydration and re-renders the page with the right values; in light mode a
+  deep link never opened its page. A test of anything that reads the location runs in light mode too.
 - **Do not assume an upstream resource is immutable because it usually is.** A message type version looks
   fixed - a changed schema is published as a new version - and the first design fetched one and never asked
   again. The architecture repository's own docs API says a consumer must not do that: `compatibleVersion` is

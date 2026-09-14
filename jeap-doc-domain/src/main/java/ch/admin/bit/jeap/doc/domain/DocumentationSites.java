@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.domain;
 
+import ch.admin.bit.jeap.doc.domain.custom.Microsite;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -33,12 +34,13 @@ public class DocumentationSites {
      * of it, and one called {@code actuator} would disappear behind the management endpoints. It is a
      * configuration error, so it fails the startup rather than being discovered by a reader.
      * <p>
-     * <b>It says nothing about a site id, and nothing about the environments of any other site.</b> Every site
-     * but the default one is served below {@link Site#SITE_SEGMENT}, which is a namespace of its own - see the
-     * constant.
+     * <b>It says nothing about a site id, and nothing about the environments of any other site</b> - with the
+     * one exception of {@link Microsite#SEGMENT}, which every site serves its microsites below and which is
+     * therefore refused as an environment of any site. Every site but the default one is served below
+     * {@link Site#SITE_SEGMENT}, which is a namespace of its own - see the constant.
      */
     static final Set<String> RESERVED_TOP_LEVEL_SEGMENTS = Set.of("api", "actuator", "swagger-ui", "api-docs",
-            "webjars", "error", "assets", "img");
+            "webjars", "error", "assets", "img", Microsite.SEGMENT);
 
     /**
      * The longest a site id may be. A site's build lock is named after it, and the {@code shedlock} table's
@@ -165,10 +167,16 @@ public class DocumentationSites {
         String id = configured.getId();
         require(Slugs.isSlug(id), "The site '%s' configures the environment id '%s', which is not a slug (%s).",
                 siteId, id, Slugs.DESCRIPTION);
+        // Every site serves its microsites below its own root - /microsites/ and /site/<id>/microsites/ - so an
+        // environment of that name, on any site, would have every page of its tree matched as a microsite:
+        // served with the sandbox policy and answered 404 wherever the path parses as one.
+        require(!Microsite.SEGMENT.equals(id),
+                "The site '%s' configures an environment called '%s', which is where the site serves its "
+                + "uploaded microsites. Rename the environment.", siteId, id);
         // The environments of the default site are what takes a top-level path segment each, so it is there -
         // and only there - that the segments the service answers on itself are unusable: an environment called
         // 'api' would be matched by the API's security chain and answer 401 for every page of that tree. The
-        // environments of any other site sit below /site/<id>/ and can be called whatever they like.
+        // environments of any other site sit below /site/<id>/ and can otherwise be called whatever they like.
         if (Site.DEFAULT_SITE.equals(siteId)) {
             require(!RESERVED_TOP_LEVEL_SEGMENTS.contains(id),
                     "The site '%s' configures an environment called '%s', which is a path the doc service "

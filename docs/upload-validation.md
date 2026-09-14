@@ -183,18 +183,31 @@ it follows none of the chapter rules and may nest as deeply as any built site.
 | - | ---- | ------- |
 | 1 | The path is relative and normalized, as above | `INVALID_PATH` |
 | 2 | No path appears twice | `DUPLICATE_PATH` |
-| 3 | The extension is one a built site is made of | `FORBIDDEN_EXTENSION` |
+| 3 | The extension is not one a workstation runs | `FORBIDDEN_EXTENSION` |
 | 4 | `index.html` lies at the root of the set | `MISSING_ENTRY_POINT` |
 | 5 | `location` names a chapter folder of the named template | `UNKNOWN_LOCATION` |
+| 6 | No `_jeap-search.tsv` at the root of the set | `RESERVED_PATH` |
 
 ```
-html htm css js map   json txt xml   png svg jpg jpeg gif webp avif ico
-woff woff2 ttf otf    pdf webmanifest
+exe com cmd bat msi scr lnk reg   ps1 psm1 vbs vbe wsf   sh bash zsh
+jar dll so dylib                  app deb rpm apk pkg dmg
 ```
 
-`md` and `mdx` are refused here: uploaded Markdown belongs in a Markdown upload, where a template's rules
-reach it. `_astro/`, `_next/` and `.well-known/` are accepted - a static export's own directories are its
-business, and none of them goes through the docs build.
+**A microsite follows no allowlist**, because it follows no template: it is published as it is, and a build
+emits file types nobody listed in advance - a source map, a web manifest, a `LICENSE` with no extension at
+all, and the Markdown or CSV a generated report links to. What is refused is what a workstation runs, and an
+instance may set its own list with
+[`jeap.doc.custom.refused-extensions`](configuration.md#the-documentation-a-team-writes). `_astro/`, `_next/`
+and `.well-known/` are accepted - a static export's own directories are its business, and none of them goes
+through the docs build.
+
+What bounds what a microsite may *do* is not this list: it is served with an opaque origin and framed in a
+sandbox - see [Security](security.md).
+
+**One name is the service's own.** `_jeap-search.tsv` at the root of a set is where the text of the
+microsite's pages is stored when it is uploaded, under the same prefix as its files so that removing the set
+removes it too - so a set carrying that path is refused rather than silently overwritten. Deeper in the tree
+the name is a team's own business.
 
 ## The finding codes
 
@@ -204,13 +217,14 @@ as a whole.
 | Code | What it means |
 | ---- | ------------- |
 | `INVALID_PATH` | Not a relative, normalized path, or longer than 1024 characters |
+| `RESERVED_PATH` | A path the doc service writes itself, which a set may not bring |
 | `DUPLICATE_PATH` | The same path appears more than once |
 | `FILE_OUTSIDE_CHAPTER` | A file at the root of the set, belonging to no chapter |
 | `UNKNOWN_CHAPTER` | The first segment is not a chapter of the template |
 | `NESTED_FOLDER` | A folder inside a chapter |
 | `HIDDEN_NAME` | A file name beginning with a dot |
 | `UNPUBLISHABLE_NAME` | A file name beginning with an underscore |
-| `FORBIDDEN_EXTENSION` | An extension the template, or a microsite, does not take |
+| `FORBIDDEN_EXTENSION` | An extension the template does not take, or one a microsite refuses |
 | `RESERVED_NAME` | A document of a name the doc service generates into that chapter, or one the site generator reads as the chapter's landing page - a leading number is taken off the name first |
 | `COLLIDING_NAME` | Two documents of one chapter that the site generator would publish at one URL, because a leading number is not part of a page's name |
 | `UNKNOWN_TEMPLATE` | *Set-level.* No template of that name exists; the message names the ones that do |

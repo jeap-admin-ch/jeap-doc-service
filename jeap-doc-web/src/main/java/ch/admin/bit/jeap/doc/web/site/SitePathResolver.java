@@ -2,6 +2,9 @@ package ch.admin.bit.jeap.doc.web.site;
 
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +22,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class SitePathResolver {
 
+    /** What tells a component's or a library's microsite from a system's own. */
+    private static final String COMPONENTS = MicrositePath.COMPONENTS;
+    private static final String LIBRARIES = MicrositePath.LIBRARIES;
+
     private final DocumentationSites sites;
 
     /**
@@ -35,6 +42,75 @@ public class SitePathResolver {
         return namedSite(withoutLeadingSlash)
                 .or(() -> sites.find(Site.DEFAULT_SITE)
                         .map(site -> new SitePath(site, fileOf(withoutLeadingSlash))));
+    }
+
+    /**
+     * The microsite a path addresses, if it names one that could exist.
+     * <p>
+     * <b>A segment of its own, below the site.</b> A microsite is not part of what a build publishes, so it
+     * is served from {@code /microsites/…} rather than from anywhere a generated page could be - and no
+     * environment of the default site may be called that, which {@code DocumentationSites} refuses.
+     * <p>
+     * Three shapes, one per kind of subject. A component's and a library's name the kind, because a
+     * component called {@code arc42} would otherwise be indistinguishable from a system's own microsite
+     * following that template:
+     * <pre>
+     * /microsites/&lt;system&gt;/components/&lt;name&gt;/&lt;template&gt;/&lt;location&gt;/&lt;topic&gt;/&lt;file&gt;
+     * /microsites/&lt;system&gt;/libraries/&lt;name&gt;/&lt;template&gt;/&lt;location&gt;/&lt;topic&gt;/&lt;file&gt;
+     * /microsites/&lt;system&gt;/&lt;template&gt;/&lt;location&gt;/&lt;topic&gt;/&lt;file&gt;
+     * </pre>
+     * Whether such a set is published is {@code PublishedMicrosites}' question; this only reads the path.
+     */
+    public Optional<MicrositePath> resolveMicrosite(String path) {
+        String withoutLeadingSlash = path.startsWith("/") ? path.substring(1) : path;
+        return namedSiteRest(withoutLeadingSlash)
+                .map(rest -> micrositeOf(rest.site(), rest.path()))
+                .orElseGet(() -> sites.find(Site.DEFAULT_SITE)
+                        .flatMap(site -> micrositeOf(site, withoutLeadingSlash)));
+    }
+
+    private Optional<MicrositePath> micrositeOf(Site site, String rest) {
+        String[] segments = MicrositePath.keyPartsOf(rest);
+        if (segments == null) {
+            return Optional.empty();
+        }
+        boolean named = MicrositePath.isNamed(segments);
+        int parts = MicrositePath.partsOf(segments);
+        SubjectKind kind = !named ? SubjectKind.SYSTEM
+                : COMPONENTS.equals(segments[1]) ? SubjectKind.COMPONENT : SubjectKind.LIBRARY;
+        String name = named ? segments[2] : null;
+        int at = named ? 3 : 1;
+        CustomSetKey key = new CustomSetKey(site.id(), kind, segments[0], name, SourceFormat.HTML,
+                segments[at], segments[at + 1], segments[at + 2]);
+        String file = String.join("/", java.util.Arrays.copyOfRange(segments, parts, segments.length));
+        return Optional.of(new MicrositePath(site, key, fileOfMicrosite(file)));
+    }
+
+    /** A microsite is opened at its entry point, so a path that names no file addresses the index. */
+    private static String fileOfMicrosite(String file) {
+        if (file.isEmpty()) {
+            return MicrositePath.INDEX;
+        }
+        return file.endsWith("/") ? file + MicrositePath.INDEX : file;
+    }
+
+    /** The site named below {@code /site/} and what follows it, for a path that names one. */
+    private Optional<SiteAndPath> namedSiteRest(String path) {
+        String prefix = Site.SITE_SEGMENT + "/";
+        if (!path.startsWith(prefix)) {
+            return Optional.empty();
+        }
+        String belowSegment = path.substring(prefix.length());
+        int idEnd = belowSegment.indexOf('/');
+        String id = idEnd < 0 ? belowSegment : belowSegment.substring(0, idEnd);
+        if (id.isEmpty() || Site.DEFAULT_SITE.equals(id)) {
+            return Optional.empty();
+        }
+        String rest = idEnd < 0 ? "" : belowSegment.substring(idEnd + 1);
+        return sites.find(id).map(site -> new SiteAndPath(site, rest));
+    }
+
+    private record SiteAndPath(Site site, String path) {
     }
 
     /**

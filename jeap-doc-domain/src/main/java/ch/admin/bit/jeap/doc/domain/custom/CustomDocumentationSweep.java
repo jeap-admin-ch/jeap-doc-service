@@ -63,11 +63,17 @@ public class CustomDocumentationSweep {
         // the referenced set; one that commits after is spared by the age bound above.
         List<String> stored =
                 storage.listWrittenBefore(clock.instant().minus(YOUNG_ENOUGH_TO_STILL_BE_ARRIVING));
-        Set<String> referenced = new HashSet<>(documentation.allObjectKeys());
+        List<String> named = documentation.allObjectKeys();
+        Set<String> referenced = new HashSet<>(named);
+        // An HTML set's row names the prefix its files lie under rather than one object, so everything
+        // beneath it is referenced. Without this every file of every microsite would be unreferenced, and
+        // the first sweep after an upload would delete a team's documentation six hours later.
+        List<String> referencedPrefixes = named.stream().filter(key -> key.endsWith("/")).toList();
         int unreferenced = 0;
         int removed = 0;
         for (String objectKey : stored) {
-            if (referenced.contains(objectKey)) {
+            if (referenced.contains(objectKey)
+                || referencedPrefixes.stream().anyMatch(objectKey::startsWith)) {
                 continue;
             }
             unreferenced++;

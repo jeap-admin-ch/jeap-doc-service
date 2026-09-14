@@ -11,12 +11,35 @@ import java.util.List;
  * @param headings    its headings, in the order they appear
  * @param body        everything else, as plain text
  * @param environment the environment tree the page is in - what scopes a search to the tree the reader is in
+ * @param source      what produced it: {@link #GENERATED}, {@link #MARKDOWN} or {@link #HTML}
+ * @param subject     what it documents: {@link #SYSTEM}, {@link #COMPONENT}, {@link #LIBRARY}, or null for a
+ *                    page of the site itself, which documents nothing and belongs to nobody
  * @param system      the system it documents, or null for a page of the site itself
- * @param component   the component it documents, or null for a page that is not inside a component's tree -
- *                    what tells a reader which of a system's components a hit is in
+ * @param name        the component or the library it documents, or null for a page that is the system's own -
+ *                    what tells a reader which of a system's fifty components a hit is in
+ * @param micrositeUrl where the microsite this page frames is served, or null for every other page. A page
+ *                    that carries one stands for content that is in no content tree - see
+ *                    {@code MicrositeSearchRecords}, which is the only thing that knows what that means
+ * @param microsite   the microsite a record is a page <i>inside</i>, by its label, or null for every record
+ *                    that is a page of the site itself. It is what lets a result say which uploaded
+ *                    documentation it was found in
  */
 public record SearchRecord(String url, String title, List<String> headings, String body,
-                           String environment, String system, String component) {
+                           String environment, String source, String subject, String system, String name,
+                           String micrositeUrl, String microsite) {
+
+    /** A page the service wrote from the architecture model. */
+    public static final String GENERATED = "generated";
+
+    /** A page a team uploaded as Markdown. */
+    public static final String MARKDOWN = "markdown";
+
+    /** A page of an uploaded HTML microsite, and the generated page that frames it. */
+    public static final String HTML = "html";
+
+    public static final String SYSTEM = "system";
+    public static final String COMPONENT = "component";
+    public static final String LIBRARY = "library";
 
     public SearchRecord {
         headings = headings == null ? List.of() : List.copyOf(headings);

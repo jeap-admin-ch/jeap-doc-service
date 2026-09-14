@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
+import ch.admin.bit.jeap.doc.domain.custom.ChapterOrder;
 import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentation;
 import ch.admin.bit.jeap.doc.domain.custom.CustomPage;
 import ch.admin.bit.jeap.doc.domain.custom.CustomPages;
@@ -8,6 +9,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.custom.Microsite;
 import ch.admin.bit.jeap.doc.domain.custom.UploadedFrontMatter;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.template.ReservedNames;
@@ -27,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -59,6 +62,13 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
     private static final int MAX_FILE_BYTES = 64 * 1024 * 1024;
 
     private final CustomDocumentation documentation;
+
+    /**
+     * Every set of this part, microsites included. The field above is narrowed to this template's markdown,
+     * which is what the pages are read from - and would hide every microsite from this writer.
+     */
+    private final CustomDocumentation allDocumentation;
+
     private final CustomDocumentationStorage storage;
     private final StructureTemplate template;
     private final long maxUnpackedSize;
@@ -84,6 +94,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         // handed: a subject may carry a second methodology and an HTML microsite beside its Markdown, and
         // asking for the set of a subject alone would answer with whichever of them came back first.
         this.documentation = documentation.publishedBy(template.id());
+        this.allDocumentation = documentation;
         this.storage = storage;
         this.template = template;
         this.maxUnpackedSize = properties.getMaxUnpackedSize().toBytes();
@@ -95,16 +106,20 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         if (set.isEmpty()) {
             return 0;
         }
+        List<CustomPage> pages = set.get().pagesOf(chapterFolder);
+        // One order over everything in this chapter, so a microsite sits among the pages by its label
+        // rather than after all of them. A chapter with no microsite comes out as the upload numbered it.
+        ChapterOrder order = ChapterOrder.of(pages, micrositesOf(subject, chapterFolder));
         int written = 0;
-        for (CustomPage page : set.get().pagesOf(chapterFolder)) {
-            if (write(set.get(), page, chapterDirectory)) {
+        for (CustomPage page : pages) {
+            if (write(set.get(), page, order.positionOf(page), chapterDirectory)) {
                 written++;
             }
         }
         // The images beside them. They are not pages and are not counted, but a page that shows one needs it
         // in the same directory.
         for (CustomPage asset : set.get().assetsOf(chapterFolder)) {
-            write(set.get(), asset, chapterDirectory);
+            write(set.get(), asset, 0, chapterDirectory);
         }
         return written;
     }
@@ -116,7 +131,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
      * template generates, or a set that has grown past what a set may unpack to are all one page missing from
      * one part, and the log line says which.
      */
-    private boolean write(CustomSet set, CustomPage page, Path chapterDirectory) {
+    private boolean write(CustomSet set, CustomPage page, int position, Path chapterDirectory) {
         if (abandoned.contains(set.id())) {
             return false;
         }
@@ -168,7 +183,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
             if (page.asset()) {
                 Files.write(file, bytes);
             } else {
-                Files.writeString(file, pageOf(set, page, uploaded.get()), StandardCharsets.UTF_8);
+                Files.writeString(file, pageOf(set, page, position, uploaded.get()), StandardCharsets.UTF_8);
             }
             return true;
         } catch (IOException e) {
@@ -245,12 +260,12 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
      * quoting is {@link UploadedFrontMatter}'s: a repository URL holds a colon, a title may hold anything,
      * and an instant written plainly would be read back as a date.
      */
-    private String pageOf(CustomSet set, CustomPage page, String uploaded) {
+    private String pageOf(CustomSet set, CustomPage page, int position, String uploaded) {
         CustomProvenance provenance = set.provenance();
         Map<String, Object> generated = UploadedFrontMatter.keys();
         // Past whatever the template generates into this chapter: Docusaurus breaks a tie between two equal
         // positions by file name, which is the one thing assigning a position is meant to take out of it.
-        generated.put("sidebar_position", template.firstCustomPagePosition() + page.position());
+        generated.put("sidebar_position", template.firstCustomPagePosition() + position);
         generated.put("doc_status", DOC_STATUS);
         generated.put("doc_source", "upload");
         generated.put("doc_source_repository", provenance.sourceRepository());
@@ -262,6 +277,69 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         generated.put("doc_uploaded_at", provenance.uploadedAt().toString());
         generated.put("doc_uploaded_at_display", DisplayTime.of(provenance.uploadedAt()));
         return UploadedFrontMatter.rewritten(uploaded, generated);
+    }
+
+    @Override
+    public int writeMicrositesInto(CustomSubject subject, String chapterFolder, Path chapterDirectory) {
+        List<Microsite> microsites = micrositesOf(subject, chapterFolder);
+        if (microsites.isEmpty()) {
+            return 0;
+        }
+        ChapterOrder order = ChapterOrder.of(pagesOf(subject, chapterFolder), microsites);
+        for (Microsite microsite : microsites) {
+            writeMicrosite(microsite, order.positionOf(microsite), chapterDirectory);
+        }
+        return microsites.size();
+    }
+
+    private List<Microsite> micrositesOf(CustomSubject subject, String chapterFolder) {
+        return allDocumentation.micrositesOf(subject, template.id(), chapterFolder);
+    }
+
+    private List<CustomPage> pagesOf(CustomSubject subject, String chapterFolder) {
+        return documentation.setOf(subject).map(set -> set.pagesOf(chapterFolder)).orElseGet(List::of);
+    }
+
+    /**
+     * The page that frames one microsite.
+     * <p>
+     * <b>Generated rather than copied.</b> There is no uploaded body here - the microsite's own files are
+     * served from their own prefix, and this page only says where they are. The frame around them is the
+     * site template's, which reads {@code doc_microsite_url} out of this front matter.
+     */
+    private void writeMicrosite(Microsite microsite, int position, Path chapterDirectory) {
+        CustomProvenance provenance = microsite.provenance();
+        Map<String, Object> generated = UploadedFrontMatter.keys();
+        // A set stored before the label column existed carries none; its topic is what names it then.
+        generated.put("title", microsite.label() == null ? microsite.topic() : microsite.label());
+        generated.put("sidebar_position", template.firstCustomPagePosition() + position);
+        // A namespace of its own under the chapter, so a microsite can never take the route of a page
+        // beside it - and the topic the upload named is what a reader sees in the URL.
+        generated.put("slug", "microsites/" + microsite.topic());
+        // The frame is the page: a table of contents of one heading would only take width from it.
+        generated.put("hide_table_of_contents", true);
+        generated.put("className", "doc-microsite-page");
+        generated.put("doc_status", DOC_STATUS);
+        generated.put("doc_source", "upload");
+        generated.put("doc_microsite_url", microsite.url());
+        generated.put("doc_microsite_label", microsite.label());
+        generated.put("doc_source_repository", provenance.sourceRepository());
+        generated.put("doc_source_ref", provenance.sourceRef());
+        generated.put("doc_source_revision", provenance.sourceRevision());
+        if (provenance.version() != null) {
+            generated.put("doc_version", provenance.version());
+        }
+        generated.put("doc_uploaded_at", provenance.uploadedAt().toString());
+        generated.put("doc_uploaded_at_display", DisplayTime.of(provenance.uploadedAt()));
+        String body = "The documentation below was built and published by the team that owns it, and is "
+                      + "shown here as it was built.\n";
+        try {
+            Files.createDirectories(chapterDirectory);
+            Files.writeString(chapterDirectory.resolve(microsite.fileName()),
+                    UploadedFrontMatter.rewritten(body, generated), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** The bundle of a set, opened once, or nothing where its object is no longer there. */

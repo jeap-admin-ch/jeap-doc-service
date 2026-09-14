@@ -13,6 +13,7 @@ import java.util.List;
  *
  * @param id          the identifier of the set, assigned when it is first taken over
  * @param key         what this set documents, and what a further upload of it replaces
+ * @param label       the menu label of an HTML microsite; null for markdown, whose pages carry titles
  * @param revision    the upload this set came from, as the doc service numbered it
  * @param objectKey   where the bundle lies
  * @param sha256      the SHA-256 of that object, which is the one the uploading pipeline was told
@@ -23,6 +24,7 @@ import java.util.List;
 public record CustomSet(
         Long id,
         CustomSetKey key,
+        String label,
         long revision,
         String objectKey,
         String sha256,

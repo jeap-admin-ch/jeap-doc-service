@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.custom;
 
 import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -59,6 +60,28 @@ class UploadedSetTest {
                 List.of("1-intro/.DS_Store", "1-intro/goals.md", "1-intro/._goals.md", "__MACOSX/1-intro/x",
                         "1-intro/Thumbs.db", "1-intro/goals.md~"),
                 new Titles(new java.util.LinkedHashMap<>(Map.of("1-intro/goals.md", "Goals"))));
+
+        assertThat(pages).extracting(CustomPage::fileName).containsExactly("goals.md");
+    }
+
+    /**
+     * <b>An HTML set records no files.</b> A microsite is served file by file and nothing writes a page per
+     * file of it, so rows for its hundreds of assets would be rows nothing reads - what names it in the
+     * navigation is its label.
+     */
+    @Test
+    void anHtmlSet_recordsNoPages() {
+        List<CustomPage> pages = UploadedSet.pagesOf(SourceFormat.HTML,
+                List.of("index.html", "assets/app.js", "guide/index.html"), new Titles(Map.of()));
+
+        assertThat(pages).isEmpty();
+    }
+
+    /** And markdown records them as it always did: the format decides, nothing else changed. */
+    @Test
+    void aMarkdownSet_recordsItsPages() {
+        List<CustomPage> pages = UploadedSet.pagesOf(SourceFormat.MARKDOWN, List.of("1-intro/goals.md"),
+                new Titles(Map.of("1-intro/goals.md", "Goals")));
 
         assertThat(pages).extracting(CustomPage::fileName).containsExactly("goals.md");
     }

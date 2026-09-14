@@ -1,13 +1,15 @@
 package ch.admin.bit.jeap.doc.domain.upload.validation;
 
+import java.util.Locale;
 import java.util.Set;
 
 /**
  * What an HTML upload may carry, and what it has to carry.
  * <p>
- * <b>One list in the domain rather than a method of a template</b>, because an HTML microsite follows no
- * template: it is published as it is, in an iframe, and a per-template copy of this list would be twelve
- * identical answers. Which is also why none of the chapter rules reaches it.
+ * <b>A denylist rather than an allowlist</b>, because a microsite follows no template: it is published as it
+ * is, and a build emits file types nobody listed in advance - a source map, a web manifest, a LICENSE with no
+ * extension at all. What is refused is what has no business in documentation and every business on a
+ * workstation. What contains the rest is the sandbox the microsite is served and framed with.
  */
 public final class MicrositeRules {
 
@@ -15,32 +17,39 @@ public final class MicrositeRules {
     public static final String ENTRY_POINT = "index.html";
 
     /**
-     * The assets a built microsite is made of.
+     * The one path a microsite may not use, because the doc service writes it: the text of the set's pages,
+     * extracted when it is uploaded and read back by the search index run. One line per page, tab separated -
+     * the storage adapter's own format, and the extension says so.
      * <p>
-     * <b>{@code js} is on it deliberately.</b> Asciidoctor output, Spring REST Docs and a Swagger UI bundle
-     * all ship JavaScript, and refusing it would refuse the uploads this enabler exists to carry. What
-     * contains it is the iframe and the content security policy of the publication, not this list - and it is
-     * the one entry here that is a security decision rather than a practical one.
+     * It lies under the set's own prefix so that removing the set removes it and the sweep counts it, which
+     * is what keeps every other rule about a set's storage true. The price is this name, and refusing it at
+     * upload is cheaper than a set whose own file and whose index quietly overwrite each other.
      */
-    private static final Set<String> ALLOWED_FILE_EXTENSIONS = Set.of(
-            "html", "htm", "css", "js", "map",
-            "json", "txt", "xml",
-            "png", "svg", "jpg", "jpeg", "gif", "webp", "avif", "ico",
-            "woff", "woff2", "ttf", "otf",
-            "pdf", "webmanifest");
+    public static final String SEARCH_TEXT = "_jeap-search.tsv";
+
+    /**
+     * What a microsite may not carry unless an instance configures otherwise - executables, scripts a
+     * workstation runs, and the archives that install them.
+     * <p>
+     * Scripting sources like {@code py} and {@code rb} are deliberately not here: they are what a
+     * documentation set quotes, and a browser runs none of them.
+     */
+    public static final Set<String> REFUSED_BY_DEFAULT = Set.of(
+            "exe", "com", "cmd", "bat", "msi", "scr", "lnk", "reg",
+            "ps1", "psm1", "vbs", "vbe", "wsf",
+            "sh", "bash", "zsh",
+            "jar", "dll", "so", "dylib",
+            "app", "deb", "rpm", "apk", "pkg", "dmg");
 
     private MicrositeRules() {
     }
 
-    public static Set<String> allowedFileExtensions() {
-        return ALLOWED_FILE_EXTENSIONS;
-    }
-
     /**
-     * Whether an extension belongs in a microsite. {@code md} and {@code mdx} do not: uploaded Markdown
-     * belongs in a Markdown upload, where the template's own rules reach it.
+     * Whether a file of this extension belongs in a microsite. A file without one does: a build writes
+     * {@code LICENSE} and {@code CNAME}, and nothing runs them.
      */
-    public static boolean allows(String extension) {
-        return extension != null && ALLOWED_FILE_EXTENSIONS.contains(extension);
+    public static boolean allows(String extension, Set<String> refused) {
+        return extension == null || extension.isEmpty()
+               || !refused.contains(extension.toLowerCase(Locale.ROOT));
     }
 }

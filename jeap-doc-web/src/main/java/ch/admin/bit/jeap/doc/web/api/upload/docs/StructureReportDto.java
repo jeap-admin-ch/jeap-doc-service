@@ -20,7 +20,8 @@ import java.util.List;
  *                          truncated list of findings
  * @param allowedFolders    the chapter folders of the template, so a workflow prints them once instead of the
  *                          service repeating them in every message
- * @param allowedExtensions what an upload of this source format may carry
+ * @param allowedExtensions what an upload of this source format may carry; empty for HTML
+ * @param refusedExtensions what an HTML upload may not carry; empty for markdown
  * @param findings          every problem, ordered so that two runs of one tree print the same list
  * @param findingsOmitted   how many findings the cap left out
  */
@@ -31,12 +32,13 @@ record StructureReportDto(
         int pathsIgnored,
         List<String> allowedFolders,
         List<String> allowedExtensions,
+        List<String> refusedExtensions,
         List<StructureFindingDto> findings,
         int findingsOmitted) {
 
     static StructureReportDto of(StructureReport report) {
         return new StructureReportDto(report.template(), report.pathsChecked(), report.pathsIgnored(),
-                report.allowedFolders(), report.allowedExtensions(),
+                report.allowedFolders(), report.allowedExtensions(), report.refusedExtensions(),
                 report.findings().stream().map(StructureFindingDto::of).toList(),
                 report.findingsOmitted());
     }
@@ -54,6 +56,7 @@ record StructureReportDto(
         problem.setProperty("pathsIgnored", pathsIgnored);
         problem.setProperty("allowedFolders", allowedFolders);
         problem.setProperty("allowedExtensions", allowedExtensions);
+        problem.setProperty("refusedExtensions", refusedExtensions);
         problem.setProperty("findings", findings);
         problem.setProperty("findingsOmitted", findingsOmitted);
     }

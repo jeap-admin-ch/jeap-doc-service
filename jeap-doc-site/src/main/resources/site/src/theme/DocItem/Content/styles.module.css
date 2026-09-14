@@ -1,0 +1,44 @@
+/* The frame is the page: it takes the width it is given and a viewport's height unless the microsite asks
+   for more. */
+.microsite {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--ifm-color-emphasis-700);
+}
+
+.actions {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+}
+
+.actions button {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--ifm-link-color);
+    cursor: pointer;
+    font: inherit;
+}
+
+.actions button:hover {
+    text-decoration: underline;
+}
+
+.frame {
+    width: 100%;
+    height: calc(100vh - 10rem);
+    border: 1px solid var(--ifm-color-emphasis-300);
+    border-radius: var(--ifm-global-radius);
+    background: #fff;
+}

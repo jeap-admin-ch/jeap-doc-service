@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -24,14 +25,27 @@ public class ValidationBodySizeInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         long announced = request.getContentLengthLong();
-        long limit = limit();
+        long limit = limit(formatOf(request));
         if (announced > limit) {
             throw InvalidUploadException.bodyTooLarge(announced, limit);
         }
         return true;
     }
 
-    long limit() {
-        return PathTreeReader.maxBytes(properties);
+    long limit(SourceFormat sourceFormat) {
+        return PathTreeReader.maxBytes(properties, sourceFormat);
+    }
+
+    /**
+     * The format the request names, and HTML - the larger bound - for anything else.
+     * <p>
+     * This runs before the handler has bound a parameter, so it is deliberately lenient: what refuses a
+     * body exactly is the read, which is given the format the controller parsed. Guessing the smaller
+     * bound here would answer "too large" to an upload whose real problem is its parameters.
+     */
+    private static SourceFormat formatOf(HttpServletRequest request) {
+        return SourceFormatDto.MARKDOWN.parameterValue().equals(request.getParameter("source-format"))
+                ? SourceFormat.MARKDOWN
+                : SourceFormat.HTML;
     }
 }

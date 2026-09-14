@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.domain;
 
+import ch.admin.bit.jeap.doc.domain.custom.Microsite;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -216,6 +217,24 @@ class DocumentationSitesTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("every other")
                 .hasMessageContaining("/site/");
+    }
+
+    /**
+     * <b>Except {@code microsites}, on every site.</b> A microsite is served below the site it belongs to -
+     * {@code /site/<id>/microsites/} - so an environment of that name had every page of its tree matched as a
+     * microsite: served with the sandbox policy that breaks the site's own scripts, and answered 404 where the
+     * path was deep enough to parse as one.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {Site.DEFAULT_SITE, "governance"})
+    void construct_whenAnEnvironmentOfAnySiteIsCalledMicrosites_thenFailsTheStartup(String siteId) {
+        SiteProperties properties = properties(Map.of(siteId, site(configured ->
+                configured.setEnvironments(List.of(environment(Microsite.SEGMENT, true, true))))));
+
+        assertThatThrownBy(() -> new DocumentationSites(properties))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("'" + Microsite.SEGMENT + "'")
+                .hasMessageContaining("microsite");
     }
 
     /**

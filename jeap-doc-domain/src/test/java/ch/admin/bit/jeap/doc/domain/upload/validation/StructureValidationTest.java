@@ -6,6 +6,7 @@ import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationPlacement;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
 import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
@@ -39,8 +40,9 @@ class StructureValidationTest {
             StructureChapter.numbered(5, "5-building-block-view", "Building Block View");
 
     private final UploadProperties properties = new UploadProperties();
-    private final StructureValidation validation =
-            new StructureValidation(new StructureTemplates(List.of(new TestTemplate())), properties);
+    private final CustomProperties customProperties = new CustomProperties();
+    private final StructureValidation validation = new StructureValidation(
+            new StructureTemplates(List.of(new TestTemplate())), properties, customProperties);
 
     private static DocumentationPlacement systemDocs() {
         return new DocumentationPlacement(DocumentationType.SYSTEM_DOCS, "orders", null, null, "test",
@@ -465,7 +467,8 @@ class StructureValidationTest {
                 "assets/deep/nested/style.css", "img/logo.png");
 
         assertThat(report.findings()).describedAs("a microsite nests as deeply as it likes").isEmpty();
-        assertThat(report.allowedExtensions()).contains("html", "js", "css");
+        assertThat(report.allowedExtensions()).describedAs("a microsite follows no allowlist").isEmpty();
+        assertThat(report.refusedExtensions()).contains("exe", "sh", "jar");
     }
 
     @Test
@@ -487,10 +490,37 @@ class StructureValidationTest {
                 .containsExactly(FindingCode.DUPLICATE_PATH);
     }
 
+    /**
+     * <b>A denylist, so what a workstation runs is refused and what a build emits is not.</b> A microsite
+     * follows no template, and what bounds what it may do is the sandbox it is served and framed with.
+     */
     @Test
-    void html_withAnAssetThatIsNotOne_isRefused() {
-        assertThat(codesOf(validate(html("5-building-block-view"), "index.html", "notes.md")))
+    void html_withAFileAWorkstationRuns_isRefused() {
+        assertThat(codesOf(validate(html("5-building-block-view"), "index.html", "install.exe")))
                 .containsExactly(FindingCode.FORBIDDEN_EXTENSION);
+        assertThat(codesOf(validate(html("5-building-block-view"), "index.html", "app/run.sh")))
+                .containsExactly(FindingCode.FORBIDDEN_EXTENSION);
+    }
+
+    /**
+     * <b>The one name the doc service keeps for itself.</b> The text of a microsite's pages is extracted when
+     * it is uploaded and stored under the set's own prefix, so a set carrying that name would have its own
+     * file and its index overwrite each other - silently, and in whichever order the two writes happen.
+     */
+    @Test
+    void html_withThePathTheServiceWritesItself_isRefused() {
+        assertThat(codesOf(validate(html("5-building-block-view"), "index.html",
+                MicrositeRules.SEARCH_TEXT))).containsExactly(FindingCode.RESERVED_PATH);
+        // Only at the root, which is where it is written. A set is free to carry the name deeper.
+        assertThat(codesOf(validate(html("5-building-block-view"), "index.html",
+                "data/" + MicrositeRules.SEARCH_TEXT))).isEmpty();
+    }
+
+    /** Markdown, a data file and a file with no extension at all are what a real build writes beside a page. */
+    @Test
+    void html_withWhatABuildEmits_isCarried() {
+        assertThat(codesOf(validate(html("5-building-block-view"), "index.html", "notes.md",
+                "data/rows.csv", "LICENSE"))).isEmpty();
     }
 
     @Test

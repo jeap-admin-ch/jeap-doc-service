@@ -107,7 +107,7 @@ class DocumentationValidationController {
         DocumentationPlacement placement = new DocumentationPlacement(
                 DocumentationTypeDto.fromParameterValue(type).toDomain(), system, component, library, template,
                 SourceFormatDto.fromParameterValue(sourceFormat).toDomain(), location, topic);
-        List<String> paths = pathTreeReader.read(request);
+        List<String> paths = pathTreeReader.read(request, placement.sourceFormat());
 
         StructureReport report = validation.validate(placement, paths);
         StructureReportDto answer = StructureReportDto.of(report);

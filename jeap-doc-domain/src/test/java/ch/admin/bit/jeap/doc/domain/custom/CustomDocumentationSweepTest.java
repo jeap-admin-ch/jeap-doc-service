@@ -64,6 +64,26 @@ class CustomDocumentationSweepTest {
     }
 
     /**
+     * <b>An HTML set's row names the prefix its files lie under</b>, not one object. Without counting a
+     * prefix as a reference, every file of every microsite would be unreferenced - and the first sweep
+     * after a team uploaded one would delete it six hours later.
+     */
+    @Test
+    void aFileUnderAPrefixASetNames_isKept() {
+        when(storage.listWrittenBefore(any())).thenReturn(List.of(
+                "current/docs/a/3/1/files/index.html",
+                "current/docs/a/3/1/files/assets/app.js",
+                "current/docs/a/2/1/files/index.html"));
+        when(documentation.allObjectKeys()).thenReturn(List.of("current/docs/a/3/1/files/"));
+
+        sweep.removeUnreferencedObjects();
+
+        verify(storage, never()).delete("current/docs/a/3/1/files/index.html");
+        verify(storage, never()).delete("current/docs/a/3/1/files/assets/app.js");
+        verify(storage).delete("current/docs/a/2/1/files/index.html");
+    }
+
+    /**
      * An upload copies its object before it commits the rows that name it, so a young object with no row is
      * not an orphan - it is an upload in flight. Only what is older is even listed.
      */

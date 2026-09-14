@@ -57,6 +57,9 @@ public enum FindingCode {
     /** An HTML microsite with no {@code index.html} at its root has no page to open. Set-level. */
     MISSING_ENTRY_POINT,
 
+    /** A path the doc service writes itself, so a set may not bring one. */
+    RESERVED_PATH,
+
     /** The {@code location} an HTML upload is embedded at is not a chapter of the template. Set-level. */
     UNKNOWN_LOCATION
 }

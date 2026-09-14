@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.objectstorage;
 
+import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -64,9 +65,32 @@ public class DocObjectStorageProperties {
     private int publicationConcurrency = 16;
 
     /**
+     * How many files of an uploaded microsite are written into the bucket at a time.
+     * <p>
+     * The same reasoning as {@link #publicationConcurrency}, and a knob of its own because this one runs
+     * while a pipeline waits for its upload to be answered rather than in a build of its own.
+     */
+    private int micrositeConcurrency = 16;
+
+    /**
      * The directory the bundles are spooled to - the configured one, or the temporary directory of the JVM.
      */
     public Path spoolDirectoryOrDefault() {
         return spoolDirectory != null ? spoolDirectory : Path.of(System.getProperty("java.io.tmpdir"));
+    }
+
+    /** A configuration error stops the deployment rather than the first upload of a microsite. */
+    @PostConstruct
+    void check() {
+        if (micrositeConcurrency < 1) {
+            throw new IllegalStateException("jeap.doc.storage.microsite-concurrency is "
+                                            + micrositeConcurrency + ". A microsite is written by at least "
+                                            + "one thread, or it is not written at all.");
+        }
+        if (publicationConcurrency < 1) {
+            throw new IllegalStateException("jeap.doc.storage.publication-concurrency is "
+                                            + publicationConcurrency + ". A site is published by at least "
+                                            + "one thread, or it is not published at all.");
+        }
     }
 }

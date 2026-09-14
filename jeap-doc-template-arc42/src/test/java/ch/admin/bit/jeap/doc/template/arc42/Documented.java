@@ -83,7 +83,7 @@ final class Documented {
         });
         CustomSetKey key = new CustomSetKey(subject.site(), subject.kind(), subject.system(), subject.name(),
                 SourceFormat.MARKDOWN, Arc42Template.ID, null, null);
-        return new CustomDocumentation(List.of(new CustomSet(1L, key, 1, "current/x", "abc", 1,
+        return new CustomDocumentation(List.of(new CustomSet(1L, key, null, 1, "current/x", "abc", 1,
                 new CustomProvenance("docs", "main", "cafe", Instant.EPOCH, null, Instant.EPOCH), pages)));
     }
 

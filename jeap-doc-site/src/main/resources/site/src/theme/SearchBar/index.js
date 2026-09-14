@@ -3,7 +3,10 @@ import clsx from 'clsx';
 import BrowserOnly from '@docusaurus/BrowserOnly';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {useEnvironment} from '@site/src/data/environments';
-import {Excerpt, titleOf, Where} from '@site/src/components/SearchHit';
+import {Excerpt, Kind, titleOf, Where} from '@site/src/components/SearchHit';
+import SearchFacets from '@site/src/components/SearchFacets';
+import {SOURCE, everything, filtersOf, selectionFrom, toggled, writeInto}
+    from '@site/src/data/searchFacets';
 import styles from './styles.module.css';
 
 /**
@@ -28,6 +31,9 @@ export default function SearchBar() {
     return <BrowserOnly>{() => <SearchBarInBrowser/>}</BrowserOnly>;
 }
 
+/** The groups the box shows: the source alone - see the note on the selection below. */
+const BOX_FACETS = [SOURCE];
+
 /** How many pages the dropdown shows before it offers the full results page. */
 const SHOWN = 8;
 
@@ -45,6 +51,17 @@ function SearchBarInBrowser() {
     const [open, setOpen] = useState(false);
     const [active, setActive] = useState(-1);
     const [unavailable, setUnavailable] = useState(false);
+
+    /**
+     * The source group, and only it.
+     *
+     * Six chips wrap onto two rows in a dropdown, which costs a result where vertical space is scarcest -
+     * and this is the group a reader wants while typing: "not the generated pages", "only the uploaded
+     * HTML". What a hit documents is a question for the results page, where there is room for it.
+     *
+     * There is no reset here: three chips, all on to begin with, and closing the dropdown is the reset.
+     */
+    const [selection, setSelection] = useState(() => everything(BOX_FACETS));
 
     const input = useRef(null);
     const container = useRef(null);
@@ -86,7 +103,8 @@ function SearchBarInBrowser() {
                 setLoading(false);
                 return;
             }
-            const found = await module.search(query, {filters: {environment: [environment.id]}});
+            const found = await module.search(query,
+                    {filters: filtersOf(selection, environment.id, BOX_FACETS)});
             if (run !== latest.current) {
                 // A slower search of an earlier query came back after a faster one of a later query. Dropping
                 // it is what stops the dropdown flickering back to what the reader typed two letters ago.
@@ -99,7 +117,8 @@ function SearchBarInBrowser() {
             setLoading(false);
         }, DEBOUNCE_MS);
         return () => clearTimeout(timer);
-    }, [query, environment.id, load]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query, environment.id, load, JSON.stringify(selection)]);
 
     // Closing on a click outside, which is what a dropdown has to do and what nothing else here would notice.
     useEffect(() => {
@@ -160,9 +179,21 @@ function SearchBarInBrowser() {
             if (active >= 0 && results?.[active]) {
                 go(results[active].url);
             } else if (query) {
-                go(`${baseUrl}search/?q=${encodeURIComponent(query)}&env=${encodeURIComponent(environment.id)}`);
+                go(resultsPage());
             }
         }
+    };
+
+    /**
+     * Where <i>See all</i> goes, carrying what the box has narrowed: the results page opening unfiltered
+     * would silently undo what the reader had just done.
+     */
+    const resultsPage = () => {
+        const parameters = new URLSearchParams();
+        parameters.set('q', query);
+        parameters.set('env', environment.id);
+        writeInto(parameters, selection, BOX_FACETS);
+        return `${baseUrl}search/?${parameters.toString()}`;
     };
 
     if (unavailable) {
@@ -177,7 +208,7 @@ function SearchBarInBrowser() {
                 type="search"
                 role="combobox"
                 aria-expanded={showDropdown}
-                aria-controls="search-results"
+                aria-controls="search-results-list"
                 aria-autocomplete="list"
                 aria-label="Search the documentation"
                 placeholder={`Search ${environment.label}`}
@@ -194,7 +225,13 @@ function SearchBarInBrowser() {
                 onKeyDown={onKeyDown}
             />
             {showDropdown && (
-                <div className={styles.dropdown} id="search-results" role="listbox">
+                <div className={styles.dropdown} id="search-results">
+                    <SearchFacets
+                        groups={BOX_FACETS}
+                        selection={selection}
+                        onToggle={(group, value) => setSelection(toggled(selection, group, value))}
+                        showReset={false}/>
+                    <div id="search-results-list" role="listbox">
                     {loading && !results && <div className={styles.message}>Searching…</div>}
                     {results && results.length === 0 && (
                         <div className={styles.message}>
@@ -211,6 +248,7 @@ function SearchBarInBrowser() {
                             onMouseEnter={() => setActive(index)}
                             onClick={() => go(result.url)}>
                             <span className={styles.hitTitle}>{titleOf(result)}</span>
+                            <Kind source={result.filters?.source?.[0]}/>
                             <Where meta={result.meta}/>
                             <Excerpt excerpt={result.excerpt} className={styles.hitExcerpt}/>
                         </button>
@@ -219,12 +257,11 @@ function SearchBarInBrowser() {
                         <button
                             type="button"
                             className={styles.more}
-                            onClick={() => go(
-                                `${baseUrl}search/?q=${encodeURIComponent(query)}`
-                                + `&env=${encodeURIComponent(environment.id)}`)}>
+                            onClick={() => go(resultsPage())}>
                             See all {total} results
                         </button>
                     )}
+                    </div>
                 </div>
             )}
         </div>

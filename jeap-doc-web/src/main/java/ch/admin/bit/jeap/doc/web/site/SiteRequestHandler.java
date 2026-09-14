@@ -1,6 +1,8 @@
 package ch.admin.bit.jeap.doc.web.site;
 
 import ch.admin.bit.jeap.doc.domain.PublishedDocumentation;
+import ch.admin.bit.jeap.doc.domain.PublishedMicrosites;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.port.StoredObject;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -41,6 +43,11 @@ public class SiteRequestHandler implements HttpRequestHandler {
     private final SitePathResolver resolver;
     private final PublishedDocumentation documentation;
 
+    /** The uploaded microsites, which are served from their own prefix rather than from a publication. */
+    private final PublishedMicrosites microsites;
+    private final CustomDocumentationStorage micrositeStorage;
+    private final MicrositeResponse micrositeResponse;
+
     /** The one path of a site the service answers itself rather than out of what a build published. */
     private final SiteLiveStatusResponse liveStatus;
 
@@ -63,6 +70,14 @@ public class SiteRequestHandler implements HttpRequestHandler {
             // that also holds the uploaded bundles - and the rule should not live in another component.
             log.debug("Refusing the path {}: it is not a path within a published site.", path);
             response.sendError(HttpStatus.NOT_FOUND.value());
+            return;
+        }
+
+        // Before the site: a microsite is not part of what a build published, and its segment is one no
+        // environment of a site may be called.
+        Optional<MicrositePath> microsite = resolver.resolveMicrosite(path);
+        if (microsite.isPresent()) {
+            serveMicrosite(microsite.get(), request, response);
             return;
         }
 
@@ -106,6 +121,24 @@ public class SiteRequestHandler implements HttpRequestHandler {
             return;
         }
         notFound(siteId, request, response);
+    }
+
+    /**
+     * One file of an uploaded microsite, out of the prefix its set's row names.
+     * <p>
+     * A set that is not published and a file it does not hold are answered the same way, and deliberately:
+     * both are a URL naming documentation that is not there, and the reader sees them inside the frame.
+     */
+    private void serveMicrosite(MicrositePath microsite, HttpServletRequest request,
+                                HttpServletResponse response) throws IOException {
+        Optional<StoredObject> file = microsites.prefixOf(microsite.key())
+                .flatMap(prefix -> micrositeStorage.openFile(prefix, microsite.file()));
+        if (file.isPresent()) {
+            micrositeResponse.write(file.get(), HttpStatus.OK, request, response);
+            return;
+        }
+        log.debug("The microsite {} holds no {}.", microsite.key(), microsite.file());
+        MicrositeNotFoundResponse.writeTo(microsite, response);
     }
 
     /**

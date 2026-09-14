@@ -34,7 +34,7 @@
 
     <artifactId>jeap-doc-service</artifactId>
     <name>${project.groupId}:${project.artifactId}</name>
-    <version>3.0.0-SNAPSHOT</version>
+    <version>3.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <properties>
@@ -68,6 +68,7 @@
         <module>jeap-doc-domain</module>
         <module>jeap-doc-persistence</module>
         <module>jeap-doc-objectstorage</module>
+        <module>jeap-doc-html</module>
         <module>jeap-doc-template-arc42</module>
         <module>jeap-doc-upstream</module>
         <module>jeap-doc-archrepo</module>
@@ -83,62 +84,77 @@
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-site</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-markdown</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-domain</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-persistence</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-objectstorage</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.admin.bit.jeap</groupId>
+                <artifactId>jeap-doc-html</artifactId>
+                <version>3.1.0-SNAPSHOT</version>
+            </dependency>
+            <!--
+                The HTML parser of jeap-doc-html, pinned here because neither Spring Boot nor the jEAP parent
+                manages it. It is the dependency most exposed to hostile input in this service - it reads what
+                a team uploaded - so it is one to keep current rather than to pin and forget.
+            -->
+            <dependency>
+                <groupId>org.jsoup</groupId>
+                <artifactId>jsoup</artifactId>
+                <version>1.23.2</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-template-arc42</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-upstream</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-archrepo</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-reactionobserver</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-sitegenerator</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-metrics</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-web</artifactId>
-                <version>3.0.0-SNAPSHOT</version>
+                <version>3.1.0-SNAPSHOT</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

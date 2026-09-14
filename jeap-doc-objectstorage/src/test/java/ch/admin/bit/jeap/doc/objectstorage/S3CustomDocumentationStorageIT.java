@@ -3,16 +3,20 @@ package ch.admin.bit.jeap.doc.objectstorage;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
+import ch.admin.bit.jeap.doc.domain.custom.MicrositePageText;
+import ch.admin.bit.jeap.doc.domain.upload.validation.MicrositeRules;
 import ch.admin.bit.jeap.doc.domain.port.BundleLimits;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
+import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
 import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import software.amazon.awssdk.services.s3.model.GetObjectTaggingRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -72,6 +76,181 @@ class S3CustomDocumentationStorageIT extends RustFsTestContainerBase {
         } catch (IOException e) {
             throw new java.io.UncheckedIOException(e);
         }
+    }
+
+    /** A microsite as a build writes one: an entry point, a nested asset, and a file nobody wrote. */
+    private static byte[] micrositeBundle() {
+        try (var bytes = new java.io.ByteArrayOutputStream(); ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            for (String[] entry : new String[][]{
+                    {"index.html", "<!doctype html><title>Configuration</title>"},
+                    {"assets/app.js", "console.log('hello')"},
+                    {".DS_Store", "nobody wrote this"}}) {
+                zip.putNextEntry(new ZipEntry(entry[0]));
+                zip.write(entry[1].getBytes(StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+            zip.finish();
+            return bytes.toByteArray();
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    /** The key of an HTML set: where it is embedded is part of what identifies it. */
+    private static CustomSetKey htmlKey() {
+        return new CustomSetKey("default", SubjectKind.COMPONENT, "orders", "orders-intake",
+                SourceFormat.HTML, "arc42", "8-crosscutting-concepts", "configuration-reference");
+    }
+
+    private UploadedBundles.ReceivedBundle receivedMicrosite() {
+        byte[] bytes = micrositeBundle();
+        return uploads.receive(new ByteArrayInputStream(bytes), bytes.length, MICROSITE_LIMITS);
+    }
+
+    private static final BundleLimits MICROSITE_LIMITS = new BundleLimits(5000, 1 << 20);
+
+    /**
+     * <b>A microsite is files, not an archive.</b> A reader opens its entry point and the browser fetches
+     * what that page names, so each file is an object of its own under one prefix.
+     */
+    @Test
+    void promoteFiles_writesEveryFileOfTheSetUnderOnePrefix() {
+        try (UploadedBundles.ReceivedBundle received = receivedMicrosite()) {
+            String prefix = storage.promoteFiles(received, htmlKey(), 30, 1, MICROSITE_LIMITS);
+
+            assertThat(prefix).describedAs("a prefix, which is what tells it from an object key")
+                    .endsWith("/30/1/files/");
+            assertThat(storage.listWrittenBefore(Instant.now().plusSeconds(60)))
+                    .contains(prefix + "index.html", prefix + "assets/app.js")
+                    .describedAs("the files nobody wrote are left out here too")
+                    .doesNotContain(prefix + ".DS_Store");
+        }
+    }
+
+    /** Served as itself: a browser refuses a module script it was told is an octet stream. */
+    @Test
+    void promoteFiles_writesEachFileAsWhatItIs() {
+        try (UploadedBundles.ReceivedBundle received = receivedMicrosite()) {
+            String prefix = storage.promoteFiles(received, htmlKey(), 31, 1, MICROSITE_LIMITS);
+
+            assertThat(contentTypeOf(prefix + "index.html")).startsWith("text/html");
+            assertThat(contentTypeOf(prefix + "assets/app.js")).contains("javascript");
+        }
+    }
+
+    @Test
+    void promoteFiles_tagsEveryFileAsCurrentRatherThanAsAnUpload() {
+        try (UploadedBundles.ReceivedBundle received = receivedMicrosite()) {
+            String prefix = storage.promoteFiles(received, htmlKey(), 32, 1, MICROSITE_LIMITS);
+
+            List<String> values = S3_CLIENT.getObjectTagging(GetObjectTaggingRequest.builder()
+                            .bucket(TEST_BUCKET_NAME).key(prefix + "index.html").build())
+                    .tagSet().stream().map(tag -> tag.value()).toList();
+            assertThat(values).describedAs("the rule that expires the uploads must not reach a microsite")
+                    .containsExactly(S3CustomDocumentationStorage.CONTENT_TAG_VALUE);
+        }
+    }
+
+    /**
+     * <b>What a set really unpacks to is only known while it is written.</b> The sizes the archive declares
+     * are the uploader's to state, so this is the check that measures.
+     */
+    @Test
+    void promoteFiles_whenTheFilesUnpackToMoreThanAllowed_isRefused() {
+        try (UploadedBundles.ReceivedBundle received = receivedMicrosite()) {
+            assertThatThrownBy(() ->
+                    storage.promoteFiles(received, htmlKey(), 33, 1, new BundleLimits(5000, 8)))
+                    .isInstanceOf(InvalidUploadException.class)
+                    .hasFieldOrPropertyWithValue("code",
+                            InvalidUploadException.Code.UNPACKS_TO_TOO_MUCH);
+        }
+        assertThat(keysUnderPrefixOf(33)).describedAs("no row names a refused set, so nothing of it is left")
+                .isEmpty();
+    }
+
+    /**
+     * <b>One small entry may unpack to anything.</b> The limit is counted while the bytes come out of the
+     * archive, so an entry past it is refused before it is put - and nothing is left behind of it.
+     */
+    @Test
+    void promoteFiles_whenOneEntryUnpacksToMoreThanAllowed_isRefusedBeforeItIsWritten() {
+        byte[] zeros = new byte[4 * 1024 * 1024];
+        byte[] bytes;
+        try (var out = new java.io.ByteArrayOutputStream(); ZipOutputStream zip = new ZipOutputStream(out)) {
+            zip.putNextEntry(new ZipEntry("index.html"));
+            zip.write(zeros);
+            zip.closeEntry();
+            zip.finish();
+            bytes = out.toByteArray();
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+        try (UploadedBundles.ReceivedBundle received = uploads.receive(new ByteArrayInputStream(bytes),
+                bytes.length, new BundleLimits(5000, 64 * 1024 * 1024))) {
+            assertThatThrownBy(() ->
+                    storage.promoteFiles(received, htmlKey(), 36, 1, new BundleLimits(5000, 1024 * 1024)))
+                    .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.UNPACKS_TO_TOO_MUCH);
+        }
+        assertThat(keysUnderPrefixOf(36)).isEmpty();
+    }
+
+    /** Every object of the HTML set of one revision, however far it got. */
+    private List<String> keysUnderPrefixOf(long revision) {
+        return storage.listWrittenBefore(Instant.now().plusSeconds(60)).stream()
+                .filter(objectKey -> objectKey.contains("/" + revision + "/1/files/"))
+                .toList();
+    }
+
+    /**
+     * <b>The extracted text lies under the set's own prefix</b>, which is what keeps the rest true: the row
+     * names the prefix, a removal takes everything below it, and the sweep counts it. Nothing about the
+     * storage of a set had to learn that this file exists.
+     */
+    @Test
+    void searchText_isWrittenUnderThePrefixAndReadBackAsItWas() {
+        String prefix;
+        try (UploadedBundles.ReceivedBundle received = receivedMicrosite()) {
+            prefix = storage.promoteFiles(received, htmlKey(), 40, 1, MICROSITE_LIMITS);
+        }
+        List<MicrositePageText> pages = List.of(
+                new MicrositePageText("index.html", "Configuration", "Every property of this service"),
+                new MicrositePageText("pages/a.html", "A", "The first one"));
+
+        storage.storeSearchText(prefix, pages);
+
+        assertThat(storage.listWrittenBefore(Instant.now().plusSeconds(60)))
+                .contains(prefix + MicrositeRules.SEARCH_TEXT);
+        assertThat(storage.readSearchText(prefix)).isEqualTo(pages);
+    }
+
+    /** A set uploaded before the text was ever extracted costs its own content in the index, not a run. */
+    @Test
+    void searchText_ofASetThatHasNone_isNothing() {
+        try (UploadedBundles.ReceivedBundle received = receivedMicrosite()) {
+            String prefix = storage.promoteFiles(received, htmlKey(), 41, 1, MICROSITE_LIMITS);
+
+            assertThat(storage.readSearchText(prefix)).isEmpty();
+        }
+    }
+
+    /** The row names the prefix, so removing the set is removing every file under it. */
+    @Test
+    void delete_ofAPrefix_takesEveryFileOfTheMicrosite() {
+        String prefix;
+        try (UploadedBundles.ReceivedBundle received = receivedMicrosite()) {
+            prefix = storage.promoteFiles(received, htmlKey(), 34, 1, MICROSITE_LIMITS);
+        }
+
+        storage.delete(prefix);
+
+        assertThat(storage.listWrittenBefore(Instant.now().plusSeconds(60)))
+                .describedAs("no file of it is left behind")
+                .noneMatch(key -> key.startsWith(prefix));
+    }
+
+    private static String contentTypeOf(String key) {
+        return S3_CLIENT.headObject(HeadObjectRequest.builder()
+                .bucket(TEST_BUCKET_NAME).key(key).build()).contentType();
     }
 
     /** Stores a bundle the way an upload does, which is what a promotion copies. */
@@ -216,7 +395,7 @@ class S3CustomDocumentationStorageIT extends RustFsTestContainerBase {
     }
 
     private static CustomSet setAt(String objectKey, StoredBundle stored) {
-        return new CustomSet(1L, key(), 15, objectKey, stored.sha256(), 100,
+        return new CustomSet(1L, key(), null, 15, objectKey, stored.sha256(), 100,
                 new CustomProvenance("orders-docs", "main", "cafebabe", NOW, null, NOW), List.of());
     }
 }

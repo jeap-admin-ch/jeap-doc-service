@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -25,24 +26,26 @@ class ValidationBodySizeInterceptorTest {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/uploads/docs/validation");
         // The mock derives the length from its content, so the content is what carries it.
         request.setContent(new byte[(int) contentLength]);
+        // The format decides which bound applies, and the markdown one is what these cases are about.
+        request.setParameter("source-format", "markdown");
         return interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
     }
 
     /** Derived from the cap, so there is one property to set wrong rather than two that have to agree. */
     @Test
     void theLimitIsWhatTheCappedNumberOfPathsCouldBe() {
-        assertThat(interceptor.limit()).isEqualTo(200L * (1024 + 8) + 1024);
+        assertThat(interceptor.limit(SourceFormat.MARKDOWN)).isEqualTo(200L * (1024 + 8) + 1024);
 
         properties.getValidation().setMaxPaths(10);
 
-        assertThat(interceptor.limit()).describedAs("and it follows the cap").isEqualTo(10L * 1032 + 1024);
+        assertThat(interceptor.limit(SourceFormat.MARKDOWN)).describedAs("and it follows the cap").isEqualTo(10L * 1032 + 1024);
     }
 
     @Test
     void aBodyWithinTheLimit_isRead() {
         properties.getValidation().setMaxPaths(1);
 
-        assertThatCode(() -> preHandle(interceptor.limit())).doesNotThrowAnyException();
+        assertThatCode(() -> preHandle(interceptor.limit(SourceFormat.MARKDOWN))).doesNotThrowAnyException();
         assertThat(preHandle(0)).isTrue();
     }
 
@@ -50,10 +53,29 @@ class ValidationBodySizeInterceptorTest {
     void aBodyOverTheLimit_isRefusedBeforeItIsRead() {
         properties.getValidation().setMaxPaths(1);
 
-        assertThatThrownBy(() -> preHandle(interceptor.limit() + 1))
+        assertThatThrownBy(() -> preHandle(interceptor.limit(SourceFormat.MARKDOWN) + 1))
                 .isInstanceOf(InvalidUploadException.class)
                 .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.SIZE_LIMIT_EXCEEDED)
                 .hasMessageContaining("announces");
+    }
+
+    /**
+     * <b>The cheap half is lenient about the format.</b> It runs before anything is bound, so it takes the
+     * larger bound unless the request plainly says markdown; the read applies the exact one.
+     */
+    @Test
+    void aRequestThatDoesNotSayMarkdown_isBoundedByTheLargerLimit() {
+        assertThat(interceptor.limit(SourceFormat.HTML))
+                .isGreaterThan(interceptor.limit(SourceFormat.MARKDOWN));
+
+        MockHttpServletRequest microsite =
+                new MockHttpServletRequest("POST", "/api/uploads/docs/validation");
+        microsite.setParameter("source-format", "html");
+        microsite.setContent(new byte[(int) interceptor.limit(SourceFormat.MARKDOWN) + 1]);
+
+        assertThatCode(() -> interceptor.preHandle(microsite, new MockHttpServletResponse(), new Object()))
+                .describedAs("a body a markdown set could not have is still a microsite's")
+                .doesNotThrowAnyException();
     }
 
     /**

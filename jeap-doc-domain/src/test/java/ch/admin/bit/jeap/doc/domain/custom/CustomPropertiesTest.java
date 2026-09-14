@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.domain.custom;
 
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.util.unit.DataSize;
@@ -15,6 +16,7 @@ class CustomPropertiesTest {
         CustomProperties properties = new CustomProperties();
 
         assertThat(properties.getMaxUnpackedSize()).isEqualTo(DataSize.ofMegabytes(200));
+        assertThat(properties.getRefusedExtensions()).contains("exe", "sh", "jar").doesNotContain("md");
         assertThatCode(properties::check).doesNotThrowAnyException();
     }
 
@@ -33,8 +35,10 @@ class CustomPropertiesTest {
         CustomProperties properties = new CustomProperties();
         UploadProperties uploads = new UploadProperties();
 
-        assertThat(properties.limitsWith(uploads).maxPaths()).isEqualTo(200);
-        assertThat(properties.limitsWith(uploads).maxUnpackedSize())
+        assertThat(properties.limitsWith(uploads, SourceFormat.MARKDOWN).maxPaths()).isEqualTo(200);
+        assertThat(properties.limitsWith(uploads, SourceFormat.HTML).maxPaths())
+                .describedAs("a microsite is a built site, not a chapter of pages").isEqualTo(5_000);
+        assertThat(properties.limitsWith(uploads, SourceFormat.MARKDOWN).maxUnpackedSize())
                 .isEqualTo(DataSize.ofMegabytes(200).toBytes());
     }
 }

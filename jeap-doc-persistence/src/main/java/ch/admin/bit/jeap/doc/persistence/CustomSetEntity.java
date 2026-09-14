@@ -57,6 +57,9 @@ class CustomSetEntity {
 
     private String topic;
 
+    /** The menu label of an HTML microsite. Null for markdown, whose pages carry their own titles. */
+    private String label;
+
     @Column(nullable = false)
     private long revision;
 

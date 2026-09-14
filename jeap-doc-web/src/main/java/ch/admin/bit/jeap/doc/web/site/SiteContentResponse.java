@@ -12,7 +12,6 @@ import org.springframework.util.StreamUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
-import java.util.Arrays;
 
 /**
  * Writes one file of a published site to the reader, with the headers that decide how long they keep it.
@@ -42,7 +41,7 @@ final class SiteContentResponse {
 
     static void write(StoredObject object, String file, HttpStatus status, HttpServletRequest request,
                       HttpServletResponse response) throws IOException {
-        String entityTag = weakEntityTagOf(object);
+        String entityTag = EntityTags.weak(object.entityTag());
         if (entityTag != null) {
             response.setHeader(HttpHeaders.ETAG, entityTag);
         }
@@ -51,7 +50,7 @@ final class SiteContentResponse {
 
         // Everything but the hashed assets is asked to revalidate on every request, so answering the
         // revalidation with the whole document again would be most of the traffic this serves.
-        if (status == HttpStatus.OK && entityTag != null && unchanged(request, entityTag)) {
+        if (status == HttpStatus.OK && entityTag != null && EntityTags.unchanged(request, entityTag)) {
             response.setStatus(HttpStatus.NOT_MODIFIED.value());
             closeQuietly(object);
             return;
@@ -73,40 +72,6 @@ final class SiteContentResponse {
         }
     }
 
-    /**
-     * A <b>weak</b> tag. The object storage's is a strong one, but a strong tag promises that the bytes are
-     * exactly these - and the container refuses to compress a response that carries one, because compressing it
-     * would make the promise false. The documentation is text throughout, so compression is worth more here than
-     * byte-range requests are, and revalidation works the same either way: the comparison below strips the
-     * marker from both sides.
-     */
-    private static String weakEntityTagOf(StoredObject object) {
-        return object.entityTag() == null ? null : "W/" + quoted(object.entityTag());
-    }
-
-    /**
-     * Whether the reader already holds this version. The header carries a list, and a proxy may have weakened
-     * the tag on the way, so it is compared entry by entry and without the weak marker.
-     */
-    private static boolean unchanged(HttpServletRequest request, String entityTag) {
-        String ifNoneMatch = request.getHeader(HttpHeaders.IF_NONE_MATCH);
-        if (ifNoneMatch == null || ifNoneMatch.isBlank()) {
-            return false;
-        }
-        if ("*".equals(ifNoneMatch.strip())) {
-            return true;
-        }
-        String current = withoutWeakMarker(entityTag);
-        return Arrays.stream(ifNoneMatch.split(","))
-                .map(String::strip)
-                .map(SiteContentResponse::withoutWeakMarker)
-                .anyMatch(current::equals);
-    }
-
-    private static String withoutWeakMarker(String entityTag) {
-        return entityTag.startsWith("W/") ? entityTag.substring(2) : entityTag;
-    }
-
     /** The object holds an open connection to the storage; a 304 sends none of it, but it still has to close. */
     private static void closeQuietly(StoredObject object) {
         try {
@@ -116,7 +81,4 @@ final class SiteContentResponse {
         }
     }
 
-    private static String quoted(String entityTag) {
-        return entityTag.startsWith("\"") ? entityTag : "\"" + entityTag + "\"";
-    }
 }

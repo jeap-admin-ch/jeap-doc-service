@@ -22,6 +22,7 @@ jeap:
 | `jeap.doc.storage.site-prefix`             | `sites`            | Prefix the generated sites are published under, in the bucket                                                                                                                                                        |
 | `jeap.doc.storage.spool-directory`         | JVM temp directory | Directory an uploaded bundle is spooled to while it is transferred                                                                                                                                                   |
 | `jeap.doc.storage.publication-concurrency` | `16`               | How many files of a generated site are written into the bucket at a time. A site is thousands of small files, so publishing it is bound by round trips; above the connection pool of the S3 client this buys nothing |
+| `jeap.doc.storage.microsite-concurrency`   | `16`               | How many files of an uploaded HTML microsite are written into the bucket at a time. The same reasoning, and a knob of its own because this runs while a pipeline waits for its upload to be answered. Below 1 stops the startup |
 
 The uploaded documentation lies under its own prefix, separately from the documentation the generator writes: an
 upload is stored as `<upload-prefix>/docs/<id>/<attempt>/bundle.zip`, where `<id>` is the identifier the doc
@@ -74,6 +75,7 @@ jeap:
         cron: "0 30 2 * * *"
       validation:
         max-paths: 200
+        max-microsite-paths: 5000
         max-findings: 50
 ```
 
@@ -82,7 +84,8 @@ jeap:
 | `jeap.doc.upload.housekeeping.enabled`   | `true`         | Whether old uploads are removed at all                |
 | `jeap.doc.upload.housekeeping.retention` | `P14D`         | How long an upload is kept after it was last received |
 | `jeap.doc.upload.housekeeping.cron`      | `0 30 2 * * *` | When to look, in the time zone of the service         |
-| `jeap.doc.upload.validation.max-paths`   | `200`          | The most files a documentation set may hold. Past it a validation is refused with `413` and an **upload** with the same, rather than answered: a tree of that size is a `path` pointing at more than the documentation. The sets that exist hold twelve to seventeen pages, and a page per chapter with thirty screenshots is about fifty files. It also bounds the validation request body, which is derived from it. Below 1 or above 100000 stops the startup |
+| `jeap.doc.upload.validation.max-paths`   | `200`          | The most files a **markdown** documentation set may hold. Past it a validation is refused with `413` and an **upload** with the same, rather than answered: a tree of that size is a `path` pointing at more than the documentation. The sets that exist hold twelve to seventeen pages, and a page per chapter with thirty screenshots is about fifty files. It also bounds the validation request body, which is derived from it. Below 1 or above 100000 stops the startup |
+| `jeap.doc.upload.validation.max-microsite-paths` | `5000` | The most files an **HTML** set may hold. A microsite is a built site rather than a chapter of pages: the Javadoc of one module is over five hundred files, an Allure report about forty. It bounds the upload and the validation request body the same way `max-paths` does, and the same ceiling of 100000 applies. Below 1 or above it stops the startup |
 | `jeap.doc.upload.validation.max-findings` | `50`          | The most findings one report carries. A report of forty problems is already unreadable; what is left out is counted in `findingsOmitted` rather than dropped in silence. Below 1 stops the startup - a report that may carry no finding could not say what is wrong |
 
 The job removes the uploads **from the database only**, whatever state they are in; the bundles are expired by a
@@ -101,11 +104,13 @@ jeap:
     custom:
       max-unpacked-size: 200MB
       sweep-cron: "0 50 2 * * *"
+      refused-extensions: [exe, cmd, bat, ps1, sh, jar, dmg, "…"]
 ```
 
 | Property                            | Default        | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `jeap.doc.custom.max-unpacked-size` | `200MB`        | The most a documentation set may unpack to, added up over its files and counted **per set** - one build writes the system's set, every component's and every library's, and each has this budget of its own. A build writes every file of a set into the tree it generates, so a bundle that unpacks to far more than it weighs would fill the disk of a build task long after the upload was accepted. **Checked twice**: against what the archive declares when the set is received, which answers the uploading pipeline with `413`, and against the bytes actually written when a build writes them - the declared sizes are the uploader's to state, so only the second one measures. Past it during a build the rest of that set is left out and the build goes on |
+| `jeap.doc.custom.refused-extensions` | the list on [What an upload is validated against](upload-validation.md) | What an **HTML** microsite may not carry - executables, the scripts a workstation runs, and the archives that install them. A microsite follows no template, so there is no allowlist to bound it: what a build emits is carried, and what it may *do* is bounded by the sandbox it is served and framed with. Setting this replaces the list rather than adding to it. A markdown set is bounded by its template's own extensions, which no property widens |
 | `jeap.doc.custom.sweep-cron`        | `0 50 2 * * *` | When the objects that no documentation set names are removed. `-` switches it off. It selects on **references, never on age** - nothing under the current documentation is removed for being old - and it leaves alone anything written in the last six hours, which is an upload that may still be committing the rows that name it rather than an orphan                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## Documentation sites
@@ -204,7 +209,9 @@ there that the paths the service answers on itself are unusable. Reserved for th
 served. The environments of any other site sit below `/site/<id>/` and may be called anything.
 
 An environment of any site may not be called `default` or `static`, whatever its URL: those are names the site
-generator uses inside a site's own content tree. All of it is checked while the service starts.
+generator uses inside a site's own content tree. Nor `microsites`: every site serves its uploaded microsites
+below its own root, `/microsites/` or `/site/<id>/microsites/`, and an environment of that name would lose its
+pages to them. All of it is checked while the service starts.
 
 ### Environments
 
@@ -290,6 +297,9 @@ One index over the whole site, built at the end of the build pass that published
 | `jeap.doc.search.lock-lease`  | `PT30M`             | How long an index run's lock survives an instance that dies holding it. Of several instances, one indexes a site |
 | `jeap.doc.search.abandoned-after` | `PT2H`          | How long after it started a run still recorded as running is taken to be dead, and its files removed with its row. **Refused at or below the lock lease**: a run that is alive holds and extends that lock, and treating one as dead that early would delete the files of a run that is still writing them |
 | `jeap.doc.search.failure-retention` | `P30D`        | How long the record of a failed index run is kept. It is evidence of what went wrong, which is worth a month rather than for ever |
+| `jeap.doc.search.max-microsite-pages` | `200`        | How many pages of one uploaded microsite are indexed, its entry point first. **The reason is flooding, not size**: a Javadoc of 519 pages costs a reader five kilobytes before their first query, and filled ten of ten first hits for a common word. Applied while a set is received, so a change takes effect on the next upload |
+| `jeap.doc.search.max-microsite-page-bytes` | `512KB` | How much of one page is read while its text is extracted. A larger page is read down to the cut and indexed as far as it got |
+| `jeap.doc.html.ignored-selectors` | scripts, styles and the usual navigation | What is dropped from an uploaded HTML page before its text is taken. A generated documentation site repeats its navigation on every page, and without this the excerpt of one class page reads like the excerpt of every other |
 
 Both of the last two are acted on by the nightly clean-up, on `jeap.doc.build.history-cron` with the others -
 see [Operating the bucket](operating-the-bucket.md).

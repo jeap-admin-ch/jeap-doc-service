@@ -205,6 +205,20 @@ A library's twelve chapters are written by hand - no architecture model holds on
 `library-architecture/` except the overview page comes from an upload. See
 [The documentation a team writes](custom-documentation.md).
 
+### Where a microsite is served
+
+An HTML upload is not written into the tree at all. It is published under `/microsites/` and the generator
+writes **one page** into the chapter the upload named, whose route is the topic under a namespace of its own:
+
+```
+systems/<system>/system-architecture/<chapter>/microsites/<topic>/     the page with the frame
+/microsites/<system>/<template>/<location>/<topic>/                    the microsite's own files
+```
+
+The namespace is what keeps a microsite from ever taking the route of an uploaded page beside it, and the
+page is ordered among that chapter's pages by its label. See
+[The documentation a team writes](custom-documentation.md).
+
 ### Three rules, and an upload has to keep them too
 
 - **The chapter folder carries its arc42 number, the URL does not.** A chapter is the folder

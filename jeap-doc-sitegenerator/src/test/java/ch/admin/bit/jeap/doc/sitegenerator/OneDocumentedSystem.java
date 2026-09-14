@@ -43,7 +43,7 @@ public class OneDocumentedSystem extends NoCustomDocumentation {
         return new CustomSet(1L,
                 new CustomSetKey(site, SubjectKind.SYSTEM, slug, null, SourceFormat.MARKDOWN, "arc42", null,
                         null),
-                7L, "current/docs/1/bundle.zip", "abc", 10,
+                null, 7L, "current/docs/1/bundle.zip", "abc", 10,
                 new CustomProvenance(slug + "-docs", "main", "cafebabe", Instant.EPOCH, null, Instant.EPOCH),
                 List.of(new CustomPage("1-intro", "goals.md", "Goals", 1, false)));
     }

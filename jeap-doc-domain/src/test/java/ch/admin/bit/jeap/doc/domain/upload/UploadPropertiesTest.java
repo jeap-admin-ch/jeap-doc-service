@@ -18,6 +18,7 @@ class UploadPropertiesTest {
         UploadProperties properties = new UploadProperties();
 
         assertThat(properties.getValidation().getMaxPaths()).isEqualTo(200);
+        assertThat(properties.getValidation().getMaxMicrositePaths()).isEqualTo(5_000);
         assertThat(properties.getValidation().getMaxFindings()).isEqualTo(50);
         assertThatCode(properties::check).doesNotThrowAnyException();
     }
@@ -47,6 +48,18 @@ class UploadPropertiesTest {
         assertThatThrownBy(properties::check)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.upload.validation.max-paths");
+    }
+
+    /** A microsite is bounded too, and by its own number: it is a built site rather than a set of pages. */
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, UploadProperties.MAX_PATHS_CEILING + 1})
+    void aMicrositeBoundThatBoundsNothing_stopsTheStartup(int paths) {
+        UploadProperties properties = new UploadProperties();
+        properties.getValidation().setMaxMicrositePaths(paths);
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.upload.validation.max-microsite-paths");
     }
 
     /** The ceiling itself is a value an instance may configure. */

@@ -26,6 +26,7 @@ class SiteTemplateTest {
         assertThat(workspace.resolve("sidebars.js")).isRegularFile();
         assertThat(workspace.resolve("src/css/custom.css")).isRegularFile();
         assertThat(workspace.resolve("plugins/remark-env-links/index.js")).isRegularFile();
+        assertThat(workspace.resolve("plugins/remark-escape-raw-html/index.js")).isRegularFile();
     }
 
     @Test

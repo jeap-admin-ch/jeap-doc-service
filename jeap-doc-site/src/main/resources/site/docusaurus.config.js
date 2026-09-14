@@ -206,6 +206,9 @@ function docsOptions(environment) {
         // second time would produce /dev/dev/other and fail the build, since onBrokenLinks is 'throw'.
         beforeDefaultRemarkPlugins: [
             [require('./plugins/remark-env-links'), {prefix: routePrefixOf(environment)}],
+            // Raw HTML in a page is shown as text, never passed through. Uploaded pages are read as CommonMark
+            // and would otherwise reach the reader as markup - a script tag among it.
+            require('./plugins/remark-escape-raw-html'),
         ],
         // The folder layout the generator writes is the information architecture, so the items themselves are
         // the default generator's - what is added is the way out of a part, which needs this environment.

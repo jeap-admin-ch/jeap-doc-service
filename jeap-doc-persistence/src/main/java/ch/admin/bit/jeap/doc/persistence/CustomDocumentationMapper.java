@@ -14,8 +14,8 @@ final class CustomDocumentationMapper {
     }
 
     static CustomSet toDomain(CustomSetEntity entity, List<CustomPageEntity> pages) {
-        return new CustomSet(entity.getId(), keyOf(entity), entity.getRevision(), entity.getObjectKey(),
-                entity.getSha256(), entity.getSizeInBytes(),
+        return new CustomSet(entity.getId(), keyOf(entity), entity.getLabel(), entity.getRevision(),
+                entity.getObjectKey(), entity.getSha256(), entity.getSizeInBytes(),
                 new CustomProvenance(entity.getSourceRepository(), entity.getSourceRef(),
                         entity.getSourceRevision(), entity.getSourceTimestamp(), entity.getVersion(),
                         entity.getUploadedAt()),

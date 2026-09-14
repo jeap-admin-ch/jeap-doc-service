@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
 import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureValidation;
 import ch.admin.bit.jeap.doc.web.api.upload.UploadBodies;
@@ -46,16 +47,16 @@ class PathTreeReader {
 
     private final UploadProperties properties;
 
-    /** The most bytes a list of {@code max-paths} paths could be. */
-    static long maxBytes(UploadProperties properties) {
-        return (long) properties.getValidation().getMaxPaths()
+    /** The most bytes a list of paths of this source format could be. */
+    static long maxBytes(UploadProperties properties, SourceFormat sourceFormat) {
+        return (long) properties.getValidation().maxPathsOf(sourceFormat)
                * (StructureValidation.MAX_PATH_LENGTH + JSON_OVERHEAD_PER_PATH) + ENVELOPE;
     }
 
     /** The paths of the tree the request carries, or an empty list where its body names none. */
-    List<String> read(HttpServletRequest request) {
+    List<String> read(HttpServletRequest request, SourceFormat sourceFormat) {
         try {
-            return read(request.getInputStream());
+            return read(request.getInputStream(), sourceFormat);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -66,9 +67,10 @@ class PathTreeReader {
      *
      * @param body the body of the request, read at most as far as the bounds allow
      */
-    List<String> read(InputStream body) {
-        try (JsonParser parser = JSON.createParser(UploadBodies.limitedTo(body, maxBytes(properties)))) {
-            return tree(parser);
+    List<String> read(InputStream body, SourceFormat sourceFormat) {
+        try (JsonParser parser =
+                     JSON.createParser(UploadBodies.limitedTo(body, maxBytes(properties, sourceFormat)))) {
+            return tree(parser, sourceFormat);
         } catch (JacksonException e) {
             // Not the parser's own text: what is wrong with the JSON is the caller's to see in their body, and
             // echoing an internal message tells them nothing they can act on.
@@ -76,14 +78,14 @@ class PathTreeReader {
         }
     }
 
-    private List<String> tree(JsonParser parser) {
+    private List<String> tree(JsonParser parser, SourceFormat sourceFormat) {
         if (parser.nextToken() != JsonToken.START_OBJECT) {
             throw InvalidUploadException.bodyIsNotAPathTree();
         }
         List<String> paths = null;
         while (parser.nextToken() == JsonToken.PROPERTY_NAME) {
             if (PATHS_PROPERTY.equals(parser.currentName())) {
-                paths = paths(parser);
+                paths = paths(parser, sourceFormat);
             } else {
                 skipProperty(parser);
             }
@@ -91,11 +93,11 @@ class PathTreeReader {
         return paths == null ? List.of() : paths;
     }
 
-    private List<String> paths(JsonParser parser) {
+    private List<String> paths(JsonParser parser, SourceFormat sourceFormat) {
         if (parser.nextToken() != JsonToken.START_ARRAY) {
             throw InvalidUploadException.bodyIsNotAPathTree();
         }
-        int maxPaths = properties.getValidation().getMaxPaths();
+        int maxPaths = properties.getValidation().maxPathsOf(sourceFormat);
         List<String> paths = new ArrayList<>();
         while (parser.nextToken() != JsonToken.END_ARRAY) {
             if (paths.size() == maxPaths) {

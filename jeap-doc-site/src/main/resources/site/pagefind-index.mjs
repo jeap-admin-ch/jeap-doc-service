@@ -11,11 +11,16 @@
  * only thing this adds is the shape Pagefind wants:
  *
  *   {"url": "/systems/orders/", "title": "Orders", "content": "…", "environment": "prod",
- *    "system": "orders", "component": "orders-intake"}
+ *    "source": "generated", "subject": "component", "system": "orders", "name": "orders-intake"}
  *
- * `environment` becomes a filter rather than a separate index. That is what scopes a search to the tree the
- * reader is in, and it is a better version of what the removed plugin did with one index per environment: one
- * corpus means the ranking is comparable across systems, and the filter is applied before it.
+ * `environment`, `source` and `subject` become filters rather than separate indexes. The first scopes a search
+ * to the tree the reader is in - a better version of what the removed plugin did with one index per
+ * environment, because one corpus means the ranking is comparable across systems. The other two are what the
+ * reader narrows with: what produced a page, and what it documents.
+ *
+ * A key a record has no value for is left out rather than sent empty. A record with no value for a key a query
+ * names is excluded by the index, which is exactly what should happen to the site's own pages - they document
+ * no subject - when a reader narrows the search to one.
  */
 import {createIndex} from 'pagefind';
 import fs from 'node:fs';
@@ -53,14 +58,19 @@ for await (const line of lines) {
         content: record.content,
         language: 'en',
         // Where the page is, for a result to show beside its title: a title like "Component Architecture"
-        // says nothing on a site of fifty components. Absent keys are left out rather than sent empty, so a
-        // page of the site itself carries neither.
+        // says nothing on a site of fifty components. `name` is the component or the library, and `microsite`
+        // is the uploaded documentation a hit was found inside.
         meta: {
             title: record.title,
             ...(record.system ? {system: record.system} : {}),
-            ...(record.component ? {component: record.component} : {}),
+            ...(record.name ? {name: record.name} : {}),
+            ...(record.microsite ? {microsite: record.microsite} : {}),
         },
-        filters: {environment: [record.environment]},
+        filters: {
+            environment: [record.environment],
+            source: [record.source],
+            ...(record.subject ? {subject: [record.subject]} : {}),
+        },
     }), `adding ${record.url}`);
     records++;
 }

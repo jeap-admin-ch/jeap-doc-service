@@ -4,7 +4,10 @@ import BrowserOnly from '@docusaurus/BrowserOnly';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {useHistory, useLocation} from '@docusaurus/router';
 import {environmentById} from '@site/src/data/environments';
-import {Excerpt, titleOf, Where} from '@site/src/components/SearchHit';
+import {Excerpt, Kind, titleOf, Where} from '@site/src/components/SearchHit';
+import SearchFacets from '@site/src/components/SearchFacets';
+import {FACETS, countingFiltersOf, everything, filtersOf, isNarrowed, selectionFrom, toggled, writeInto}
+    from '@site/src/data/searchFacets';
 import styles from './styles.module.css';
 
 /**
@@ -46,11 +49,15 @@ function Results() {
     const parameters = new URLSearchParams(location.search);
     const query = parameters.get('q') ?? '';
     const environment = environmentById(parameters.get('env'));
+    // The chips are the URL too, so a narrowed result set is a link somebody can share - and a search
+    // nobody has narrowed writes no parameter at all, which keeps its URL what it always was.
+    const selection = selectionFrom(parameters);
 
     // What is in the box, which is not yet what is in the URL: the URL follows a moment later, so that typing
     // does not rewrite it a letter at a time.
     const [typed, setTyped] = useState(query);
     const [results, setResults] = useState(null);
+    const [counts, setCounts] = useState(null);
     const [state, setState] = useState('idle');
     const latest = useRef(0);
 
@@ -61,6 +68,7 @@ function Results() {
     const search = useCallback(async () => {
         if (!query) {
             setResults(null);
+            setCounts(null);
             setState('idle');
             return;
         }
@@ -72,7 +80,7 @@ function Results() {
         try {
             const module = await import(/* webpackIgnore: true */ `${baseUrl}pagefind/pagefind.js`);
             await module.options({baseUrl});
-            const found = await module.search(query, {filters: {environment: [environment.id]}});
+            const found = await module.search(query, {filters: filtersOf(selection, environment.id)});
             if (run !== latest.current) {
                 return;
             }
@@ -86,8 +94,38 @@ function Results() {
             if (run === latest.current) {
                 setState('unavailable');
             }
+            return;
         }
-    }, [baseUrl, query, environment.id]);
+
+        // What each chip would bring, from a second search that narrows by nothing but the environment: the one
+        // before it counts only within what it narrowed to, so a chip the reader has turned off would read zero -
+        // and the index answers no counts at all for a group a query never names.
+        // Its own try: the results are already on the page, and a count that could not be had is chips without
+        // numbers, not documentation that was never indexed.
+        try {
+            const module = await import(/* webpackIgnore: true */ `${baseUrl}pagefind/pagefind.js`);
+            const counted = await module.search(query, {filters: countingFiltersOf(environment.id)});
+            if (run === latest.current) {
+                setCounts(counted.filters);
+            }
+        } catch (e) {
+            if (run === latest.current) {
+                setCounts(null);
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [baseUrl, query, environment.id, JSON.stringify(selection)]);
+
+    /** A chip turned on or off, written straight into the URL - which is where the selection lives. */
+    const narrow = useCallback((group, value) => {
+        const next = writeInto(new URLSearchParams(location.search), toggled(selection, group, value));
+        history.replace(`${location.pathname}?${next.toString()}`);
+    }, [history, location.pathname, location.search, selection]);
+
+    const reset = useCallback(() => {
+        const next = writeInto(new URLSearchParams(location.search), everything());
+        history.replace(`${location.pathname}?${next.toString()}`);
+    }, [history, location.pathname, location.search]);
 
     useEffect(() => {
         search();
@@ -126,6 +164,16 @@ function Results() {
                     onChange={(event) => setTyped(event.target.value)}/>
             </div>
 
+            {query && (
+                <SearchFacets
+                    groups={FACETS}
+                    selection={selection}
+                    counts={counts}
+                    onToggle={narrow}
+                    onReset={reset}
+                    showReset={isNarrowed(selection)}/>
+            )}
+
             {!query && <p>Type in the box to find a page.</p>}
             {state === 'unavailable' && (
                 <p>This documentation has not been indexed yet, so there is nothing to search.</p>
@@ -139,12 +187,13 @@ function Results() {
                     <p className={styles.count}>
                         {results.length} page(s) of {environment.label} match <strong>{query}</strong>.
                     </p>
-                    <ul className={styles.results}>
+                    <ul className={styles.results} aria-label="Search results">
                         {results.map((result) => (
                             <li key={result.url} className={styles.result}>
                                 <a href={result.url} className={styles.resultTitle}>
                                     {titleOf(result)}
                                 </a>
+                                <Kind source={result.filters?.source?.[0]}/>
                                 <Where meta={result.meta}/>
                                 <Excerpt excerpt={result.excerpt} className={styles.resultExcerpt}/>
                             </li>

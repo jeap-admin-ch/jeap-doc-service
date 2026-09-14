@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.domain;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.unit.DataSize;
 
 import java.time.Duration;
 
@@ -60,6 +61,28 @@ public class SearchProperties {
     private Duration failureRetention = Duration.ofDays(30);
 
     /**
+     * How many pages of one uploaded microsite are indexed, its entry point first.
+     * <p>
+     * <b>The reason is flooding, not size.</b> Indexing a whole Javadoc of 519 pages costs a reader five
+     * kilobytes before their first query - but it filled ten of ten first-page hits for a common word, which
+     * is a search nobody can use. The cap is what keeps one upload from being the result list.
+     */
+    private int maxMicrositePages = 200;
+
+    /**
+     * How much of one page is read while its text is extracted.
+     * <p>
+     * A generated documentation page of more than this is read down to the cut and indexed as far as it got.
+     * It bounds what one parse holds in memory, and it is read into a byte array, so it cannot exceed an int.
+     */
+    private DataSize maxMicrositePageBytes = DataSize.ofKilobytes(512);
+
+    /** The page cap as the bundle wants it: a number of bytes that fits an int. */
+    public int maxMicrositePageBytes() {
+        return (int) maxMicrositePageBytes.toBytes();
+    }
+
+    /**
      * The least a retention may be, for the reason on {@link #retention}.
      */
     static final int MINIMUM_RETENTION = 2;
@@ -76,6 +99,17 @@ public class SearchProperties {
                                              + "one as abandoned that early would delete the files of a run "
                                              + "that is still writing them.")
                     .formatted(abandonedAfter, lockLease));
+        }
+        if (maxMicrositePages < 1) {
+            throw new IllegalStateException(("jeap.doc.search.max-microsite-pages is %d. A microsite that "
+                                             + "contributes no page at all is one whose content cannot be "
+                                             + "searched, which is what this feature is; switch the indexing "
+                                             + "off instead.").formatted(maxMicrositePages));
+        }
+        if (maxMicrositePageBytes.toBytes() < 1 || maxMicrositePageBytes.toBytes() > Integer.MAX_VALUE) {
+            throw new IllegalStateException(("jeap.doc.search.max-microsite-page-bytes is %s. One page is "
+                                             + "read into memory whole, so it has to be a positive number of "
+                                             + "bytes that fits an int.").formatted(maxMicrositePageBytes));
         }
         if (retention < MINIMUM_RETENTION) {
             throw new IllegalStateException(("jeap.doc.search.retention is %d. At least %d has to be kept: the "

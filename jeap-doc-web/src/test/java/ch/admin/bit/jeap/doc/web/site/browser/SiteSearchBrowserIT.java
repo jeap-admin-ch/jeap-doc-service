@@ -7,6 +7,8 @@ import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSearchIndex;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.port.PartPublication;
 import ch.admin.bit.jeap.doc.domain.port.SearchIndexRepository;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
@@ -20,6 +22,8 @@ import com.microsoft.playwright.options.AriaRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.DefaultResourceLoader;
+import java.util.UUID;
+import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -31,6 +35,9 @@ import java.time.Instant;
 import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 
 /**
  * The search, driven in a real browser against the running service.
@@ -50,6 +57,9 @@ class SiteSearchBrowserIT extends SiteBrowserTestBase {
     /** A word in the body of the guide page and in no title or heading - so finding it needs the whole page. */
     private static final String IN_THE_BODY = "pipeline";
 
+    /** A word on generated pages and on uploaded ones alike, so that narrowing by source has an effect. */
+    private static final String ON_BOTH_KINDS_OF_PAGE = "documentation";
+
     /** A word that occurs only inside a fenced diagram, which is not documentation and is not indexed. */
     private static final String IN_A_DIAGRAM = "skinparam";
 
@@ -59,12 +69,45 @@ class SiteSearchBrowserIT extends SiteBrowserTestBase {
     @Autowired
     private SitePublicationStorage publication;
 
+    @Autowired
+    private CustomDocumentationRepository documentation;
+
+    @Autowired
+    private CustomDocumentationStorage documentationStorage;
+
+    @Autowired
+    private MockMvc mockMvc;
+
     private static boolean indexed;
 
     @Override
     protected void prepareWhatIsServed() {
         super.prepareWhatIsServed();
+        uploadTheMicrositeOnce();
         indexOnce();
+    }
+
+    /**
+     * The microsite, uploaded for real before the index is built.
+     * <p>
+     * <b>The upload is what makes its content searchable at all.</b> Its pages are in no content tree - they
+     * are served file by file from the prefix the row names - so the text is extracted when the bundle
+     * arrives, and the index run reads that. Uploading after the index was built would say nothing.
+     */
+    private void uploadTheMicrositeOnce() {
+        if (indexed) {
+            return;
+        }
+        var request = put("/api/uploads/docs/{uploadId}", UUID.randomUUID())
+                .contentType("application/zip").content(UploadedDocumentation.micrositeBundle());
+        UploadedDocumentation.micrositeUpload(DOCUMENTED_SYSTEM).forEach(request::param);
+        try {
+            mockMvc.perform(request.with(authentication(
+                            tokenWithRoles(uploadsRole(DOCUMENTED_SYSTEM, "write")))))
+                    .andExpect(status().isCreated());
+        } catch (Exception e) {
+            throw new IllegalStateException("The microsite this suite searches could not be uploaded.", e);
+        }
     }
 
     @Test
@@ -349,6 +392,191 @@ class SiteSearchBrowserIT extends SiteBrowserTestBase {
         assertNothingWentWrongInTheBrowser();
     }
 
+    /**
+     * <b>The whole path, from the upload to the reader.</b> A word that exists only inside an uploaded
+     * microsite is typed, and what comes back is a hit that opens the page framing that microsite at the file
+     * the word is on.
+     * <p>
+     * Nothing else asserts this end to end: the pages of a microsite are in no content tree, so they reach
+     * the index only because the text was extracted when the bundle was uploaded - and the frame shows the
+     * right file only because the record's URL carries {@code ?path=}, which the page reads.
+     */
+    @Test
+    void searchBox_whenAWordInsideAMicrositeIsTyped_thenTheHitOpensTheFrameAtThatPage() {
+        open("/");
+
+        typeIntoTheSearchBox(UploadedDocumentation.ONLY_INSIDE_THE_MICROSITE);
+
+        assertThat(firstHit()).isVisible();
+        firstHit().click();
+        page.waitForFunction("() => document.documentElement.dataset.hasHydrated === 'true'");
+
+        assertEquals(true, page.url().endsWith("?path=" + UploadedDocumentation.NESTED_PAGE),
+                "the hit opens the page that frames the microsite, at the file the word is on: " + page.url());
+        // The colour mode is appended after the path, so the source does not end with it.
+        assertEquals(true, String.valueOf(page.locator("iframe").getAttribute("src"))
+                        .contains("/" + UploadedDocumentation.NESTED_PAGE),
+                "the frame points at the file: " + page.locator("iframe").getAttribute("src"));
+        assertThat(page.frameLocator("iframe").locator("h1"))
+                .hasText(UploadedDocumentation.NESTED_HEADING);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /** And the result says which uploaded documentation it was found in, rather than only naming the page. */
+    @Test
+    void searchBox_whenAHitIsInsideAMicrosite_thenItSaysWhichOne() {
+        open("/");
+
+        typeIntoTheSearchBox(UploadedDocumentation.ONLY_INSIDE_THE_MICROSITE);
+
+        assertThat(firstHit()).isVisible();
+        assertThat(firstHit()).containsText(UploadedDocumentation.MICROSITE_LABEL);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>The chips narrow the list, and the URL says so.</b> A narrowed result set is a link somebody can
+     * share, which is the whole reason the selection lives in the URL rather than in the component.
+     */
+    @Test
+    void searchPage_whenAChipIsTurnedOff_thenTheResultsNarrowAndTheUrlCarriesIt() {
+        open("/search/?q=" + ON_BOTH_KINDS_OF_PAGE);
+        int before = hitCount();
+
+        chip("Generated").click();
+
+        // The comma is percent-encoded, which is what URLSearchParams writes.
+        page.waitForURL(url -> url.contains("source=markdown%2Chtml"));
+        assertThat(chip("Generated")).hasAttribute("aria-pressed", "false");
+        assertEquals(true, hitCount() < before,
+                "turning the generated pages off left " + hitCount() + " of " + before + " results");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /** And a link somebody shared opens with those chips already off. */
+    @Test
+    void searchPage_whenTheUrlCarriesASelection_thenTheChipsShowIt() {
+        open("/search/?q=" + IN_THE_BODY + "&source=markdown,html");
+
+        assertThat(chip("Generated")).hasAttribute("aria-pressed", "false");
+        assertThat(chip("Uploaded MD")).hasAttribute("aria-pressed", "true");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>A chip that is off says what turning it on would bring, not zero.</b> The index answers two sets of
+     * counts - one within the narrowed set and one for the query - and only the second is any use on a
+     * control the reader is deciding whether to click.
+     */
+    @Test
+    void searchPage_whenAChipIsOff_thenItStillSaysHowManyItWouldBring() {
+        open("/search/?q=" + IN_THE_BODY + "&source=markdown,html");
+
+        assertThat(chip("Generated")).not().containsText("0");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>The last chip of a group cannot be turned off.</b> An empty group is ignored by the index rather
+     * than matching nothing, so a page that allowed one would show every result while every chip looked
+     * unselected - which reads as a broken control.
+     */
+    @Test
+    void searchPage_theLastChipOfAGroup_staysSelected() {
+        open("/search/?q=" + IN_THE_BODY + "&source=generated");
+
+        chip("Generated").click();
+
+        assertThat(chip("Generated")).hasAttribute("aria-pressed", "true");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /** And the reset chip is how a reader gets back to everything. */
+    @Test
+    void searchPage_whenTheResetIsClicked_thenEverythingIsSelectedAgain() {
+        open("/search/?q=" + ON_BOTH_KINDS_OF_PAGE + "&source=markdown");
+        int narrowed = hitCount();
+
+        page.getByLabel("Show everything again").click();
+
+        page.waitForURL(url -> !url.contains("source="));
+        assertThat(chip("Generated")).hasAttribute("aria-pressed", "true");
+        assertEquals(true, hitCount() > narrowed, "the reset brought the other results back");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>The box in the navbar carries the source group and nothing else.</b> Six chips wrap onto two rows in
+     * a dropdown and cost a result where vertical space is scarcest; what a page documents is a question for
+     * the results page.
+     */
+    @Test
+    void searchBox_thenItsDropdownCarriesTheSourceChipsOnly() {
+        open("/");
+
+        typeIntoTheSearchBox(IN_THE_BODY);
+
+        assertThat(firstHit()).isVisible();
+        assertThat(chip("Generated")).isVisible();
+        assertThat(chip("Uploaded HTML")).isVisible();
+        assertEquals(0, chips().getByRole(AriaRole.BUTTON,
+                        new Locator.GetByRoleOptions().setName("System")).count(),
+                "the subject group stays on the results page");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
+     * <b>Counting what a chip would bring is a second search, and its failure is not the index's.</b> The
+     * results had already loaded; a failed count threw them away and told the reader the documentation was not
+     * indexed at all. The index here is the real one - only its second search, the counting one, is made to
+     * fail, by serving a module in front of it.
+     */
+    @Test
+    void searchPage_whenCountingFails_thenTheResultsStayAndTheChipsCountNothing() {
+        page.route(url -> url.endsWith("/pagefind/pagefind.js"), route -> route.fulfill(
+                new com.microsoft.playwright.Route.FulfillOptions()
+                        .setContentType("text/javascript")
+                        .setBody("""
+                                import * as real from './pagefind.js?unwrapped';
+                                export * from './pagefind.js?unwrapped';
+                                let searches = 0;
+                                export async function search(...args) {
+                                    searches += 1;
+                                    if (searches === 2) {
+                                        throw new Error('The counting search failed.');
+                                    }
+                                    return real.search(...args);
+                                }
+                                """)));
+
+        open("/search/?q=" + IN_THE_BODY);
+
+        assertThat(page.getByRole(AriaRole.LIST, new Page.GetByRoleOptions().setName("Search results")))
+                .isVisible();
+        assertThat(page.getByText("has not been indexed yet")).hasCount(0);
+        assertThat(chip("Generated")).not().containsText("1");
+    }
+
+    /**
+     * A chip by its label, inside the row of them: its accessible name carries the count as well, and the
+     * navigation is full of buttons.
+     */
+    private Locator chip(String label) {
+        return chips().getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName(label)).first();
+    }
+
+    private Locator chips() {
+        return page.getByRole(AriaRole.GROUP, new Page.GetByRoleOptions().setName("Narrow the results"));
+    }
+
+    /** The results themselves, by the name of the list they are in - the navigation is full of links too. */
+    private int hitCount() {
+        Locator hits = page.getByRole(AriaRole.LIST, new Page.GetByRoleOptions().setName("Search results"))
+                .locator("li a[href]");
+        hits.first().waitFor();
+        return hits.count();
+    }
+
     private Locator searchBox() {
         return page.locator("input.navbar__search-input").first();
     }
@@ -429,8 +657,8 @@ class SiteSearchBrowserIT extends SiteBrowserTestBase {
         publication.setUrl("http://localhost");
         SiteUrls urls = new SiteUrls(publication, "");
         return new PagefindSearchIndexBuilder(properties, new BuildWorkspaces(properties),
-                fixtureSources(urls, properties), new NodeProcess(properties),
-                new DefaultResourceLoader(), Clock.systemUTC());
+                fixtureSources(urls, properties), new NodeProcess(properties), documentation,
+                documentationStorage, new DefaultResourceLoader(), Clock.systemUTC());
     }
 
     private static Path searchWorkspace() {

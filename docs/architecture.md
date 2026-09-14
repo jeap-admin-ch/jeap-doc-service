@@ -18,6 +18,7 @@ flowchart LR
         Persistence[jeap-doc-persistence<br/>driven adapter]
         Storage[jeap-doc-objectstorage<br/>driven adapter]
         Generator[jeap-doc-sitegenerator<br/>driven adapter]
+        Html[jeap-doc-html<br/>driven adapter]
         ArchRepo[jeap-doc-archrepo<br/>driven adapter]
         Reactions[jeap-doc-reactionobserver<br/>driven adapter]
     end
@@ -28,6 +29,7 @@ flowchart LR
     Domain -.->|port| Persistence
     Domain -.->|port| Storage
     Domain -.->|port| Generator
+    Domain -.->|port| Html
     Domain -.->|port| ArchRepo
     Domain -.->|port| Reactions
     Arc42 -.->|implements StructureTemplate| Domain
@@ -51,6 +53,7 @@ flowchart LR
 | `jeap-doc-template-arc42`   | plugin          | arc42: its twelve chapters, its structural rules, and the pages generated into them from the architecture model                                                                                                                                                                                             |
 | `jeap-doc-persistence`      | driven adapter  | Spring Data JPA on PostgreSQL (the uploads, the builds, the architecture model and what is replicated beside it), and the Flyway migrations                                                                                                                                                                 |
 | `jeap-doc-objectstorage`    | driven adapter  | S3 over the jEAP object storage starter, and the startup check of the bucket                                                                                                                                                                                                                                |
+| `jeap-doc-html`             | driven adapter  | Reads an uploaded HTML document as text, behind `HtmlText`. **The only module that may hold an HTML parser**: uploaded HTML is the least trustworthy input this service has, so the dependency that reads it is one small module's rather than everything's |
 | `jeap-doc-sitegenerator`    | driven adapter  | Produces the site: the build workspace, what the site template reads, the site template itself, the generator process                                                                                                                                                                                       |
 | `jeap-doc-upstream`         | support         | How another jEAP service is called and replicated: the client and its token, the bounded conditional `GET`, entity tags, redirects, content URLs, one exception with a retry policy over it. **No bean, no auto-configuration, no properties** - and what the two upstream adapters below may not duplicate |
 | `jeap-doc-archrepo`         | driven adapter  | Everything about the architecture repository: the client of its `/docs-api` behind the three upstream ports of [the import](architecture-import.md), and the reading of a replicated artifact behind `ArchitectureArtifactContent`                                                                          |
@@ -120,6 +123,10 @@ because nothing outside the replication has any use for them.
   implementations as there are templates. **Nothing outside a template module names it** - the site generator
   injects every `StructureTemplate` it finds, and nothing names a template by class. A second structure template
   is a dependency and a bean. See [Structure templates](structure-templates.md).
+- **An HTML parser lives in `jeap-doc-html` and nowhere else.** The domain stays free of infrastructure,
+  `jeap-doc-markdown` has no dependencies, and `jeap-doc-objectstorage` is named for what it does - so the
+  library that reads what a team's build produced is behind a port of its own, in a module that holds one
+  dependency and one bean.
 - **`jeap-doc-markdown` has no dependencies and must keep none.** It is reached from the templates and from the
   site generator, and through the templates it will be on the path of the upload validation - everything added
   to it travels all of that way. The moment it needs the domain it has stopped being a syntax helper.

@@ -48,8 +48,8 @@ that builds one part after an upload, minutes for a full publication.
 
 ## What is indexed
 
-One record per page: its title, its headings and its body text, plus **where the page is** - the system and the
-component it documents.
+One record per page: its title, its headings and its body text, plus **where the page is** - the system, and
+the component or library it documents.
 
 - **The Markdown, not the built HTML.** A page someone uploaded is therefore indexed by the same code as a
   generated one, and it needs no build to have run.
@@ -63,14 +63,52 @@ component it documents.
 - **`snake_case` survives.** An underscore is an emphasis marker in Markdown and it is also what every table
   and column name is made of; splitting `tenant_reference` in two is how a reader searching for the identifier
   in front of them finds nothing.
-- The environment goes in as a **filter**, not as an index of its own.
+- The environment goes in as a **filter**, not as an index of its own, and so are the two facets below.
+
+### What a record says it is
+
+Every record carries two values a reader can narrow by, and every value comes from something the page already
+says:
+
+```
+source   generated | markdown | html        what produced it
+subject  system    | component | library    what it documents
+```
+
+| | |
+|---|---|
+| `source` | From the page's own `doc_status`, which is also what the provenance block under it is built from - so a search result and the page it opens cannot disagree. A page that frames an uploaded microsite, and every record of a file inside it, is `html` |
+| `subject` | From where the page lies. **A library is not a component**: it publishes no artifact and is deployed nowhere, so no architecture model holds one and every chapter of it was written by hand |
+| Neither | The site's own pages - the root, the systems index, *About This Documentation* - document nothing, so they carry **no** `subject` value at all. A search narrowed to a subject leaves them out, which is the reasonable reading of *show me the components* |
+
+### The content of an uploaded microsite
+
+A microsite is published as it was built and served file by file, so its pages are in no content tree and no
+build ever writes them. Their text reaches the index another way:
+
+| | |
+|---|---|
+| **Extracted when it is uploaded** | The bundle is open at that moment, the set cannot change until the next upload, and the same set is published into every environment the subject is documented in - so the HTML is parsed once rather than once per publication |
+| **Stored beside the files** | One object under the set's own prefix, so that removing the set removes it. `_jeap-search.tsv` is therefore a name an upload may not carry, and one that does is refused |
+| **Bounded** | `jeap.doc.search.max-microsite-pages` pages per set, the entry point first, and `max-microsite-page-bytes` of each. The reason is flooding rather than size: a Javadoc of 519 pages costs a reader five kilobytes up front but filled ten of ten first hits for a common word |
+| **`.html` and `.htm` only** | Everything else a microsite carries is an asset of one of those pages |
+| **A hit opens the page that frames it**, at the file that matched - the URL is that page plus `?path=…`, so the reader keeps the navigation around them |
+
+**The cap is applied when the set is uploaded**, not when the site is indexed, so lowering it takes effect on
+the next upload rather than on the next publication.
+
+> **A microsite uploaded while `jeap.doc.search.enabled` was off carries no text**, and only the page that
+> frames it is findable. Uploading the set again is what puts that right - there is nothing to re-run, because
+> the text is only ever produced from a bundle that is being received.
 
 ## What a reader gets
 
 | | |
 |---|---|
 | The box | In the navbar, on every page of every part. Results appear as they type, `Ctrl`/`⌘`-`K` focuses it from anywhere, the arrow keys move through the results, `Escape` closes them |
-| What a result shows | Its title, **where it is** - the system and the component, because every component of a system has a page called *6. Runtime View* - and the text around the match, with the matched words marked |
+| What a result shows | Its title, a badge saying **what kind** of documentation it is, **where it is** - the system, the component or library, and the uploaded microsite it was found inside, because every component of a system has a page called *6. Runtime View* - and the text around the match, with the matched words marked |
+| Narrowing it | **Six chips in two groups**, all selected to begin with: the first thing a reader sees is every result, and the chips take things away. They are in the URL (`&source=…&subject=…`), so a narrowed result set is a link somebody can share, and a search nobody has narrowed writes no parameter at all. Each chip says how many results it would bring **in the environment the reader is in**, from a second search that narrows by nothing else: the search beside it counts only within what it narrowed to, so a chip that is off would read zero - and the index answers no counts at all for a group a query never names. At least one chip of each group stays selected |
+| The box in the navbar | Carries the **source group alone**. Six chips wrap onto two rows in a dropdown and cost a result where vertical space is scarcest, and *what produced it* is the question a reader has while typing. What it has set travels with *See all N results* |
 | The results page | `/search/?q=…&env=…`, behind *See all N results*. It belongs to the **shell part** - the only build that owns the site root - and every other part links it unchecked, the way it links the front page. It carries **a box of its own**, so that a reader who has arrived there goes on searching rather than back to the navbar; what they type becomes `q`, so a result set stays a link they can share |
 | Following a hit | **A page load, never a client-side route.** The index spans the whole site while each build's router knows only its own part, so a hit is routinely a page this build has no route for - routing to it would answer with that build's own *Page Not Found*. It is the same rule the generator follows when it rewrites a link that leaves a part to `pathname://` |
 | The environment | Taken from the URL, through the same derivation the environment switcher uses - and on the results page, which has no tree to take a scope from, out of `env`. **There is one environment control on this site and it is the navbar's**: on the results page it rewrites `env` instead of the path, because `/dev/search/` is a page no part serves |
@@ -129,6 +167,22 @@ See [Configuration](configuration.md) for the table. The two worth knowing about
 - **`jeap.doc.search.retention`** is refused below **2**, and `jeap.doc.search.abandoned-after` is refused at or
   below the lock lease. Both for the same kind of reason: one would take an index away from a reader who is
   still using it, the other would delete the files of a run that is still writing them.
+- **`jeap.doc.search.max-microsite-pages`** (200) and **`max-microsite-page-bytes`** (512KB) bound what one
+  uploaded microsite contributes. They are applied while a set is being received, so a change takes effect on
+  the next upload.
+- **`jeap.doc.html.ignored-selectors`** is what is dropped from an uploaded page before its text is taken -
+  the scripts, and the navigation a generated documentation site repeats on every one of its pages. A
+  generator whose furniture is not on that list costs excerpt quality and nothing else.
+
+## What a build of the index does not decide
+
+`pagefind-index.mjs` decides nothing about what is indexed: every record arrives ready-made, one JSON object
+per line. A group of filters a reader has fully selected is not sent at all, because **a record with no value
+for a key a query names is excluded** - which is what makes the site's own pages behave when a subject is
+narrowed, and what would silently hide every microsite hit if a record were missing its environment.
+
+> **A group is sent as `{any: [...]}` and never as an array.** An array is read as *all of these at once*, and
+> since a record carries one value per key, a two-value array returns nothing - without an error.
 
 ## When there is no search on a site
 

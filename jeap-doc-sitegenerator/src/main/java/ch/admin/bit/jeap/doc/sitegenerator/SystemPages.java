@@ -279,11 +279,11 @@ public class SystemPages {
             List<StructureTemplate> written = new ArrayList<>();
             CustomDocumentation uploaded = documentation.of(site, slug);
             for (StructureTemplate template : templates.all()) {
-                // Narrowed to what this template publishes before anything asks it a question: which chapters
-                // carry pages, which components have any and where a library's version comes from are all
-                // about one tree, and a subject may carry a second methodology or a microsite beside its
-                // Markdown.
-                CustomDocumentation ofTemplate = uploaded.publishedBy(template.id());
+                // Narrowed to what this template publishes before anything asks it a question: a subject may
+                // carry a second methodology beside this one. The microsites stay in - a chapter that holds
+                // only one is still a chapter, and the page that frames it is the only way to reach it -
+                // while every question about pages narrows again to the Markdown set behind it.
+                CustomDocumentation ofTemplate = uploaded.ofTemplate(template.id());
                 // One writer per template: it holds the bundles of that template's sets open while the
                 // template walks, and closing it is what lets go of them.
                 try (CustomPagesWriter pages = new CustomPagesWriter(ofTemplate, documentationStorage,

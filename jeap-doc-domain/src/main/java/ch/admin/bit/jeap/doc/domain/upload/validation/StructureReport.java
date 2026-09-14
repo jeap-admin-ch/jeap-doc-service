@@ -18,7 +18,10 @@ import java.util.List;
  *                          findings
  * @param allowedFolders    the chapter folders of the template, so a workflow can print them once instead of
  *                          the service repeating them in every message. Empty where the template is unknown
- * @param allowedExtensions what an upload to this template may carry
+ * @param allowedExtensions what an upload to this template may carry. Empty for HTML, which follows no
+ *                          allowlist
+ * @param refusedExtensions what an HTML upload may <b>not</b> carry. Empty for markdown, which is bounded
+ *                          by the allowlist above
  * @param findings          every problem, sorted by path and then by code so that two runs of one tree print
  *                          the same list
  * @param findingsOmitted   how many findings were left out by the cap
@@ -29,6 +32,7 @@ public record StructureReport(
         int pathsIgnored,
         List<String> allowedFolders,
         List<String> allowedExtensions,
+        List<String> refusedExtensions,
         List<StructureFinding> findings,
         int findingsOmitted) {
 
@@ -43,6 +47,7 @@ public record StructureReport(
     public StructureReport {
         allowedFolders = allowedFolders == null ? List.of() : List.copyOf(allowedFolders);
         allowedExtensions = allowedExtensions == null ? List.of() : List.copyOf(allowedExtensions);
+        refusedExtensions = refusedExtensions == null ? List.of() : List.copyOf(refusedExtensions);
         findings = findings == null ? List.of() : List.copyOf(findings);
     }
 
