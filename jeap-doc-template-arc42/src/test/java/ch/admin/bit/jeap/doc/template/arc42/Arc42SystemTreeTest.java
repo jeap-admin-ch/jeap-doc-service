@@ -56,7 +56,7 @@ class Arc42SystemTreeTest {
      * sibling components on a component's context view and a hundred tables on an entity relationship
      * diagram. A case that is about a bound overrides the one it is about.
      */
-    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200);
+    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200, 40, 20);
 
     @TempDir
     Path content;
@@ -264,8 +264,111 @@ class Arc42SystemTreeTest {
                 .contains("[orders-intake](/systems/orders/system-architecture/building-block-view/components/orders-intake/)")
                 .contains("[[/docs/dev/systems/orders/system-architecture/building-block-view/components/orders-intake/]]")
                 .contains("Backend Service")
-                .describedAs("a whitebox view is a deep graph and belongs top to bottom")
-                .doesNotContain("left to right direction");
+                .describedAs("every architecture diagram is laid out left to right")
+                .contains("left to right direction");
+    }
+
+    /** The opening paragraph is about the page, whatever the pictures did. */
+    @Test
+    void theWhiteboxPage_opensWithWhatItHoldsRatherThanWithWhatTheDiagramDraws() throws IOException {
+        generate();
+
+        assertThat(read("system-architecture/5-building-block-view/whitebox-view.md"))
+                .contains("All components of `orders`, the relations between them, and what they exchange "
+                          + "with other systems.")
+                .describedAs("the clause about a neighbour belongs under the picture that draws one")
+                .contains("as a single box - what is inside it is described in its own documentation.");
+    }
+
+    /**
+     * <b>The middle band.</b> A picture whose shape is worth seeing and whose names make it unreadable is
+     * drawn as one grey line per pair, and the page says so with both counts.
+     */
+    @Test
+    void theWhiteboxView_whenThereAreMoreRelationsThanMayBeNamed_thenThePictureIsFoldedToItsShape()
+            throws IOException {
+        orders = wired();
+        context = boundedBy(new DiagramLimits(100, 4, 40, 100, 200, 40, 1));
+
+        generate();
+
+        String page = read("system-architecture/5-building-block-view/whitebox-view.md");
+        assertThat(page)
+                .contains("-[#gray]-")
+                .contains("Drawn as its shape only")
+                .describedAs("both counts, because a grey line is not self-explanatory")
+                .contains("relations folded into")
+                .describedAs("and no arrow of a kind survives the fold")
+                .doesNotContain("-[#green,dashed]->")
+                .describedAs("the tables are the facts and are written whatever the picture did")
+                .contains("| Component | Type | Owner | Description |")
+                .contains("## Relations");
+    }
+
+    /**
+     * <b>The ladder.</b> Where the whole picture is over the bound the boundary one is drawn instead, and
+     * only the components that exchange something outside are in it.
+     */
+    @Test
+    void theWhiteboxView_whenTheWholePictureIsTooLarge_thenTheBoundaryOneIsDrawnInstead() throws IOException {
+        // Three relations together is over the bound; the two crossing the boundary are not.
+        context = boundedBy(new DiagramLimits(100, 4, 40, 100, 200, 2, 2));
+
+        generate();
+
+        String page = read("system-architecture/5-building-block-view/whitebox-view.md");
+        assertThat(page)
+                .describedAs("the two relations together are over the bound, so only the boundary is drawn")
+                .contains("## Across the system boundary")
+                .doesNotContain("## With the neighbouring systems")
+                .describedAs("the decomposition is within the bound and is drawn as it was")
+                .contains("## Inside the system");
+    }
+
+    /** Over both bounds nothing is drawn, and the sentence says how much there was. */
+    @Test
+    void theWhiteboxView_whenNothingCanBeDrawn_thenThePageSaysSoAndKeepsItsTables() throws IOException {
+        orders = wired();
+        context = boundedBy(new DiagramLimits(100, 4, 40, 100, 200, 1, 1));
+
+        generate();
+
+        String page = read("system-architecture/5-building-block-view/whitebox-view.md");
+        assertThat(page)
+                .contains("No diagram is drawn for `orders`")
+                .contains("components with")
+                .describedAs("no fence at all, and no note about the neighbours either")
+                .doesNotContain("```plantuml")
+                .doesNotContain("Not every neighbour is drawn")
+                .describedAs("and every fact is still on the page")
+                .contains("| Component | Type | Owner | Description |")
+                .contains("## Relations");
+    }
+
+    /**
+     * A system whose every picture is over a bound of one: two relations inside it and two across its
+     * boundary, so that the whole picture and the boundary one are both too large.
+     */
+    private static DocumentedSystem wired() {
+        DocumentedSystem orders = orders();
+        List<SystemRelation> relations = List.of(
+                new SystemRelation(RelationKind.EVENT, "orders", "orders-risk", "orders", "orders-intake",
+                        "OrdersPaymentAcceptedEvent", null, null, null),
+                new SystemRelation(RelationKind.COMMAND, "orders", "orders-intake", "orders", "orders-risk",
+                        "OrdersCheckErpAvailabilityV2Command", null, null, null),
+                new SystemRelation(RelationKind.EVENT, "shipping", "shipping-gateway", "orders",
+                        "orders-intake", "OrdersPaymentAcceptedEvent", null, null, null),
+                new SystemRelation(RelationKind.COMMAND, "shipping", "shipping-gateway", "orders",
+                        "orders-risk", "OrdersCheckErpAvailabilityV2Command", null, null, null));
+        return new DocumentedSystem(orders.name(), orders.slug(), orders.description(), orders.aliases(),
+                orders.team(), orders.components(), relations, orders.messages());
+    }
+
+    /** The same landscape over bounds of this case's own. */
+    private GenerationContext boundedBy(DiagramLimits limits) {
+        return new GenerationContext(ArchitectureModel.of(List.of(orders, shipping())), "dev",
+                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, limits,
+                "/docs/dev/");
     }
 
     /**
@@ -377,7 +480,7 @@ class Arc42SystemTreeTest {
     void aDiagramShowsACountWhereAnArrowCarriesMoreNamesThanItCanLabel() throws IOException {
         GenerationContext capped = new GenerationContext(context.model(), "dev",
                 "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
-                new DiagramLimits(100, 0, 40, 100, 200), "/docs/dev/");
+                new DiagramLimits(100, 0, 40, 100, 200, 40, 20), "/docs/dev/");
 
         template.writeSystem(Documented.of(orders), capped, systemDirectory);
 
@@ -396,7 +499,7 @@ class Arc42SystemTreeTest {
     void theDiagramsSayWhenTheyLeaveANeighbourOut() throws IOException {
         GenerationContext narrow = new GenerationContext(context.model(), "dev",
                 "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
-                new DiagramLimits(1, 4, 40, 100, 200), "/docs/dev/");
+                new DiagramLimits(1, 4, 40, 100, 200, 40, 20), "/docs/dev/");
         DocumentedSystem crowded = new DocumentedSystem("orders", "orders", null, List.of(), null,
                 orders.components(),
                 List.of(new SystemRelation(RelationKind.EVENT, "shipping", "shipping-gateway", "orders",
@@ -408,7 +511,7 @@ class Arc42SystemTreeTest {
                 ArchitectureModel.of(List.of(crowded, shipping(), new DocumentedSystem("zulu", "zulu", null,
                         List.of(), null, List.of(), List.of(), List.of()))),
                 "dev", narrow.archRepoUrl(), MODEL_IMPORTED_AT, GENERATED_AT,
-                new DiagramLimits(1, 4, 40, 100, 200), "/docs/dev/");
+                new DiagramLimits(1, 4, 40, 100, 200, 40, 20), "/docs/dev/");
 
         template.writeSystem(Documented.of(crowded), landscape, systemDirectory);
 
@@ -449,7 +552,7 @@ class Arc42SystemTreeTest {
                         new DocumentedSystem("zulu", "zulu", null, List.of(), null, List.of(), List.of(),
                                 List.of()))),
                 "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
-                new DiagramLimits(1, 4, 40, 100, 200), "/docs/dev/");
+                new DiagramLimits(1, 4, 40, 100, 200, 40, 20), "/docs/dev/");
 
         template.writeSystem(Documented.of(crowded), landscape, systemDirectory);
 

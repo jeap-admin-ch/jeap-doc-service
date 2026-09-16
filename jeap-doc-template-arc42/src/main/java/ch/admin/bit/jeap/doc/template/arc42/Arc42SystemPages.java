@@ -383,40 +383,56 @@ final class Arc42SystemPages {
     }
 
     /**
-     * The level-1 whitebox page: two diagrams of the same system, the components and the relations.
+     * The level-1 whitebox page: the components, the relations, and at most two pictures of them.
      * <p>
-     * The first diagram is the decomposition on its own, which is what arc42 asks a level-1 whitebox for and
-     * the only one a reader of a large system can take in. The second adds the neighbouring systems, each as
-     * a single box, because the criterion asks for them too. Both are followed by the tables, which carry
-     * every component and every relation whatever the diagrams had room to draw.
+     * <b>A picture is a reading aid and the tables are the facts.</b> A whitebox view's arrows grow with the
+     * square of its boxes - it is the one view where components talk to components - so beyond a bound there
+     * is no picture of it that a reader can follow, and no part of it that is both readable and honest. The
+     * view decides which pictures the page draws and how each is drawn; this writes what it decided, and says
+     * so where a picture is folded or left out.
      */
     private static void writeWhiteboxView(DocumentedSystem system, GenerationContext context, WhiteboxView whitebox,
                                           Path directory) throws IOException {
         String title = "Whitebox View " + system.name();
+        WhiteboxView.Pictures pictures = whitebox.pictures(context.limits());
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(title, 1, context))
                 .heading(1, title)
-                .paragraph(Md.sentence("The components of {} and the relations between them. Other systems are "
-                                       + "drawn as a single box each - what is inside them is described in "
-                                       + "their own documentation.", Md.code(system.name())));
-        // Only where there is something to see: a system whose components exchange nothing would get two
-        // diagrams of the same boxes, and the second of them says nothing the table does not.
-        if (!whitebox.internal().isEmpty()) {
-            PlantUmlViews.Diagram inside = PlantUmlViews.internalView(whitebox, system.slug(), context);
+                .paragraph(Md.sentence("All components of {}, the relations between them, and what they "
+                                       + "exchange with other systems.", Md.code(system.name())));
+        writeMissingPictureNote(page, system, pictures);
+
+        WhiteboxView.Picture inside = pictures.inside();
+        if (inside != null && inside.isDrawn()) {
             page.heading(2, "Inside the system");
             page.paragraph(Md.sentence("How {} is decomposed, and what flows between its own components.",
                     Md.code(system.name())));
-            page.fence(PlantUmlViews.LANGUAGE, inside.source());
+            page.fence(PlantUmlViews.LANGUAGE,
+                    PlantUmlViews.internalView(whitebox, inside, system.slug(), context).source());
+            writeFoldedNote(page, inside, "components");
         }
-        PlantUmlViews.Diagram withNeighbours =
-                PlantUmlViews.whiteboxView(whitebox, system.slug(), context);
-        page.heading(2, "With the neighbouring systems");
-        page.paragraph("The same components, with every other system they exchange something with as a "
-                       + "single box. " + PlantUmlViews.ARROW_LEGEND);
-        page.fence(PlantUmlViews.LANGUAGE, withNeighbours.source());
-        if (whitebox.truncated() > 0) {
-            page.admonition("note", "Not every neighbour is drawn",
-                    neighboursLeftOut(whitebox.truncated(), "table of relations"));
+
+        WhiteboxView.Picture outside = pictures.outside();
+        if (outside != null && outside.isDrawn()) {
+            boolean whole = outside.kind() == WhiteboxView.PictureKind.WHOLE;
+            page.heading(2, whole ? "With the neighbouring systems" : "Across the system boundary");
+            page.paragraph((whole
+                    ? "The same components, with every other system they exchange something with as a single "
+                      + "box - what is inside it is described in its own documentation. "
+                    : "Only what crosses the boundary: the components that exchange something outside, and "
+                      + "every other system they exchange it with as a single box - what is inside it is "
+                      + "described in its own documentation. ")
+                    + PlantUmlViews.ARROW_LEGEND);
+            page.fence(PlantUmlViews.LANGUAGE, whole
+                    ? PlantUmlViews.whiteboxView(whitebox, outside, system.slug(), context).source()
+                    : PlantUmlViews.boundaryView(whitebox, outside, system.slug(), context).source());
+            writeFoldedNote(page, outside, "boxes");
+            // Only under a picture that draws neighbours at all: a note about the ones left out has nothing
+            // to qualify where none is drawn.
+            if (whitebox.truncated() > 0) {
+                page.admonition("note", "Not every neighbour is drawn",
+                        neighboursLeftOut(whitebox.truncated(), "table of relations"));
+            }
         }
 
         page.heading(2, COMPONENTS_LABEL);
@@ -430,6 +446,65 @@ final class Arc42SystemPages {
                 .toList());
         writeRelations(system, context, whitebox, page);
         Arc42Pages.write(directory, WHITEBOX_PAGE + ".md", page);
+    }
+
+    /**
+     * That a picture is drawn as its shape only, and by how much that reduced it.
+     * <p>
+     * A grey line and a missing arrowhead are not self-explanatory, and the reduction is the reason the
+     * picture is readable at all.
+     */
+    private static void writeFoldedNote(MarkdownWriter page, WhiteboxView.Picture picture, String boxes) {
+        if (picture.rendering() != WhiteboxView.Rendering.FOLDED) {
+            return;
+        }
+        page.paragraph(Md.sentence("Drawn as its shape only: {}, whatever travels between them and in "
+                                   + "whichever direction - {} relations folded into {} lines. A line with no "
+                                   + "arrowhead joins a pair that exchanges something both ways. The table of "
+                                   + "relations below has every relation, its type and its name.",
+                Md.bold("one grey line per pair of " + boxes),
+                Md.text(String.valueOf(picture.relations())),
+                Md.text(String.valueOf(picture.folded().size()))));
+    }
+
+    /**
+     * What is not drawn, and how much of it there is.
+     * <p>
+     * <b>The count is in the sentence</b> on purpose: it is the difference between a page that looks broken
+     * and a page that made a decision, and it tells whoever owns the system that their landscape has grown.
+     * <p>
+     * <b>Prose rather than an admonition.</b> The admonition on this page belongs to the neighbours a picture
+     * left out, and a second coloured box saying there is no picture at all would compete with it.
+     */
+    private static void writeMissingPictureNote(MarkdownWriter page, DocumentedSystem system,
+                                                WhiteboxView.Pictures pictures) {
+        boolean insideMissing = pictures.inside() != null && !pictures.inside().isDrawn();
+        boolean outsideMissing = pictures.outside() != null && !pictures.outside().isDrawn();
+        if (insideMissing && outsideMissing) {
+            page.paragraph(Md.sentence("No diagram is drawn for {}: {} components with {} relations between "
+                                       + "them and {} to other systems make a picture too large to read. The "
+                                       + "tables below list every component and every relation, and each "
+                                       + "component's own page shows what it exchanges.",
+                    Md.code(system.name()),
+                    Md.text(String.valueOf(system.components().size())),
+                    Md.text(String.valueOf(pictures.inside().relations())),
+                    Md.text(String.valueOf(pictures.outside().relations()))));
+            return;
+        }
+        if (insideMissing) {
+            page.paragraph(Md.sentence("The relations between the components of {} are not drawn: there are "
+                                       + "{} of them, too many for a readable picture. The table of relations "
+                                       + "below lists every one.",
+                    Md.code(system.name()),
+                    Md.text(String.valueOf(pictures.inside().relations()))));
+        }
+        if (outsideMissing) {
+            page.paragraph(Md.sentence("The relations of {} to other systems are not drawn: there are {} of "
+                                       + "them, too many for a readable picture. The table of relations below "
+                                       + "lists every one.",
+                    Md.code(system.name()),
+                    Md.text(String.valueOf(pictures.outside().relations()))));
+        }
     }
 
     /**

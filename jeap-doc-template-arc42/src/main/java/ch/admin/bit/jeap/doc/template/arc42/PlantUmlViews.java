@@ -31,13 +31,12 @@ import java.util.Set;
  * site's plugin renders it in the reader's browser. The diagram therefore stays searchable and readable as
  * text.
  * <p>
- * <b>The direction is a property of the view, not of its size.</b> A context view is a star - one system, or
- * one component, with its neighbours around it, always two ranks - and {@code left to right direction} turns
- * that into a narrow column. A whitebox view is a deep graph of components calling components, and is narrower
- * top to bottom, which is the direction PlantUML lays out by default. An entity relationship diagram keeps
- * that default too: its boxes are tall, one row per column of the table, so laying them out side by side is
- * what would not fit. Measured over six real systems, the number of boxes does not predict which is better;
- * the shape of the view does, and each view's shape is fixed by what it is.
+ * <b>Every architecture diagram is laid out left to right.</b> A context view is a star - one system, or one
+ * component, with its neighbours around it - and that turns it into a narrow column. A whitebox view was laid
+ * out top to bottom because it is narrower that way, which was measured and was the wrong criterion: a reader
+ * follows arrows, not area, and these graphs read better across. An entity relationship diagram keeps
+ * PlantUML's default: its boxes are tall, one row per column of the table, so laying them out side by side is
+ * what would not fit.
  * <p>
  * <b>A label is capped.</b> The engine lays a label out by recursion and overflows the browser's stack at
  * about sixty lines, so an arrow carrying every message type of a busy system is not a large diagram but no
@@ -57,14 +56,15 @@ final class PlantUmlViews {
     private static final String END_UML = "@enduml";
 
     /**
-     * Tight spacing. It costs nothing - no label and no box is dropped - and takes 3.7x off the area of the
-     * largest diagram in the landscape.
+     * About the engine's own defaults of 18 and 36. Tighter spacing takes several times the area off the
+     * largest diagram and costs the reader the gaps the arrows are routed through: {@code nodesep} is the room
+     * between boxes of one rank, which is where parallel edges run.
      * <p>
      * Only these two. {@code skinparam componentStyle rectangle} prints <i>"Please use CSS style instead of
      * skinparam"</i> as a text element <b>inside</b> the rendered diagram; these two do not. Any further
      * {@code skinparam} is checked the same way, by looking at the rendered elements, before it ships.
      */
-    private static final String SPACING = "skinparam nodesep 8\nskinparam ranksep 20\n";
+    private static final String SPACING = "skinparam nodesep 20\nskinparam ranksep 45\n";
 
     /**
      * What the box of the subject carries: the current system on a system context view, the current component
@@ -128,39 +128,43 @@ final class PlantUmlViews {
      * It is the diagram a reader of a large system uses. What the system exchanges with the outside is the
      * subject of the context view, and of {@link #whiteboxView} next to this one.
      */
-    static Diagram internalView(WhiteboxView view, String systemSlug, GenerationContext generation) {
-        StringBuilder uml = new StringBuilder(START_UML).append(SPACING);
+    static Diagram internalView(WhiteboxView view, WhiteboxView.Picture picture, String systemSlug,
+                                GenerationContext generation) {
+        StringBuilder uml = new StringBuilder(START_UML).append(LEFT_TO_RIGHT).append(SPACING);
         Aliases aliases = new Aliases();
-        systemPackage(uml, aliases, view, systemSlug, generation);
-        boolean summarized = false;
-        for (WhiteboxView.Edge edge : view.internal()) {
-            summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
-                    generation.limits().maxEdgeLabels());
-        }
-        return new Diagram(uml.append(END_UML).toString(), summarized);
+        systemPackage(uml, aliases, view.components(), view.system().name(), systemSlug, generation);
+        return arrowsOf(uml, aliases, picture, generation);
     }
 
     /** The components inside the system, and every other system as a single box outside it. */
-    static Diagram whiteboxView(WhiteboxView view, String systemSlug, GenerationContext generation) {
-        StringBuilder uml = new StringBuilder(START_UML).append(SPACING);
+    static Diagram whiteboxView(WhiteboxView view, WhiteboxView.Picture picture, String systemSlug,
+                                GenerationContext generation) {
+        StringBuilder uml = new StringBuilder(START_UML).append(LEFT_TO_RIGHT).append(SPACING);
         Aliases aliases = new Aliases();
-        systemPackage(uml, aliases, view, systemSlug, generation);
+        systemPackage(uml, aliases, view.components(), view.system().name(), systemSlug, generation);
         for (String neighbour : view.drawnNeighbours()) {
             component(uml, aliases, neighbour, systemLinkOf(neighbour, generation), false);
         }
-        boolean summarized = false;
-        for (WhiteboxView.Edge edge : view.internal()) {
-            summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
-                    generation.limits().maxEdgeLabels());
+        return arrowsOf(uml, aliases, picture, generation);
+    }
+
+    /**
+     * What crosses the system's boundary: the components that exchange something outside, the neighbouring
+     * systems as one box each, and the arrows between them. Nothing inside.
+     * <p>
+     * The package stays around the components - it is what makes it a boundary picture rather than a star of
+     * loose boxes - and its boxes are a subset: a component that talks to nobody outside is not drawn. The
+     * components table below the picture still carries every one of them.
+     */
+    static Diagram boundaryView(WhiteboxView view, WhiteboxView.Picture picture, String systemSlug,
+                                GenerationContext generation) {
+        StringBuilder uml = new StringBuilder(START_UML).append(LEFT_TO_RIGHT).append(SPACING);
+        Aliases aliases = new Aliases();
+        systemPackage(uml, aliases, view.boundaryComponents(), view.system().name(), systemSlug, generation);
+        for (String neighbour : view.drawnNeighbours()) {
+            component(uml, aliases, neighbour, systemLinkOf(neighbour, generation), false);
         }
-        for (WhiteboxView.Edge edge : view.external()) {
-            // An arrow to a neighbour the diagram left out would point at nothing; the table still lists it.
-            if (view.isDrawnNeighbour(view.neighbourOf(edge))) {
-                summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
-                        generation.limits().maxEdgeLabels());
-            }
-        }
-        return new Diagram(uml.append(END_UML).toString(), summarized);
+        return arrowsOf(uml, aliases, picture, generation);
     }
 
     /**
@@ -332,10 +336,10 @@ final class PlantUmlViews {
     }
 
     /** The package of the system, with a box per component. Every component, whatever their number. */
-    private static void systemPackage(StringBuilder uml, Aliases aliases, WhiteboxView view, String systemSlug,
-                                      GenerationContext generation) {
-        uml.append("package ").append(quoted(view.system().name())).append(" {\n");
-        for (DocumentedComponent component : view.components()) {
+    private static void systemPackage(StringBuilder uml, Aliases aliases, List<DocumentedComponent> components,
+                                      String systemName, String systemSlug, GenerationContext generation) {
+        uml.append("package ").append(quoted(systemName)).append(" {\n");
+        for (DocumentedComponent component : components) {
             uml.append("  ");
             // Not bolded: inside the package box every component is the subject, so bolding all of them says
             // nothing. What each box carries instead is a link to its own page.
@@ -407,6 +411,32 @@ final class PlantUmlViews {
         }
         uml.append('\n');
         return summarized;
+    }
+
+    /**
+     * The arrows of one picture, drawn the way the view says it is to be drawn.
+     * <p>
+     * <b>A folded picture is one grey line per pair of boxes</b>, with no kind, no colour but grey and no
+     * label at all. The arrowhead survives where the pair is joined one way; a pair that exchanges something
+     * in both directions gets a plain line, because an arrowhead at each end would say something the fold no
+     * longer knows.
+     */
+    private static Diagram arrowsOf(StringBuilder uml, Aliases aliases, WhiteboxView.Picture picture,
+                                    GenerationContext generation) {
+        if (picture.rendering() == WhiteboxView.Rendering.FOLDED) {
+            for (WhiteboxView.FoldedEdge edge : picture.folded()) {
+                uml.append(aliases.of(edge.from()))
+                        .append(edge.bothWays() ? " -[#gray]- " : " -[#gray]-> ")
+                        .append(aliases.of(edge.to())).append('\n');
+            }
+            return new Diagram(uml.append(END_UML).toString(), false);
+        }
+        boolean summarized = false;
+        for (WhiteboxView.Edge edge : picture.edges()) {
+            summarized |= arrow(uml, aliases, edge.from(), edge.to(), edge.kind(), edge.labels(),
+                    generation.limits().maxEdgeLabels());
+        }
+        return new Diagram(uml.append(END_UML).toString(), summarized);
     }
 
     /**

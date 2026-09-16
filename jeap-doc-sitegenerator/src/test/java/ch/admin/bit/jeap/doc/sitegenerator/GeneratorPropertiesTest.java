@@ -33,9 +33,11 @@ class GeneratorPropertiesTest {
         properties.setMaxContextComponents(9);
         properties.setMaxSchemaTableDiagram(11);
         properties.setMaxSchemaTableList(13);
+        properties.setMaxDiagramEdges(15);
+        properties.setMaxDetailedEdges(3);
 
         assertThat(properties.limits())
-                .isEqualTo(new ch.admin.bit.jeap.doc.domain.template.DiagramLimits(7, 0, 9, 11, 13));
+                .isEqualTo(new ch.admin.bit.jeap.doc.domain.template.DiagramLimits(7, 0, 9, 11, 13, 15, 3));
     }
 
     @ParameterizedTest
@@ -184,5 +186,47 @@ class GeneratorPropertiesTest {
         assertThatThrownBy(properties::check)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.generator.max-diagram-nodes");
+    }
+
+    /** The two bounds on a whitebox picture: the shipped defaults, and what a reader would set by hand. */
+    @Test
+    void theBoundsOnAWhiteboxPicture_defaultToTwentyAndForty() {
+        GeneratorProperties properties = new GeneratorProperties();
+
+        assertThat(properties.limits().maxDetailedEdges()).isEqualTo(20);
+        assertThat(properties.limits().maxDiagramEdges()).isEqualTo(40);
+        assertThatCode(properties::check).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1})
+    void aPictureWithRoomForNoRelation_stopsTheStartup(int edges) {
+        GeneratorProperties dropped = new GeneratorProperties();
+        dropped.setMaxDiagramEdges(edges);
+        GeneratorProperties folded = new GeneratorProperties();
+        folded.setMaxDetailedEdges(edges);
+
+        assertThatThrownBy(dropped::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.max-diagram-edges");
+        assertThatThrownBy(folded::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.max-detailed-edges");
+    }
+
+    /**
+     * A bound that draws in full beyond the point where it draws nothing is a configuration nobody means: the
+     * middle band would be empty, and every picture that is drawn at all would be drawn in full.
+     */
+    @Test
+    void aPictureDrawnInFullBeyondWhereItIsNotDrawnAtAll_stopsTheStartup() {
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setMaxDiagramEdges(10);
+        properties.setMaxDetailedEdges(11);
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.max-detailed-edges")
+                .hasMessageContaining("jeap.doc.generator.max-diagram-edges");
     }
 }

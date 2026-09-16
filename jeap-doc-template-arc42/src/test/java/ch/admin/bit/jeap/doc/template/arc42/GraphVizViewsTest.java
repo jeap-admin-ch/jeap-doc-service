@@ -284,7 +284,7 @@ class GraphVizViewsTest {
         ReactionView view = ReactionView.of(observed, model, orders);
         // This system's own graphs, as a real run hands them over: one system at a time.
         GenerationContext context = new GenerationContext(model, "dev", "https://archrepo", WHEN, WHEN,
-                new DiagramLimits(100, 4, 40, 100, 200), "/docs/dev/", null,
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20), "/docs/dev/", null,
                 ReactionViews.of(WHEN, view, Map.of("orders-intake", view), Map.of(),
                         componentsWithAGraph));
         return GraphVizViews.reactions(view, context, onItsOwnPage, idPrefix);

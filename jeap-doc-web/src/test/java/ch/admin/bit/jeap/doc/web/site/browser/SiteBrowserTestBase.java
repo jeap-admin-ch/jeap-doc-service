@@ -925,7 +925,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         // link that 404s for a reader while every generated page still looks right.
         String linkPrefix = urls.baseUrl(defaultSite()) + (environment.main() ? "" : environment.id() + "/");
         GenerationContext context = new GenerationContext(model, environment.id(), "https://archrepo.example",
-                GENERATED_AT, GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200), linkPrefix)
+                GENERATED_AT, GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200, 40, 20), linkPrefix)
                 .withReactions(reactions);
         writeSystemPage(environmentTree, REACTING_SYSTEM, "Ships what was ordered");
         new Arc42Template().writeSystem(withoutUploads(shipping), context,
@@ -941,7 +941,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         writeSystemPage(environmentTree, OTHER_SYSTEM, "Settles what was shipped");
         new Arc42Template().writeSystem(withoutUploads(billing),
                 new GenerationContext(model, environment.id(), "https://archrepo.example", GENERATED_AT,
-                        GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200), linkPrefix, null,
+                        GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200, 40, 20), linkPrefix, null,
                         billingReactions),
                 environmentTree.resolve("systems").resolve(OTHER_SYSTEM));
     }
@@ -960,7 +960,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     private void writeDocumentedSystem(Path environmentTree, SiteEnvironment environment) throws IOException {
         GenerationContext context = new GenerationContext(new ArchitectureModel(List.of()), environment.id(),
                 "https://archrepo.example", GENERATED_AT, GENERATED_AT,
-                new DiagramLimits(100, 4, 40, 100, 200), "/");
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20), "/");
         writeSystemPage(environmentTree, DOCUMENTED_SYSTEM, "Documented by hand");
         new Arc42Template().writeSystem(UploadedDocumentation.of(DOCUMENTED_SYSTEM, DOCUMENTED_LIBRARY),
                 context, environmentTree.resolve("systems").resolve(DOCUMENTED_SYSTEM));

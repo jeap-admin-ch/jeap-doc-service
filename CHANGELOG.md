@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [3.3.0] - 2026-09-15
 
+- A whitebox picture is drawn in one of three ways, by how many relations it carries: in full up to `jeap.doc.generator.max-detailed-edges` (20), folded to one grey line per pair of boxes up to `jeap.doc.generator.max-diagram-edges` (40), and not at all above that - the page then says so in a sentence naming how many there were. The components table and the relations table are written in full whatever the picture did - see [Generating the documentation](docs/generation.md#how-much-a-whitebox-picture-draws).
+- The whitebox page gains a third possible picture, *Across the system boundary* - the components that exchange something outside, the neighbours as one box each, and only the arrows between them. It is drawn where the whole picture is over the bound, so a large system keeps a picture of what crosses its boundary.
+- Every architecture diagram is laid out left to right, and the spacing of all of them goes back to about the engine's defaults (`nodesep` 20, `ranksep` 45).
+
 - A component's pages name who is on the other side: the **Callers** of each REST operation with its Pact contract, and the **Consumers** and **Publishers** of its messages, three per cell and the rest behind a `+N more` chip - see [Generating the documentation](docs/generation.md#who-is-on-the-other-side-on-a-components-pages).
 - Every table can be sorted by a click on a header and one of more than 15 rows filtered; a message page lists its versions with the key and the value schema folded into the row - see [Generating the documentation](docs/generation.md#every-table-can-be-sorted-and-a-long-one-filtered).
 - A reaction table heads its last column **Median per day**, reads that number off the reaction instead of off its trigger, and names the variant of a message beside its type.

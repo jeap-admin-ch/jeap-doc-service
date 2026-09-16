@@ -344,7 +344,12 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
         String view = page("/systems/orders/system-architecture/building-block-view/whitebox-view/");
         assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml")
                 .doesNotContain(".png")
-                .contains("orders-intake");
+                .contains("orders-intake")
+                // This landscape is small, so both pictures are drawn in full. That a picture is folded above
+                // one bound and dropped above the other is the view's decision and is pinned where it is made:
+                // reaching it here would mean bounds set for the whole suite, and every other case on it.
+                .contains("All components of")
+                .contains("the relations between them, and what they exchange with other systems.");
     }
 
     /**

@@ -53,6 +53,6 @@ class GenerationContextTest {
     private static GenerationContext contextWithLinkPrefix(String linkPrefix) {
         return new GenerationContext(ArchitectureModel.of(List.of()), "dev", "https://archrepo",
                 Instant.parse("2026-08-28T05:50:00Z"), Instant.parse("2026-08-28T06:05:02Z"),
-                new DiagramLimits(100, 4, 40, 100, 200), linkPrefix);
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20), linkPrefix);
     }
 }

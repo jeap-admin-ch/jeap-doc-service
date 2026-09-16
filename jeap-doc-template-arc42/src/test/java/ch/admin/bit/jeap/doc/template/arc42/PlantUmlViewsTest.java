@@ -34,10 +34,39 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class PlantUmlViewsTest {
 
+    /**
+     * The whole picture of a view, drawn as the bounds say. Where nothing crosses the boundary the page draws
+     * no second picture at all, and these cases are about the syntax rather than about the ladder - so the
+     * picture is built here instead.
+     */
+    private static PlantUmlViews.Diagram whiteboxOf(WhiteboxView view, String slug,
+                                                    GenerationContext generation) {
+        WhiteboxView.Picture outside = view.pictures(generation.limits()).outside();
+        return PlantUmlViews.whiteboxView(view, outside != null ? outside : wholePictureOf(view), slug,
+                generation);
+    }
+
+    /** The decomposition of a view, likewise. */
+    private static PlantUmlViews.Diagram internalOf(WhiteboxView view, String slug,
+                                                    GenerationContext generation) {
+        WhiteboxView.Picture inside = view.pictures(generation.limits()).inside();
+        return PlantUmlViews.internalView(view, inside != null
+                ? inside
+                : new WhiteboxView.Picture(WhiteboxView.PictureKind.INSIDE, WhiteboxView.Rendering.IN_FULL,
+                        List.of(), List.of(), 0), slug, generation);
+    }
+
+    private static WhiteboxView.Picture wholePictureOf(WhiteboxView view) {
+        List<WhiteboxView.Edge> edges = new java.util.ArrayList<>(view.internal());
+        edges.addAll(view.drawnExternal());
+        return new WhiteboxView.Picture(WhiteboxView.PictureKind.WHOLE, WhiteboxView.Rendering.IN_FULL, edges,
+                List.of(), edges.size());
+    }
+
     private static final Instant GENERATED_AT = Instant.parse("2026-08-28T06:05:02Z");
 
     /** The bounds the shipped defaults set. A case that is about a bound overrides the one it is about. */
-    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200);
+    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200, 40, 20);
 
     @Test
     void contextView_drawsTheSystemItsNeighboursAndTheArrowsBetweenThem() {
@@ -174,7 +203,7 @@ class PlantUmlViewsTest {
                 List.of());
         ArchitectureModel model = ArchitectureModel.of(List.of(orders, other("shipping")));
 
-        String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, orders, 60), "orders",
+        String uml = whiteboxOf(WhiteboxView.of(model, orders, 60), "orders",
                 generation(model)).source();
 
         assertThat(uml).contains("package \"orders\" {")
@@ -193,7 +222,7 @@ class PlantUmlViewsTest {
                 List.of(component("orders-intake")), List.of(), List.of());
         ArchitectureModel model = ArchitectureModel.of(List.of(orders));
 
-        String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, orders, 60), "orders",
+        String uml = whiteboxOf(WhiteboxView.of(model, orders, 60), "orders",
                 generation(model)).source();
 
         assertThat(uml).contains(
@@ -210,7 +239,7 @@ class PlantUmlViewsTest {
                 List.of(component("orders-foo-bar-service")), List.of(), List.of());
         ArchitectureModel model = ArchitectureModel.of(List.of(orders));
 
-        String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, orders, 60), "orders",
+        String uml = whiteboxOf(WhiteboxView.of(model, orders, 60), "orders",
                 generation(model)).source();
 
         assertThat(uml).contains("as c_orders_foo_bar_service");
@@ -227,7 +256,7 @@ class PlantUmlViewsTest {
                 List.of(), List.of());
         ArchitectureModel model = ArchitectureModel.of(List.of(orders));
 
-        String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, orders, 60), "orders",
+        String uml = whiteboxOf(WhiteboxView.of(model, orders, 60), "orders",
                 generation(model)).source();
 
         assertThat(uml).contains("as c_orders_intake ", "as c_orders_intake_2 ", "as c_orders_intake_3 ");
@@ -240,20 +269,99 @@ class PlantUmlViewsTest {
      * a deep graph and is narrower top to bottom, which is PlantUML's own default. Both are tightened.
      */
     @Test
-    void eachViewCarriesTheDirectionItsShapeCallsFor() {
+    void everyArchitectureDiagramIsLaidOutLeftToRight() {
         ArchitectureModel model = landscape();
         DocumentedSystem orders = orders();
 
         String context = PlantUmlViews.contextView(SystemContext.of(model, orders, 60),
                 generation(model)).source();
-        String whitebox = PlantUmlViews.whiteboxView(WhiteboxView.of(model, orders, 60), "orders",
+        String whitebox = whiteboxOf(WhiteboxView.of(model, orders, 60), "orders",
                 generation(model)).source();
 
         assertThat(context).contains("left to right direction");
-        assertThat(whitebox).describedAs("a deep graph belongs top to bottom")
-                .doesNotContain("left to right direction");
-        assertThat(context).contains("skinparam nodesep 8", "skinparam ranksep 20");
-        assertThat(whitebox).contains("skinparam nodesep 8", "skinparam ranksep 20");
+        assertThat(whitebox).describedAs("every architecture diagram is laid out left to right")
+                .contains("left to right direction");
+        assertThat(context).contains("skinparam nodesep 20", "skinparam ranksep 45");
+        assertThat(whitebox).contains("skinparam nodesep 20", "skinparam ranksep 45");
+    }
+
+    /**
+     * <b>The boundary picture</b>: the components that exchange something outside, the neighbours as one box
+     * each, and only the arrows between them. The package stays around the components - it is what makes it a
+     * boundary picture - and a component that talks to nobody outside is not in it.
+     */
+    @Test
+    void theBoundaryView_drawsOnlyTheComponentsOnTheBoundaryAndTheNeighbours() {
+        DocumentedSystem orders = wired(
+                relation(RelationKind.EVENT, "orders", "orders-intake", "orders", "orders-risk",
+                        "OrdersAccepted"),
+                relation(RelationKind.EVENT, "orders", "orders-intake", "shipping", "shipping-service",
+                        "OrdersCleared"));
+        ArchitectureModel model = ArchitectureModel.of(List.of(orders, other("shipping")));
+        WhiteboxView view = WhiteboxView.of(model, orders, 60);
+
+        // The whole picture of two relations is over the bound, so the ladder falls back to the boundary one.
+        GenerationContext bounded = generation(model, new DiagramLimits(60, 4, 40, 100, 200, 1, 1));
+        String uml = PlantUmlViews.boundaryView(view, view.pictures(bounded.limits()).outside(), "orders",
+                bounded).source();
+
+        assertThat(uml).contains("package \"orders\"")
+                .contains("component \"orders-intake\"")
+                .describedAs("a component with nothing crossing the boundary is not drawn")
+                .doesNotContain("component \"orders-risk\"")
+                .contains("component \"shipping\"")
+                .describedAs("and nothing inside the system is an arrow here")
+                .doesNotContain("OrdersAccepted")
+                .contains("OrdersCleared");
+    }
+
+    /**
+     * <b>A folded picture is its shape and nothing else</b>: one grey line per pair, no kind, no name, and an
+     * arrowhead only where the pair is joined one way.
+     */
+    @Test
+    void aFoldedView_drawsOneGreyLinePerPairAndNoLabelAtAll() {
+        DocumentedSystem orders = wired(
+                relation(RelationKind.EVENT, "orders", "orders-intake", "orders", "orders-risk",
+                        "OrdersAccepted"),
+                relation(RelationKind.EVENT, "orders", "orders-intake", "orders", "orders-risk",
+                        "OrdersCleared"),
+                // The other way round, so the pair is joined in both directions.
+                new SystemRelation(RelationKind.REST_API, "orders", "orders-risk", "orders", "orders-intake",
+                        null, "GET", "/orders", null));
+        ArchitectureModel model = ArchitectureModel.of(List.of(orders));
+        WhiteboxView view = WhiteboxView.of(model, orders, 60);
+        // Folded above one relation, so this picture of two is drawn as its shape.
+        GenerationContext folding = generation(model, new DiagramLimits(60, 4, 40, 100, 200, 10, 1));
+
+        String uml = PlantUmlViews.internalView(view, view.pictures(folding.limits()).inside(), "orders",
+                folding).source();
+
+        assertThat(uml.lines().filter(line -> line.contains("-[#")).toList())
+                .describedAs("one line for the one pair, joined both ways, so no arrowhead")
+                .containsExactly("c_orders_intake -[#gray]- c_orders_risk");
+        assertThat(uml).doesNotContain("OrdersAccepted").doesNotContain("OrdersCleared")
+                .describedAs("no colour but grey survives the fold")
+                .doesNotContain("#green").doesNotContain("#blue");
+    }
+
+    /** A pair joined one way keeps its arrowhead, which is the only direction a fold still tells. */
+    @Test
+    void aFoldedView_keepsTheArrowheadOfAPairJoinedOneWay() {
+        DocumentedSystem orders = wired(
+                relation(RelationKind.EVENT, "orders", "orders-intake", "orders", "orders-risk",
+                        "OrdersAccepted"),
+                relation(RelationKind.EVENT, "orders", "orders-intake", "orders", "orders-risk",
+                        "OrdersCleared"));
+        ArchitectureModel model = ArchitectureModel.of(List.of(orders));
+        WhiteboxView view = WhiteboxView.of(model, orders, 60);
+        GenerationContext folding = generation(model, new DiagramLimits(60, 4, 40, 100, 200, 10, 0));
+
+        String uml = PlantUmlViews.internalView(view, view.pictures(folding.limits()).inside(), "orders",
+                folding).source();
+
+        assertThat(uml.lines().filter(line -> line.contains("-[#")).toList())
+                .containsExactly("c_orders_intake -[#gray]-> c_orders_risk");
     }
 
     /**
@@ -264,18 +372,18 @@ class PlantUmlViewsTest {
     void noSkinparamTheEngineWarnsAbout() {
         ArchitectureModel model = landscape();
 
-        String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, orders(), 60), "orders",
+        String uml = whiteboxOf(WhiteboxView.of(model, orders(), 60), "orders",
                 generation(model)).source();
 
         assertThat(uml.lines().filter(line -> line.startsWith("skinparam")).toList())
-                .containsExactly("skinparam nodesep 8", "skinparam ranksep 20");
+                .containsExactly("skinparam nodesep 20", "skinparam ranksep 45");
     }
 
     @Test
     void anArrowAtTheCapKeepsItsNames() {
         ArchitectureModel model = busy(4);
 
-        String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, busySystem(4), 60), "orders",
+        String uml = whiteboxOf(WhiteboxView.of(model, busySystem(4), 60), "orders",
                 generation(model)).source();
 
         assertThat(uml).contains("Event1\\nEvent2\\nEvent3\\nEvent4")
@@ -286,7 +394,7 @@ class PlantUmlViewsTest {
     void anArrowAboveTheCapShowsTheCountOfItsKind() {
         ArchitectureModel model = busy(5);
 
-        String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, busySystem(5), 60), "orders",
+        String uml = whiteboxOf(WhiteboxView.of(model, busySystem(5), 60), "orders",
                 generation(model)).source();
 
         assertThat(uml).contains(" : 5 Events")
@@ -298,10 +406,10 @@ class PlantUmlViewsTest {
     void whenTheCapIsZero_thenEvenOneNameIsCounted() {
         ArchitectureModel model = busy(1);
         GenerationContext generation = new GenerationContext(model, "prod", "https://archrepo",
-                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200),
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200, 40, 20),
                 "/docs/prod/");
 
-        String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, busySystem(1), 60), "orders",
+        String uml = whiteboxOf(WhiteboxView.of(model, busySystem(1), 60), "orders",
                 generation).source();
 
         assertThat(uml).contains(" : 1 Event");
@@ -322,8 +430,8 @@ class PlantUmlViewsTest {
 
         List<String> sources = List.of(
                 PlantUmlViews.contextView(SystemContext.of(model, hostile, 60), generation).source(),
-                PlantUmlViews.internalView(WhiteboxView.of(model, hostile, 60), "orders", generation).source(),
-                PlantUmlViews.whiteboxView(WhiteboxView.of(model, hostile, 60), "orders", generation).source());
+                internalOf(WhiteboxView.of(model, hostile, 60), "orders", generation).source(),
+                whiteboxOf(WhiteboxView.of(model, hostile, 60), "orders", generation).source());
 
         assertThat(sources).isNotEmpty().allSatisfy(uml -> assertThat(uml.lines().toList()).isNotEmpty()
                 .allSatisfy(line -> {
@@ -335,9 +443,9 @@ class PlantUmlViewsTest {
 
     @Test
     void aSummarizedDiagramSaysSoAndAnUnsummarizedOneDoesNot() {
-        assertThat(PlantUmlViews.whiteboxView(WhiteboxView.of(busy(5), busySystem(5), 60), "orders",
+        assertThat(whiteboxOf(WhiteboxView.of(busy(5), busySystem(5), 60), "orders",
                 generation(busy(5))).labelsSummarized()).isTrue();
-        assertThat(PlantUmlViews.whiteboxView(WhiteboxView.of(busy(4), busySystem(4), 60), "orders",
+        assertThat(whiteboxOf(WhiteboxView.of(busy(4), busySystem(4), 60), "orders",
                 generation(busy(4))).labelsSummarized()).isFalse();
     }
 
@@ -353,7 +461,7 @@ class PlantUmlViewsTest {
                 List.of());
         ArchitectureModel model = ArchitectureModel.of(List.of(orders, other("shipping")));
 
-        String uml = PlantUmlViews.internalView(WhiteboxView.of(model, orders, 60), "orders",
+        String uml = internalOf(WhiteboxView.of(model, orders, 60), "orders",
                 generation(model)).source();
 
         assertThat(uml).contains("package \"orders\" {")
@@ -376,7 +484,7 @@ class PlantUmlViewsTest {
         ArchitectureModel model = ArchitectureModel.of(List.of(orders, other("alpha"), other("zulu")));
 
         WhiteboxView view = WhiteboxView.of(model, orders, 1);
-        String uml = PlantUmlViews.whiteboxView(view, "orders", generation(model)).source();
+        String uml = whiteboxOf(view, "orders", generation(model)).source();
 
         assertThat(view.external()).describedAs("both are still in the model").hasSize(2);
         assertThat(uml).contains("component \"alpha\"")
@@ -405,8 +513,13 @@ class PlantUmlViewsTest {
     }
 
     private static GenerationContext generation(ArchitectureModel model) {
+        return generation(model, LIMITS);
+    }
+
+    /** The same over bounds of this case's own, which is how a folded or a dropped picture is reached. */
+    private static GenerationContext generation(ArchitectureModel model, DiagramLimits limits) {
         return new GenerationContext(model, "prod", "https://archrepo", GENERATED_AT.minusSeconds(900), GENERATED_AT,
-                LIMITS, "/docs/prod/");
+                limits, "/docs/prod/");
     }
 
     private static DocumentedSystem orders() {
@@ -423,6 +536,18 @@ class PlantUmlViewsTest {
     private static DocumentedSystem other(String name) {
         return new DocumentedSystem(name, name, null, List.of(), null, List.of(component(name + "-service")),
                 List.of(), List.of());
+    }
+
+    /** A system of two components wired by the given relations, for the cases about the bands. */
+    private static DocumentedSystem wired(SystemRelation... relations) {
+        return new DocumentedSystem("orders", "orders", null, List.of(), null,
+                List.of(component("orders-intake"), component("orders-risk")), List.of(relations), List.of());
+    }
+
+    /** One message relation, from a component of the publishing system to one of the consuming one. */
+    private static SystemRelation relation(RelationKind kind, String fromSystem, String from, String toSystem,
+                                           String to, String message) {
+        return new SystemRelation(kind, toSystem, to, fromSystem, from, message, null, null, null);
     }
 
     private static DocumentedComponent component(String name) {
@@ -506,7 +631,7 @@ class PlantUmlViewsTest {
     void componentContextView_countsTheNamesOnAnArrowThatCarriesTooMany() {
         ArchitectureModel model = componentLandscape();
         GenerationContext capped = new GenerationContext(model, "prod", "https://archrepo",
-                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200),
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200, 40, 20),
                 "/docs/prod/");
 
         PlantUmlViews.Diagram diagram =
@@ -642,7 +767,7 @@ class PlantUmlViewsTest {
         tables.add(new SchemaTable("doc_root", List.of(new SchemaColumn("meta_id", "uuid", false)),
                 List.of(), List.of()));
         GenerationContext narrow = new GenerationContext(landscape(), "prod", "https://archrepo",
-                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200),
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200, 40, 20),
                 "/docs/prod/");
 
         String uml = PlantUmlViews.databaseSchema(
@@ -659,7 +784,7 @@ class PlantUmlViewsTest {
     @Test
     void databaseSchema_whenItLeavesATableOut_thenNoArrowPointsAtIt() {
         GenerationContext narrow = new GenerationContext(landscape(), "prod", "https://archrepo",
-                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200),
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200, 40, 20),
                 "/docs/prod/");
 
         String uml = PlantUmlViews.databaseSchema(documented(schema(), narrow)).source();
@@ -845,7 +970,7 @@ class PlantUmlViewsTest {
                 generation(model)).source());
         assertNoAliasIsDeclaredTwice(PlantUmlViews.contextView(SystemContext.of(landscape(), orders(), 60),
                 generation(landscape())).source());
-        assertNoAliasIsDeclaredTwice(PlantUmlViews.whiteboxView(
+        assertNoAliasIsDeclaredTwice(whiteboxOf(
                 WhiteboxView.of(model, model.find("orders").orElseThrow(), 60), "orders",
                 generation(model)).source());
     }

@@ -5,10 +5,13 @@ import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.RelationKind;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
+import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -168,6 +171,33 @@ public record WhiteboxView(
     }
 
     /**
+     * The external edges the diagram can draw: the ones whose neighbour has a box. An arrow to a neighbour the
+     * bound left out would point at nothing, and the page's table lists it all the same.
+     */
+    public List<Edge> drawnExternal() {
+        return external.stream().filter(edge -> isDrawnNeighbour(neighbourOf(edge))).toList();
+    }
+
+    /**
+     * The components with something drawn crossing the boundary, in the order the package draws them.
+     * <p>
+     * The boxes of the boundary picture: a component that talks to nobody outside is not in it. The
+     * components table below the picture still carries every component.
+     */
+    public List<DocumentedComponent> boundaryComponents() {
+        Set<String> onTheBoundary = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (Edge edge : drawnExternal()) {
+            onTheBoundary.add(componentOf(edge));
+        }
+        return components.stream().filter(component -> onTheBoundary.contains(component.name())).toList();
+    }
+
+    /** Which end of an external edge is the component of this system - the one the neighbour is not. */
+    private String componentOf(Edge edge) {
+        return system.hasComponent(edge.from()) ? edge.from() : edge.to();
+    }
+
+    /**
      * The other systems this one exchanges anything with, each of which would be a single box. <b>Every</b>
      * one of them, drawn or not - the page's table lists them all.
      */
@@ -200,6 +230,136 @@ public record WhiteboxView(
     /** How many neighbouring systems the diagram leaves out. The page still lists them. */
     public int truncated() {
         return neighbourSystems().size() - drawnNeighbours.size();
+    }
+
+    /**
+     * The edges of a picture collapsed to one line per pair of boxes, whatever travels between them.
+     * <p>
+     * What a folded picture draws. It keeps the shape - which boxes are hubs, what is joined to what - and
+     * gives up the kinds, the directions and the names, which are what make a busy picture unreadable. The
+     * relations table below the picture carries all of them.
+     */
+    public static List<FoldedEdge> folded(List<Edge> edges) {
+        Map<String, FoldedEdge> byPair = new LinkedHashMap<>();
+        for (Edge edge : edges) {
+            String pair = pairKey(edge.from(), edge.to());
+            FoldedEdge known = byPair.get(pair);
+            if (known == null) {
+                byPair.put(pair, new FoldedEdge(edge.from(), edge.to(), false));
+            } else if (!known.bothWays() && !known.from().equalsIgnoreCase(edge.from())) {
+                byPair.put(pair, new FoldedEdge(known.from(), known.to(), true));
+            }
+        }
+        List<FoldedEdge> folded = new ArrayList<>(byPair.values());
+        folded.sort(Comparator.comparing(FoldedEdge::from, String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(FoldedEdge::to, String.CASE_INSENSITIVE_ORDER));
+        return List.copyOf(folded);
+    }
+
+    /** A pair of boxes, whichever way round the edge runs. */
+    private static String pairKey(String from, String to) {
+        String one = from.toLowerCase(Locale.ROOT);
+        String other = to.toLowerCase(Locale.ROOT);
+        return one.compareTo(other) <= 0 ? one + "\u0000" + other : other + "\u0000" + one;
+    }
+
+    /**
+     * Which pictures the page draws, and how each of them is drawn.
+     * <p>
+     * <b>The ladder</b>: the decomposition when it is within the bounds, then <b>one</b> picture of what the
+     * system exchanges outside - the whole one where it fits, and the boundary alone where it does not. At
+     * most two pictures, as the page has always had.
+     *
+     * @param limits the two bounds on a picture: {@code maxDetailedEdges} folds it, {@code maxDiagramEdges}
+     *               drops it
+     */
+    public Pictures pictures(DiagramLimits limits) {
+        Picture inside = internal.isEmpty() ? null : pictureOf(PictureKind.INSIDE, internal, limits);
+        List<Edge> boundary = drawnExternal();
+        if (boundary.isEmpty()) {
+            // Nothing crosses the boundary that can be drawn, so the second picture would be the first one
+            // again with a neighbour box or two around it.
+            return new Pictures(inside, null);
+        }
+        List<Edge> whole = new ArrayList<>(internal);
+        whole.addAll(boundary);
+        if (whole.size() <= limits.maxDiagramEdges()) {
+            return new Pictures(inside, pictureOf(PictureKind.WHOLE, whole, limits));
+        }
+        return new Pictures(inside, pictureOf(PictureKind.BOUNDARY, boundary, limits));
+    }
+
+    private static Picture pictureOf(PictureKind kind, List<Edge> edges, DiagramLimits limits) {
+        if (edges.size() > limits.maxDiagramEdges()) {
+            return new Picture(kind, Rendering.NOT_DRAWN, List.of(), List.of(), edges.size());
+        }
+        if (edges.size() > limits.maxDetailedEdges()) {
+            return new Picture(kind, Rendering.FOLDED, edges, folded(edges), edges.size());
+        }
+        return new Picture(kind, Rendering.IN_FULL, edges, List.of(), edges.size());
+    }
+
+    /**
+     * The pictures of one whitebox page.
+     *
+     * @param inside   the decomposition, or null where the components exchange nothing with each other
+     * @param outside  what the system exchanges with other systems - the whole picture or the boundary one -
+     *                 or null where nothing drawable crosses the boundary
+     */
+    public record Pictures(Picture inside, Picture outside) {
+    }
+
+    /**
+     * One picture of the page.
+     *
+     * @param edges     what it draws, empty where it is not drawn
+     * @param folded    the same edges as one line per pair, empty unless the picture is folded
+     * @param relations how many relations it would have drawn, which is what the page's sentence names
+     */
+    public record Picture(PictureKind kind, Rendering rendering, List<Edge> edges, List<FoldedEdge> folded,
+                          int relations) {
+
+        public Picture {
+            edges = List.copyOf(edges);
+            folded = List.copyOf(folded);
+        }
+
+        public boolean isDrawn() {
+            return rendering != Rendering.NOT_DRAWN;
+        }
+
+        /** Whether it draws the neighbouring systems, which decides where the note about them belongs. */
+        public boolean carriesNeighbours() {
+            return kind != PictureKind.INSIDE;
+        }
+    }
+
+    /** Which of the three pictures this is. */
+    public enum PictureKind {
+        /** The components of the system and what flows between them. */
+        INSIDE,
+        /** The same components, with every other system they exchange something with as a single box. */
+        WHOLE,
+        /** Only what crosses the boundary: the components that exchange something outside, and with whom. */
+        BOUNDARY
+    }
+
+    /** How much of a picture is drawn. */
+    public enum Rendering {
+        /** An arrow per kind and direction, in its colour, carrying the names. */
+        IN_FULL,
+        /** One grey line per pair of boxes, with no kind, no colour and no name. */
+        FOLDED,
+        /** Nothing at all: the page says so in a sentence and sends the reader to the tables. */
+        NOT_DRAWN
+    }
+
+    /**
+     * One line of a folded picture: a pair of boxes, and whether they exchange something both ways.
+     *
+     * @param bothWays whether the pair is joined in both directions, which is drawn without an arrowhead
+     */
+    public record FoldedEdge(String from, String to, boolean bothWays) {
     }
 
     private static boolean isBlank(String value) {

@@ -51,7 +51,7 @@ class Arc42LibraryTreeTest {
     private GenerationContext contextOf(DocumentedSystem system) {
         return new GenerationContext(new ArchitectureModel(List.of(system)), "prod",
                 "https://archrepo.example", GENERATED_AT, GENERATED_AT,
-                new DiagramLimits(100, 4, 40, 100, 200), "/");
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20), "/");
     }
 
     private void writeWith(Map<String, List<String>> pagesByChapter) throws IOException {

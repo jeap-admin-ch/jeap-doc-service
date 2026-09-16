@@ -56,7 +56,7 @@ class Arc42LinkedChaptersTest {
 
     private GenerationContext context(ArchitectureModel model) {
         return new GenerationContext(model, "prod", "https://archrepo.example", GENERATED_AT, GENERATED_AT,
-                new DiagramLimits(100, 4, 40, 100, 200), "/");
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20), "/");
     }
 
     private Path write(SystemDocumentation documented, ArchitectureModel model) throws IOException {

@@ -62,7 +62,7 @@ class Arc42ComponentTreeTest {
     private static final Instant MODEL_IMPORTED_AT = Instant.parse("2026-08-28T05:50:00Z");
 
     /** The bounds the shipped defaults set. A case that is about a bound overrides the one it is about. */
-    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200);
+    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200, 40, 20);
 
     /** Where a component's tree is served, which every link on these pages has to agree with. */
     private static final String STRUCTURE_URL =
@@ -340,7 +340,7 @@ class Arc42ComponentTreeTest {
     /** The picture is cut, the facts are not: the page says how many counterparts it left out. */
     @Test
     void theContextView_saysWhenItLeavesACounterpartOut() throws IOException {
-        context = contextOf(orders, new DiagramLimits(100, 4, 0, 100, 200));
+        context = contextOf(orders, new DiagramLimits(100, 4, 0, 100, 200, 40, 20));
 
         generate();
 
@@ -449,7 +449,7 @@ class Arc42ComponentTreeTest {
     @Test
     void theDatabaseSchemaPage_whenThereAreMoreTablesThanTheListMayCarry_thenItSaysHowMany()
             throws IOException {
-        context = contextOf(orders, new DiagramLimits(100, 4, 40, 100, 1));
+        context = contextOf(orders, new DiagramLimits(100, 4, 40, 100, 1, 40, 20));
 
         generate();
 
@@ -503,7 +503,7 @@ class Arc42ComponentTreeTest {
      */
     @Test
     void theDatabaseSchemaPage_whenTheSchemaIsTooLargeToDraw_thenTheListIsStillComplete() throws IOException {
-        context = contextOf(orders, new DiagramLimits(100, 4, 40, 1, 200));
+        context = contextOf(orders, new DiagramLimits(100, 4, 40, 1, 200, 40, 20));
 
         generate();
 
@@ -536,7 +536,7 @@ class Arc42ComponentTreeTest {
         DocumentedComponent partitioned = componentOf(orders, "orders-intake")
                 .withArtifacts(partitionedSchema(), componentOf(orders, "orders-intake").api());
         orders = orders(partitioned);
-        context = contextOf(orders, new DiagramLimits(100, 4, 40, 1, 2));
+        context = contextOf(orders, new DiagramLimits(100, 4, 40, 1, 2, 40, 20));
 
         generate(partitioned);
 

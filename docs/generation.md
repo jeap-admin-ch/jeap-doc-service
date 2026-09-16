@@ -168,11 +168,12 @@ Four pages carry one:
 - **The system context view**, in *3. Context and Scope*, draws the system in the middle and every other system
   it exchanges something with around it. It is laid out **left to right**, because a star of two ranks is a
   narrow column that way and a wide ribbon the other way.
-- **The level-1 whitebox view**, in *5. Building Block View*, carries **two** diagrams of the same system:
-  *Inside the system* - its components and what flows between them, and nothing else - and then *With the
-  neighbouring systems*, which adds every other system as a single box. The first is the one to read for a large
-  system; the second says where it sits in the landscape. Both are laid out **top to bottom**, which is where
-  the ranks of a graph of components calling components belong.
+- **The level-1 whitebox view**, in *5. Building Block View*, carries at most **two** pictures of the same
+  system: *Inside the system* - its components and what flows between them, and nothing else - and then one
+  picture of what it exchanges outside. That second one is *With the neighbouring systems*, which adds every
+  other system as a single box, or, where that is too large, *Across the system boundary*: only the components
+  that exchange something outside, the neighbours, and the arrows between them. See
+  [How much a whitebox picture draws](#how-much-a-whitebox-picture-draws).
 
 - **The component context view**, in a component's own *3. Context and Scope*, draws that component in the
   middle of its system's package and, beside it, **every counterpart it exchanges something with as its own
@@ -200,8 +201,9 @@ Four pages carry one:
 the whitebox view or another component's context view, and no relations table there lists it. It keeps its own
 pages, which say so, and its own context view shows what it exchanges.
 
-The whitebox page draws *Inside the system* only when the components of the system actually exchange something.
-Otherwise the two diagrams would be the same boxes twice. A system or a component that exchanges nothing gets
+The whitebox page draws *Inside the system* only when the components of the system actually exchange something,
+and the second picture only when something crosses the boundary. Otherwise the two would be the same boxes
+twice. A system or a component that exchanges nothing gets
 no context chapter at all, and a system with no component no whitebox page - see
 [No content, no page](structure-templates.md#arc42).
 
@@ -215,6 +217,34 @@ message.
 The cap is not a matter of taste. The diagram engine lays a label out by recursion and overflows the browser's
 stack at about sixty lines, and a diagram that fails to render is an error box on the page that fails no build -
 so an arrow of a busy system has to be summarized for the diagram to exist at all.
+
+### How much a whitebox picture draws
+
+**A whitebox view is the one view whose arrows grow with the square of its boxes**: it is where components talk
+to components. A context view is a star - one subject with its counterparts around it - so its arrows grow with
+its boxes, and an entity relationship diagram and a reaction graph are bounded already. Twenty-five components
+with 188 relations between them is a mat of lines with nothing for the eye to follow, whatever the engine, and
+no subset of it is both readable and honest.
+
+So a whitebox picture is drawn in one of three ways, by how many relations it would carry:
+
+| Relations                                                          | How it is drawn                                                                                                                                                                                                  |
+|--------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| up to [`max-detailed-edges`](configuration.md#the-architecture-model) | In full: an arrow per kind and direction, in its colour, carrying the names                                                                                                                                       |
+| up to [`max-diagram-edges`](configuration.md#the-architecture-model)  | **Folded to its shape**: one grey line per pair of boxes, whatever travels between them - no kind, no colour, no name. A line keeps its arrowhead where the pair is joined one way, and loses it where both do  |
+| above that                                                           | **Not drawn at all.** The page says so in a sentence naming how many relations there were                                                                                                                         |
+
+Between the two sits the picture whose *shape* is worth seeing - which components are hubs, which corner of the
+system is dense - while the names are what make it unreadable. A folded picture says underneath it how many
+relations went into how many lines, because a grey line and a missing arrowhead are not self-explanatory.
+
+**The page shows at most two pictures**: the decomposition where it is within the bounds, and then one picture
+of the outside - the whole one where it fits, and the boundary one where it does not. Where neither can be
+drawn the page is the tables, which carry every component and every relation whatever the pictures did.
+
+**Every architecture diagram is laid out left to right**, and the spacing is about the engine's own defaults.
+Tighter spacing takes several times the area off the largest diagram and costs the reader the gaps the arrows
+are routed through, which was measured and was the wrong criterion.
 
 ### What the colours mean
 
@@ -251,7 +281,11 @@ foreign key into are kept first, so the arrows of the tables that are drawn stil
 three hundred tables gives a reader a page that is useful rather than one that fails to render.
 
 These bounds are on the picture and not on the facts. A diagram that had to leave something out says how much,
-and the list of tables below it carries what it left out - up to
+and the tables below it carry what it left out. **A folded picture is the one bound that changes how a picture
+is drawn rather than how much of it there is**, and a dropped whitebox picture is the one that takes the picture
+away whole rather than cutting it - a whitebox view is dense rather than long-tailed, so its first hundred
+arrows are not a truthful part of it the way a schema's first hundred tables are. The list of tables below an
+entity relationship diagram carries what it left out - up to
 [`max-schema-table-list`](configuration.md#the-architecture-model) entries. That is the one bound on the facts
 themselves, and [Tables of one name pattern are grouped, and the list is bounded](#tables-of-one-name-pattern-are-grouped-and-the-list-is-bounded)
 is what it is for.

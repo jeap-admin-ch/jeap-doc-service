@@ -78,6 +78,27 @@ public class GeneratorProperties {
     private int maxSchemaTableList = 200;
 
     /**
+     * How many relations a whitebox picture may draw at all. Above this it is <b>not drawn</b> and the page
+     * says so in a sentence.
+     * <p>
+     * <b>Dropped whole rather than cut</b>, which no other bound here does. An entity relationship diagram of
+     * three hundred tables has a long tail and its first hundred tables are still true; a whitebox view is
+     * dense everywhere, so there is no part of it that is both readable and honest. The tables below the
+     * picture carry every component and every relation either way.
+     */
+    private int maxDiagramEdges = 40;
+
+    /**
+     * How many relations a whitebox picture may draw <b>in full</b> - an arrow per kind and direction, in its
+     * colour, carrying the names. Above this the picture is folded to its shape: one grey line per pair of
+     * boxes, with an arrowhead only where the pair is joined one way.
+     * <p>
+     * Between the two bounds sits the picture whose <i>shape</i> is worth seeing - which components are hubs,
+     * which corner of the system is dense - while the names on the arrows are what make it unreadable.
+     */
+    private int maxDetailedEdges = 20;
+
+    /**
      * The paths of a REST specification this documentation does <b>not</b> describe, as regular expressions
      * that have to match a whole path.
      * <p>
@@ -119,7 +140,7 @@ public class GeneratorProperties {
     /** The five bounds in one value, which is what a template is handed. */
     public DiagramLimits limits() {
         return new DiagramLimits(maxDiagramNodes, maxEdgeLabels, maxContextComponents, maxSchemaTableDiagram,
-                maxSchemaTableList);
+                maxSchemaTableList, maxDiagramEdges, maxDetailedEdges);
     }
 
     // A configuration error should stop the deployment, not the first build.
@@ -149,6 +170,24 @@ public class GeneratorProperties {
             throw new IllegalStateException(
                     "jeap.doc.generator.max-schema-table-list is " + maxSchemaTableList
                     + ". A schema page needs room for at least one table.");
+        }
+        if (maxDiagramEdges < 1) {
+            throw new IllegalStateException(
+                    "jeap.doc.generator.max-diagram-edges is " + maxDiagramEdges + ". A diagram needs room "
+                    + "for at least one relation.");
+        }
+        if (maxDetailedEdges < 1) {
+            throw new IllegalStateException(
+                    "jeap.doc.generator.max-detailed-edges is " + maxDetailedEdges + ". A diagram needs room "
+                    + "for at least one relation drawn in full.");
+        }
+        // A bound that folds everything it draws is a configuration nobody means: the middle band would be
+        // empty and every picture that fits would be grey.
+        if (maxDetailedEdges > maxDiagramEdges) {
+            throw new IllegalStateException(
+                    "jeap.doc.generator.max-detailed-edges is " + maxDetailedEdges + " and "
+                    + "jeap.doc.generator.max-diagram-edges is " + maxDiagramEdges
+                    + ". A picture cannot be drawn in full beyond the point where it is not drawn at all.");
         }
         try {
             apiPaths();
