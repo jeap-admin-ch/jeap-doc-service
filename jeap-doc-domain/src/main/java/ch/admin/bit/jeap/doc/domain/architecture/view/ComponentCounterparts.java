@@ -7,6 +7,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageContract;
 import ch.admin.bit.jeap.doc.domain.architecture.RelationKind;
+import ch.admin.bit.jeap.doc.domain.architecture.RelationPaths;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
 
 import java.util.ArrayList;
@@ -71,7 +72,7 @@ public final class ComponentCounterparts {
      * replicated OpenAPI specification while a relation carries the path of the architecture repository's
      * {@code RestApi}: the specification says {@code POST /api/v4/businesspartner/} and the relation
      * {@code POST /api/v4/businesspartner}, and one side may name a path variable {@code {bpId}} where the
-     * other names it {@code {businessPartnerId}}. See {@link #normalised(String)}.
+     * other names it {@code {businessPartnerId}}. See {@link RelationPaths#normalised}.
      * <p>
      * <b>Not a record, because it remembers.</b> A page asks for the callers of every operation it writes a
      * row for, and the architecture model knows called operations that the published specification does not
@@ -235,24 +236,10 @@ public final class ComponentCounterparts {
      */
     private static String keyOf(String method, String path) {
         String verb = method == null ? "" : method.strip().toUpperCase(Locale.ROOT);
-        return verb + " " + normalised(path == null ? "" : path.strip());
+        return verb + " " + RelationPaths.normalised(path);
     }
 
-    /**
-     * The path as the architecture repository normalises it - {@code RestApi.pathWithoutVariableNames}, which
-     * is what {@code RestApi.pathMatches} resolves an observed call with.
-     * <p>
-     * <b>The variable names go, not only the trailing slash.</b> One side may call a variable {@code {bpId}}
-     * and the other {@code {businessPartnerId}}, and a rule invented here would drop those callers silently.
-     * A path that is {@code /} keeps its slash: it is the whole path.
-     */
-    private static String normalised(String path) {
-        String replaced = path.replaceAll("\\{[^}]*+}", "{}");
-        if (!replaced.endsWith("/") || replaced.length() == 1) {
-            return replaced;
-        }
-        return replaced.substring(0, replaced.length() - 1);
-    }
+
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();

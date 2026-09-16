@@ -517,7 +517,7 @@ class ComponentContextTest {
     void of_whenAComponentIsLeftOutOfTheViews_thenOnlyItsOwnContextShowsIt() {
         DocumentedSystem orders = orders(List.of(
                 event("OrdersAccepted", "orders", "orders-audit", "orders", "orders-intake")));
-        ViewExcludedComponents excluded = ViewExcludedComponents.excluding(List.of("orders-audit"));
+        ViewExclusions excluded = ViewExclusions.excluding(List.of("orders-audit"));
         DocumentedComponent audit = orders.components().stream()
                 .filter(component -> component.name().equals("orders-audit")).findFirst().orElseThrow();
 

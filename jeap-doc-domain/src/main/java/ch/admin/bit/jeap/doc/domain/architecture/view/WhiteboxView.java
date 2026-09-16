@@ -72,7 +72,7 @@ public record WhiteboxView(
      *                      point at
      */
     public static WhiteboxView of(ArchitectureModel model, DocumentedSystem system, int maxNeighbours) {
-        return of(model, system, maxNeighbours, ViewExcludedComponents.NONE);
+        return of(model, system, maxNeighbours, ViewExclusions.NONE);
     }
 
     /**
@@ -80,11 +80,11 @@ public record WhiteboxView(
      * drawn: its box is not there.
      */
     public static WhiteboxView of(ArchitectureModel model, DocumentedSystem system, int maxNeighbours,
-                                  ViewExcludedComponents excluded) {
+                                  ViewExclusions excluded) {
         // Every component of the system is drawn: the whitebox view is the one place the whole decomposition
         // belongs, and a component missing from it would have a page nothing on the diagram points at.
         List<DocumentedComponent> drawn = system.components().stream()
-                .filter(component -> !excluded.excludes(component.name()))
+                .filter(component -> !excluded.excludesComponent(component.name()))
                 .toList();
         Set<String> drawnNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         drawn.forEach(component -> drawnNames.add(component.name()));

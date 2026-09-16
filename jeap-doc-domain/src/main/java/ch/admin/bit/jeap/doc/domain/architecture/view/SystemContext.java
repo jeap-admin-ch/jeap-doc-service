@@ -63,12 +63,12 @@ public record SystemContext(DocumentedSystem system, List<ContextEdge> edges, Li
      *                      picture nobody can read. Only the diagram is cut; every edge is still returned
      */
     public static SystemContext of(ArchitectureModel model, DocumentedSystem system, int maxNeighbours) {
-        return of(model, system, maxNeighbours, ViewExcludedComponents.NONE);
+        return of(model, system, maxNeighbours, ViewExclusions.NONE);
     }
 
     /** The same, without the relations of the components left out of the views. */
     public static SystemContext of(ArchitectureModel model, DocumentedSystem system, int maxNeighbours,
-                                   ViewExcludedComponents excluded) {
+                                   ViewExclusions excluded) {
         Map<String, ContextEdge> byKey = new LinkedHashMap<>();
         Map<String, Set<String>> labelsByKey = new LinkedHashMap<>();
 

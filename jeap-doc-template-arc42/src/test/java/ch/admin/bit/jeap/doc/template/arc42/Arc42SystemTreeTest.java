@@ -397,8 +397,8 @@ class Arc42SystemTreeTest {
      */
     @Test
     void aComponentLeftOutOfTheViews_isNotDrawnOrListedAsARelationAndItsPageSaysSo() throws IOException {
-        context = context.withViewExcludedComponents(
-                ch.admin.bit.jeap.doc.domain.architecture.view.ViewExcludedComponents.excluding(
+        context = context.withViewExclusions(
+                ch.admin.bit.jeap.doc.domain.architecture.view.ViewExclusions.excluding(
                         List.of("orders-risk")));
 
         generate();
@@ -413,6 +413,38 @@ class Arc42SystemTreeTest {
                 .doesNotContain("orders-risk");
         assertThat(read("system-architecture/5-building-block-view/components/orders-risk/index.md"))
                 .contains("left out of the diagrams and relations tables of other pages by configuration");
+        assertThat(read("system-architecture/5-building-block-view/components/orders-intake/index.md"))
+                .doesNotContain("by configuration");
+    }
+
+    /**
+     * <b>A relation left out takes the arrow and leaves the box.</b> It is the difference to the property
+     * beside it: the component is still drawn, still linked, and its own page says that some of its relations
+     * are not on other pages.
+     */
+    @Test
+    void aRelationLeftOutOfTheViews_isNotDrawnOrListedWhileItsComponentKeepsItsBox() throws IOException {
+        ch.admin.bit.jeap.doc.domain.architecture.view.ExcludedRelation upload =
+                ch.admin.bit.jeap.doc.domain.architecture.view.ExcludedRelation.of("orders-risk", null, null,
+                        null, "OrdersPaymentAcceptedEvent");
+        context = context.withViewExclusions(
+                ch.admin.bit.jeap.doc.domain.architecture.view.ViewExclusions.excluding(List.of(),
+                        List.of(upload)));
+
+        generate();
+
+        String whitebox = read("system-architecture/5-building-block-view/whitebox-view.md");
+        assertThat(whitebox)
+                .describedAs("the box stays, and so does the row of the components table")
+                .contains("component \"orders-risk\"")
+                .contains("[orders-risk](/systems/orders/system-architecture/building-block-view/components/"
+                          + "orders-risk/)");
+        assertThat(whitebox.substring(whitebox.indexOf("## Relations")))
+                .describedAs("and the relation is off the table and off the picture")
+                .doesNotContain("orders-risk");
+        assertThat(read("system-architecture/5-building-block-view/components/orders-risk/index.md"))
+                .contains("Some of this component's relations are left out of the diagrams and relations "
+                          + "tables of other pages by configuration");
         assertThat(read("system-architecture/5-building-block-view/components/orders-intake/index.md"))
                 .doesNotContain("by configuration");
     }

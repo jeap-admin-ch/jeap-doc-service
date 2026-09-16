@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
-import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExcludedComponents;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ExcludedRelation;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExclusions;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.DocumentedApiPaths;
 import jakarta.annotation.PostConstruct;
@@ -132,9 +133,56 @@ public class GeneratorProperties {
      */
     private List<String> viewExcludedComponents = new ArrayList<>();
 
-    /** Which components the views leave out - see {@link ViewExcludedComponents}. Compiled on every call. */
-    public ViewExcludedComponents viewExclusions() {
-        return ViewExcludedComponents.excluding(viewExcludedComponents);
+    /**
+     * The relations left out of the diagrams and relations tables of other pages - the platform's own
+     * plumbing rather than a component's architecture, such as every component uploading its database schema
+     * to the architecture repository.
+     * <p>
+     * <b>It removes arrows, never boxes</b>, which is the whole difference to the property above it: a
+     * component named here keeps its box on every picture, including the whitebox view of its own system, and
+     * its own pages show what it exchanges. So the worst a wrong entry can do is hide a relation.
+     * <p>
+     * All the fields an entry gives have to match; one it leaves out matches anything. A {@code consumer}, a
+     * {@code provider} and a {@code message-type} are regular expressions over the whole name; a {@code path}
+     * is <b>not</b> - it is compared literally after the normalisation of {@code RelationPaths}, because
+     * {@code /api/openapi/&#123;systemComponentName&#125;} is no regular expression at all and is exactly what
+     * an operator writes.
+     */
+    private List<ExcludedRelationProperties> viewExcludedRelations = new ArrayList<>();
+
+    /** What the views leave out - see {@link ViewExclusions}. Compiled on every call. */
+    public ViewExclusions viewExclusions() {
+        return ViewExclusions.excluding(viewExcludedComponents,
+                viewExcludedRelations.stream().map(ExcludedRelationProperties::toExcludedRelation).toList());
+    }
+
+    /**
+     * One entry of {@code view-excluded-relations}, as the configuration spells it.
+     * <p>
+     * A class of its own rather than a string to parse: a grammar would have to be documented, and every
+     * mistake in it would come back as a complaint about a format rather than about a field.
+     */
+    @Data
+    public static class ExcludedRelationProperties {
+
+        /** The consuming component, as a regular expression over the whole name. */
+        private String consumer;
+
+        /** The providing component, as a regular expression over the whole name. */
+        private String provider;
+
+        /** The HTTP method, compared literally and ignoring case. */
+        private String method;
+
+        /** The resource path, compared literally after normalisation - not a regular expression. */
+        private String path;
+
+        /** The event or command that travels, as a regular expression over the whole name. */
+        private String messageType;
+
+        ExcludedRelation toExcludedRelation() {
+            return ExcludedRelation.of(consumer, provider, method, path, messageType);
+        }
     }
 
     /** The five bounds in one value, which is what a template is handed. */
@@ -198,10 +246,18 @@ public class GeneratorProperties {
                     "jeap.doc.generator.rest-api-excluded-paths is not usable: " + e.getMessage(), e);
         }
         try {
-            viewExclusions();
+            ViewExclusions.excluding(viewExcludedComponents);
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
                     "jeap.doc.generator.view-excluded-components is not usable: " + e.getMessage(), e);
+        }
+        // An entry that matches nothing, or everything, is a typo a page would report by silently missing
+        // something - so it stops the deployment instead.
+        try {
+            viewExcludedRelations.forEach(ExcludedRelationProperties::toExcludedRelation);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "jeap.doc.generator.view-excluded-relations is not usable: " + e.getMessage(), e);
         }
     }
 }

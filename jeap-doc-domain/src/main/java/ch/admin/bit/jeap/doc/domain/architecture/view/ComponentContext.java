@@ -156,7 +156,7 @@ public record ComponentContext(
      */
     public static ComponentContext of(ArchitectureModel model, DocumentedSystem system,
                                       DocumentedComponent component, int maxComponents, int maxSystems) {
-        return of(model, system, component, maxComponents, maxSystems, ViewExcludedComponents.NONE);
+        return of(model, system, component, maxComponents, maxSystems, ViewExclusions.NONE);
     }
 
     /**
@@ -165,11 +165,11 @@ public record ComponentContext(
      */
     public static ComponentContext of(ArchitectureModel model, DocumentedSystem system,
                                       DocumentedComponent component, int maxComponents, int maxSystems,
-                                      ViewExcludedComponents excluded) {
+                                      ViewExclusions excluded) {
         Nodes nodes = new Nodes(model, system, component);
         Map<EdgeKey, Edge> byKey = new LinkedHashMap<>();
         Map<EdgeKey, Set<String>> labelsByKey = new LinkedHashMap<>();
-        ViewExcludedComponents applied = excluded.excludes(component.name()) ? ViewExcludedComponents.NONE
+        ViewExclusions applied = excluded.excludesComponent(component.name()) ? ViewExclusions.NONE
                 : excluded;
 
         for (SystemRelation relation : model.relations()) {

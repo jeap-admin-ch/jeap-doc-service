@@ -201,6 +201,26 @@ Four pages carry one:
 the whitebox view or another component's context view, and no relations table there lists it. It keeps its own
 pages, which say so, and its own context view shows what it exchanges.
 
+**And so can a single relation.** An entry of
+[`view-excluded-relations`](configuration.md#the-architecture-model) names a consumer, a provider, a method, a
+path or a message type - all the fields it gives have to match - and that relation is drawn nowhere and listed
+in no relations table. **It removes arrows and never boxes**: the components keep their boxes on every picture,
+including the whitebox view of their own system, so the worst a wrong entry can do is hide a relation. The
+component an entry names says on its own page that some of its relations are left out elsewhere.
+
+It is for the traffic that is the platform's own plumbing rather than a component's architecture. Every
+component uploads its database schema and its OpenAPI specification to the architecture repository, which put
+the architecture repository on 37 context diagrams as a neighbour reached by nothing else - one true thing, said
+37 times, in the place a reader goes to find out what a system talks to. Leaving the *component* out instead
+would take the nine edges that are architecture with it.
+
+A system left with no relation at all then gets no context chapter, by the same *no content, no page* rule as
+everywhere else.
+
+**Neither of the two reaches a counterpart column.** The **Callers** of an operation and the **Consumers** and
+**Publishers** of a message are read from the relations and the contracts rather than from a view, so a
+relation that is not drawn is still named where a reader asks who does this.
+
 The whitebox page draws *Inside the system* only when the components of the system actually exchange something,
 and the second picture only when something crosses the boundary. Otherwise the two would be the same boxes
 twice. A system or a component that exchanges nothing gets
@@ -522,9 +542,10 @@ turns into one: raw HTML in a page is escaped and shown as text. A counterpart i
 run wrote the component's page and plain code where it did not, and an operation or a message with no
 counterpart gets `-`.
 
-**`jeap.doc.generator.view-excluded-components` does not reach these columns.** It bounds the views and the
-relations tables written from them; a counterpart is read from the relations and the contracts themselves, so
-an excluded component is named here like any other.
+**The view exclusions do not reach these columns.** `view-excluded-components` and `view-excluded-relations`
+bound the views and the relations tables written from them; a counterpart is read from the relations and the
+contracts themselves, so an excluded component is named here like any other - `POST /api/dbschemas` keeps all
+its callers on the page of the component that offers it.
 
 The cell holds every counterpart, comma separated. **The site template shows the first three and puts the rest
 behind a `+N more` chip** the reader opens - `tableControls.js` again, the module that sorts and filters, so

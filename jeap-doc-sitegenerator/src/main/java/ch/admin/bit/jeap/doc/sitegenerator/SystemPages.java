@@ -226,7 +226,7 @@ public class SystemPages {
                 architectureModel.sourceUrlOf(environment).orElse(""),
                 snapshot.importedAt(), generatedAt,
                 properties.limits(), diagramLinkPrefix, properties.apiPaths())
-                .withViewExcludedComponents(properties.viewExclusions());
+                .withViewExclusions(properties.viewExclusions());
 
         // The site's own index of the systems belongs to the part that carries whole environment trees. A
         // part that carries one system writes that system and nothing above it: the directory above is another

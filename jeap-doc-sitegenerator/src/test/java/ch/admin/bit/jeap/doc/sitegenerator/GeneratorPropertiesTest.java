@@ -1,6 +1,8 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -186,6 +188,62 @@ class GeneratorPropertiesTest {
         assertThatThrownBy(properties::check)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.generator.max-diagram-nodes");
+    }
+
+    /** An entry naming no field at all would take every relation of the landscape. */
+    @Test
+    void aRelationEntryWithNoField_stopsTheStartup() {
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setViewExcludedRelations(List.of(new GeneratorProperties.ExcludedRelationProperties()));
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.view-excluded-relations")
+                .hasMessageContaining("every relation");
+    }
+
+    /** No relation carries a path and a message type, so such an entry can never match: a typo with no symptom. */
+    @Test
+    void aRelationEntryAboutARestCallAndAMessageAtOnce_stopsTheStartup() {
+        GeneratorProperties.ExcludedRelationProperties entry = new GeneratorProperties.ExcludedRelationProperties();
+        entry.setPath("/api/dbschemas");
+        entry.setMessageType("OrdersAcceptedEvent");
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setViewExcludedRelations(List.of(entry));
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.view-excluded-relations")
+                .hasMessageContaining("no relation carries both");
+    }
+
+    /** A name is a regular expression, and one that does not compile stops the deployment. */
+    @Test
+    void aRelationEntryWhoseNameIsNotARegularExpression_stopsTheStartup() {
+        GeneratorProperties.ExcludedRelationProperties entry = new GeneratorProperties.ExcludedRelationProperties();
+        entry.setProvider("archrepo(");
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setViewExcludedRelations(List.of(entry));
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.view-excluded-relations")
+                .hasMessageContaining("provider");
+    }
+
+    /**
+     * <b>And a path is not a regular expression</b>, which is why it is not compiled: the entry an operator
+     * writes first carries a brace, and Java reads that as the start of a repetition.
+     */
+    @Test
+    void aRelationEntryWhosePathCarriesBraces_isAccepted() {
+        GeneratorProperties.ExcludedRelationProperties entry = new GeneratorProperties.ExcludedRelationProperties();
+        entry.setProvider("applicationplatform-archrepo-service");
+        entry.setPath("/api/openapi/{systemComponentName}");
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setViewExcludedRelations(List.of(entry));
+
+        assertThatCode(properties::check).doesNotThrowAnyException();
     }
 
     /** The two bounds on a whitebox picture: the shipped defaults, and what a reader would set by hand. */

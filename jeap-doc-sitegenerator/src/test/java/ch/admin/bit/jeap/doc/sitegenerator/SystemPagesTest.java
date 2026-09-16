@@ -19,6 +19,9 @@ import ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageSchema;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
+import ch.admin.bit.jeap.doc.domain.architecture.RelationKind;
+import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExclusions;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
@@ -128,8 +131,39 @@ class SystemPagesTest {
 
         pages.write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
 
-        assertThat(template.context.viewExcludedComponents().excludes("orders-mock")).isTrue();
-        assertThat(template.context.viewExcludedComponents().excludes("orders-intake")).isFalse();
+        assertThat(template.context.viewExclusions().excludesComponent("orders-mock")).isTrue();
+        assertThat(template.context.viewExclusions().excludesComponent("orders-intake")).isFalse();
+    }
+
+    /**
+     * <b>And so do the relations left out.</b> A component named by one of them keeps its box - the worst a
+     * wrong entry can do is hide an arrow - which is the whole difference to the property beside it.
+     */
+    @Test
+    void write_thenTheRelationsLeftOutOfTheViewsReachTheTemplate() throws IOException {
+        RecordingTemplate template = new RecordingTemplate();
+        GeneratorProperties properties = new GeneratorProperties();
+        GeneratorProperties.ExcludedRelationProperties entry = new GeneratorProperties.ExcludedRelationProperties();
+        entry.setProvider("orders-archrepo");
+        entry.setPath("/api/dbschemas");
+        properties.setViewExcludedRelations(List.of(entry));
+        SystemPages pages = new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE,
+                NoReactions.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE,
+                new CustomProperties(), new StructureTemplates(List.of(template)), properties,
+                new ArchitectureImportProperties(), BuildMetrics.NONE, null);
+
+        pages.write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        ViewExclusions exclusions = template.context.viewExclusions();
+        assertThat(exclusions.excludes(new SystemRelation(RelationKind.REST_API, "orders", "orders-intake",
+                "orders", "orders-archrepo", null, "POST", "/api/dbschemas/", null))).isTrue();
+        assertThat(exclusions.excludesComponent("orders-archrepo"))
+                .describedAs("it removes arrows, never boxes")
+                .isFalse();
+        assertThat(exclusions.excludesRelationsOf("orders-archrepo"))
+                .describedAs("and the component's own page says so")
+                .isTrue();
     }
 
     /**

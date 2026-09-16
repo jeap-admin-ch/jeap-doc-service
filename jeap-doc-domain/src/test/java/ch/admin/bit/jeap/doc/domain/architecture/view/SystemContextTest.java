@@ -168,7 +168,7 @@ class SystemContextTest {
         ArchitectureModel landscape = model(orders, system("tariffs"), system("shipping"));
 
         SystemContext context = SystemContext.of(landscape, orders, NO_LIMIT,
-                ViewExcludedComponents.excluding(List.of("orders-mock")));
+                ViewExclusions.excluding(List.of("orders-mock")));
 
         assertThat(context.neighbours()).containsExactly("shipping");
     }

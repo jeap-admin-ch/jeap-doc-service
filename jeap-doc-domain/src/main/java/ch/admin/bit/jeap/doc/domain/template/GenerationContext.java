@@ -2,7 +2,7 @@ package ch.admin.bit.jeap.doc.domain.template;
 
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
-import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExcludedComponents;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExclusions;
 
 import java.time.Instant;
 
@@ -26,7 +26,7 @@ import java.time.Instant;
  *                   it is for: every jEAP service publishes the platform's operational endpoints, and they
  *                   are in its specification without being what a reader came for
  * @param reactions  the reaction graphs of the system being written
- * @param viewExcludedComponents the components left out of the diagrams and relations tables of other pages
+ * @param viewExclusions the components left out of the diagrams and relations tables of other pages
  */
 public record GenerationContext(
         ArchitectureModel model,
@@ -38,13 +38,13 @@ public record GenerationContext(
         String linkPrefix,
         DocumentedApiPaths apiPaths,
         ReactionViews reactions,
-        ViewExcludedComponents viewExcludedComponents) {
+        ViewExclusions viewExclusions) {
 
     public GenerationContext {
         apiPaths = apiPaths == null ? DocumentedApiPaths.ALL : apiPaths;
         reactions = reactions == null ? ReactionViews.none() : reactions;
-        viewExcludedComponents = viewExcludedComponents == null ? ViewExcludedComponents.NONE
-                : viewExcludedComponents;
+        viewExclusions = viewExclusions == null ? ViewExclusions.NONE
+                : viewExclusions;
     }
 
     /** A run that leaves no component out of the views. */
@@ -52,7 +52,7 @@ public record GenerationContext(
                              Instant modelImportedAt, Instant generatedAt, DiagramLimits limits,
                              String linkPrefix, DocumentedApiPaths apiPaths, ReactionViews reactions) {
         this(model, environment, archRepoUrl, modelImportedAt, generatedAt, limits, linkPrefix, apiPaths,
-                reactions, ViewExcludedComponents.NONE);
+                reactions, ViewExclusions.NONE);
     }
 
     /**
@@ -89,11 +89,11 @@ public record GenerationContext(
      */
     public GenerationContext withReactions(ReactionViews reactions) {
         return new GenerationContext(model, environment, archRepoUrl, modelImportedAt, generatedAt,
-                limits, linkPrefix, apiPaths, reactions, viewExcludedComponents);
+                limits, linkPrefix, apiPaths, reactions, viewExclusions);
     }
 
     /** The same run, leaving the given components out of the views of other pages. */
-    public GenerationContext withViewExcludedComponents(ViewExcludedComponents excluded) {
+    public GenerationContext withViewExclusions(ViewExclusions excluded) {
         return new GenerationContext(model, environment, archRepoUrl, modelImportedAt, generatedAt,
                 limits, linkPrefix, apiPaths, reactions, excluded);
     }

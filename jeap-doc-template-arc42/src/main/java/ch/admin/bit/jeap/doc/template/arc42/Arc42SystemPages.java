@@ -75,7 +75,7 @@ final class Arc42SystemPages {
         Arc42Pages.writeOpenCategory(structure, template.systemLabel(), 1);
         SystemContext systemContext = system.model()
                 .map(model -> SystemContext.of(context.model(), model, context.limits().maxDiagramNodes(),
-                        context.viewExcludedComponents()))
+                        context.viewExclusions()))
                 .orElse(null);
         List<StructureChapter> generated = generatedChaptersOf(system, systemContext, context);
         List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
@@ -333,7 +333,7 @@ final class Arc42SystemPages {
             throws IOException {
         Path directory = Arc42Pages.chapterDirectory(template, structure, BUILDING_BLOCK_VIEW);
         WhiteboxView whitebox = WhiteboxView.of(context.model(), system, context.limits().maxDiagramNodes(),
-                context.viewExcludedComponents());
+                context.viewExclusions());
 
         // The message groups are written before the listing that links to them, and the listing goes by what
         // they answer: a system defines no events, or no commands, more often than not, and a link to a
@@ -608,9 +608,14 @@ final class Arc42SystemPages {
         if (!Md.text(component.description()).isEmpty()) {
             page.paragraph(Md.text(component.description()));
         }
-        if (context.viewExcludedComponents().excludes(component.name())) {
+        if (context.viewExclusions().excludesComponent(component.name())) {
             page.paragraph("This component is left out of the diagrams and relations tables of other pages "
                            + "by configuration. Its own pages show what it exchanges.");
+        } else if (context.viewExclusions().excludesRelationsOf(component.name())) {
+            // One sentence on the page that owns the subject, rather than a note on each of the pages a
+            // relation was taken off.
+            page.paragraph("Some of this component's relations are left out of the diagrams and relations "
+                           + "tables of other pages by configuration. Its own pages show what it exchanges.");
         }
 
         List<List<Markdown>> rows = new ArrayList<>();

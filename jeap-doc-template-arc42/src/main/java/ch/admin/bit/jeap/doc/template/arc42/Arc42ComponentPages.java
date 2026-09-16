@@ -103,7 +103,7 @@ final class Arc42ComponentPages {
         writeIntroduction(template, system, component, context, structure);
         ComponentContext componentContext = ComponentContext.of(context.model(), system, component,
                 context.limits().maxContextComponents(), context.limits().maxDiagramNodes(),
-                context.viewExcludedComponents());
+                context.viewExclusions());
         // No content, no page: a component that exchanges nothing gets no chapter 3.
         boolean contextAndScope = !componentContext.isEmpty();
         if (contextAndScope) {

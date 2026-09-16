@@ -7,6 +7,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [3.3.0] - 2026-09-15
 
+- New property `jeap.doc.generator.view-excluded-relations` leaves a single **relation** out of the diagrams and the relations tables - the platform's plumbing, such as every component uploading its schemas to the architecture repository. It removes arrows and never boxes, unlike `view-excluded-components` beside it, and the component it names says so on its own page. Neither reaches the counterpart columns - see [Configuration](docs/configuration.md).
 - A whitebox picture is drawn in one of three ways, by how many relations it carries: in full up to `jeap.doc.generator.max-detailed-edges` (20), folded to one grey line per pair of boxes up to `jeap.doc.generator.max-diagram-edges` (40), and not at all above that - the page then says so in a sentence naming how many there were. The components table and the relations table are written in full whatever the picture did - see [Generating the documentation](docs/generation.md#how-much-a-whitebox-picture-draws).
 - The whitebox page gains a third possible picture, *Across the system boundary* - the components that exchange something outside, the neighbours as one box each, and only the arrows between them. It is drawn where the whole picture is over the bound, so a large system keeps a picture of what crosses its boundary.
 - Every architecture diagram is laid out left to right, and the spacing of all of them goes back to about the engine's defaults (`nodesep` 20, `ranksep` 45).

@@ -333,7 +333,7 @@ class WhiteboxViewTest {
                 List.of());
 
         WhiteboxView view = WhiteboxView.of(model(orders, system("tariffs")), orders, 60,
-                ViewExcludedComponents.excluding(List.of("orders-mock")));
+                ViewExclusions.excluding(List.of("orders-mock")));
 
         assertThat(view.components()).extracting(DocumentedComponent::name).containsExactly("orders-intake");
         assertThat(view.internal()).isEmpty();
