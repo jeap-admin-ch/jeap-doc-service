@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.archrepo;
 
+import ch.admin.bit.jeap.doc.domain.architecture.ApiGroup;
 import ch.admin.bit.jeap.doc.domain.architecture.ApiOperation;
 import ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchema;
 import ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview;
@@ -173,7 +174,7 @@ class ArchRepoArtifactContentTest {
     void restApi_groupsTheOperationsByTheirFirstTagAndShowsNoUnusedTag() {
         RestApiOverview read = content.restApi(spec(SPEC)).orElseThrow();
 
-        assertThat(read.groups()).extracting(group -> group.name())
+        assertThat(read.groups()).extracting(ApiGroup::name)
                 .containsExactly("Orders", RestApiOverview.UNGROUPED);
         assertThat(read.groups().getFirst().description()).isEqualTo("Everything about an order");
         assertThat(read.groups().getFirst().operations())

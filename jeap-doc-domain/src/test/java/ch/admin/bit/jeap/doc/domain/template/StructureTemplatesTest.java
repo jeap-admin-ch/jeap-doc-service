@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.domain.template;
 
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -27,7 +26,9 @@ class StructureTemplatesTest {
      */
     @Test
     void twoTemplatesUnderOneId_areRefusedWhileTheServiceStarts() {
-        assertThatThrownBy(() -> new StructureTemplates(List.of(template("arc42"), template("arc42"))))
+        List<StructureTemplate> twice = List.of(template("arc42"), template("arc42"));
+
+        assertThatThrownBy(() -> new StructureTemplates(twice))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("arc42");
     }
@@ -53,7 +54,8 @@ class StructureTemplatesTest {
                 StructureChapter.numbered(1, "1-intro", "Introduction"),
                 StructureChapter.unnumbered("decisions", "Decisions"));
 
-        assertThatThrownBy(() -> new StructureTemplates(List.of(mixed)))
+        List<StructureTemplate> templates = List.of(mixed);
+        assertThatThrownBy(() -> new StructureTemplates(templates))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("mixed")
                 .hasMessageContaining("1-intro")
@@ -66,7 +68,8 @@ class StructureTemplatesTest {
                 StructureChapter.unnumbered("decisions", "Decisions"),
                 StructureChapter.unnumbered("decisions", "Architecture Decisions"));
 
-        assertThatThrownBy(() -> new StructureTemplates(List.of(template)))
+        List<StructureTemplate> templates = List.of(template);
+        assertThatThrownBy(() -> new StructureTemplates(templates))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("folder")
                 .hasMessageContaining("decisions");
@@ -82,7 +85,8 @@ class StructureTemplatesTest {
                 StructureChapter.numbered(5, "5-glossary", "Glossary"),
                 StructureChapter.numbered(6, "6-glossary", "Glossary Again"));
 
-        assertThatThrownBy(() -> new StructureTemplates(List.of(template)))
+        List<StructureTemplate> templates = List.of(template);
+        assertThatThrownBy(() -> new StructureTemplates(templates))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("URL segment")
                 .hasMessageContaining("glossary");
@@ -99,7 +103,8 @@ class StructureTemplatesTest {
                 StructureChapter.numbered(5, "5-building-block-view", "Building Block View"),
                 StructureChapter.numbered(5, "5-runtime-view", "Runtime View"));
 
-        assertThatThrownBy(() -> new StructureTemplates(List.of(template)))
+        List<StructureTemplate> templates = List.of(template);
+        assertThatThrownBy(() -> new StructureTemplates(templates))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("number")
                 .hasMessageContaining("renumbered");
@@ -147,7 +152,8 @@ class StructureTemplatesTest {
         StructureTemplate template = template("unnumbered",
                 StructureChapter.unnumbered("decisions", "Decisions"));
 
-        assertThatThrownBy(() -> template.positionOf(StructureChapter.unnumbered("glossary", "Glossary")))
+        StructureChapter glossary = StructureChapter.unnumbered("glossary", "Glossary");
+        assertThatThrownBy(() -> template.positionOf(glossary))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Glossary");
     }

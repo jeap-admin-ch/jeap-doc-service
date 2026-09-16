@@ -3,7 +3,6 @@ package ch.admin.bit.jeap.doc.sitegenerator;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.PublicationProperties;
 import ch.admin.bit.jeap.doc.domain.Site;
-import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
 
 import org.junit.jupiter.api.Test;

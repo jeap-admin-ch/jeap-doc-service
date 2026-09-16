@@ -53,7 +53,8 @@ class DocumentationSiteStatusTest {
         sites.put(OTHER_SITE, governance);
         SiteProperties properties = new SiteProperties();
         properties.setSites(sites);
-        status = new DocumentationSiteStatus(new DocumentationSites(properties), builds, requests);
+        status = new DocumentationSiteStatus(new DocumentationSites(properties),
+                new DisplayReadsOf(builds, requests, null, null));
         lenient().when(requests.pending()).thenReturn(List.of());
         lenient().when(builds.running()).thenReturn(List.of());
         lenient().when(builds.published(any())).thenReturn(Optional.empty());

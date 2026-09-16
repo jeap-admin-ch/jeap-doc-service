@@ -142,4 +142,20 @@ class WhiteboxViewTest {
                 .isEqualTo(WhiteboxView.of(landscape, orders, 60).external())
                 .extracting(WhiteboxView.Edge::to).containsExactly("alpha", "shipping");
     }
+
+    /** A left-out component has no box, and no arrow reaches it. */
+    @Test
+    void of_whenAComponentIsLeftOutOfTheViews_thenItAndItsRelationsAreNotDrawn() {
+        DocumentedSystem orders = system("orders", List.of(component("orders-intake"), component("orders-mock")),
+                List.of(event("OrdersAccepted", "orders", "orders-mock", "orders", "orders-intake"),
+                        event("TariffsChanged", "tariffs", "tariffs-service", "orders", "orders-mock")),
+                List.of());
+
+        WhiteboxView view = WhiteboxView.of(model(orders, system("tariffs")), orders, 60,
+                ViewExcludedComponents.excluding(List.of("orders-mock")));
+
+        assertThat(view.components()).extracting(DocumentedComponent::name).containsExactly("orders-intake");
+        assertThat(view.internal()).isEmpty();
+        assertThat(view.external()).isEmpty();
+    }
 }

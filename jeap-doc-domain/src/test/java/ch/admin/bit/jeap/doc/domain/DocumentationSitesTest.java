@@ -189,12 +189,13 @@ class DocumentationSitesTest {
     }
 
     /**
-     * The environments of the default site are what still takes a top-level segment each, so it is there that
-     * the paths the service answers on itself are unusable.
+     * An environment id the service or the site generator already uses fails the startup. The environments of
+     * the default site each take a top-level segment, so the paths the service answers on are unusable there.
+     * `static` is one of the generator's static directories, and `default` its own documentation instance.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"api", "actuator", "assets"})
-    void construct_whenAnEnvironmentOfTheDefaultSiteIsNamedAfterAPathTheServiceAnswersOn_thenFailsTheStartup(
+    @ValueSource(strings = {"api", "actuator", "assets", "static", "default"})
+    void construct_whenAnEnvironmentIsNamedAfterSomethingTheServiceOrTheGeneratorOwns_thenFailsTheStartup(
             String id) {
         SiteProperties properties = properties(Map.of(Site.DEFAULT_SITE, site(configured ->
                 configured.setEnvironments(List.of(environment(id, true, true))))));
@@ -300,21 +301,6 @@ class DocumentationSitesTest {
 
         assertThat(new DocumentationSites(properties(Map.of(longest, site(configured -> {
         })))).ids()).contains(longest);
-    }
-
-    /**
-     * `static` is one of the site generator's own static directories: an environment named after it would have
-     * its Markdown copied verbatim to the site root instead of being rendered.
-     */
-    @ParameterizedTest
-    @ValueSource(strings = {"static", "default"})
-    void construct_whenAnEnvironmentIsNamedAfterSomethingTheGeneratorOwns_thenFailsTheStartup(String id) {
-        SiteProperties properties = properties(Map.of(Site.DEFAULT_SITE, site(configured ->
-                configured.setEnvironments(List.of(environment(id, true, true))))));
-
-        assertThatThrownBy(() -> new DocumentationSites(properties))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(id);
     }
 
     /**

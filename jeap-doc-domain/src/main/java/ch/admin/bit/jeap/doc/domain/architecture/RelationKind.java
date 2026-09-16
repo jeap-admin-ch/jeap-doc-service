@@ -10,24 +10,32 @@ import java.util.Locale;
  */
 public enum RelationKind {
 
-    REST_API("uses", "REST Call", "REST Calls"),
-    EVENT("publishes", "Event", "Events"),
-    COMMAND("sends", "Command", "Commands"),
-    OTHER("relates to", "Relation", "Relations");
+    REST_API("uses", "REST", "REST Call", "REST Calls"),
+    EVENT("publishes", "Event", "Event", "Events"),
+    COMMAND("sends", "Command", "Command", "Commands"),
+    OTHER("relates to", "Other", "Relation", "Relations");
 
     private final String verb;
+    private final String type;
     private final String singular;
     private final String plural;
 
-    RelationKind(String verb, String singular, String plural) {
+    RelationKind(String verb, String type, String singular, String plural) {
         this.verb = verb;
+        this.type = type;
         this.singular = singular;
         this.plural = plural;
     }
 
     /**
-     * How the relation reads on a page and on a diagram edge.
+     * What the relations tables show in their Type column. A noun rather than a verb, because a table row
+     * does not say which end the verb belongs to.
      */
+    public String type() {
+        return type;
+    }
+
+    /** What a relation says about itself when it has no message and no path to name. */
     public String verb() {
         return verb;
     }

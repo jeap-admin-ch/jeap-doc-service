@@ -46,10 +46,10 @@ class PlantUmlViewsTest {
 
         String uml = PlantUmlViews.contextView(context, generation(model)).source();
 
-        assertThat(uml).startsWith("@startuml").endsWith("@enduml");
-        assertThat(uml).contains("left to right direction");
-        assertThat(uml).contains("component \"orders\"").contains("component \"shipping\"");
-        assertThat(uml).contains("OrdersPaymentAcceptedEvent");
+        assertThat(uml).startsWith("@startuml").endsWith("@enduml")
+                .contains("left to right direction")
+                .contains("component \"orders\"").contains("component \"shipping\"")
+                .contains("OrdersPaymentAcceptedEvent");
     }
 
     /**
@@ -68,23 +68,33 @@ class PlantUmlViewsTest {
     }
 
     /**
-     * A REST call is dotted and a message is solid, so the two are told apart without reading every label.
+     * The arrows of the architecture repository's Confluence pages: an event dashed green, a command dashed
+     * blue, a REST call solid blue.
      */
     @Test
-    void contextView_drawsARestCallDottedAndAMessageSolid() {
+    void contextView_drawsEachKindOfRelationInItsOwnStyle() {
         DocumentedSystem orders = new DocumentedSystem("orders", "orders", null, List.of(), null,
                 List.of(component("orders-a")),
                 List.of(new SystemRelation(RelationKind.EVENT, "shipping", "z", "orders", "orders-a", "AnEvent",
                                 null, null, null),
+                        new SystemRelation(RelationKind.COMMAND, "billing", "y", "orders", "orders-a", "ACommand",
+                                null, null, null),
                         new SystemRelation(RelationKind.REST_API, "orders", "orders-a", "catalog", "t", null,
-                                "GET", "/api/x", null)),
+                                "GET", "/api/x", null),
+                        new SystemRelation(RelationKind.OTHER, "archive", "u", "orders", "orders-a", "Something",
+                                null, null, null)),
                 List.of());
-        ArchitectureModel model = ArchitectureModel.of(List.of(orders, other("shipping"), other("catalog")));
+        ArchitectureModel model = ArchitectureModel.of(List.of(orders, other("shipping"), other("billing"),
+                other("catalog"), other("archive")));
 
         String uml = PlantUmlViews.contextView(SystemContext.of(model, orders, 60),
                 generation(model)).source();
 
-        assertThat(uml).contains("-[#blue]->").contains(".[#blue].>");
+        assertThat(uml).contains("-[#green,dashed]-> c_shipping")
+                .contains("-[#blue,dashed]-> c_billing")
+                .contains("-[#blue]-> c_catalog")
+                .contains("-[#gray]-> c_archive")
+                .doesNotContain(".[#blue].>");
     }
 
     /**
@@ -102,8 +112,8 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.contextView(SystemContext.of(model, orders, 60),
                 generation(model)).source();
 
-        assertThat(uml).contains("component \"ghost\"");
-        assertThat(uml).doesNotContain("[[/docs/prod/systems/ghost/]]");
+        assertThat(uml).contains("component \"ghost\"")
+                .doesNotContain("[[/docs/prod/systems/ghost/]]");
     }
 
     /**
@@ -126,9 +136,9 @@ class PlantUmlViewsTest {
         assertThat(uml.split("\\[\\[", -1).length - 1)
                 .describedAs("the only link is the one on the documented system's own box")
                 .isEqualTo(1);
-        assertThat(uml).contains("[[/docs/prod/systems/orders/]]");
-        assertThat(uml).describedAs("a quote would end the label early").doesNotContain("An\"Event");
-        assertThat(uml).describedAs("a newline would end the statement").doesNotContain("An\"Event\n");
+        assertThat(uml).contains("[[/docs/prod/systems/orders/]]")
+                .describedAs("a quote would end the label early").doesNotContain("An\"Event")
+                .describedAs("a newline would end the statement").doesNotContain("An\"Event\n");
     }
 
     /**
@@ -148,9 +158,9 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.contextView(context, generation(model)).source();
 
         assertThat(context.edges()).describedAs("both are still in the model").hasSize(2);
-        assertThat(uml).contains("component \"alpha\"");
-        assertThat(uml).doesNotContain("component \"zulu\"");
-        assertThat(uml).doesNotContain(" : Z");
+        assertThat(uml).contains("component \"alpha\"")
+                .doesNotContain("component \"zulu\"")
+                .doesNotContain(" : Z");
     }
 
     @Test
@@ -167,10 +177,10 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, orders, 60), "orders",
                 generation(model)).source();
 
-        assertThat(uml).contains("package \"orders\" {");
-        assertThat(uml).contains("component \"orders-intake\"").contains("component \"orders-risk\"");
-        assertThat(uml).contains("component \"shipping\"");
-        assertThat(uml).contains("Internal").contains("Outgoing");
+        assertThat(uml).contains("package \"orders\" {")
+                .contains("component \"orders-intake\"").contains("component \"orders-risk\"")
+                .contains("component \"shipping\"")
+                .contains("Internal").contains("Outgoing");
     }
 
     /**
@@ -268,8 +278,8 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, busySystem(4), 60), "orders",
                 generation(model)).source();
 
-        assertThat(uml).contains("Event1\\nEvent2\\nEvent3\\nEvent4");
-        assertThat(uml).doesNotContain("4 Events");
+        assertThat(uml).contains("Event1\\nEvent2\\nEvent3\\nEvent4")
+                .doesNotContain("4 Events");
     }
 
     @Test
@@ -279,8 +289,8 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.whiteboxView(WhiteboxView.of(model, busySystem(5), 60), "orders",
                 generation(model)).source();
 
-        assertThat(uml).contains(" : 5 Events");
-        assertThat(uml).doesNotContain("Event1");
+        assertThat(uml).contains(" : 5 Events")
+                .doesNotContain("Event1");
     }
 
     /** Zero is legal and means an arrow always shows a count, however few names it carries. */
@@ -315,7 +325,8 @@ class PlantUmlViewsTest {
                 PlantUmlViews.internalView(WhiteboxView.of(model, hostile, 60), "orders", generation).source(),
                 PlantUmlViews.whiteboxView(WhiteboxView.of(model, hostile, 60), "orders", generation).source());
 
-        assertThat(sources).allSatisfy(uml -> assertThat(uml.lines().toList()).allSatisfy(line -> {
+        assertThat(sources).isNotEmpty().allSatisfy(uml -> assertThat(uml.lines().toList()).isNotEmpty()
+                .allSatisfy(line -> {
             int labelLines = line.contains(" : ") ? line.split("\\\\n", -1).length : 0;
             assertThat(labelLines).describedAs("label lines on: %s", line)
                     .isLessThanOrEqualTo(generation.limits().maxEdgeLabels());
@@ -345,10 +356,10 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.internalView(WhiteboxView.of(model, orders, 60), "orders",
                 generation(model)).source();
 
-        assertThat(uml).contains("package \"orders\" {");
-        assertThat(uml).contains("component \"orders-intake\"").contains("component \"orders-risk\"");
-        assertThat(uml).contains("Internal");
-        assertThat(uml).describedAs("the neighbour belongs to the other diagram")
+        assertThat(uml).contains("package \"orders\" {")
+                .contains("component \"orders-intake\"").contains("component \"orders-risk\"")
+                .contains("Internal")
+                .describedAs("the neighbour belongs to the other diagram")
                 .doesNotContain("component \"shipping\"").doesNotContain("Outgoing");
     }
 
@@ -368,9 +379,9 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.whiteboxView(view, "orders", generation(model)).source();
 
         assertThat(view.external()).describedAs("both are still in the model").hasSize(2);
-        assertThat(uml).contains("component \"alpha\"");
-        assertThat(uml).doesNotContain("component \"zulu\"");
-        assertThat(uml).doesNotContain(" : Z");
+        assertThat(uml).contains("component \"alpha\"")
+                .doesNotContain("component \"zulu\"")
+                .doesNotContain(" : Z");
     }
 
     /**
@@ -429,18 +440,18 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.componentContextView(componentContext(model, 60, 60),
                 generation(model)).source();
 
-        assertThat(uml).startsWith("@startuml").endsWith("@enduml");
-        assertThat(uml).contains("left to right direction");
-        assertThat(uml).describedAs("the component and its sibling inside the system's package")
+        assertThat(uml).startsWith("@startuml").endsWith("@enduml")
+                .contains("left to right direction")
+                .describedAs("the component and its sibling inside the system's package")
                 .contains("package \"orders\" as c_orders [[/docs/prod/systems/orders/]] {")
                 .contains("component \"orders-intake\"")
-                .contains("component \"orders-risk\"");
-        assertThat(uml).describedAs("and the counterpart of the other system, inside a package for it")
+                .contains("component \"orders-risk\"")
+                .describedAs("and the counterpart of the other system, inside a package for it")
                 .contains("package \"shipping\"")
-                .contains("component \"shipping-gateway\"");
-        assertThat(uml).describedAs("a message is a solid arrow and a REST call a dotted one, both blue")
-                .contains("-[#blue]->")
-                .contains(".[#blue].>");
+                .contains("component \"shipping-gateway\"")
+                .describedAs("an event is a dashed green arrow and a REST call a solid blue one")
+                .contains("-[#green,dashed]->")
+                .contains("-[#blue]->");
     }
 
     /**
@@ -468,12 +479,12 @@ class PlantUmlViewsTest {
                 generation(model)).source();
 
         assertThat(uml).contains("[[/docs/prod/systems/orders/system-architecture/building-block-view/"
-                                 + "components/orders-risk/]]");
-        assertThat(uml).describedAs("a counterpart of another system links to its own page, under that "
+                                 + "components/orders-risk/]]")
+                .describedAs("a counterpart of another system links to its own page, under that "
                                     + "system's slug")
                 .contains("[[/docs/prod/systems/shipping/system-architecture/building-block-view/"
-                          + "components/shipping-gateway/]]");
-        assertThat(uml).describedAs("and the package carries the way into that system's own documentation")
+                          + "components/shipping-gateway/]]")
+                .describedAs("and the package carries the way into that system's own documentation")
                 .contains("package \"shipping\" as c_shipping [[/docs/prod/systems/shipping/]] {");
     }
 
@@ -485,9 +496,9 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.componentContextView(componentContext(model, 0, 0),
                 generation(model)).source();
 
-        assertThat(uml).doesNotContain("orders-risk").doesNotContain("shipping");
-        assertThat(uml).describedAs("and no arrow at all, because both ends of every edge are gone")
-                .doesNotContain("-[#blue]->").doesNotContain(".[#blue].>");
+        assertThat(uml).doesNotContain("orders-risk").doesNotContain("shipping")
+                .describedAs("and no arrow at all, because both ends of every edge are gone")
+                .doesNotContain("-[#");
     }
 
     /** The cap on an arrow's names applies here too: it is the one method every arrow goes through. */
@@ -529,16 +540,16 @@ class PlantUmlViewsTest {
     void databaseSchema_drawsAnEntityPerTableWithItsKeysAndOneArrowPerForeignKey() {
         String uml = PlantUmlViews.databaseSchema(documented(schema(), generation(landscape()))).source();
 
-        assertThat(uml).startsWith("@startuml").endsWith("@enduml");
-        assertThat(uml).contains("""
+        assertThat(uml).startsWith("@startuml").endsWith("@enduml")
+                .contains("""
                 entity "orders_order" {
                   * id : uuid <<PK>>
                   --
                     party_id : uuid <<FK>>
                   * total : numeric(12,2)
                 }
-                """);
-        assertThat(uml).describedAs("one arrow per foreign key, naming the columns it is made of")
+                """)
+                .describedAs("one arrow per foreign key, naming the columns it is made of")
                 .contains("\"orders_order\" }o--|| \"orders_party\" : party_id");
     }
 
@@ -575,8 +586,8 @@ class PlantUmlViewsTest {
                 entity "orders_party" {
                   * id : uuid <<PK>>
                 }
-                """);
-        assertThat(uml).doesNotContain("--\n}");
+                """)
+                .doesNotContain("--\n}");
     }
 
     /** And a table with no key at all is drawn without one, rather than starting with a separator. */
@@ -614,9 +625,9 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
 
         assertThat(uml).describedAs("the family is one entity, quoted so that the star is a name")
-                .contains("entity \"doc_meta_*\" {");
-        assertThat(uml).contains("\"doc_root\" }o--|| \"doc_meta_*\" : meta_id");
-        assertThat(uml).describedAs("and no shard is drawn on its own")
+                .contains("entity \"doc_meta_*\" {")
+                .contains("\"doc_root\" }o--|| \"doc_meta_*\" : meta_id")
+                .describedAs("and no shard is drawn on its own")
                 .doesNotContain("entity \"doc_meta_3\"");
     }
 
@@ -637,8 +648,8 @@ class PlantUmlViewsTest {
         String uml = PlantUmlViews.databaseSchema(
                 documented(new DatabaseSchema("docs_db", "1", tables), narrow)).source();
 
-        assertThat(uml).contains("entity \"doc_root\"").doesNotContain("zzz_meta");
-        assertThat(uml).doesNotContain("}o--||");
+        assertThat(uml).contains("entity \"doc_root\"").doesNotContain("zzz_meta")
+                .doesNotContain("}o--||");
     }
 
     /**
@@ -655,8 +666,8 @@ class PlantUmlViewsTest {
 
         assertThat(uml).describedAs("the referenced table is the one kept")
                 .contains("entity \"orders_party\"")
-                .doesNotContain("entity \"orders_order\"");
-        assertThat(uml).doesNotContain("}o--||");
+                .doesNotContain("entity \"orders_order\"")
+                .doesNotContain("}o--||");
     }
 
     /**
@@ -677,8 +688,8 @@ class PlantUmlViewsTest {
 
         String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
 
-        assertThat(uml).contains("\"orders_order\" }o--|| \"orders_party\" : party_id");
-        assertThat(uml).describedAs("no second box under the key's spelling")
+        assertThat(uml).contains("\"orders_order\" }o--|| \"orders_party\" : party_id")
+                .describedAs("no second box under the key's spelling")
                 .doesNotContain("\"ORDERS_PARTY\"");
     }
 
@@ -725,8 +736,8 @@ class PlantUmlViewsTest {
 
         String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
 
-        assertThat(uml).contains("  * 'foo : text").contains("  * }bar : text");
-        assertThat(uml).describedAs("no marker where the name does not start the line")
+        assertThat(uml).contains("  * 'foo : text").contains("  * }bar : text")
+                .describedAs("no marker where the name does not start the line")
                 .doesNotContain("{field}");
     }
 
@@ -743,8 +754,8 @@ class PlantUmlViewsTest {
 
         String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
 
-        assertThat(uml).contains("say \u2019hi\u2019 : text").contains("block /( comment : text");
-        assertThat(uml).describedAs("nothing that opens a PlantUML comment").doesNotContain("/'");
+        assertThat(uml).contains("say \u2019hi\u2019 : text").contains("block /( comment : text")
+                .describedAs("nothing that opens a PlantUML comment").doesNotContain("/'");
     }
 
     /** The machinery of a schema is on no diagram, and no arrow into it is drawn either. */
@@ -759,8 +770,8 @@ class PlantUmlViewsTest {
 
         String uml = PlantUmlViews.databaseSchema(documented(schema, generation(landscape()))).source();
 
-        assertThat(uml).contains("entity \"orders_order\"").doesNotContain("entity \"shedlock\"");
-        assertThat(uml).doesNotContain("}o--||");
+        assertThat(uml).contains("entity \"orders_order\"").doesNotContain("entity \"shedlock\"")
+                .doesNotContain("}o--||");
     }
 
     /** A column name and a type come out of somebody's database, so both escape themselves in the fence. */

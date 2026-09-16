@@ -94,6 +94,10 @@ class CustomDocsBrowserIT extends SiteBrowserTestBase {
         PlaywrightAssertions.assertThat(provenance).isVisible();
         PlaywrightAssertions.assertThat(provenance).containsText("Generated page");
         PlaywrightAssertions.assertThat(provenance).containsText("architecture model");
+        // The time as a reader reads it: to the second, and no ISO instant.
+        assertThat(provenance.textContent())
+                .containsPattern("generated \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.$")
+                .doesNotContainPattern("\\dT\\d");
     }
 
     /**

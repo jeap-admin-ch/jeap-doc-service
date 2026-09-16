@@ -42,13 +42,12 @@ class GenerationContextTest {
                 .isEqualTo("/systems/orders/");
     }
 
-    /** And it names its time zone: a bare local time is unreadable for anybody who does not know the TZ. */
     @Test
     void generatedAtDisplay_isReadableRatherThanAnInstant() {
         GenerationContext context = contextWithLinkPrefix("/");
 
         assertThat(context.generatedAtDisplay())
-                .matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\S+");
+                .matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}");
     }
 
     private static GenerationContext contextWithLinkPrefix(String linkPrefix) {

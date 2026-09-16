@@ -70,8 +70,8 @@ public class SearchIndexHousekeeping {
                 indexes.forget(run.id());
                 removed++;
             } catch (RuntimeException e) {
-                // The row stays and the next run offers it again. A prefix that will not delete costs storage;
-                // giving up on the rest of the list over it would cost more of it.
+                // The row stays and the next run offers it again. A prefix that will not delete costs storage,
+                // and giving up on the rest of the list over it would cost more of it.
                 log.warn("The abandoned search index {} of {} could not be removed.", run.id(), run.site(), e);
             }
         }

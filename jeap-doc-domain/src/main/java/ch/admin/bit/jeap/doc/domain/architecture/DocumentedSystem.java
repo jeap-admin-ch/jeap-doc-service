@@ -1,6 +1,9 @@
 package ch.admin.bit.jeap.doc.domain.architecture;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * One system of the landscape, with everything the architecture repository exports about it.
@@ -49,6 +52,19 @@ public record DocumentedSystem(
      */
     public DocumentedSystem withComponents(List<DocumentedComponent> components) {
         return new DocumentedSystem(name, slug, description, aliases, team, components, relations, messages);
+    }
+
+    /**
+     * The aliases a page shows: without the ones that only repeat the name in another case, and each once.
+     * Resolving a name by alias still uses {@link #aliases()}.
+     */
+    public List<String> otherNames() {
+        Set<String> seen = new HashSet<>();
+        seen.add(name == null ? "" : name.toLowerCase(Locale.ROOT));
+        return aliases.stream()
+                .filter(alias -> !alias.isBlank())
+                .filter(alias -> seen.add(alias.toLowerCase(Locale.ROOT)))
+                .toList();
     }
 
     public List<DocumentedMessage> messagesOfKind(MessageKind kind) {

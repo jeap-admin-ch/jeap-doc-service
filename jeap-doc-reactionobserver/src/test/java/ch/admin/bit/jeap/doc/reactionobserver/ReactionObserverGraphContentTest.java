@@ -29,7 +29,7 @@ class ReactionObserverGraphContentTest {
         ObservedReactions observed = content.read(graph("""
                 {"nodes":[{"nodeType":"MESSAGE","id":1,"messageType":"OrdersPaymentAcceptedEvent",
                            "variant":null},
-                          {"nodeType":"REACTION","id":2,"component":"shipping-dispatch-scs"},
+                          {"nodeType":"REACTION","id":2,"component":"shipping-dispatch-scs","median":12},
                           {"nodeType":"MESSAGE","id":3,"messageType":"ShippingDispatchedEvent",
                            "variant":"legacy"}],
                  "edges":[{"edgeType":"TRIGGER","sourceId":1,"sourceNodeType":"MESSAGE","targetReactionId":2,
@@ -46,6 +46,7 @@ class ReactionObserverGraphContentTest {
                 .satisfies(reaction -> {
                     assertThat(reaction.id()).isEqualTo(2);
                     assertThat(reaction.component()).isEqualTo("shipping-dispatch-scs");
+                    assertThat(reaction.median()).isEqualTo(12);
                 });
         assertThat(observed.triggers()).singleElement().satisfies(trigger -> {
             assertThat(trigger.messageId()).isEqualTo(1);
@@ -69,6 +70,40 @@ class ReactionObserverGraphContentTest {
 
         assertThat(observed.triggers()).singleElement()
                 .satisfies(trigger -> assertThat(trigger.median()).isNull());
+    }
+
+    /**
+     * <b>The number is read off the reaction as well as off its trigger.</b> The observer counts per
+     * reaction, so a reaction no message triggered carries one although no edge does - which is the case the
+     * node's field exists for.
+     */
+    @Test
+    void read_whenAReactionHasNoTrigger_thenItsOwnMedianIsStillRead() {
+        ObservedReactions observed = content.read(graph("""
+                {"nodes":[{"nodeType":"REACTION","id":2,"component":"a-service","median":9252},
+                          {"nodeType":"MESSAGE","id":3,"messageType":"SomethingHappenedEvent",
+                           "variant":null}],
+                 "edges":[{"edgeType":"ACTION","sourceReactionId":2,"targetId":3,
+                           "targetNodeType":"MESSAGE"}]}
+                """));
+
+        assertThat(observed.triggers()).isEmpty();
+        assertThat(observed.reactions()).singleElement()
+                .satisfies(reaction -> assertThat(reaction.median()).isEqualTo(9252));
+    }
+
+    /**
+     * A graph an older observer stored carries no number on its nodes, and reading it must not invent one:
+     * the import keeps the bytes as they arrived, so those graphs outlive the upgrade.
+     */
+    @Test
+    void read_whenAReactionHasNoMedian_thenItCarriesNone() {
+        ObservedReactions observed = content.read(graph("""
+                {"nodes":[{"nodeType":"REACTION","id":2,"component":"a-service"}],"edges":[]}
+                """));
+
+        assertThat(observed.reactions()).singleElement()
+                .satisfies(reaction -> assertThat(reaction.median()).isNull());
     }
 
     /**

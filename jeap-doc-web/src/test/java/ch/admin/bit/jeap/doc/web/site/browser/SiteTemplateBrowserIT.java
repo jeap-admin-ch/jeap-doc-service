@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
@@ -135,15 +136,21 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
         assertThat(diagram).containsText("orders-intake");
         assertThat(diagram).containsText("shipping");
         assertThat(diagram).not().containsText("Syntax Error");
-        // The gold of the subject and the blue of the relations. A colour written into the source is never
+        // The gold of the subject and the colours of the relations. A colour written into the source is never
         // re-themed - the plugin re-renders with the engine's dark flag, which moves PlantUML's own palette
-        // and leaves these two where they are - and the browser here prefers dark, so this is the mode in
-        // which they have to be legible.
+        // and leaves these where they are - and the browser here prefers dark, so this is the mode in which
+        // they have to be legible.
         Assertions.assertThat(diagram.locator("[fill='#FFD700']").count())
                 .describedAs("the box of the subject is gold")
                 .isPositive();
         Assertions.assertThat(diagram.locator("[stroke='#0000FF']").count())
-                .describedAs("and every relation is blue")
+                .describedAs("a command and a REST call are blue")
+                .isPositive();
+        Assertions.assertThat(diagram.locator("[stroke='#008000']").count())
+                .describedAs("an event is green")
+                .isPositive();
+        Assertions.assertThat(diagram.locator("[stroke-dasharray]").count())
+                .describedAs("and a message is dashed")
                 .isPositive();
         // Two systems each have a component called gateway. Two boxes sharing a label and differing only in
         // their alias is what the view emits for that, and one box carrying both sets of arrows is what it
@@ -307,5 +314,102 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
                 .filter(environment -> id.equals(environment.id()))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    /**
+     * The sidebar shows where the reader is: the path to the open page is open, a sibling is closed, and only
+     * the open page carries the accent background.
+     */
+    @Test
+    void sidebar_whenADeepPageIsOpen_thenOnlyItsPathIsOpenAndOnlyThePageStandsOut() {
+        open("/" + COMPONENT_REACTIONS_ROUTE + "/");
+        Locator sidebar = page.locator("nav.menu");
+
+        Locator current = sidebar.locator("a[aria-current='page']");
+        assertThat(current).hasCount(1);
+        Assertions.assertThat(current.getAttribute("href")).endsWith("/component-reactions/");
+        Assertions.assertThat(backgroundOf(current)).describedAs("the open page").isNotEqualTo(TRANSPARENT);
+
+        Locator ancestor = sidebar.locator(
+                "a.menu__link--active[href$='/components/" + REACTING_COMPONENT + "/']");
+        assertThat(ancestor).isVisible();
+        Assertions.assertThat(backgroundOf(ancestor.locator("xpath=..")))
+                .describedAs("a category on the path").isEqualTo(TRANSPARENT);
+
+        assertThat(categoryOf(sidebar, "/components/" + BUSY_COMPONENT + "/"))
+                .hasClass(COLLAPSED);
+        assertThat(categoryOf(sidebar, "/building-block-view/events/"))
+                .hasClass(COLLAPSED);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /** A category with a page of its own is the open page when the reader is on that page. */
+    @Test
+    void sidebar_whenACategoryPageIsOpen_thenThatCategoryStandsOut() {
+        open("/systems/" + REACTING_SYSTEM + "/system-architecture/building-block-view/components/"
+             + REACTING_COMPONENT + "/");
+
+        Locator current = page.locator("nav.menu a[aria-current='page']");
+        assertThat(current).hasCount(1);
+        Assertions.assertThat(current.getAttribute("href"))
+                .endsWith("/components/" + REACTING_COMPONENT + "/");
+        // A category draws its background on the wrapper around the link and its caret.
+        String category = backgroundOf(current.locator("xpath=.."));
+        open("/" + COMPONENT_REACTIONS_ROUTE + "/");
+        Assertions.assertThat(category).describedAs("the same accent as an open page that is no category")
+                .isNotEqualTo(TRANSPARENT)
+                .isEqualTo(backgroundOf(page.locator("nav.menu a[aria-current='page']")));
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /** Opening a category closes its open siblings, so the tree does not grow back as the reader moves. */
+    @Test
+    void sidebar_whenACategoryIsOpened_thenItsOpenSiblingCloses() {
+        open("/" + COMPONENT_REACTIONS_ROUTE + "/");
+        Locator sidebar = page.locator("nav.menu");
+        Locator reacting = categoryOf(sidebar, "/components/" + REACTING_COMPONENT + "/");
+        assertThat(reacting).not().hasClass(COLLAPSED);
+
+        categoryOf(sidebar, "/components/" + BUSY_COMPONENT + "/")
+                .locator(":scope > .menu__list-item-collapsible > button.menu__caret").click();
+
+        assertThat(reacting).hasClass(COLLAPSED);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    private static final String TRANSPARENT = "rgba(0, 0, 0, 0)";
+    private static final java.util.regex.Pattern COLLAPSED =
+            java.util.regex.Pattern.compile("menu__list-item--collapsed");
+
+    private static String backgroundOf(Locator link) {
+        return (String) link.evaluate("element => getComputedStyle(element).backgroundColor");
+    }
+
+    /** The list item of the category whose link ends with the given path. */
+    private static Locator categoryOf(Locator sidebar, String hrefEnd) {
+        return sidebar.locator("li.theme-doc-sidebar-item-category").filter(new Locator.FilterOptions()
+                .setHas(sidebar.page().locator(":scope > .menu__list-item-collapsible > a[href$='" + hrefEnd + "']")));
+    }
+
+    /** A page generated from the model says when the model was imported, as a reader reads a time. */
+    @Test
+    void provenance_namesTheImportTimeToTheSecond() {
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+
+        Locator provenance = page.getByLabel("Where this page came from");
+        assertThat(provenance).containsText("imported " + DisplayTime.of(GENERATED_AT) + ".");
+        Assertions.assertThat(provenance.textContent()).doesNotContainPattern("\\dT\\d");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /** The root page names no import, so it names when it was generated - in the same form. */
+    @Test
+    void provenance_onTheRootPage_namesTheGenerationTimeToTheSecond() {
+        open("/");
+
+        Locator provenance = page.getByLabel("Where this page came from");
+        assertThat(provenance).containsText("generated " + DisplayTime.of(GENERATED_AT) + ".");
+        Assertions.assertThat(provenance.textContent()).doesNotContainPattern("\\dT\\d");
+        assertNothingWentWrongInTheBrowser();
     }
 }

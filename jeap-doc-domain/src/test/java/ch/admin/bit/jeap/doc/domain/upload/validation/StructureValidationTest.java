@@ -5,7 +5,6 @@ import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationPlacement;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;

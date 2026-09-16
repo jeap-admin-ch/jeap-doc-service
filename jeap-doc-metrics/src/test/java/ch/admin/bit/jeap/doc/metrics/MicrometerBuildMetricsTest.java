@@ -1,9 +1,7 @@
 package ch.admin.bit.jeap.doc.metrics;
 
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
-import ch.admin.bit.jeap.doc.domain.BuildState;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
-import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.Site;

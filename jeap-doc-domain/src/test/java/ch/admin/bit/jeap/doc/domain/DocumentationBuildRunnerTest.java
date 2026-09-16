@@ -628,7 +628,7 @@ class DocumentationBuildRunnerTest {
      * others have started, which can only happen if the slots freed by the quick ones were filled again.
      */
     @Test
-    void runOnce_whenAPartIsSlow_thenTheSlotsFreedByTheQuickOnesAreFilledAgain() throws Exception {
+    void runOnce_whenAPartIsSlow_thenTheSlotsFreedByTheQuickOnesAreFilledAgain() {
         pendingParts(SHELL, part("alpha"), part("beta"), part("gamma"), part("delta"));
         properties.setMaxConcurrentParts(3);
         CountDownLatch fourMoreStarted = new CountDownLatch(4);
@@ -660,6 +660,7 @@ class DocumentationBuildRunnerTest {
     }
 
     /** How many builds this instance had running at once, at the most. */
+    @SuppressWarnings("java:S2925") // a build that takes a moment, so that builds overlap; nothing is awaited
     private Concurrency recordConcurrentBuilds() {
         Concurrency concurrency = new Concurrency();
         when(siteBuilder.generate(any())).thenAnswer(invocation -> {
@@ -703,9 +704,9 @@ class DocumentationBuildRunnerTest {
 
         assertThat(runner.runOnce()).isTrue();
 
-        assertThat(metrics.slotsBusy).describedAs("the slots have to be given back at the end of a pass")
+        assertThat(metrics.slotsBusy).describedAs("they were used while the pass ran").contains(1)
+                .describedAs("and have to be given back at the end of it")
                 .last().isEqualTo(0);
-        assertThat(metrics.slotsBusy).describedAs("and they were used while it ran").contains(1);
         assertThat(metrics.contended).describedAs("nothing was held elsewhere").hasValue(0);
         assertThat(metrics.broken).hasValue(0);
     }

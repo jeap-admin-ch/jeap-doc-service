@@ -98,8 +98,9 @@ class PagefindSearchIndexBuilderIT {
     void build_thenWhatIsNeverServedIsNotInTheBundle() {
         BuiltSearchIndex index = builder.build(site(), SitePart.wholeSiteOf(site()));
 
-        assertThat(PagefindSearchIndexBuilder.NOT_SERVED)
-                .allSatisfy(name -> assertThat(bundle(index).resolve(name)).doesNotExist());
+        Path bundle = bundle(index);
+        assertThat(PagefindSearchIndexBuilder.NOT_SERVED.stream().map(bundle::resolve))
+                .allSatisfy(notServed -> assertThat(notServed).doesNotExist());
     }
 
     /**
@@ -108,7 +109,7 @@ class PagefindSearchIndexBuilderIT {
      * page count is what says no tree was left out.
      */
     @Test
-    void build_thenEveryEnvironmentTreeIsIndexed() throws IOException {
+    void build_thenEveryEnvironmentTreeIsIndexed() {
         Site site = site();
         Path content = new BuildWorkspaces(propertiesOf(workspaceRoot)).searchIndexWorkspace(site.id())
                 .resolve(SiteTemplate.CONTENT_DIRECTORY);

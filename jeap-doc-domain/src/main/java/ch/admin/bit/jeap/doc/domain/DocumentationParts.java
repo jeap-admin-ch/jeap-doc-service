@@ -1,7 +1,6 @@
 package ch.admin.bit.jeap.doc.domain;
 
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
+import ch.admin.bit.jeap.doc.domain.port.DisplayReads;
 import ch.admin.bit.jeap.doc.domain.port.PublishedPart;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,8 +23,7 @@ public class DocumentationParts {
 
     private final DocumentationSites sites;
     private final SitePartition partition;
-    private final DocumentationBuildRepository builds;
-    private final DocumentationBuildRequestRepository requests;
+    private final DisplayReads reads;
 
     /**
      * Every part of a site, with what is published for it - or empty when this instance configures no such
@@ -34,7 +32,7 @@ public class DocumentationParts {
     public Optional<List<PartState>> of(String site) {
         return sites.find(site).map(configured -> {
             Map<String, PublishedPart> published = publishedPartsOf(site);
-            List<PartKey> owed = requests.pending().stream().map(BuildRequest::part).toList();
+            List<PartKey> owed = reads.pendingRequests().stream().map(BuildRequest::part).toList();
             return partition.partsOf(configured).stream()
                     .map(part -> new PartState(part, published.get(part.id()), owed.contains(part.key())))
                     .toList();
@@ -57,12 +55,12 @@ public class DocumentationParts {
 
     /** The builds of one part, newest first. */
     public List<DocumentationBuild> recentBuildsOf(PartKey part, int limit) {
-        return builds.recentOf(part, limit);
+        return reads.recentBuildsOf(part, limit);
     }
 
     private Map<String, PublishedPart> publishedPartsOf(String site) {
         Map<String, PublishedPart> published = new HashMap<>();
-        builds.publishedPartsOf(site).forEach(part -> published.put(part.part(), part));
+        reads.publishedPartsOf(site).forEach(part -> published.put(part.part(), part));
         return published;
     }
 

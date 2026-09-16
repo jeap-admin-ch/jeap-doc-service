@@ -37,7 +37,6 @@ import java.time.Instant;
 import java.util.stream.StreamSupport;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -248,8 +247,8 @@ class SiteSourcesTest {
         sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
 
         String page = Files.readString(content.resolve("prod").resolve("index.md"), StandardCharsets.UTF_8);
-        assertThat(page).doesNotContain("| Systems |");
-        assertThat(page).describedAs("the rest of the table is still there")
+        assertThat(page).doesNotContain("| Systems |")
+                .describedAs("the rest of the table is still there")
                 .contains("| Site |").contains("| Generated |");
     }
 
@@ -273,11 +272,11 @@ class SiteSourcesTest {
         JsonNode environments = JSON.readTree(content.resolve("environments.json").toFile())
                 .get("environments");
         JsonNode modelledEnvironment = StreamSupport.stream(environments.spliterator(), false)
-                .filter(environment -> environment.get("id").asText().equals(modelled))
+                .filter(environment -> environment.get("id").asString().equals(modelled))
                 .findFirst().orElseThrow();
         assertThat(modelledEnvironment.get("systems")).hasSize(1);
-        assertThat(modelledEnvironment.get("systems").get(0).get("label").asText()).isEqualTo("orders");
-        assertThat(modelledEnvironment.get("systems").get(0).get("path").asText())
+        assertThat(modelledEnvironment.get("systems").get(0).get("label").asString()).isEqualTo("orders");
+        assertThat(modelledEnvironment.get("systems").get(0).get("path").asString())
                 .isEqualTo("/systems/orders/");
         assertThat(sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT).models())
                 .describedAs("with no architecture repository at all, no environment reports a count")
@@ -316,8 +315,8 @@ class SiteSourcesTest {
         String latest = Files.readString(content.resolve("dev").resolve("index.md"), StandardCharsets.UTF_8);
         String other = Files.readString(content.resolve("prod").resolve("index.md"), StandardCharsets.UTF_8);
         assertThat(latest).contains("whether it is deployed anywhere or not");
-        assertThat(other).doesNotContain("whether it is deployed anywhere or not");
-        assertThat(other).contains("environment.");
+        assertThat(other).doesNotContain("whether it is deployed anywhere or not")
+                .contains("environment.");
     }
 
     @Test
@@ -325,23 +324,23 @@ class SiteSourcesTest {
         sources.write(1L, siteOf("governance"), wholeSiteOf(siteOf("governance")), content, GENERATED_AT);
 
         JsonNode site = JSON.readTree(content.resolve("site.json").toFile());
-        assertThat(site.get("id").asText()).isEqualTo("governance");
-        assertThat(site.get("colorScheme").asText()).isEqualTo("jeap");
-        assertThat(site.get("url").asText()).isEqualTo("https://doc.example.ch");
-        assertThat(site.get("baseUrl").asText()).describedAs("a named site is served below /site/")
+        assertThat(site.get("id").asString()).isEqualTo("governance");
+        assertThat(site.get("colorScheme").asString()).isEqualTo("jeap");
+        assertThat(site.get("url").asString()).isEqualTo("https://doc.example.ch");
+        assertThat(site.get("baseUrl").asString()).describedAs("a named site is served below /site/")
                 .isEqualTo("/site/governance/");
-        assertThat(site.get("generatedAt").asText()).isEqualTo(GENERATED_AT.toString());
-        assertThat(site.get("tagline").asText()).isEmpty();
+        assertThat(site.get("generatedAt").asString()).isEqualTo(GENERATED_AT.toString());
+        assertThat(site.get("tagline").asString()).isEmpty();
         // The footer reads these two: the Systems link is written only when the main environment has one, and
         // the Sites group is one entry per site this instance serves, each with an absolute URL.
         assertThat(site.get("hasSystems").asBoolean()).isFalse();
         assertThat(site.get("sites")).isNotEmpty();
-        assertThat(site.get("sites").get(0).get("url").asText()).startsWith("https://doc.example.ch");
+        assertThat(site.get("sites").get(0).get("url").asString()).startsWith("https://doc.example.ch");
         // What the template branches on, and it is not the part's identity: whether this build wrote the
         // site's own pages is what says whether the navbar and the footer may link to them as routes of its
         // own. The two coincide only for a partition whose parts are systems.
         JsonNode part = site.get("part");
-        assertThat(part.get("id").asText()).isEqualTo("shell");
+        assertThat(part.get("id").asString()).isEqualTo("shell");
         assertThat(part.get("carriesWholeEnvironments").asBoolean()).isTrue();
         assertThat(part.get("shell").asBoolean()).isTrue();
         assertThat(part.get("environments")).isNotEmpty();
@@ -361,11 +360,9 @@ class SiteSourcesTest {
         sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
 
         JsonNode site = JSON.readTree(content.resolve("site.json").toFile());
-        String display = site.get("generatedAtDisplay").asText();
-        // And it names the zone: without a designator the number is unreadable for anybody who does not
-        // already know what the container's TZ is.
+        String display = site.get("generatedAtDisplay").asString();
         assertThat(display)
-                .matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\S+")
+                .matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}")
                 .isEqualTo(GENERATED_AT_DISPLAY);
         assertThat(LocalDateTime.parse(display.substring(0, 19).replace(' ', 'T')))
                 .isEqualTo(LocalDateTime.ofInstant(GENERATED_AT, ZoneId.systemDefault()));
@@ -375,7 +372,10 @@ class SiteSourcesTest {
         // pages, and what a person sees is the same moment written out.
         String frontMatter = page.substring(0, page.indexOf("---", 4));
         String body = page.substring(page.indexOf("---", 4));
-        assertThat(frontMatter).contains("doc_generated_at: \"" + GENERATED_AT + "\"");
+        assertThat(frontMatter)
+                .contains("doc_generated_at: \"" + GENERATED_AT + "\"")
+                // The provenance block under the page reads this one, and falls back to the instant without it.
+                .contains("doc_generated_at_display: \"" + GENERATED_AT_DISPLAY + "\"");
         assertThat(body)
                 .contains("| Generated | " + GENERATED_AT_DISPLAY + " |")
                 .doesNotContain(GENERATED_AT.toString());
@@ -387,12 +387,12 @@ class SiteSourcesTest {
 
         JsonNode environments = JSON.readTree(content.resolve("environments.json").toFile()).get("environments");
         assertThat(environments).hasSize(4);
-        assertThat(environments.get(0).get("id").asText()).isEqualTo("dev");
+        assertThat(environments.get(0).get("id").asString()).isEqualTo("dev");
         assertThat(environments.get(0).get("latest").asBoolean()).isTrue();
         assertThat(environments.get(0).get("main").asBoolean()).isFalse();
-        assertThat(environments.get(3).get("id").asText()).isEqualTo("prod");
+        assertThat(environments.get(3).get("id").asString()).isEqualTo("prod");
         assertThat(environments.get(3).get("main").asBoolean()).isTrue();
-        assertThat(environments.get(3).get("short").asText()).isEqualTo("PROD");
+        assertThat(environments.get(3).get("short").asString()).isEqualTo("PROD");
     }
 
     /**
@@ -411,7 +411,7 @@ class SiteSourcesTest {
 
         JsonNode environments = JSON.readTree(content.resolve("environments.json").toFile())
                 .get("environments");
-        assertThat(environments.get(0).get("id").asText()).isEqualTo(modelled);
+        assertThat(environments.get(0).get("id").asString()).isEqualTo(modelled);
         assertThat(environments.get(0).get("hasSystems").asBoolean())
                 .describedAs("the one environment whose landscape has a system in it").isTrue();
         assertThat(environments.get(3).get("hasSystems").asBoolean())
@@ -429,7 +429,7 @@ class SiteSourcesTest {
                 .get("environments");
         for (JsonNode environment : environments) {
             assertThat(environment.get("hasSystems").asBoolean())
-                    .describedAs("hasSystems of %s", environment.get("id").asText()).isFalse();
+                    .describedAs("hasSystems of %s", environment.get("id").asString()).isFalse();
         }
     }
 
@@ -456,9 +456,9 @@ class SiteSourcesTest {
         sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
         JsonNode description = JSON.readTree(content.resolve("site.json").toFile());
-        assertThat(description.get("logo").asText()).isEqualTo("branding/logo.svg");
+        assertThat(description.get("logo").asString()).isEqualTo("branding/logo.svg");
         // The same file, because only one was written - a favicon of its own would name nothing.
-        assertThat(description.get("favicon").asText()).isEqualTo("branding/logo.svg");
+        assertThat(description.get("favicon").asString()).isEqualTo("branding/logo.svg");
         // Written under static/, which the site generator adds to its static directories - so it is served at
         // branding/logo.svg without anything landing in the template's own static/img.
         assertThat(content.resolve("static").resolve("branding").resolve("logo.svg")).exists();
@@ -477,9 +477,9 @@ class SiteSourcesTest {
         sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
         String page = Files.readString(content.resolve("prod").resolve("index.md"), StandardCharsets.UTF_8);
-        assertThat(page).contains("title: \"jEAP: Documentation\"");
-        // The heading is Markdown, not YAML, and is left as it was written.
-        assertThat(page).contains("# jEAP: Documentation");
+        assertThat(page).contains("title: \"jEAP: Documentation\"")
+                // The heading is Markdown, not YAML, and is left as it was written.
+                .contains("# jEAP: Documentation");
     }
 
     @Test

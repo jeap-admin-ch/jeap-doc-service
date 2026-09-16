@@ -163,7 +163,8 @@ class S3SitePublicationStorageIT extends RustFsTestContainerBase {
         assertThat(unreadable.toFile().setReadable(false)).isTrue();
 
         try {
-            assertThatThrownBy(() -> storage.publish(under("default/44"), site)).isInstanceOf(RuntimeException.class);
+            PartPublication prefix = under("default/44");
+            assertThatThrownBy(() -> storage.publish(prefix, site)).isInstanceOf(RuntimeException.class);
         } finally {
             assertThat(unreadable.toFile().setReadable(true)).isTrue();
         }

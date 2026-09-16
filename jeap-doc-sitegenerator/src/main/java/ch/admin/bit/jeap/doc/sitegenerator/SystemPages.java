@@ -225,7 +225,8 @@ public class SystemPages {
         GenerationContext context = new GenerationContext(model, environment,
                 architectureModel.sourceUrlOf(environment).orElse(""),
                 snapshot.importedAt(), generatedAt,
-                properties.limits(), diagramLinkPrefix, properties.apiPaths());
+                properties.limits(), diagramLinkPrefix, properties.apiPaths())
+                .withViewExcludedComponents(properties.viewExclusions());
 
         // The site's own index of the systems belongs to the part that carries whole environment trees. A
         // part that carries one system writes that system and nothing above it: the directory above is another
@@ -606,10 +607,11 @@ public class SystemPages {
                         // uploaded, and neither half alone is where it comes from.
                         .put("doc_source", "doc-service")
                         .put("doc_environment", context.environment())
-                        .put("doc_generated_at", context.generatedAt().toString()))
+                        .put("doc_generated_at", context.generatedAt().toString())
+                        .put("doc_generated_at_display", context.generatedAtDisplay()))
                 .heading(1, SYSTEMS_LABEL)
-                .paragraph(Md.sentence("The systems the architecture repository of the {} environment knows, "
-                                       + "and the documentation published for each of them.",
+                .paragraph(Md.sentence("Shows all known systems for the {} environment, and the "
+                                       + "documentation generated and published for each of them.",
                         Md.bold(context.environment())));
 
         List<List<Markdown>> rows = new ArrayList<>();
@@ -660,7 +662,8 @@ public class SystemPages {
                         // read.
                         .put("doc_source", found.isPresent() ? "archrepo" : "doc-service")
                         .put("doc_environment", context.environment())
-                        .put("doc_generated_at", context.generatedAt().toString()))
+                        .put("doc_generated_at", context.generatedAt().toString())
+                        .put("doc_generated_at_display", context.generatedAtDisplay()))
                 .heading(1, name)
                 .paragraphOrNothing(Md.text(description),
                         found.isPresent()
@@ -675,9 +678,9 @@ public class SystemPages {
             DocumentedSystem system = found.get();
             List<List<Markdown>> rows = new ArrayList<>();
             rows.add(List.of(Md.text("Responsible team"), teamOf(system.team())));
-            if (!system.aliases().isEmpty()) {
+            if (!system.otherNames().isEmpty()) {
                 rows.add(List.of(Md.text("Also known as"),
-                        Md.joinWith(", ", system.aliases().stream().map(Md::code).toList())));
+                        Md.joinWith(", ", system.otherNames().stream().map(Md::code).toList())));
             }
             rows.add(List.of(Md.text("Components"), Md.text(String.valueOf(system.components().size()))));
             rows.add(List.of(Md.text("Events"), Md.text(String.valueOf(system.events().size()))));

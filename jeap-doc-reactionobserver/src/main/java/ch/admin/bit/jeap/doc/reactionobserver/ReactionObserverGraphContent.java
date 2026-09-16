@@ -46,7 +46,8 @@ class ReactionObserverGraphContent implements ReactionGraphContent {
                         node.path("id").asLong(), ReactionObserverNodes.text(node, "messageType"),
                         ReactionObserverNodes.text(node, "variant")));
                 case ReactionObserverNodes.REACTION -> reactions.add(new ObservedReactions.ObservedReaction(
-                        node.path("id").asLong(), ReactionObserverNodes.text(node, "component")));
+                        node.path("id").asLong(), ReactionObserverNodes.text(node, "component"),
+                        ReactionObserverNodes.number(node, "median")));
                 default -> log.debug("A node of a kind this version does not draw is left out of the {} of {}.",
                         graph.kind(), graph.name());
             }
@@ -57,7 +58,7 @@ class ReactionObserverGraphContent implements ReactionGraphContent {
             switch (edge.path("edgeType").asString("")) {
                 case ReactionObserverNodes.TRIGGER -> triggers.add(new ObservedReactions.ObservedTrigger(
                         edge.path("sourceId").asLong(), edge.path("targetReactionId").asLong(),
-                        edge.path("median").isNumber() ? edge.path("median").asInt() : null));
+                        ReactionObserverNodes.number(edge, "median")));
                 case ReactionObserverNodes.ACTION -> actions.add(new ObservedReactions.ObservedAction(
                         edge.path("sourceReactionId").asLong(), edge.path("targetId").asLong()));
                 default -> log.debug("An edge of a kind this version does not draw is left out of the {} of {}.",

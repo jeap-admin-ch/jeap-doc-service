@@ -170,4 +170,24 @@ class Arc42LinkedChaptersTest {
 
         assertEveryLinkedChapterHasALandingPage(write(documented, new ArchitectureModel(List.of(system))));
     }
+
+    /**
+     * The model has no relation of this system, so chapter 3 is not generated. A team that uploads chapter 3
+     * still gets it, with a landing page of its own.
+     */
+    @Test
+    void aSystemWithNoRelations_withAnUploadedChapterThree_getsThatChapter() throws IOException {
+        DocumentedSystem system = orders();
+        SystemDocumentation documented = Documented.withUploads(system,
+                Map.of("3-context-and-scope", List.of("neighbours.md")));
+
+        Path tree = write(documented, new ArchitectureModel(List.of(system)));
+
+        Path chapter = tree.resolve(Arc42Template.SYSTEM_SEGMENT).resolve("3-context-and-scope");
+        assertThat(chapter.resolve("index.md")).exists();
+        assertThat(chapter.resolve("system-context-view.md")).doesNotExist();
+        assertThat(Files.readString(tree.resolve(Arc42Template.SYSTEM_SEGMENT).resolve("index.md")))
+                .contains("3. Context and Scope");
+        assertEveryLinkedChapterHasALandingPage(tree);
+    }
 }

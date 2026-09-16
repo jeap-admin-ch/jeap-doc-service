@@ -65,7 +65,7 @@ class SiteCompressionIT extends DocServiceIntegrationTestBase {
         assertThat(new String(gunzip(response.body()), StandardCharsets.UTF_8))
                 .contains("The documentation of the system.");
         // The point of it: the wire is far smaller than the page.
-        assertThat(response.body().length).isLessThan(2000);
+        assertThat(response.body()).hasSizeLessThan(2000);
     }
 
     /**

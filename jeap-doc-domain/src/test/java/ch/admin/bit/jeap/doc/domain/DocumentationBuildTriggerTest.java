@@ -45,31 +45,47 @@ class DocumentationBuildTriggerTest {
     private DocumentationBuildPickup pickup;
 
     private DocumentationBuildTrigger trigger;
+    /** Over a landscape that has the systems the uploads below are for. */
+    private DocumentationBuildTrigger uploading;
     private RecordingBuildMetrics metrics;
 
     @BeforeEach
     void setUp() {
         metrics = new RecordingBuildMetrics();
         trigger = triggerFor(new SiteProperties());
+        uploading = triggerFor(new SiteProperties(), landscapeOf("orders", "orders-intake"));
     }
 
     /**
-     * An upload names a system and no environment at all, and with a part per system it does not have to: the
-     * one part that carries that system in every environment is what is asked for.
+     * An upload names a system and no environment. The part that carries that system in every environment is
+     * asked for, and the shell with it: the systems index changes when a system is documented for the first
+     * time.
      */
     @Test
-    void requestBecauseOfUpload_thenThePartOfThatSystemIsAskedFor() {
+    void requestBecauseOfUpload_thenThePartOfThatSystemAndTheShellAreAskedFor() {
+        uploading.requestBecauseOfUpload(Site.DEFAULT_SITE, "ORDERS");
+
+        verify(requests).requestAll(eq(List.of(SHELL, ORDERS)), eq(BuildTrigger.UPLOAD), eq(NOW), any(),
+                eq(false));
+    }
+
+    /**
+     * After the last set of a system is removed, the site may no longer have its part. Only the shell is asked
+     * for then: building a part with no content fails, and the shell has to drop the system from its index.
+     */
+    @Test
+    void requestBecauseOfUpload_whenTheSiteNoLongerHasTheSystem_thenOnlyTheShellIsAskedFor() {
         trigger.requestBecauseOfUpload(Site.DEFAULT_SITE, "ORDERS");
 
-        verify(requests).requestAll(eq(List.of(ORDERS)), eq(BuildTrigger.UPLOAD), eq(NOW), any(), eq(false));
+        verify(requests).requestAll(eq(List.of(SHELL)), eq(BuildTrigger.UPLOAD), eq(NOW), isNull(), eq(false));
     }
 
     /** The name is slugged the way the generator slugs it, so an upload reaches the part that holds its pages. */
     @Test
     void requestBecauseOfUpload_thenTheSystemNameIsSluggedTheWayThePathIs() {
-        trigger.requestBecauseOfUpload(Site.DEFAULT_SITE, "Orders Intake");
+        uploading.requestBecauseOfUpload(Site.DEFAULT_SITE, "Orders Intake");
 
-        verify(requests).requestAll(eq(List.of(PartKey.of(Site.DEFAULT_SITE, "system-orders-intake"))),
+        verify(requests).requestAll(eq(List.of(SHELL, PartKey.of(Site.DEFAULT_SITE, "system-orders-intake"))),
                 eq(BuildTrigger.UPLOAD), eq(NOW), isNull(), eq(false));
     }
 
@@ -235,7 +251,7 @@ class DocumentationBuildTriggerTest {
      */
     @Test
     void requestBecauseOfUpload_thenThisInstanceIsAskedToLookNow() {
-        trigger.requestBecauseOfUpload(Site.DEFAULT_SITE, "ORDERS");
+        uploading.requestBecauseOfUpload(Site.DEFAULT_SITE, "ORDERS");
 
         verify(pickup).whenAskedFor();
     }
@@ -278,12 +294,12 @@ class DocumentationBuildTriggerTest {
                 .isNotEqualTo(publication.getAllValues().get(1).id());
     }
 
-    /** An upload asks for one part, and one part is not a publication. */
+    /** An upload asks for one system, and that is not a publication. */
     @Test
     void requestBecauseOfUpload_thenTheRequestIsPartOfNoPublication() {
-        trigger.requestBecauseOfUpload(Site.DEFAULT_SITE, "ORDERS");
+        uploading.requestBecauseOfUpload(Site.DEFAULT_SITE, "ORDERS");
 
-        verify(requests).requestAll(eq(List.of(ORDERS)), eq(BuildTrigger.UPLOAD), eq(NOW), isNull(),
+        verify(requests).requestAll(eq(List.of(SHELL, ORDERS)), eq(BuildTrigger.UPLOAD), eq(NOW), isNull(),
                 eq(false));
     }
 

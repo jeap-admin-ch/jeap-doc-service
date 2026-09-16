@@ -19,7 +19,6 @@ import static ch.admin.bit.jeap.doc.web.api.upload.docs.DocumentationUploads.com
 import static ch.admin.bit.jeap.doc.web.api.upload.docs.DocumentationUploads.uploadOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;

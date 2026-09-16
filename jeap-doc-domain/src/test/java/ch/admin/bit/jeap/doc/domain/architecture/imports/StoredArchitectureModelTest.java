@@ -135,6 +135,7 @@ class StoredArchitectureModelTest {
         private final List<String> environments = java.util.Collections.synchronizedList(new ArrayList<>());
 
         @Override
+        @SuppressWarnings("java:S2925") // a read that takes a moment, so that reads overlap; nothing is awaited
         public ArchitectureSnapshot read(String environment) {
             reads.incrementAndGet();
             environments.add(environment);

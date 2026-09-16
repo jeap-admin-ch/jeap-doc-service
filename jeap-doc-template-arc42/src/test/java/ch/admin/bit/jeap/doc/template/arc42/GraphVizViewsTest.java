@@ -41,8 +41,8 @@ class GraphVizViewsTest {
     void reactions_thenEveryNodeCarriesItsOwnId() {
         String dot = draw(observed());
 
-        assertThat(dot).contains("\"MESSAGE-1\" [id=\"MESSAGE-1\"");
-        assertThat(dot).contains("\"REACTION-2\" [id=\"REACTION-2\"");
+        assertThat(dot).contains("\"MESSAGE-1\" [id=\"MESSAGE-1\"")
+                .contains("\"REACTION-2\" [id=\"REACTION-2\"");
     }
 
     /**
@@ -54,8 +54,8 @@ class GraphVizViewsTest {
         String dot = draw(observed());
 
         assertThat(dot).contains("URL=\"/docs/dev/systems/orders/system-architecture/building-block-view/"
-                                 + "events/orders-payment-accepted-event/#graph?highlight-node=MESSAGE-1\"");
-        assertThat(dot).contains("#graph?highlight-node=REACTION-2");
+                                 + "events/orders-payment-accepted-event/#graph?highlight-node=MESSAGE-1\"")
+                .contains("#graph?highlight-node=REACTION-2");
     }
 
     /** A variant is a second line of the label, or two variants of one type would be one node twice. */
@@ -63,7 +63,7 @@ class GraphVizViewsTest {
     void reactions_whenAMessageHasAVariant_thenItIsOnASecondLine() {
         String dot = draw(new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", "express")),
-                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake")),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 3)), List.of()));
 
         assertThat(dot).contains("label=\"OrdersPaymentAccepted\\n[express]\"");
@@ -77,11 +77,11 @@ class GraphVizViewsTest {
     void reactions_whenANameCarriesAQuote_thenItIsEscapedRatherThanEndingTheLabel() {
         String dot = draw(new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "Orders\"Odd\"Event", null)),
-                List.of(new ObservedReactions.ObservedReaction(2, "orders\\intake")),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders\\intake", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 1)), List.of()));
 
-        assertThat(dot).contains("label=\"Orders\\\"Odd\\\"\"");
-        assertThat(dot).contains("label=\"orders\\\\intake\"");
+        assertThat(dot).contains("label=\"Orders\\\"Odd\\\"\"")
+                .contains("label=\"orders\\\\intake\"");
         assertThat(dot.chars().filter(character -> character == '"').count() % 2)
                 .describedAs("the quotes of the source pair up").isZero();
     }
@@ -94,7 +94,7 @@ class GraphVizViewsTest {
     void reactions_whenAMessageTypeContainsASlash_thenItIsDrawnAsANameNotAPath() {
         String dot = draw(new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "orders/OddEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake")),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 1)), List.of()));
 
         assertThat(dot).contains("label=\"orders/Odd\"");
@@ -105,11 +105,11 @@ class GraphVizViewsTest {
     void reactions_whenNothingDocumentsAMessage_thenTheNodeIsNotALink() {
         String dot = draw(new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "NobodyDocumentsThisEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(2, "a-component-nobody-documents")),
+                List.of(new ObservedReactions.ObservedReaction(2, "a-component-nobody-documents", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 1)), List.of()));
 
-        assertThat(dot).doesNotContain("URL=");
-        assertThat(dot).contains("NobodyDocumentsThis");
+        assertThat(dot).doesNotContain("URL=")
+                .contains("NobodyDocumentsThis");
     }
 
     /** A busier trigger is a thicker arrow, which is the one thing the picture says about frequency. */
@@ -130,8 +130,8 @@ class GraphVizViewsTest {
     void reactions_thenTheOnlyColourIsTheOneThatMeansSomething() {
         String dot = draw(observed());
 
-        assertThat(dot).contains("color=\"#4a90d9\" penwidth=2");
-        assertThat(dot).doesNotContain("fillcolor").doesNotContain("style=filled");
+        assertThat(dot).contains("color=\"#4a90d9\" penwidth=2")
+                .doesNotContain("fillcolor").doesNotContain("style=filled");
         assertThat(dot.lines().filter(line -> line.contains("color=")).count())
                 .describedAs("one coloured thing on the graph").isEqualTo(1);
     }
@@ -146,7 +146,7 @@ class GraphVizViewsTest {
         ObservedReactions observed = new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
                 // A component the landscape documents, but that this run wrote no runtime view for.
-                List.of(new ObservedReactions.ObservedReaction(2, "orders-risk")),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-risk", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 1)), List.of());
 
         assertThat(draw(observed)).doesNotContain("component-reactions");
@@ -162,7 +162,7 @@ class GraphVizViewsTest {
     void reactions_whenTheComponentBelongsToAnotherSystem_thenItsReactionIsStillALink() {
         ObservedReactions observed = new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(2, "shipping-dispatch")),
+                List.of(new ObservedReactions.ObservedReaction(2, "shipping-dispatch", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 1)), List.of());
 
         assertThat(draw(observed))
@@ -175,7 +175,7 @@ class GraphVizViewsTest {
     void reactions_whenNoEnvironmentHasAGraphOfTheComponent_thenItsReactionIsNotALink() {
         ObservedReactions observed = new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(2, "shipping-dispatch")),
+                List.of(new ObservedReactions.ObservedReaction(2, "shipping-dispatch", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 1)), List.of());
 
         assertThat(draw(observed, null, Set.of("orders-intake"), ""))
@@ -191,11 +191,11 @@ class GraphVizViewsTest {
     void reactions_whenThePageCarriesSeveralGraphs_thenEachOnesIdsAreItsOwn() {
         String dot = draw(observed(), null, Set.of("orders-intake"), ReactionIds.prefixOf("legacy"));
 
-        assertThat(dot).contains("\"legacy-MESSAGE-1\" [id=\"legacy-MESSAGE-1\"");
-        assertThat(dot).contains("\"legacy-REACTION-2\" [id=\"legacy-REACTION-2\"");
-        assertThat(dot).describedAs("and the graph itself is named apart too")
-                .contains("digraph \"legacy-reactions\"");
-        assertThat(dot).describedAs("the edges follow the nodes")
+        assertThat(dot).contains("\"legacy-MESSAGE-1\" [id=\"legacy-MESSAGE-1\"")
+                .contains("\"legacy-REACTION-2\" [id=\"legacy-REACTION-2\"")
+                .describedAs("and the graph itself is named apart too")
+                .contains("digraph \"legacy-reactions\"")
+                .describedAs("the edges follow the nodes")
                 .contains("\"legacy-MESSAGE-1\" -> \"legacy-REACTION-2\"");
     }
 
@@ -209,8 +209,8 @@ class GraphVizViewsTest {
         String dot = draw(observed());
 
         assertThat(dot).contains("/systems/orders/system-architecture/building-block-view/events/"
-                                 + "orders-payment-accepted-event/#graph?highlight-node=MESSAGE-1");
-        assertThat(dot).describedAs("a message of another system as much as one of this one")
+                                 + "orders-payment-accepted-event/#graph?highlight-node=MESSAGE-1")
+                .describedAs("a message of another system as much as one of this one")
                 .contains("/systems/shipping/system-architecture/building-block-view/events/"
                           + "shipping-dispatched-event/#graph?highlight-node=MESSAGE-3");
     }
@@ -225,7 +225,7 @@ class GraphVizViewsTest {
         ObservedReactions observed = new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null),
                         new ObservedReactions.ObservedMessage(3, "ShippingDispatchedEvent", "NES_Risk")),
-                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake")),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 12)),
                 List.of(new ObservedReactions.ObservedAction(2, 3)));
 
@@ -295,7 +295,7 @@ class GraphVizViewsTest {
         return new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null),
                         new ObservedReactions.ObservedMessage(3, "ShippingDispatchedEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake")),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 12)),
                 List.of(new ObservedReactions.ObservedAction(2, 3)));
     }

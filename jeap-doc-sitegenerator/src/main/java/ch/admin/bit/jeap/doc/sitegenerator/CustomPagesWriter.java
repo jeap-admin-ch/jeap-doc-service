@@ -124,17 +124,8 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         return written;
     }
 
-    /**
-     * Writes one file, and answers whether it was written.
-     * <p>
-     * A file that is not written is never a failed build: a page that the archive does not hold, a name the
-     * template generates, or a set that has grown past what a set may unpack to are all one page missing from
-     * one part, and the log line says which.
-     */
-    private boolean write(CustomSet set, CustomPage page, int position, Path chapterDirectory) {
-        if (abandoned.contains(set.id())) {
-            return false;
-        }
+    /** Whether a file may be written at its path: nothing the template generates, and inside its chapter. */
+    private boolean mayLieWhereItIsWritten(CustomSet set, CustomPage page, Path chapterDirectory) {
         if (!page.asset() && isGeneratedByTheTemplate(set, page)) {
             log.warn("The uploaded page {} of {} is not published: {} generates a page of that name into "
                      + "that chapter, and a page has one source.",
@@ -161,6 +152,21 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
                      + "that chapter.", page.path(), set.subject().slug());
             return false;
         }
+        return true;
+    }
+
+    /**
+     * Writes one file, and answers whether it was written.
+     * <p>
+     * A file that is not written is never a failed build: a page that the archive does not hold, a name the
+     * template generates, or a set that has grown past what a set may unpack to are all one page missing from
+     * one part, and the log line says which.
+     */
+    private boolean write(CustomSet set, CustomPage page, int position, Path chapterDirectory) {
+        if (abandoned.contains(set.id()) || !mayLieWhereItIsWritten(set, page, chapterDirectory)) {
+            return false;
+        }
+        Path file = chapterDirectory.resolve(page.fileName()).normalize();
         Optional<CustomDocumentationStorage.OpenedBundle> bundle = bundleOf(set);
         if (bundle.isEmpty()) {
             // The object is gone - taken by a removal or by the upload that replaced this set. Its own log
@@ -376,8 +382,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         }
         generated.put("doc_uploaded_at", provenance.uploadedAt().toString());
         generated.put("doc_uploaded_at_display", DisplayTime.of(provenance.uploadedAt()));
-        String body = "The documentation below was built and published by the team that owns it, and is "
-                      + "shown here as it was built.\n";
+        String body = "The documentation below was published by the owning team.\n";
         try {
             Files.createDirectories(chapterDirectory);
             Files.writeString(chapterDirectory.resolve(microsite.fileName()),

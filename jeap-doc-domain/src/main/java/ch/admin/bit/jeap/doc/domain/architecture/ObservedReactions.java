@@ -52,8 +52,12 @@ public record ObservedReactions(
     /**
      * One component reacting. <b>The identifier is the observer's row id</b>, and it is what a deep link into
      * a drawn graph addresses - the observer's graph carries no other name for a reaction.
+     *
+     * @param median how many times it was seen in the observer's statistics window, or null where the
+     *               observer sent none. It is counted per reaction, so it is on the node as well as on the
+     *               trigger edge - and on the node only, for a reaction that no message triggered
      */
-    public record ObservedReaction(long id, String component) {
+    public record ObservedReaction(long id, String component, Integer median) {
     }
 
     /**

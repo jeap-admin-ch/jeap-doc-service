@@ -142,9 +142,14 @@ class ReactionGraphBrowserIT extends SiteBrowserTestBase {
                 .endsWith("#graph?highlight-node=" + node);
         // And the id it addresses is really a node of that page: a URL inside a fence is checked by nothing,
         // so a fragment naming an id nobody wrote is a link that arrives and does nothing. The diagram is
-        // scrolled to first - the plugin draws one when it comes into view.
-        Locator arrived = page.locator(DIAGRAM).last();
-        arrived.scrollIntoViewIfNeeded();
+        // scrolled to first - the plugin draws one when it comes into view. In the page rather than through a
+        // handle: the plugin replaces the diagram element while it focuses the node, and a handle to the old
+        // one is detached.
+        page.waitForFunction("([selector, id]) => { "
+                             + "const diagrams = document.querySelectorAll(selector); "
+                             + "diagrams[diagrams.length - 1]?.scrollIntoView(); "
+                             + "return document.getElementById(id) !== null; }",
+                java.util.List.of(DIAGRAM, node));
         assertThat(page.locator("[id='" + node + "']")).isVisible();
         assertNothingWentWrongInTheBrowser();
     }
@@ -257,9 +262,9 @@ class ReactionGraphBrowserIT extends SiteBrowserTestBase {
         open(route(SYSTEM_REACTIONS_ROUTE));
 
         assertThat(page.locator("article table tbody tr")).hasCount(6 + WIDE_REACTIONS);
+        // A reaction with no trigger, and one with nothing published in answer: a dash stands for both.
         org.assertj.core.api.Assertions.assertThat(page.locator("article table").first().innerText())
-                .contains("no trigger observed")
-                .contains("nothing observed");
+                .contains("-\tshipping-dispatch\t-");
         assertNothingWentWrongInTheBrowser();
     }
 

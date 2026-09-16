@@ -56,6 +56,19 @@ class RawHtmlEscapingBrowserIT extends SiteBrowserTestBase {
                 .describedAs("the uploaded iframe must not be in the page").isZero();
     }
 
+    /** A team may fold part of a page too. The summary is text, like any other raw HTML in the page. */
+    @Test
+    void anUploadedFold_opensAndItsSummaryIsText() {
+        open("/" + ROUTE);
+
+        Locator fold = page.locator("article details");
+        PlaywrightAssertions.assertThat(fold.locator("summary")).hasText("Uploaded <b>fold</b>");
+        PlaywrightAssertions.assertThat(page.getByText("Folded by the team.")).not().isVisible();
+        fold.locator("summary").click();
+        PlaywrightAssertions.assertThat(page.getByText("Folded by the team.")).isVisible();
+        assertThat(fold.locator("b").count()).isZero();
+    }
+
     /**
      * Escaping raw HTML must not cost the Markdown a team actually writes. The admonition and the diagram are
      * the two constructs that look like markup and are not.

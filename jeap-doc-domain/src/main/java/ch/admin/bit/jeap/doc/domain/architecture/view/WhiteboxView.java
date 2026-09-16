@@ -69,9 +69,20 @@ public record WhiteboxView(
      *                      point at
      */
     public static WhiteboxView of(ArchitectureModel model, DocumentedSystem system, int maxNeighbours) {
+        return of(model, system, maxNeighbours, ViewExcludedComponents.NONE);
+    }
+
+    /**
+     * The same, without the components left out of the views. A relation with one of them at an end is not
+     * drawn: its box is not there.
+     */
+    public static WhiteboxView of(ArchitectureModel model, DocumentedSystem system, int maxNeighbours,
+                                  ViewExcludedComponents excluded) {
         // Every component of the system is drawn: the whitebox view is the one place the whole decomposition
         // belongs, and a component missing from it would have a page nothing on the diagram points at.
-        List<DocumentedComponent> drawn = system.components();
+        List<DocumentedComponent> drawn = system.components().stream()
+                .filter(component -> !excluded.excludes(component.name()))
+                .toList();
         Set<String> drawnNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         drawn.forEach(component -> drawnNames.add(component.name()));
 
@@ -81,7 +92,7 @@ public record WhiteboxView(
         Map<String, Set<String>> externalLabels = new LinkedHashMap<>();
 
         for (SystemRelation relation : model.relations()) {
-            Ends ends = endsOf(relation, system, drawnNames);
+            Ends ends = excluded.excludes(relation) ? null : endsOf(relation, system, drawnNames);
             if (ends == null) {
                 continue;
             }

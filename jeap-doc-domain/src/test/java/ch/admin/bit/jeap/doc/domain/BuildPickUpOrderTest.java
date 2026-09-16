@@ -53,8 +53,8 @@ class BuildPickUpOrderTest {
         List<PartKey> onOneInstance = partsOf(BuildPickUpOrder.of(pending, allTheSameSize(), new Random(1)));
         List<PartKey> onAnother = partsOf(BuildPickUpOrder.of(pending, allTheSameSize(), new Random(2)));
 
-        assertThat(onOneInstance).isNotEqualTo(onAnother);
-        assertThat(onOneInstance).containsExactlyInAnyOrderElementsOf(onAnother);
+        assertThat(onOneInstance).isNotEqualTo(onAnother)
+                .containsExactlyInAnyOrderElementsOf(onAnother);
     }
 
     /**

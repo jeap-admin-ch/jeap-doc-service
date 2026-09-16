@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.template.arc42;
 
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
 import ch.admin.bit.jeap.doc.domain.architecture.ContractRole;
@@ -148,13 +149,10 @@ class Arc42SystemTreeTest {
         generate();
 
         assertThat(read("system-architecture/5-building-block-view/_category_.json"))
-                .describedAs("open when the page is first shown - a reader has to see what is documented "
-                             + "about a system without clicking twelve times")
                 .isEqualTo("""
                         {
                           "label": "5. Building Block View",
-                          "position": 5,
-                          "collapsed": false
+                          "position": 5
                         }
                         """);
         assertThat(read("system-architecture/_category_.json")).contains("\"label\": \"System Architecture\"");
@@ -169,34 +167,23 @@ class Arc42SystemTreeTest {
     }
 
     /**
-     * <b>How far the sidebar is open, in one place.</b> It is a judgement about readability rather than a
-     * rule the code implies, so it is worth a test that says the whole of it: open down to the pages of a
-     * chapter, and closed below that.
-     * <p>
-     * The line to hold is the last one. A system of thirty components, each expanded to its own twelve
-     * chapters, is a sidebar nobody can use - and that is what the next person widening this will produce.
+     * <b>How far the sidebar is open, in one place.</b> Only the structure at the top of a system's sidebar
+     * starts open. Everything below it is closed, and Docusaurus opens the path to the page the reader is on.
      */
     @Test
-    void theSidebarIsOpenDownToTheChaptersPagesAndNoFurther() throws IOException {
+    void theSidebarStartsClosedBelowTheSystemsStructure() throws IOException {
         generate();
 
         assertThat(read("system-architecture/_category_.json"))
-                .describedAs("the way into a system's documentation").contains("\"collapsed\": false");
-        assertThat(read("system-architecture/1-intro/_category_.json")).contains("\"collapsed\": false");
-        assertThat(read("system-architecture/5-building-block-view/_category_.json"))
+                .describedAs("the top of the sidebar, styled as a section title")
                 .contains("\"collapsed\": false");
-        assertThat(read("system-architecture/5-building-block-view/components/_category_.json"))
-                .describedAs("the components of the system, and the components themselves")
-                .contains("\"collapsed\": false");
-        assertThat(read("system-architecture/5-building-block-view/components/orders-intake/_category_.json"))
-                .contains("\"collapsed\": false");
-        assertThat(read("system-architecture/5-building-block-view/events/_category_.json"))
-                .describedAs("what the system publishes and consumes").contains("\"collapsed\": false");
-
-        assertThat(read("system-architecture/5-building-block-view/components/orders-intake/"
-                        + "component-architecture/_category_.json"))
-                .describedAs("and here it stops: a component's own arc42 tree is the level below")
-                .doesNotContain("collapsed");
+        for (String category : List.of("1-intro", "5-building-block-view", "5-building-block-view/components",
+                "5-building-block-view/components/orders-intake",
+                "5-building-block-view/components/orders-intake/component-architecture",
+                "5-building-block-view/events")) {
+            assertThat(read("system-architecture/" + category + "/_category_.json"))
+                    .describedAs(category).doesNotContain("collapsed");
+        }
     }
 
     @Test
@@ -207,7 +194,8 @@ class Arc42SystemTreeTest {
                 .contains("# 1. Introduction and Goals")
                 .contains("Takes orders and follows them through")
                 .contains("| Responsible team | [Team Blue](mailto:blue@example.com) |")
-                .contains("| Also known as | `ORDERS` |")
+                .describedAs("an alias that only repeats the name is left out, and each alias is named once")
+                .contains("| Also known as | `order-desk` |")
                 .contains("doc_status: \"generated\"");
     }
 
@@ -255,12 +243,12 @@ class Arc42SystemTreeTest {
                 .contains("left to right direction")
                 .contains("@enduml")
                 .doesNotContain(".png")
-                .doesNotContain(".svg");
-        assertThat(page).contains("| From | To | Kind | What travels |");
-        assertThat(page).contains("[shipping](/systems/shipping/)");
-        // A Markdown link is rewritten on its way to the reader; a link inside a fence is not, so it has to
-        // carry the base URL and the environment prefix already.
-        assertThat(page).contains("[[/docs/dev/systems/shipping/]]");
+                .doesNotContain(".svg")
+                .contains("| From | To | Type | Interaction |")
+                .contains("[shipping](/systems/shipping/)")
+                // A Markdown link is rewritten on its way to the reader; a link inside a fence is not, so it has to
+                // carry the base URL and the environment prefix already.
+                .contains("[[/docs/dev/systems/shipping/]]");
     }
 
     @Test
@@ -269,14 +257,14 @@ class Arc42SystemTreeTest {
 
         String page = read("system-architecture/5-building-block-view/whitebox-view.md");
         assertThat(page)
-                .contains("# Level 1: Whitebox View orders")
+                .contains("# Whitebox View orders")
                 .contains("```plantuml")
                 .contains("package \"orders\"")
                 .contains("| Component | Type | Owner | Description |")
                 .contains("[orders-intake](/systems/orders/system-architecture/building-block-view/components/orders-intake/)")
                 .contains("[[/docs/dev/systems/orders/system-architecture/building-block-view/components/orders-intake/]]")
-                .contains("Backend Service");
-        assertThat(page).describedAs("a whitebox view is a deep graph and belongs top to bottom")
+                .contains("Backend Service")
+                .describedAs("a whitebox view is a deep graph and belongs top to bottom")
                 .doesNotContain("left to right direction");
     }
 
@@ -291,13 +279,39 @@ class Arc42SystemTreeTest {
         String page = read("system-architecture/5-building-block-view/whitebox-view.md");
         assertThat(page)
                 .contains("## Relations")
-                .contains("| From | To | Kind | What travels |")
+                .contains("| From | To | Type | Interaction |")
                 .contains("[orders-intake](/systems/orders/system-architecture/building-block-view/components/orders-intake/)")
                 .contains("[shipping](/systems/shipping/)")
-                .contains("publishes")
+                .contains("| Event |")
                 // The system defines this message, so the label is a link to its page in this very tree.
                 .contains("[`OrdersPaymentAcceptedEvent`](/systems/orders/system-architecture/"
                           + "building-block-view/events/orders-payment-accepted-event/)");
+    }
+
+    /**
+     * A component left out of the views by configuration has no box and no relation on the system's pages,
+     * and its own page says why.
+     */
+    @Test
+    void aComponentLeftOutOfTheViews_isNotDrawnOrListedAsARelationAndItsPageSaysSo() throws IOException {
+        context = context.withViewExcludedComponents(
+                ch.admin.bit.jeap.doc.domain.architecture.view.ViewExcludedComponents.excluding(
+                        List.of("orders-risk")));
+
+        generate();
+
+        String whitebox = read("system-architecture/5-building-block-view/whitebox-view.md");
+        assertThat(whitebox).doesNotContain("component \"orders-risk\"")
+                .doesNotContain("## Inside the system")
+                .describedAs("still listed as a component of the system")
+                .contains("[orders-risk](/systems/orders/system-architecture/building-block-view/components/"
+                          + "orders-risk/)");
+        assertThat(whitebox.substring(whitebox.indexOf("## Relations")))
+                .doesNotContain("orders-risk");
+        assertThat(read("system-architecture/5-building-block-view/components/orders-risk/index.md"))
+                .contains("left out of the diagrams and relations tables of other pages by configuration");
+        assertThat(read("system-architecture/5-building-block-view/components/orders-intake/index.md"))
+                .doesNotContain("by configuration");
     }
 
     /**
@@ -399,14 +413,14 @@ class Arc42SystemTreeTest {
         template.writeSystem(Documented.of(crowded), landscape, systemDirectory);
 
         String page = read("system-architecture/5-building-block-view/whitebox-view.md");
-        assertThat(page).contains(":::note[Not every neighbour is drawn]");
-        assertThat(page).describedAs("how many were left out, and not the format specifier for it")
+        assertThat(page).contains(":::note[Not every neighbour is drawn]")
+                .describedAs("how many were left out, and not the format specifier for it")
                 .contains("One further system exchanges something with this one")
-                .doesNotContain("%d");
-        assertThat(page).describedAs("the count and the sentence agree - a bound is reached one system at "
+                .doesNotContain("%d")
+                .describedAs("the count and the sentence agree - a bound is reached one system at "
                                     + "a time, so the singular is the case a reader meets first")
-                .doesNotContain("1 further systems");
-        assertThat(page).describedAs("the relation of the neighbour left out is still in the table")
+                .doesNotContain("1 further systems")
+                .describedAs("the relation of the neighbour left out is still in the table")
                 .contains("`OrdersOtherEvent`");
 
         // The context view is bounded by the same number and says so in its own words.
@@ -455,10 +469,9 @@ class Arc42SystemTreeTest {
                 .contains("| Scope | internal |")
                 .contains("| Topic | `orders-erp-command` |")
                 .contains("## Versions")
-                // A table now, not a bullet list: the version, the schema names where they are replicated,
-                // and what the version is compatible with.
-                .contains("| Version | Key schema | Value schema | Compatibility |")
-                .contains("| `1.0.0` |")
+                // A row per version, which the site builds from the directive.
+                .contains("grouped-table")
+                .contains("group[`1.0.0`]")
                 .contains("## Sender Contracts")
                 .contains("## Receiver Contracts")
                 // No reactions section: nothing has been observed reacting to this command, and a section
@@ -467,12 +480,11 @@ class Arc42SystemTreeTest {
     }
 
     /**
-     * What the schemas look like on a page once a run has joined them in: the table names them and links them
-     * into the registry, and a section per version carries the rendering.
+     * What the schemas look like on a page once a run has joined them in: a row per version, a sub-row per
+     * schema, and in each the schema folded above its name and its compatibility.
      * <p>
      * Fenced as {@code java} on purpose - the rendering is not valid Avro IDL, and there is no language for
-     * what it is. It reads well enough highlighted as Java and wrongly enough that nobody takes it for the
-     * file, which the link beside it points at.
+     * what it is.
      */
     @Test
     void aMessagePageCarriesTheSchemasOfEachVersionWhereTheyWereReplicated() throws IOException {
@@ -486,18 +498,48 @@ class Arc42SystemTreeTest {
 
         String page = read("system-architecture/5-building-block-view/commands/"
                            + "orders-check-erp-availability-v2-command.md");
-        assertThat(page)
-                .contains("| `1.0.0` | [Key1.0.0.avdl](https://registry/Key1.0.0.avdl) "
-                          + "| [Value1.0.0.avdl](https://registry/Value1.0.0.avdl) | BACKWARD with 0.9.0 |")
-                .contains("| `2.0.0` | [Key2.0.0.avdl](https://registry/Key2.0.0.avdl) "
-                          + "| [Value2.0.0.avdl](https://registry/Value2.0.0.avdl) | BACKWARD with 0.9.0 |")
-                .contains("### OrdersCheckErpAvailabilityV2Command 1.0.0")
-                .contains("### OrdersCheckErpAvailabilityV2Command 2.0.0")
-                .contains("**Key schema**: [Key1.0.0.avdl](https://registry/Key1.0.0.avdl)")
-                .contains("**Value schema**: [Value1.0.0.avdl](https://registry/Value1.0.0.avdl)")
-                .contains("// key of 2.0.0")
-                .contains("// value of 2.0.0");
-        assertThat(page.split("```java", -1).length - 1)
+        String versions = page.substring(page.indexOf("## Versions"), page.indexOf("## Sender Contracts"));
+        assertThat(versions)
+                .contains("::::::grouped-table")
+                .contains(":::column[Version]")
+                .contains(":::column[Schema]")
+                .contains(":::::group[`1.0.0`]")
+                .contains(":::::group[`2.0.0`]")
+                .contains("""
+                        ::::row[Key]
+
+                        :::details[Schema]
+
+                        ```java
+                        string orderId; // key of 1.0.0
+                        ```
+
+                        :::
+
+                        [Key1.0.0.avdl](https://registry/Key1.0.0.avdl)
+
+                        ::::""")
+                .contains("""
+                        ::::row[Value]
+
+                        :::details[Schema]
+
+                        ```java
+                        string orderId;
+                        int total; // value of 1.0.0
+                        ```
+
+                        :::
+
+                        [Value1.0.0.avdl](https://registry/Value1.0.0.avdl)
+
+                        Avro Schema Compatibility with Version 0.9.0: **BACKWARD**
+
+                        ::::""")
+                .doesNotContain("### OrdersCheckErpAvailabilityV2Command");
+        assertThat(versions.split("Avro Schema Compatibility", -1).length - 1)
+                .describedAs("said once per version, in the value row").isEqualTo(2);
+        assertThat(versions.split("```java", -1).length - 1)
                 .describedAs("one fence per schema of each of the two versions").isEqualTo(4);
     }
 
@@ -528,7 +570,32 @@ class Arc42SystemTreeTest {
                 .doesNotContain("](javascript:");
     }
 
-    /** A version nothing was replicated for keeps its row and simply has no section under it. */
+    /**
+     * <b>A blank URL is not a URL.</b> A schema whose registry URL is an empty string, with nothing replicated
+     * and no compatibility on its version, used to leave its cell empty - and an empty cell fails the whole
+     * part's build, which is the thing the test above exists to prevent.
+     */
+    @Test
+    void aMessagePage_whenASchemaUrlIsBlank_thenTheNameIsStillShown() throws IOException {
+        DocumentedMessageVersion blankUrl = new DocumentedMessageVersion("1.0.0", null, null,
+                new MessageSchema("Key.avdl", "", null),
+                new MessageSchema("", "  ", null));
+        DocumentedSystem withABlankUrl = orders.withMessages(orders.messages().stream()
+                .map(message -> message.name().equals("OrdersCheckErpAvailabilityV2Command")
+                        ? message.withVersions(List.of(blankUrl))
+                        : message)
+                .toList());
+
+        template.writeSystem(Documented.of(withABlankUrl), context, systemDirectory);
+
+        assertThat(read("system-architecture/5-building-block-view/commands/"
+                        + "orders-check-erp-availability-v2-command.md"))
+                .contains("`Key.avdl`")
+                .describedAs("a schema with no name of its own is still named")
+                .contains("`schema`");
+    }
+
+    /** A version nothing was replicated for keeps its row, and the row says so. */
     @Test
     void aMessagePageWithoutReplicatedSchemas_showsItsVersionsAndNoSchemaSection() throws IOException {
         generate();
@@ -536,9 +603,10 @@ class Arc42SystemTreeTest {
         String page = read("system-architecture/5-building-block-view/commands/"
                            + "orders-check-erp-availability-v2-command.md");
         assertThat(page)
-                .contains("| `1.0.0` |")
+                .contains("group[`1.0.0`]")
+                .contains("No schema of this version is replicated.")
                 .doesNotContain("```java")
-                .doesNotContain("### OrdersCheckErpAvailabilityV2Command");
+                .doesNotContain(":::details");
     }
 
     /**
@@ -643,8 +711,11 @@ class Arc42SystemTreeTest {
                 .describedAs("the fence the site's diagram plugin renders").contains("```dot")
                 .contains("digraph \"reactions\"")
                 // The table is the complete list and the searchable one.
-                .contains("| Triggered by | Component | Publishes in answer | Times observed |")
+                .contains("| Trigger | Component | Action | Median per day |")
                 .contains("`orders-intake`")
+                .describedAs("a reaction nothing triggered shows the number the observer counted for it")
+                .contains("| 9252 |")
+                .doesNotContain("unknown")
                 .describedAs("and it says the reactions were observed, not documented")
                 .contains("Observed at runtime by the reaction observer");
         assertThat(read("system-architecture/index.md")).contains("Runtime View");
@@ -751,7 +822,10 @@ class Arc42SystemTreeTest {
     private static ObservedReactions observedReactions() {
         return new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake")),
+                // The second reaction is one no message triggered - a timer, say - which the observer counts
+                // like any other and can only report on the node itself.
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake", null),
+                        new ObservedReactions.ObservedReaction(3, "orders-intake", 9252)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 12)), List.of());
     }
 
@@ -768,11 +842,11 @@ class Arc42SystemTreeTest {
     }
 
     /**
-     * A system with no components, no messages and no neighbours still gets a tree that says so, rather than
-     * pages with holes in them.
+     * No content, no page. A system with no components, no messages and no neighbours gets chapter 1 and
+     * nothing else, and nothing links to a chapter that was not written.
      */
     @Test
-    void anEmptySystem_getsPagesThatSayThereIsNothing() throws IOException {
+    void anEmptySystem_getsNoChapterItHasNothingFor() throws IOException {
         DocumentedSystem empty = new DocumentedSystem("lonely", "lonely", null, List.of(), null,
                 List.of(), List.of(), List.of());
         GenerationContext emptyContext = new GenerationContext(ArchitectureModel.of(List.of(empty)), "dev",
@@ -782,12 +856,38 @@ class Arc42SystemTreeTest {
         template.writeSystem(Documented.of(empty), emptyContext, content.resolve("systems").resolve("lonely"));
 
         Path structure = content.resolve("systems/lonely/system-architecture");
-        assertThat(Files.readString(structure.resolve("3-context-and-scope/system-context-view.md")))
-                .contains("records no relation");
-        assertThat(Files.readString(structure.resolve("5-building-block-view/whitebox-view.md")))
-                .contains("knows no component");
-        assertThat(structure.resolve("5-building-block-view/events")).doesNotExist();
-        assertThat(structure.resolve("5-building-block-view/components")).doesNotExist();
+        assertThat(structure.resolve("1-intro/index.md")).exists();
+        assertThat(structure.resolve("3-context-and-scope")).doesNotExist();
+        assertThat(structure.resolve("5-building-block-view")).doesNotExist();
+        assertThat(Files.readString(structure.resolve("index.md")))
+                .doesNotContain("3. Context and Scope")
+                .doesNotContain("5. Building Block View");
+        assertThat(Files.readString(structure.resolve("1-intro/index.md")))
+                .describedAs("the components row names no chapter that was not written")
+                .contains("| Components | 0 |")
+                .doesNotContain("building-block-view");
+    }
+
+    /** A system with messages and no components gets chapter 5 for its messages, and no whitebox page. */
+    @Test
+    void aSystemWithMessagesAndNoComponents_getsChapterFiveWithoutAWhiteboxPage() throws IOException {
+        DocumentedSystem publisher = new DocumentedSystem("lonely", "lonely", null, List.of(), null,
+                List.of(), List.of(), List.of(new DocumentedMessage("LonelyEvent", "lonely-event",
+                MessageKind.EVENT, null, "lonely.event", null, null, null,
+                List.of(DocumentedMessageVersion.of("1.0.0")), List.of())));
+        GenerationContext publisherContext = new GenerationContext(ArchitectureModel.of(List.of(publisher)),
+                "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
+                "/docs/dev/");
+
+        template.writeSystem(Documented.of(publisher), publisherContext,
+                content.resolve("systems").resolve("lonely"));
+
+        Path structure = content.resolve("systems/lonely/system-architecture");
+        assertThat(structure.resolve("5-building-block-view/events")).exists();
+        assertThat(structure.resolve("5-building-block-view/whitebox-view.md")).doesNotExist();
+        assertThat(Files.readString(structure.resolve("5-building-block-view/index.md")))
+                .doesNotContain("whitebox-view")
+                .contains("building-block-view/events/");
     }
 
     /**
@@ -845,7 +945,25 @@ class Arc42SystemTreeTest {
         generate();
 
         assertThat(read("system-architecture/5-building-block-view/components/orders-intake/index.md"))
-                .contains(":::warning[Not seen recently]");
+                .contains(":::warning[Not seen recently]")
+                .describedAs("the time as a reader reads it, not the instant")
+                .contains("since `" + DisplayTime.of(Instant.parse("2026-01-01T00:00:00Z")) + "`")
+                .doesNotContain("2026-01-01T00:00:00Z");
+    }
+
+    /**
+     * The site template shows when a page was imported and generated under the page. It reads the display
+     * values, so a reader sees {@code 2026-08-28 07:50:00} and not an ISO instant.
+     */
+    @Test
+    void aGeneratedPage_carriesTheTimesAsAReaderReadsThemBesideTheInstants() throws IOException {
+        generate();
+
+        assertThat(read("system-architecture/1-intro/index.md"))
+                .contains("doc_model_imported_at: \"" + MODEL_IMPORTED_AT + "\"")
+                .contains("doc_model_imported_at_display: \"" + DisplayTime.of(MODEL_IMPORTED_AT) + "\"")
+                .contains("doc_generated_at: \"" + GENERATED_AT + "\"")
+                .contains("doc_generated_at_display: \"" + DisplayTime.of(GENERATED_AT) + "\"");
     }
 
     /**
@@ -999,7 +1117,7 @@ class Arc42SystemTreeTest {
                 "orders-intake", "OrdersPaymentAcceptedEvent", null, null, null);
         SystemRelation internal = new SystemRelation(RelationKind.EVENT, "orders", "orders-risk", "orders",
                 "orders-intake", "OrdersPaymentAcceptedEvent", null, null, null);
-        return new DocumentedSystem("orders", "orders", "Takes orders and follows them through", List.of("ORDERS"),
+        return new DocumentedSystem("orders", "orders", "Takes orders and follows them through", List.of("ORDERS", "order-desk", "Order-Desk"),
                 new Team("Team Blue", "blue@example.com", "https://jira/orders", "https://confluence/orders"),
                 List.of(intake, risk), List.of(event, internal),
                 List.of(

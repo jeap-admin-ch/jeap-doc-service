@@ -3,8 +3,9 @@ package ch.admin.bit.jeap.doc.domain;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
@@ -62,8 +63,9 @@ class DocumentationProvenanceTest {
 
     private DocumentationProvenance provenance(SiteProperties siteProperties) {
         return new DocumentationProvenance(new DocumentationSites(siteProperties), imports,
-                architectureModel, new StructureTemplates(List.of(new SilentTemplate())),
-                new BuildProperties(), new ArchitectureImportProperties(), CLOCK);
+                new DisplayReadsOf(null, null, null, imports), architectureModel,
+                new StructureTemplates(List.of(new SilentTemplate())), new BuildProperties(),
+                new ArchitectureImportProperties(), new UploadProperties(), new CustomProperties(), CLOCK);
     }
 
     @Test
@@ -130,12 +132,44 @@ class DocumentationProvenanceTest {
                 .satisfies(dev -> assertThat(dev.importIsBehind(NOW)).isFalse());
     }
 
+    /** Every job that runs on a schedule, the import first, each with the moment it fires next. */
     @Test
     void of_thenTheSchedulesAndWhenTheyFireNext() {
         DocumentationFacts facts = provenance.of(Site.DEFAULT_SITE, null, NOW).orElseThrow();
 
-        assertThat(facts.schedules().import_()).isEqualTo("0 45 5-19 * * *");
-        assertThat(facts.schedules().importAt()).isEqualTo(Instant.parse("2026-09-03T07:45:00Z"));
+        assertThat(facts.schedules()).extracting(DocumentationFacts.Schedule::job)
+                .containsExactly(DocumentationFacts.ScheduledJob.ARCHITECTURE_IMPORT,
+                        DocumentationFacts.ScheduledJob.RECONCILE,
+                        DocumentationFacts.ScheduledJob.BUILD_HISTORY,
+                        DocumentationFacts.ScheduledJob.UPLOAD_HOUSEKEEPING,
+                        DocumentationFacts.ScheduledJob.CUSTOM_SWEEP);
+        assertThat(facts.schedules().getFirst().cron()).isEqualTo("0 45 5-19 * * *");
+        assertThat(facts.schedules().getFirst().nextAt()).isEqualTo(Instant.parse("2026-09-03T07:45:00Z"));
+        assertThat(facts.schedules()).allSatisfy(schedule -> {
+            assertThat(schedule.cron()).isNotBlank();
+            assertThat(schedule.nextAt()).isNotNull();
+        });
+    }
+
+    /** A job switched off with the disabled dash has no schedule and no next occurrence. */
+    @Test
+    void of_whenAJobIsSwitchedOff_thenItHasNoSchedule() {
+        CustomProperties custom = new CustomProperties();
+        custom.setSweepCron("-");
+        provenance = new DocumentationProvenance(new DocumentationSites(new SiteProperties()), imports,
+                new DisplayReadsOf(null, null, null, imports), architectureModel,
+                new StructureTemplates(List.of(new SilentTemplate())), new BuildProperties(),
+                new ArchitectureImportProperties(), new UploadProperties(), custom, CLOCK);
+
+        DocumentationFacts facts = provenance.of(Site.DEFAULT_SITE, null, NOW).orElseThrow();
+
+        assertThat(facts.schedules()).filteredOn(schedule ->
+                        schedule.job() == DocumentationFacts.ScheduledJob.CUSTOM_SWEEP)
+                .singleElement()
+                .satisfies(sweep -> {
+                    assertThat(sweep.cron()).isNull();
+                    assertThat(sweep.nextAt()).isNull();
+                });
     }
 
     /**
@@ -149,8 +183,10 @@ class DocumentationProvenanceTest {
 
         DocumentationFacts facts = provenance.of(Site.DEFAULT_SITE, null, NOW).orElseThrow();
 
-        assertThat(facts.schedules().import_()).isNull();
-        assertThat(facts.schedules().importAt()).isNull();
+        assertThat(facts.schedules().getFirst().job())
+                .isEqualTo(DocumentationFacts.ScheduledJob.ARCHITECTURE_IMPORT);
+        assertThat(facts.schedules().getFirst().cron()).isNull();
+        assertThat(facts.schedules().getFirst().nextAt()).isNull();
     }
 
     /**
@@ -171,7 +207,7 @@ class DocumentationProvenanceTest {
 
         DocumentationFacts facts = provenance.of(Site.DEFAULT_SITE, "1.2.3", NOW).orElseThrow();
 
-        assertThat(facts.toString()).isEqualTo("DocumentationFacts["
+        assertThat(facts).hasToString("DocumentationFacts["
                 + "service=Service[version=1.2.3, generatedAt=2026-09-03T07:30:00Z], "
                 + "site=SiteFacts[id=default, title=Documentation, templates=[System Architecture], "
                 + "architectureModelRequired=true, publishOnUpload=true, retainedPublications=3], "
@@ -185,7 +221,12 @@ class DocumentationProvenanceTest {
                 + "EnvironmentFacts[id=prod, label=Production, main=true, latest=false, modelConfigured=true, "
                 + "lastImportAt=2026-09-03T06:30:00Z, lastImportOutcome=FAILED, staleAfter=PT2H]"
                 + "], "
-                + "schedules=Schedules[import_=0 45 5-19 * * *, importAt=2026-09-03T07:45:00Z]]");
+                + "schedules=["
+                + "Schedule[job=ARCHITECTURE_IMPORT, cron=0 45 5-19 * * *, nextAt=2026-09-03T07:45:00Z], "
+                + "Schedule[job=RECONCILE, cron=0 15 6-18/4 * * *, nextAt=2026-09-03T08:15:00Z], "
+                + "Schedule[job=BUILD_HISTORY, cron=0 45 2 * * *, nextAt=2026-09-04T00:45:00Z], "
+                + "Schedule[job=UPLOAD_HOUSEKEEPING, cron=0 30 2 * * *, nextAt=2026-09-04T00:30:00Z], "
+                + "Schedule[job=CUSTOM_SWEEP, cron=0 50 2 * * *, nextAt=2026-09-04T00:50:00Z]]]");
     }
 
     /**
@@ -199,9 +240,8 @@ class DocumentationProvenanceTest {
 
         String rendered = provenance.of(Site.DEFAULT_SITE, "1.2.3", NOW).orElseThrow().toString();
 
-        assertThat(rendered).doesNotContain(FAILURE_REASON, "archrepo.internal.admin.ch",
-                "could not be reached");
-        assertThat(rendered).describedAs("that it failed is publishable; why it failed is not")
+        assertThat(rendered).doesNotContain(FAILURE_REASON, "archrepo.internal.admin.ch", "could not be reached")
+                .describedAs("that it failed is publishable; why it failed is not")
                 .contains("lastImportOutcome=FAILED");
     }
 
@@ -226,7 +266,7 @@ class DocumentationProvenanceTest {
         assertThat(status.at()).isEqualTo(NOW);
         assertThat(status.environments()).extracting(DocumentationLiveStatus.EnvironmentStatus::id)
                 .containsExactly("dev", "ref", "abn", "prod");
-        assertThat(status.schedules()).singleElement().satisfies(schedule -> {
+        assertThat(status.schedules()).hasSize(5).first().satisfies(schedule -> {
             assertThat(schedule.cron()).isEqualTo("0 45 5-19 * * *");
             assertThat(schedule.nextAt()).isEqualTo(Instant.parse("2026-09-03T07:45:00Z"));
             assertThat(schedule.next()).endsWith("(in 15 minutes)");
@@ -289,13 +329,15 @@ class DocumentationProvenanceTest {
                 .isEqualTo(DisplayTime.of(NOW.minus(Duration.ofHours(3))) + "; not read since");
     }
 
-    /** A site no import feeds has no schedule to tabulate, and the page's cell stays as it was written. */
+    /** A site no import feeds has no import cell to fill, and the other jobs keep theirs. */
     @Test
-    void liveStatusOf_whenNoEnvironmentReadsAModel_thenThereIsNoScheduleToFillIn() {
+    void liveStatusOf_whenNoEnvironmentReadsAModel_thenThereIsNoImportScheduleToFillIn() {
         architectureModel = new StubModel(Set.of());
         provenance = provenance(new SiteProperties());
 
-        assertThat(provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow().schedules()).isEmpty();
+        assertThat(provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow().schedules())
+                .hasSize(4)
+                .noneMatch(schedule -> schedule.cron().equals("0 45 5-19 * * *"));
     }
 
     /**
@@ -311,7 +353,7 @@ class DocumentationProvenanceTest {
 
         DocumentationLiveStatus status = provenance.liveStatusOf(Site.DEFAULT_SITE).orElseThrow();
 
-        assertThat(status.toString()).isEqualTo("DocumentationLiveStatus["
+        assertThat(status).hasToString("DocumentationLiveStatus["
                 + "site=default, at=2026-09-03T07:30:00Z, environments=["
                 + "EnvironmentStatus[id=dev, modelConfigured=false, lastReadAt=null, lastOutcome=null, "
                 + "behind=false, lastRead=], "
@@ -322,10 +364,21 @@ class DocumentationProvenanceTest {
                 + "EnvironmentStatus[id=prod, modelConfigured=true, lastReadAt=2026-09-03T06:30:00Z, "
                 + "lastOutcome=FAILED, behind=false, lastRead=" + DisplayTime.of(NOW.minus(Duration.ofHours(1)))
                 + "; the last run did not read it]"
-                + "], schedules=[ScheduleStatus[cron=0 45 5-19 * * *, nextAt=2026-09-03T07:45:00Z, "
-                + "next=" + DisplayTime.of(Instant.parse("2026-09-03T07:45:00Z")) + " (in 15 minutes)]]]");
+                + "], schedules=["
+                + scheduleStatus("0 45 5-19 * * *", "2026-09-03T07:45:00Z", "in 15 minutes") + ", "
+                + scheduleStatus("0 15 6-18/4 * * *", "2026-09-03T08:15:00Z", "in 45 minutes") + ", "
+                + scheduleStatus("0 45 2 * * *", "2026-09-04T00:45:00Z", "in 17 hours 15 minutes") + ", "
+                + scheduleStatus("0 30 2 * * *", "2026-09-04T00:30:00Z", "in 17 hours") + ", "
+                + scheduleStatus("0 50 2 * * *", "2026-09-04T00:50:00Z", "in 17 hours 20 minutes")
+                + "]]");
         assertThat(status.toString()).describedAs("that it failed is publishable; why it failed is not")
                 .doesNotContain(FAILURE_REASON, "archrepo.internal.admin.ch", "a-content-hash");
+    }
+
+    /** One expected schedule of the live status; the displayed moment follows the zone the tests run in. */
+    private static String scheduleStatus(String cron, String nextAt, String spelledOut) {
+        return "ScheduleStatus[cron=%s, nextAt=%s, next=%s (%s)]"
+                .formatted(cron, nextAt, DisplayTime.of(Instant.parse(nextAt)), spelledOut);
     }
 
     @Test

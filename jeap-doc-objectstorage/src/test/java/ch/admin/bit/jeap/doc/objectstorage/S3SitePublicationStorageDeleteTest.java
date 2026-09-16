@@ -36,7 +36,9 @@ class S3SitePublicationStorageDeleteTest {
         RecordingS3 s3 = new RecordingS3(List.of(S3Error.builder().key("sites/default/46/index.html")
                 .code("AccessDenied").message("Access Denied").build()));
 
-        assertThatThrownBy(() -> storageOf(s3).delete(PREFIX))
+        S3SitePublicationStorage storage = storageOf(s3);
+
+        assertThatThrownBy(() -> storage.delete(PREFIX))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("sites/default/46/index.html")
                 .hasMessageContaining("AccessDenied");

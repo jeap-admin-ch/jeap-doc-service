@@ -195,10 +195,15 @@ Four pages carry one:
   the database schema its build published - the primary key columns above a separator, `*` for a column that
   cannot be null, `<<PK>>` and `<<FK>>` markers, and one arrow per foreign key.
 
+**A component can be left out of the views.** One that matches
+[`view-excluded-components`](configuration.md#the-architecture-model) is not drawn on the system context view,
+the whitebox view or another component's context view, and no relations table there lists it. It keeps its own
+pages, which say so, and its own context view shows what it exchanges.
+
 The whitebox page draws *Inside the system* only when the components of the system actually exchange something.
-Otherwise the two diagrams would be the same boxes twice. A component that exchanges nothing gets no context
-diagram either: its page says the architecture model records no relation, which is a fact worth reading, and an
-empty box is not.
+Otherwise the two diagrams would be the same boxes twice. A system or a component that exchanges nothing gets
+no context chapter at all, and a system with no component no whitebox page - see
+[No content, no page](structure-templates.md#arc42).
 
 **An arrow is labelled with what travels along it, up to a limit.** Above
 [`max-edge-labels`](configuration.md#the-architecture-model) names, the arrow shows the count for its kind
@@ -213,10 +218,18 @@ so an arrow of a busy system has to be summarized for the diagram to exist at al
 
 ### What the colours mean
 
-Two, and no more: the box of the **subject** - the current system on a system context view, the current
-component on a component context view - is **gold** and outlined bold, and every **relation** of a component
-diagram is **blue**. The entity relationship diagram keeps its black crow's feet, which are data-model
-notation rather than relations.
+The box of the **subject** - the current system on a system context view, the current component on a component
+context view - is **gold** and outlined bold. A **relation** is drawn the way the architecture repository's
+Confluence pages drew it:
+
+| Relation | Arrow            |
+|----------|------------------|
+| Event    | dashed, green    |
+| Command  | dashed, blue     |
+| REST     | solid, blue      |
+
+A message and a REST call differ by the line as well as the colour, so no meaning rests on colour alone. The
+entity relationship diagram keeps its black crow's feet, which are data-model notation rather than relations.
 
 **The colours are the same in either colour mode**, and that is a decision rather than an oversight. The site's
 diagram plugin re-renders a diagram with the engine's dark palette when a reader switches, which moves
@@ -273,11 +286,13 @@ import finishing.
 ### What a message page shows
 
 A message type gets a page of its own under the building block view of the system that defines it: what it is,
-its topic and scope, the contracts on it - and its **versions**, as a table of what exists.
+its topic and scope, the contracts on it - and its **versions**, as a table with a row per version.
 
 Where the [message schemas](architecture-import.md#the-message-schemas-asked-about-every-run-fetched-only-when-they-move) have
-been replicated, that table names each version's key and value schema and links them into the message type
-registry, says what the version is compatible with, and a section under it carries each schema in full.
+been replicated, a version's row splits into a sub-row for its key schema and one for its value schema. Each
+carries the schema **folded**, then its name linked into the message type registry, and the value row says what
+the version is compatible with. Folded, five versions take a screen and the contracts follow right below; the
+schema a reader needs is one click away.
 
 The schema is fenced as `java`, which it is not. What is stored is the architecture repository's **rendering** -
 every `import idl` inlined, the base types dropped, the namespaces and the enclosing braces removed - and it is
@@ -285,7 +300,10 @@ deliberately not valid Avro IDL. There is no language that highlights it correct
 read while being wrong enough that nobody mistakes it for the file; the link beside it is where the file is.
 
 A version whose schemas were never replicated - a new one, or one a run missed at its deadline - keeps its row
-in the table and simply has no section. A replication that is behind never costs a page.
+in the table, which says so. A replication that is behind never costs a page.
+
+The table is a `grouped-table` directive that `MarkdownWriter.groupedTable` writes and the site template builds
+into a table, because a Markdown table can neither span rows nor hold a fold in a cell.
 
 ### What a component's pages show
 
@@ -335,8 +353,9 @@ there is and is matched on its own.
 [`rest-api-excluded-paths`](configuration.md#the-architecture-model) leaves out what matches it, and its
 default is the actuator - every jEAP service publishes the operational endpoints the platform needs, and on a
 small service they outnumber the operations a reader came for. A group the exclusions empty is gone rather
-than a heading over an empty table, the count in the facts row is what the page documents, and the page says
-how many operations it left out so that the count can be compared with the specification. It applies to the
+than a heading over an empty table, the count in the facts row is what the page documents, and one line below
+the facts names the operations it left out and why, so that the count can be compared with the specification.
+It names twenty and counts the rest. It is no warning: leaving them out is intended. The exclusions apply to the
 fallback list from the architecture model too: what a reader is not shown must not depend on whether the
 specification has been replicated yet.
 
@@ -409,11 +428,10 @@ entries - and after grouping, those entries share a name pattern with tables tha
 
 ### What the navigation shows
 
-**A system's sidebar starts open down to the pages of a chapter.** The structure root, the twelve arc42
-chapters, the building block view's components and its message groups are expanded; a component's own arc42
-tree inside them is not. Collapsed, the sidebar was twelve chapter names and said nothing about what is
-documented - and a system of thirty components expanded to every page of each of them is the opposite
-mistake.
+**The sidebar shows the path to the open page.** Only the structure at the top of a system's sidebar starts
+open. Every category below it starts closed, Docusaurus opens the ones on the path to the page the reader is on,
+and opening a category closes its siblings (`autoCollapseCategories`). The open page has the accent background,
+whether it is a page or a category with a page of its own; the categories above it keep only the colour.
 
 **The root page's sidebar lists the systems.** Each of them is built as a part of its own, so their pages are
 in no tree the shell's build can see: the generator names them in `environments.json` and the site template
@@ -427,18 +445,70 @@ one of them open a new tab. The template passes `target="_self"` for those hrefs
 in the configuration for the footer and the navbar logo. Links inside a diagram were never affected: they are
 written absolute and rendered by PlantUML, which navigates the top-level context.
 
+### Every table can be sorted, and a long one filtered
+
+**A reader sorts any table by a click on its header**: ascending, descending, then back to the order the page
+wrote. A column of numbers alone - `12'408`, `987`, `1.10` - is right-aligned and compared by value, so `987`
+comes before `2'150` and `1.9` before `1.10`. **A table of more than 15 rows also gets a filter** above it: a row
+stays when it contains every word typed, the matches are marked, and the bar counts the rows left. Escape
+or the clear button shows every row again.
+
+It is `src/clientModules/tableControls.js` in the site template, and it applies to generated and uploaded pages
+alike - nothing on a page asks for it. It moves the rows and cells a table already has and builds no cell from
+text, so links, code and escaping stay as they were. **A table with a merged cell is left alone**, such as the
+versions of a message page: sorting its rows one by one would tear a sub-row from its version.
+
+### Who is on the other side, on a component's pages
+
+A component's **REST API** page names, per operation, the components known to call it - the **Callers**
+column - and its **Messages** page names the **Consumers** of what it produces and the **Publishers** of what
+it consumes. Both were on the architecture repository's Confluence pages and are what a reader asked back.
+
+| Column                   | Read from                                                                            |
+|--------------------------|--------------------------------------------------------------------------------------|
+| `Callers`                | the REST relations of the landscape whose provider is this component                 |
+| `Consumers`, `Publishers` | the contracts of the message itself, so this page and the message's page agree       |
+
+**A caller is joined to an operation by its method and its path.** The operation comes from the replicated
+OpenAPI specification while the relation carries the path of the architecture repository's `RestApi`, and the
+two spell one path differently. The path is normalised the way the architecture repository normalises it
+itself - `RestApi.pathWithoutVariableNames`, which is how its own importers resolve an observed call onto an
+operation: every path variable becomes `{}`, so `{bpId}` and `{businessPartnerId}` are one segment, and one
+trailing slash is removed unless the path is `/` itself. The method is compared ignoring case, because here
+the two sides come from two different parsers.
+
+**A called operation the specification does not declare keeps its callers.** The model holds concrete paths -
+a `GET /api/vats/1` against a specification with no `/api/vats` in it - that no normalisation joins onto a
+row. They are named under the tables, with their callers, rather than dropped.
+
+**A Pact contract rides with the caller that has one**, as a small `pact` link raised above the line after the
+name - it is on the relation, and the doc service has imported it all along without showing it. The page
+writes a `:sup[…]` directive rather than a `<sup>` element, which `remark-superscript` in the site template
+turns into one: raw HTML in a page is escaped and shown as text. A counterpart is a link where this
+run wrote the component's page and plain code where it did not, and an operation or a message with no
+counterpart gets `-`.
+
+**`jeap.doc.generator.view-excluded-components` does not reach these columns.** It bounds the views and the
+relations tables written from them; a counterpart is read from the relations and the contracts themselves, so
+an excluded component is named here like any other.
+
+The cell holds every counterpart, comma separated. **The site template shows the first three and puts the rest
+behind a `+N more` chip** the reader opens - `tableControls.js` again, the module that sorts and filters, so
+the page itself is complete for the filter and for the search index. Filtering for a name the chip hides opens
+that cell, and clearing the filter closes it again.
+
 ### The page that describes the documentation
 
 Every environment tree carries an **About This Documentation** page, at `/about-this-documentation/`, linked
 from the root page and from the footer. It answers what a reader of a published site cannot otherwise find out:
 what they are looking at, where it came from, and when it changes next.
 
-| Section                         | What it says                                                                                                                                                | Where it comes from                                   |
-|---------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
-| What this is                    | The site, the tree, the documentation structures this instance generates, whether an upload publishes the site, whether it waits for the architecture model | The configuration, through `DocumentationProvenance`  |
-| The publication you are reading | Which build produced this site and when - and the numbers of that run, fetched                                                                              | The build itself, and `about-this-documentation.json` |
-| The environments of this site   | Per environment: which tree it is, what its model contributed, when that content was imported - and, fetched, when the repository was last read             | The run, and `live-status.json`                       |
-| When this changes               | The import schedule - it is what publishes the site, so there is only one - and, fetched, when it fires next                                                | The configuration, and `live-status.json`             |
+| Section                         | What it says                                                                                                                                              | Where it comes from                                   |
+|---------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+| Overview                        | The site, the tree, the structure templates this instance generates, whether an upload publishes the site, whether it waits for the architecture model  | The configuration, through `DocumentationProvenance`  |
+| The publication you are reading | Which build produced this site and when - and the numbers of that run, fetched                                                                          | The build itself, and `about-this-documentation.json` |
+| The environments of this site   | Per environment: which tree it is, what its model contributed, when that content was imported                                                           | The run                                               |
+| Scheduling                      | A row per scheduled job of the service - the import that publishes the site, the reconcile, and the three clean-ups - and, fetched, when each fires next | The configuration, and `live-status.json`             |
 
 **One page per tree rather than one per site**, which is forced rather than chosen: the site template switches
 Docusaurus' pages plugin off, so a page outside the environment trees cannot be served - and a single page in
@@ -476,23 +546,16 @@ matters most: an import that stops running would leave the page claiming *last r
 nobody changed a document, because the page that would report the failure is the page that stopped being
 rebuilt.
 
-So three statements are not written into the page at all:
+So the `Next` cell of every row of the schedule table is not written into the page at all, and is fetched.
 
-| Not on the page                                        | Where it comes from |
-|--------------------------------------------------------|---------------------|
-| `Last read`, per environment, and whether it is behind | `live-status.json`  |
-| The judgement beside it - *not read since*             | `live-status.json`  |
-| The `Next` cell of the schedule table                  | `live-status.json`  |
-
-`GET <base URL of the site>live-status.json` answers them for the whole site in one request - every
-environment, and every schedule the page tabulates - so one fetch fills both tables. It is a path of the site
+`GET <base URL of the site>live-status.json` answers the whole site in one request - every schedule the page
+tabulates, and every environment's last read for whoever reads the resource itself. It is a path of the site
 and is therefore served to anyone who can read the site, exactly as the page is; the administration API below
 `/api` is a different resource with a different rule, and what may be published is decided in
 `DocumentationProvenance` for both. It is answered `no-store`: a cached copy would be the frozen page again
 with an extra step.
 
-The page keeps its cells and names the resource in a sentence beside them, so a reader whose browser runs no
-scripts is told where the state is rather than shown a timestamp nobody keeps true. The client module finds the
+The page keeps its cells and links the resource under the table as its source. The client module finds the
 resource through that link, uses only its path, and inserts nothing when the fetch fails - the same three
 choices as the numbers of the run above.
 
@@ -551,6 +614,12 @@ the first.
 what it published in answer and how often it was seen. It is the complete list, the one the browser's own
 find-in-page searches, and what the page still says if a graph is ever too large to draw.
 
+The last column is **Median per day**, and it says what the number is: the observer's median of the daily
+counts within its statistics window, which a column called *Times observed* was read as a total of. The
+observer counts it **per reaction**, and it is read off the reaction, so a reaction no message triggered shows
+its number like any other; a graph stored before the observer put one there falls back to the number its
+trigger carries, and a reaction with neither reads *unknown*.
+
 The message pages are the one runtime view that is not in the runtime chapter. A message is a building block
 of the system that defines it, so its page is in chapter 5, and a reader who has the message in front of them
 should not have to go to chapter 6 to see what answers it. That section names its own source and its own age,
@@ -562,7 +631,7 @@ Everything that wants documentation rebuilt asks for a **part** of a site, and n
 
 |                       | Which part |
 |-----------------------|------------|
-| **An upload**         | The part that carries the system the documents are for. An upload names a system and no environment at all, and with a part per system it does not have to |
+| **An upload**         | The part that carries the system the documents are for, and the shell. An upload names a system and no environment at all, and with a part per system it does not have to. The shell holds the systems index, which changes when a system is documented for the first time. A removal asks the same way; once the site no longer has the system, only the shell is asked for |
 | **The architecture import** | **Every part** of every site documenting the environment it read, when it stored a *changed* landscape - see below. `jeap.doc.build.triggered` is how many parts that was |
 | **An operator**       | The part they named, or every part of the site - `POST /api/sites/{site}/builds`, see [API](api.md). It ignores `publish-on-upload`: a site published only when something is uploaded to it is exactly the site somebody has to be able to publish by hand |
 
@@ -577,7 +646,7 @@ when they poll.
 identifier. That is what makes the wall clock of a full publication measurable: its parts are built across the
 instances, so no single one of them knows when the last of them finished - see
 [Observability](observability.md#the-publication-start-to-finish). An upload names no publication: it asks for
-one part, and one part is not a publication.
+one system, and that is not a publication.
 
 ### The import is what publishes a site
 

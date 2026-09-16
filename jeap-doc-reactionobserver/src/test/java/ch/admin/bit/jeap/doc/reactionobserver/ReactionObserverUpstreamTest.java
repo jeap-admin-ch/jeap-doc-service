@@ -204,6 +204,18 @@ class ReactionObserverUpstreamTest {
                 .hasMessageContaining("without a list of entries");
     }
 
+    /** The environment, the address and the status all reach the message, none of them as a placeholder. */
+    @Test
+    void systemIndex_whenTheObserverFails_thenTheMessageNamesTheEnvironmentAndTheStatus() {
+        stub(SYSTEM_INDEX, 503, "");
+
+        assertThatThrownBy(() -> upstream.index(ENVIRONMENT, SYSTEM_REACTIONS, null))
+                .isInstanceOf(ArchitectureModelUnavailableException.class)
+                .hasMessageContaining("environment " + ENVIRONMENT + " at http")
+                .hasMessageContaining("answered 503")
+                .hasMessageNotContaining("%");
+    }
+
     @Test
     void systemIndex_whenTheTokenIsNotAllowedToRead_thenTheMessageNamesTheRole() {
         stub(SYSTEM_INDEX, 403, "");

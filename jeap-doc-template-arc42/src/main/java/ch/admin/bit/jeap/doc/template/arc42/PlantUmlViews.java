@@ -80,15 +80,6 @@ final class PlantUmlViews {
      */
     private static final String SUBJECT_STYLE = " #Gold;line.bold";
 
-    /**
-     * What every arrow of a component diagram carries, so that the relations read apart from the boxes. It
-     * goes inside the arrow - {@code -[#blue]->} - which is why {@link #arrowOf} builds the whole token.
-     * <p>
-     * The entity relationship diagram is not one of these: it builds its own <code>&#125;o--||</code> crow's
-     * feet, which are data-model notation rather than relations and stay as they are.
-     */
-    private static final String RELATION_COLOUR = "#blue";
-
     private PlantUmlViews() {
     }
 
@@ -419,17 +410,26 @@ final class PlantUmlViews {
     }
 
     /**
-     * A REST call is dotted and a message is solid, so the two are told apart without reading the labels -
-     * and both are blue, so a relation reads apart from the boxes.
+     * The arrow of each kind of relation, as the architecture repository's Confluence pages drew them: an
+     * event dashed green, a command dashed blue, a REST call solid blue. A message and a REST call differ by
+     * the line as well as the colour, so the colour alone carries no meaning.
      * <p>
-     * The colour goes <b>inside</b> the arrow, which is where PlantUML takes it: the dotted form is
-     * {@code .[#blue].>} and the solid one {@code -[#blue]->}. Both were rendered before they shipped, along
-     * with a deliberately broken diagram to prove the check could fail.
+     * The style goes <b>inside</b> the arrow, which is where PlantUML takes it. The entity relationship diagram
+     * does not use these: its crow's feet are data-model notation.
      */
     private static String arrowOf(RelationKind kind) {
-        String colour = "[" + RELATION_COLOUR + "]";
-        return kind == RelationKind.REST_API ? "." + colour + ".>" : "-" + colour + "->";
+        return switch (kind) {
+            case EVENT -> "-[#green,dashed]->";
+            case COMMAND -> "-[#blue,dashed]->";
+            case REST_API -> "-[#blue]->";
+            case OTHER -> "-[#gray]->";
+        };
     }
+
+    /** What a page says under a diagram about its arrows. */
+    static final String ARROW_LEGEND = "Dashed arrows represent asynchronous messages \u2014 green for events "
+                                       + "and blue for commands \u2014 while solid arrows represent "
+                                       + "synchronous REST calls.";
 
     /**
      * The identifiers of one diagram.

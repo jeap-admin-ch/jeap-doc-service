@@ -11,7 +11,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -72,18 +71,17 @@ class DocumentationValidationController {
                           + "request carrying any other is rejected.",
             requestBody = @RequestBody(required = true,
                     content = @Content(schema = @Schema(implementation = PathTreeDto.class))))
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Nothing to report",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
-                            schema = @Schema(implementation = StructureReportDto.class))),
-            @ApiResponse(responseCode = "422", description = "The structure is invalid; the report is carried "
-                                                            + "as the extension members of the problem document",
-                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
-                            schema = @Schema(implementation = ProblemDetail.class)))})
+    @ApiResponse(responseCode = "200", description = "Nothing to report",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(implementation = StructureReportDto.class)))
+    @ApiResponse(responseCode = "422", description = "The structure is invalid; the report is carried as the "
+                                                    + "extension members of the problem document",
+            content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    schema = @Schema(implementation = ProblemDetail.class)))
     @PostMapping(path = VALIDATION_PATH, consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE})
     @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM)
-    public ResponseEntity<?> validate(
+    public ResponseEntity<Object> validate(
             @Parameter(description = "What the documents document: system-docs, component-docs or library-docs")
             @RequestParam("type") String type,
             @Parameter(description = "System the documents belong to, and the system the role is checked for")
@@ -121,7 +119,7 @@ class DocumentationValidationController {
         log.info("The documentation set of {} does not follow {}: {} problem(s) in {} path(s).",
                 system, report.template(), report.findings().size() + report.findingsOmitted(),
                 report.pathsChecked());
-        return ResponseEntity.unprocessableEntity()
+        return ResponseEntity.unprocessableContent()
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .body(problemOf(answer));
     }
@@ -141,7 +139,7 @@ class DocumentationValidationController {
             detail = "%d problem%s in %d path%s.".formatted(problems, plural(problems),
                     report.pathsChecked(), plural(report.pathsChecked()));
         }
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, detail);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, detail);
         problem.setType(URI.create(PROBLEM_TYPE));
         problem.setTitle("The documentation structure is invalid");
         report.into(problem);

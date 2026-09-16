@@ -60,7 +60,8 @@ class FrontMatterTest {
 
     @Test
     void keysAreLowerCaseWithUnderscores() {
-        assertThatThrownBy(() -> frontMatter().put("sidebarLabel", "x"))
+        FrontMatter frontMatter = frontMatter();
+        assertThatThrownBy(() -> frontMatter.put("sidebarLabel", "x"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * rewritten fails the whole Docusaurus build, minutes into a run; one that should not have been leaves the
  * check that catches a generator bug, and publishes a dead link instead.
  */
+// Each case is a rule of its own about which link leaves the check, so each stays a test with its own name.
+@SuppressWarnings("java:S5976")
 class CrossPartLinksTest {
 
     private static final String SITE = "docs";

@@ -150,6 +150,22 @@ class GeneratorPropertiesTest {
                 .hasMessageContaining("/actuator(");
     }
 
+    @Test
+    void byDefault_noComponentIsLeftOutOfTheViews() {
+        assertThat(new GeneratorProperties().viewExclusions().excludesNothing()).isTrue();
+    }
+
+    @Test
+    void aViewExcludedComponentThatIsNotARegularExpression_stopsTheStartup() {
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setViewExcludedComponents(java.util.List.of("orders-mock("));
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.view-excluded-components")
+                .hasMessageContaining("orders-mock(");
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {1, 2, 60, 1000})
     void aDiagramWithRoomForAtLeastOneBox_isAccepted(int nodes) {

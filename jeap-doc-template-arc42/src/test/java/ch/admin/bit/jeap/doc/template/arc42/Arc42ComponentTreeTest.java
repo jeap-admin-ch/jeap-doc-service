@@ -111,7 +111,7 @@ class Arc42ComponentTreeTest {
     private ReactionViews reactionsOfIntake() {
         ObservedReactions observed = new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake")),
+                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake", null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, 2, 12)), List.of());
         return ReactionViews.of(REACTIONS_IMPORTED_AT, ReactionView.empty(),
                 Map.of("orders-intake", ReactionView.of(observed, context.model(), orders)), Map.of(),
@@ -150,9 +150,8 @@ class Arc42ComponentTreeTest {
     }
 
     /**
-     * <b>The S-053 case</b>: a component the architecture repository knows nothing else about. It gets the
-     * three chapters that can always be written, no empty folder, and no link to a page that was not
-     * written - which is what would fail the site build.
+     * A component the architecture repository knows nothing else about. It gets chapter 1, no empty chapter
+     * and no link to a page that was not written - which is what would fail the site build.
      */
     @Test
     void aComponentWithNothingButANameGetsNoEmptyChapterAndNoDeadLink() throws IOException {
@@ -168,20 +167,18 @@ class Arc42ComponentTreeTest {
                 "component-architecture/_category_.json",
                 "component-architecture/index.md",
                 "component-architecture/1-intro/_category_.json",
-                "component-architecture/1-intro/index.md",
-                "component-architecture/3-context-and-scope/_category_.json",
-                "component-architecture/3-context-and-scope/index.md",
-                "component-architecture/3-context-and-scope/context-view.md");
+                "component-architecture/1-intro/index.md");
         assertThat(read("component-architecture/index.md"))
-                .describedAs("the landing page lists the two chapters that exist and no more")
+                .describedAs("the landing page lists the one chapter that exists and no more")
                 .contains("1. Introduction and Goals")
-                .contains("3. Context and Scope")
+                .doesNotContain("3. Context and Scope")
                 .doesNotContain("5. Building Block View")
                 .describedAs("nothing was observed reacting to it either")
                 .doesNotContain("6. Runtime View");
         assertThat(everyPage())
                 .describedAs("and no page of the tree links into a chapter that was not written")
-                .allSatisfy(page -> assertThat(page).doesNotContain(STRUCTURE_URL + "building-block-view/")
+                .allSatisfy(page -> assertThat(page).doesNotContain(STRUCTURE_URL + "context-and-scope/")
+                        .doesNotContain(STRUCTURE_URL + "building-block-view/")
                         .doesNotContain(STRUCTURE_URL + "runtime-view/"));
     }
 
@@ -207,13 +204,10 @@ class Arc42ComponentTreeTest {
         assertThat(read("component-architecture/_category_.json"))
                 .contains("\"label\": \"Component Architecture\"");
         assertThat(read("component-architecture/5-building-block-view/_category_.json"))
-                .describedAs("open when the page is first shown - a reader has to see what is documented "
-                             + "about a system without clicking twelve times")
                 .isEqualTo("""
                         {
                           "label": "5. Building Block View",
-                          "position": 5,
-                          "collapsed": false
+                          "position": 5
                         }
                         """);
     }
@@ -285,25 +279,27 @@ class Arc42ComponentTreeTest {
         generate();
 
         String page = read("component-architecture/3-context-and-scope/context-view.md");
-        assertThat(page).contains("# Component Context View");
-        assertThat(page).describedAs("a fenced diagram, never an image")
+        assertThat(page).contains("# Component Context View")
+                .describedAs("a fenced diagram, never an image")
                 .contains("```plantuml")
                 .doesNotContain(".png")
-                .doesNotContain(".svg");
-        assertThat(page).describedAs("the component in the middle, inside its system's package")
+                .doesNotContain(".svg")
+                .describedAs("the component in the middle, inside its system's package")
                 .contains("package \"orders\"")
-                .contains("component \"orders-intake\"");
-        assertThat(page).describedAs("the sibling it exchanges something with")
-                .contains("component \"orders-risk\"");
-        assertThat(page).describedAs("and the counterpart of the other system, named and inside a package "
+                .contains("component \"orders-intake\"")
+                .describedAs("the sibling it exchanges something with")
+                .contains("component \"orders-risk\"")
+                .describedAs("and the counterpart of the other system, named and inside a package "
                                      + "for that system - what this component talks to is a component, and "
                                      + "the model knows which")
                 .contains("package \"shipping\"")
-                .contains("component \"shipping-gateway\"");
-        assertThat(page).describedAs("the table of relations below it").contains("## Relations")
+                .contains("component \"shipping-gateway\"")
+                .describedAs("the table of relations below it").contains("## Relations")
+                .contains("| From | To | Type | Interaction |")
+                .contains("| Event |")
                 .contains("OrdersPaymentAcceptedEvent")
-                .contains("ShippingArrangedEvent");
-        assertThat(page).describedAs("and the table names a foreign counterpart with the system that owns "
+                .contains("ShippingArrangedEvent")
+                .describedAs("and the table names a foreign counterpart with the system that owns "
                                      + "it, because two systems may each have a component of one name")
                 .contains("[shipping-gateway](/systems/shipping/system-architecture/building-block-view/"
                           + "components/shipping-gateway/) ([shipping](/systems/shipping/))");
@@ -327,11 +323,9 @@ class Arc42ComponentTreeTest {
                 .contains("[[/docs/dev/systems/shipping/]]");
     }
 
-    /**
-     * A component that exchanges nothing says so, which is worth reading. An empty diagram is not.
-     */
+    /** No content, no page: a component that exchanges nothing gets no chapter 3. */
     @Test
-    void theContextView_whenTheComponentExchangesNothing_thenItSaysSoInsteadOfDrawing() throws IOException {
+    void theContextView_whenTheComponentExchangesNothing_thenThereIsNoChapterThree() throws IOException {
         DocumentedComponent lonely = componentOf(orders, "orders-intake");
         orders = new DocumentedSystem("orders", "orders", null, List.of(), null, List.of(lonely), List.of(),
                 List.of());
@@ -339,9 +333,8 @@ class Arc42ComponentTreeTest {
 
         generate(lonely);
 
-        assertThat(read("component-architecture/3-context-and-scope/context-view.md"))
-                .contains("records no relation between this component and anything else")
-                .doesNotContain("```plantuml");
+        assertThat(componentDirectory.resolve("component-architecture/3-context-and-scope")).doesNotExist();
+        assertThat(read("component-architecture/index.md")).doesNotContain("3. Context and Scope");
     }
 
     /** The picture is cut, the facts are not: the page says how many counterparts it left out. */
@@ -355,10 +348,10 @@ class Arc42ComponentTreeTest {
         assertThat(page).contains(":::note[Not every counterpart is drawn")
                 .describedAs("how many were left out, agreeing with the count, and no format specifier")
                 .contains("One of the 2 counterparts this component exchanges something with is left out")
-                .doesNotContain("%d");
-        assertThat(page).describedAs("and the table still carries the relation of the sibling it left out")
-                .contains("orders-risk");
-        assertThat(page).describedAs("the counterpart of the other system is not counted as left out: with "
+                .doesNotContain("%d")
+                .describedAs("and the table still carries the relation of the sibling it left out")
+                .contains("orders-risk")
+                .describedAs("the counterpart of the other system is not counted as left out: with "
                                      + "no room to open that system it is drawn whole, and the relation is "
                                      + "on that box")
                 .contains("component \"shipping\"");
@@ -385,21 +378,21 @@ class Arc42ComponentTreeTest {
         generate();
 
         String page = read("component-architecture/5-building-block-view/database-schema.md");
-        assertThat(page).contains("# Database Schema").contains("`orders_db`").contains("`1.2.3`");
-        assertThat(page).contains("```plantuml")
+        assertThat(page).contains("# Database Schema").contains("`orders_db`").contains("`1.2.3`")
+                .contains("```plantuml")
                 .contains("entity \"orders_order\"")
                 .contains("* id : uuid <<PK>>")
                 .contains("  --")
                 .contains("party_id : uuid <<FK>>")
-                .contains("\"orders_order\" }o--|| \"orders_party\" : party_id");
-        assertThat(page).describedAs("the tables with their columns, whatever the diagram had room for")
+                .contains("\"orders_order\" }o--|| \"orders_party\" : party_id")
+                .describedAs("the tables with their columns, whatever the diagram had room for")
                 .contains("## Tables")
                 .contains("### `orders_order`")
                 .contains("### `orders_party`")
-                .contains("FK to `orders_party`");
-        assertThat(page).describedAs("and it says which two tables it left out on purpose")
+                .contains("FK to `orders_party`")
+                .describedAs("and it says which two tables it left out on purpose")
                 .contains("`flyway_schema_history`")
-                .contains("The machinery of a schema is not the data of the component");
+                .contains("The following technical table(s) are not shown in the diagram and the list below");
         assertThat(page.indexOf("Some tables are left out on purpose"))
                 .describedAs("above the list with the other reduction notes, rather than under the last of "
                              + "two hundred table sections where it reads as belonging to that table")
@@ -425,26 +418,26 @@ class Arc42ComponentTreeTest {
         assertThat(page).describedAs("both numbers, and the second not put down to one of the two reductions "
                                      + "- three of the hundred and five tables the schema hides are machinery")
                 .contains("| Tables | 108 (3 documented entries) |")
-                .doesNotContain("after grouping partitions");
-        assertThat(page).describedAs("one heading per family rather than one per partition")
+                .doesNotContain("after grouping partitions")
+                .describedAs("one heading per family rather than one per partition")
                 .contains("### `doc_meta_*`")
                 .contains("### `orders_order`")
-                .doesNotContain("### `doc_meta_7`");
-        assertThat(page).describedAs("and the arrow reaches the family, not a partition")
-                .contains("\"orders_order\" }o--|| \"doc_meta_*\"");
-        assertThat(page).describedAs("the convention is named, with one of this schema's own entries as the "
+                .doesNotContain("### `doc_meta_7`")
+                .describedAs("and the arrow reaches the family, not a partition")
+                .contains("\"orders_order\" }o--|| \"doc_meta_*\"")
+                .describedAs("the convention is named, with one of this schema's own entries as the "
                                      + "example rather than an invented name")
                 .contains(":::info[Tables of one name pattern are grouped]")
                 .contains("One group of tables of this schema shares a name pattern and a shape")
                 .contains("`_*`")
-                .contains("`doc_meta_*` is one");
-        assertThat(page).describedAs("the entry says what it stands for, so nothing is merely hidden - and "
+                .contains("`doc_meta_*` is one")
+                .describedAs("the entry says what it stands for, so nothing is merely hidden - and "
                                      + "says it as what was observed rather than as a partitioning nothing "
                                      + "here can read")
                 .contains("105 tables share this name pattern and this shape, `_1` to `_105`. They are "
                           + "documented as one entry.")
-                .doesNotContain("partitions of one table");
-        assertThat(page).describedAs("nothing was cut, so neither cutting note is there")
+                .doesNotContain("partitions of one table")
+                .describedAs("nothing was cut, so neither cutting note is there")
                 .doesNotContain("Not every table is drawn")
                 .doesNotContain("Not every table is listed");
     }
@@ -462,17 +455,17 @@ class Arc42ComponentTreeTest {
 
         String page = read("component-architecture/5-building-block-view/database-schema.md");
         assertThat(page).contains(":::note[Not every table is listed]")
-                .contains("This page lists 1 of the 2 entries, by name, and the rest are named nowhere on it.");
-        assertThat(page).describedAs("and it offers no way out of the site: the only thing that carries every "
+                .contains("This page lists 1 of the 2 entries, by name, and the rest are named nowhere on it.")
+                .describedAs("and it offers no way out of the site: the only thing that carries every "
                                      + "entry is the architecture repository's API, which is an internal "
                                      + "address no reader of a published site can follow. The provenance in "
                                      + "the front matter names that upstream, and is not a link")
                 .doesNotContain("](https://archrepo")
-                .doesNotContain("docs-api");
-        assertThat(page).describedAs("the first entry by name is written and the second is not")
+                .doesNotContain("docs-api")
+                .describedAs("the first entry by name is written and the second is not")
                 .contains("### `orders_order`")
-                .doesNotContain("### `orders_party`");
-        assertThat(page).describedAs("and the diagram is not blamed for it: it draws out of the listed "
+                .doesNotContain("### `orders_party`")
+                .describedAs("and the diagram is not blamed for it: it draws out of the listed "
                                      + "entries, and its own bound of a hundred was nowhere near")
                 .doesNotContain("Not every table is drawn");
     }
@@ -519,13 +512,13 @@ class Arc42ComponentTreeTest {
                 .describedAs("what the picture shows, agreeing with the list it draws from, and no format "
                              + "specifiers")
                 .contains("The diagram draws 1 of the 2 listed entries")
-                .doesNotContain("%d");
-        assertThat(page).describedAs("the list carries both all the same")
+                .doesNotContain("%d")
+                .describedAs("the list carries both all the same")
                 .contains("### `orders_order`")
-                .contains("### `orders_party`");
-        assertThat(page).describedAs("nothing claims the list is short, because it is not")
-                .doesNotContain("Not every table is listed");
-        assertThat(page).describedAs("and no arrow points at a table the diagram does not have")
+                .contains("### `orders_party`")
+                .describedAs("nothing claims the list is short, because it is not")
+                .doesNotContain("Not every table is listed")
+                .describedAs("and no arrow points at a table the diagram does not have")
                 .doesNotContain("}o--||");
     }
 
@@ -550,11 +543,11 @@ class Arc42ComponentTreeTest {
         String page = read("component-architecture/5-building-block-view/database-schema.md");
         assertThat(page).contains(":::note[Not every table is drawn")
                 .contains("The diagram draws 1 of the 2 listed entries")
-                .contains("the list below is bounded as well, and says where the rest are");
-        assertThat(page).describedAs("and it claims nothing about a list that is bounded itself")
+                .contains("the list below is bounded as well, and says where the rest are")
+                .describedAs("and it claims nothing about a list that is bounded itself")
                 .doesNotContain("carries the one it leaves out")
-                .doesNotContain("carries every one it leaves out");
-        assertThat(page).describedAs("the note that does say how much is missing")
+                .doesNotContain("carries every one it leaves out")
+                .describedAs("the note that does say how much is missing")
                 .contains(":::note[Not every table is listed]")
                 .contains("This page lists 2 of the 3 entries, by name, and the rest are named nowhere on it.");
     }
@@ -579,15 +572,15 @@ class Arc42ComponentTreeTest {
         assertThat(page).contains("# Database Schema")
                 .contains("has not replicated it yet")
                 .describedAs("and it says what fixes that rather than sending the reader anywhere")
-                .contains("The next import brings them.");
-        assertThat(page).describedAs("the version the model knows is on the page all the same")
-                .contains("`1.2.3`");
-        assertThat(page).describedAs("and no link into the architecture repository: it is an internal address, "
+                .contains("The next import brings them.")
+                .describedAs("the version the model knows is on the page all the same")
+                .contains("`1.2.3`")
+                .describedAs("and no link into the architecture repository: it is an internal address, "
                                      + "and a reader of a published site cannot follow it. The provenance in "
                                      + "the front matter names that upstream, and is not a link")
                 .doesNotContain("](https://archrepo")
-                .doesNotContain("docs-api");
-        assertThat(page).describedAs("and nothing that would need the replicated copy")
+                .doesNotContain("docs-api")
+                .describedAs("and nothing that would need the replicated copy")
                 .doesNotContain("```plantuml")
                 .doesNotContain("## Tables");
         assertThat(read("component-architecture/5-building-block-view/index.md"))
@@ -613,12 +606,12 @@ class Arc42ComponentTreeTest {
 
         String page = read("component-architecture/5-building-block-view/rest-api.md");
         assertThat(page).contains("# REST API").contains("2.4.0")
-                .contains("https://orders.example.ch/api");
-        assertThat(page).describedAs("the deep link into the architecture repository's Swagger UI")
-                .contains("https://archrepo.example.com/archrepo/swagger-ui/index.html");
-        assertThat(page).contains("## Orders").contains("Everything about an order")
-                .contains("`GET`").contains("`/api/orders`").contains("List the orders");
-        assertThat(page).describedAs("a deprecated operation is shown and marked, and reads as a sentence")
+                .contains("https://orders.example.ch/api")
+                .describedAs("the deep link into the architecture repository's Swagger UI")
+                .contains("https://archrepo.example.com/archrepo/swagger-ui/index.html")
+                .contains("## Orders").contains("Everything about an order")
+                .contains("`GET`").contains("`/api/orders`").contains("List the orders")
+                .describedAs("a deprecated operation is shown and marked, and reads as a sentence")
                 .contains("| **Deprecated** - One order |");
     }
 
@@ -639,9 +632,72 @@ class Arc42ComponentTreeTest {
         String page = read("component-architecture/5-building-block-view/rest-api.md");
         assertThat(page).contains("## Operations")
                 .contains("Grouping the operations needs the published specification")
-                .contains("`/api/orders`");
-        assertThat(page).describedAs("and the link to the specification itself is still there")
+                .contains("`/api/orders`")
+                .describedAs("and the link to the specification itself is still there")
                 .contains("https://archrepo.example.com/archrepo/swagger-ui/index.html");
+    }
+
+    /**
+     * <b>Who calls an operation is on the page again.</b> It is what the Confluence pages had and what the
+     * reader asked for, and it is joined from the relations by method and path - the specification writes a
+     * trailing slash the Pact importer does not.
+     */
+    @Test
+    void theRestApiPage_namesTheCallersOfEachOperationAndLinksThem() throws IOException {
+        context = contextWithCallers();
+
+        generate();
+
+        String page = read("component-architecture/5-building-block-view/rest-api.md");
+        assertThat(page)
+                .contains("| Method | Path | Summary | Callers |")
+                .describedAs("both callers of the operation, sorted, each linked to its component page")
+                .contains("[billing-dunning](/systems/billing/system-architecture/building-block-view/"
+                          + "components/billing-dunning/)")
+                .contains("[billing-invoices](/systems/billing/system-architecture/building-block-view/"
+                          + "components/billing-invoices/)")
+                .describedAs("and the Pact contract rides with the caller that has one, above the line")
+                .contains(":sup[[pact](https://pacts.example.ch/orders)]")
+                .describedAs("an operation nobody is known to call says so the way an empty cell does")
+                .contains("| `GET` | `/api/orders/{id}` | **Deprecated** - One order | - |");
+    }
+
+    /**
+     * <b>A caller of an operation the specification does not declare is named all the same.</b> The
+     * architecture model knows concrete paths the published specification has no operation for, and those
+     * callers would otherwise be on no row of the page at all.
+     */
+    @Test
+    void theRestApiPage_whenACalledOperationIsNotDeclared_thenItIsNamedWithItsCallers() throws IOException {
+        context = contextWithCallers();
+
+        generate();
+
+        String page = read("component-architecture/5-building-block-view/rest-api.md");
+        assertThat(page)
+                .contains("These operations are called but not declared by the specification:")
+                .contains("| Operation | Callers |")
+                .contains("| `GET /api/vats/1` |")
+                .describedAs("and an operation the specification does declare is not in that note")
+                .doesNotContain("`GET /api/orders` |");
+    }
+
+    /**
+     * What a reader is shown must not depend on whether the specification happens to have been replicated,
+     * which is already the rule of the branch that lists the model's operations.
+     */
+    @Test
+    void theRestApiPage_whenNoSpecificationWasReplicated_thenTheCallersAreStillNamed() throws IOException {
+        DocumentedComponent withoutSpec = componentOf(orders, "orders-intake")
+                .withArtifacts(componentOf(orders, "orders-intake").schema(), null);
+        orders = orders(withoutSpec);
+        context = contextWithCallers();
+
+        generate(withoutSpec);
+
+        assertThat(read("component-architecture/5-building-block-view/rest-api.md"))
+                .contains("| Method | Path | Callers |")
+                .contains("billing-invoices");
     }
 
     /**
@@ -660,16 +716,39 @@ class Arc42ComponentTreeTest {
 
         String page = read("component-architecture/5-building-block-view/rest-api.md");
         assertThat(page).describedAs("the component's own operations are documented")
-                .contains("## Orders").contains("`/api/orders`");
-        assertThat(page).describedAs("and the platform's are not, nor is the group that held only them")
-                .doesNotContain("/actuator")
-                .doesNotContain("## Actuator");
-        assertThat(page).describedAs("the count is what the page documents")
-                .contains("| Operations | 2 |");
-        assertThat(page).describedAs("and the page says how many it left out, so the count can be compared "
-                                     + "with the specification")
-                .contains(":::note[Not every operation is documented]")
-                .contains("3 of the 5 operations this specification declares are not described here");
+                .contains("## Orders").contains("| `GET` | `/api/orders` |")
+                .describedAs("and the platform's are not, nor is the group that held only them")
+                .doesNotContain("| `GET` | `/actuator")
+                .doesNotContain("## Actuator")
+                .describedAs("the count is what the page documents")
+                .contains("| Operations | 2 |")
+                .describedAs("and the page names what it left out and why, so the count can be "
+                                     + "compared with the specification")
+                .contains("The following technical endpoints are not shown below: `GET /actuator/health`, "
+                          + "`GET /actuator/info`, `GET /actuator/metrics`.")
+                .describedAs("leaving them out is intended, so it is no warning")
+                .doesNotContain(":::note");
+    }
+
+    /** A broad exclusion can leave out many operations. The note names twenty and counts the rest. */
+    @Test
+    void theRestApiPage_whenManyOperationsAreLeftOut_thenTheNoteNamesTwentyAndCountsTheRest() throws IOException {
+        List<ApiOperation> internal = new ArrayList<>();
+        for (int i = 10; i < 35; i++) {
+            internal.add(new ApiOperation("GET", "/internal/" + i, "", false, List.of("Internal")));
+        }
+        RestApiOverview broad = new RestApiOverview("2.4.0", null, List.of(new ApiGroup("Internal", null,
+                internal)));
+        DocumentedComponent withInternal = componentOf(orders, "orders-intake")
+                .withArtifacts(componentOf(orders, "orders-intake").schema(), broad);
+        orders = orders(withInternal);
+        context = contextWithout(orders, List.of("/internal/.*"));
+
+        generate(withInternal);
+
+        String page = read("component-architecture/5-building-block-view/rest-api.md");
+        assertThat(page).contains("`GET /internal/10`").contains("`GET /internal/29` and 5 more.")
+                .doesNotContain("`GET /internal/30`");
     }
 
     /** Excluding nothing documents everything, which is what an instance that configures no list gets. */
@@ -684,8 +763,8 @@ class Arc42ComponentTreeTest {
         generate(withActuator);
 
         String page = read("component-architecture/5-building-block-view/rest-api.md");
-        assertThat(page).contains("`/actuator/health`").contains("| Operations | 5 |");
-        assertThat(page).doesNotContain("Not every operation is documented");
+        assertThat(page).contains("`/actuator/health`").contains("| Operations | 5 |")
+                .doesNotContain("Left out because");
     }
 
     /**
@@ -706,13 +785,14 @@ class Arc42ComponentTreeTest {
         String page = read("component-architecture/5-building-block-view/rest-api.md");
         assertThat(page).describedAs("the count and the note agree that nothing is described here")
                 .contains("| Operations | 0 |")
-                .contains(":::note[Not every operation is documented]")
-                .contains("5 of the 5 operations this specification declares are not described here");
-        assertThat(page).describedAs("and the page says what is true, with the specification to open")
+                .contains("The following technical endpoints are not shown below: `GET /actuator/health`, "
+                          + "`GET /actuator/info`, `GET /actuator/metrics`, `GET /api/orders`, "
+                          + "`GET /api/orders/{id}`.")
+                .describedAs("and the page says what is true, with the specification to open")
                 .contains("Every operation this specification declares is one this documentation leaves out")
                 .contains("[the specification itself](https://archrepo.example.com/archrepo/swagger-ui/"
-                          + "index.html");
-        assertThat(page).describedAs("neither of the two sentences that would be false")
+                          + "index.html")
+                .describedAs("neither of the two sentences that would be false")
                 .doesNotContain("has not been replicated")
                 .doesNotContain("told this service nothing about its operations");
     }
@@ -745,13 +825,51 @@ class Arc42ComponentTreeTest {
         generate();
 
         String page = read("component-architecture/5-building-block-view/messages.md");
-        assertThat(page).contains("# Messages").contains("## Produces").contains("## Consumes");
-        assertThat(page).contains("/systems/orders/system-architecture/building-block-view/events/"
+        assertThat(page).contains("# Messages").contains("## Produces").contains("## Consumes")
+                .contains("/systems/orders/system-architecture/building-block-view/events/"
                                   + "orders-payment-accepted-event/")
                 .contains("/systems/orders/system-architecture/building-block-view/commands/"
-                          + "orders-ship-the-order-command/");
-        assertThat(page).describedAs("the topic and the versions under contract")
+                          + "orders-ship-the-order-command/")
+                .describedAs("the topic and the versions under contract")
                 .contains("`orders-payment`").contains("`1.0.0`");
+    }
+
+    /**
+     * <b>The other side of a contract is a column.</b> Who consumes what this component publishes, and who
+     * publishes what it consumes - read off the message's own contracts, so this page and the message's page
+     * cannot disagree.
+     */
+    @Test
+    void theMessagesPage_namesTheConsumersOfWhatItProducesAndThePublishersOfWhatItConsumes()
+            throws IOException {
+        generate();
+
+        String page = read("component-architecture/5-building-block-view/messages.md");
+        String produces = page.substring(page.indexOf("## Produces"), page.indexOf("## Consumes"));
+        String consumes = page.substring(page.indexOf("## Consumes"));
+        assertThat(produces)
+                .contains("| Message | Kind | Defined by | Topic | Versions | Consumers |")
+                .describedAs("the consumer of the event, linked into its own system")
+                .contains("[shipping-gateway](/systems/shipping/system-architecture/building-block-view/"
+                          + "components/shipping-gateway/)");
+        assertThat(consumes)
+                .contains("| Message | Kind | Defined by | Topic | Versions | Publishers |")
+                .describedAs("the publisher of the command this component consumes, another system's")
+                .contains("[shipping-gateway](/systems/shipping/system-architecture/building-block-view/"
+                          + "components/shipping-gateway/)");
+    }
+
+    /** A role this service does not know has no other side to name, and that table keeps its columns. */
+    @Test
+    void theMessagesPage_whenARoleIsNotRecognised_thenThatTableGetsNoCounterpartColumn() throws IOException {
+        generate();
+
+        String page = read("component-architecture/5-building-block-view/messages.md");
+        String unknown = page.substring(page.indexOf("## Contracts With An Unrecognised Role"));
+        assertThat(unknown)
+                .contains("| Message | Kind | Defined by | Topic | Versions |")
+                .doesNotContain("Consumers")
+                .doesNotContain("Publishers");
     }
 
     /**
@@ -767,8 +885,8 @@ class Arc42ComponentTreeTest {
         String page = read("component-architecture/5-building-block-view/messages.md");
         assertThat(page).describedAs("the event, linked into the tree of the system that defines it")
                 .contains("/systems/shipping/system-architecture/building-block-view/events/"
-                          + "shipping-dispatched-event/");
-        assertThat(page).describedAs("named as another system's, and with its own topic and version")
+                          + "shipping-dispatched-event/")
+                .describedAs("named as another system's, and with its own topic and version")
                 .contains("`shipping`").contains("`shipping-dispatch`").contains("`3.1.0`");
     }
 
@@ -853,7 +971,7 @@ class Arc42ComponentTreeTest {
                 .contains("```dot")
                 .contains("digraph \"reactions\"")
                 .contains("\"REACTION-2\" [id=\"REACTION-2\"")
-                .contains("| Triggered by | Component | Publishes in answer | Times observed |")
+                .contains("| Trigger | Component | Action | Median per day |")
                 .contains("Observed at runtime by the reaction observer");
         assertThat(read("component-architecture/index.md")).contains("Runtime View");
     }
@@ -1083,6 +1201,40 @@ class Arc42ComponentTreeTest {
     }
 
     /**
+     * The same landscape with a system whose components call the REST API of {@code orders-intake}: one of
+     * them through a relation carrying a Pact contract, and both on the same operation.
+     */
+    private GenerationContext contextWithCallers() {
+        return new GenerationContext(ArchitectureModel.of(List.of(orders, shipping(), billing())), "dev",
+                "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT, LIMITS,
+                "/docs/dev/");
+    }
+
+    /**
+     * The caller, which writes its path without the trailing slash the specification has - which is the join
+     * this has to survive.
+     */
+    private static DocumentedSystem billing() {
+        return new DocumentedSystem("billing", "billing", "Bills what was ordered", List.of(), null,
+                List.of(plainComponent("billing-invoices"), plainComponent("billing-dunning")),
+                List.of(new SystemRelation(RelationKind.REST_API, "billing", "billing-invoices", "orders",
+                                "orders-intake", null, "GET", "/api/orders",
+                                "https://pacts.example.ch/orders"),
+                        new SystemRelation(RelationKind.REST_API, "billing", "billing-dunning", "orders",
+                                "orders-intake", null, "get", "/api/orders/", null),
+                        // A concrete path the specification declares nothing for, which no normalisation
+                        // joins onto an operation.
+                        new SystemRelation(RelationKind.REST_API, "billing", "billing-invoices", "orders",
+                                "orders-intake", null, "GET", "/api/vats/1", null)),
+                List.of());
+    }
+
+    private static DocumentedComponent plainComponent(String name) {
+        return new DocumentedComponent(name, name, null, ComponentType.BACKEND_SERVICE, null, null, null,
+                List.of(), null, null, null);
+    }
+
+    /**
      * The system the component belongs to: a sibling it exchanges an event with, a relation to another
      * system, and the two messages it has a contract on.
      */
@@ -1103,13 +1255,21 @@ class Arc42ComponentTreeTest {
                                 null, null, List.of(DocumentedMessageVersion.of("1.0.0")),
                                 List.of(new MessageContract(ContractRole.PRODUCES, "ORDERS-INTAKE", "orders",
                                                 "orders-payment", List.of("1.0.0")),
+                                        // The other side of what this component publishes, which its page
+                                        // names in the Consumers column.
+                                        new MessageContract(ContractRole.CONSUMES, "shipping-gateway",
+                                                "shipping", "orders-payment", List.of("1.0.0")),
                                         new MessageContract(ContractRole.UNKNOWN, "orders-intake", "orders",
                                                 "orders-payment", List.of("1.0.0")))),
                         new DocumentedMessage("OrdersShipTheOrderCommand", "orders-ship-the-order-command",
                                 MessageKind.COMMAND, "internal", "orders-shipping", "Ship it.", null, null,
                                 List.of(DocumentedMessageVersion.of("2.0.0")),
                                 List.of(new MessageContract(ContractRole.CONSUMES, "orders-intake", "orders",
-                                        "orders-shipping", List.of("2.0.0"))))));
+                                                "orders-shipping", List.of("2.0.0")),
+                                        // And the other side of what it consumes, which is the Publishers
+                                        // column.
+                                        new MessageContract(ContractRole.PRODUCES, "shipping-gateway",
+                                                "shipping", "orders-shipping", List.of("2.0.0"))))));
     }
 
     /**

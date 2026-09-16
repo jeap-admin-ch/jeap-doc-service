@@ -40,6 +40,10 @@
     --jeap-banner-background: #fdf3d7;
     --jeap-banner-color: #4a3a05;
     --jeap-banner-border: #efdda2;
+
+    /* A filter match in a table. */
+    --jeap-mark-background: #fbe7a1;
+    --jeap-mark-color: #1b1f24;
 }
 
 [data-theme='dark'] {
@@ -77,4 +81,8 @@
     --jeap-banner-background: #3d3413;
     --jeap-banner-color: #f4e6b8;
     --jeap-banner-border: #5c4f1d;
+
+    /* A filter match in a table. */
+    --jeap-mark-background: #6a5714;
+    --jeap-mark-color: #fff6d6;
 }

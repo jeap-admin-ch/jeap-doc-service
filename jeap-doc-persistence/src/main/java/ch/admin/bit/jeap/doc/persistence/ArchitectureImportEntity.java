@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.persistence;
 
-import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;

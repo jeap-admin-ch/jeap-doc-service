@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.metrics;
 
-import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportJob;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;

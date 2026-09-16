@@ -38,7 +38,7 @@ public class DocsWebSecurityConfiguration {
      */
     @Bean
     @Order(Ordered.LOWEST_PRECEDENCE - 15)
-    SecurityFilterChain documentationSiteSecurityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain documentationSiteSecurityFilterChain(HttpSecurity http) {
         return http
                 // A path match, not a substring one: a generated page may perfectly well live at
                 // /systems/orders/api/, and testing whether the URI *contains* "/api/" would drop exactly that
@@ -62,7 +62,7 @@ public class DocsWebSecurityConfiguration {
     @Bean
     @Order(Ordered.LOWEST_PRECEDENCE - 20)
     SecurityFilterChain docsApiSecurityFilterChain(HttpSecurity http, JeapJwtDecoderFactory jeapJwtDecoderFactory,
-                                                  AuthoritiesResolver authoritiesResolver) throws Exception {
+                                                  AuthoritiesResolver authoritiesResolver) {
         return http
                 .securityMatcher(API_PATH_PREFIX + "/**")
                 .authorizeHttpRequests(requests -> requests.anyRequest().fullyAuthenticated())

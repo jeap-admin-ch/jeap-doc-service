@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.markdown;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Writes one Markdown page, block by block.
@@ -162,6 +163,84 @@ public final class MarkdownWriter {
         return block(head + "\n\n" + body.value() + "\n\n:::");
     }
 
+    /**
+     * A fold, closed until the reader opens it: {@code :::details[Summary]}. The site turns the directive into
+     * the theme's collapsible, so the page stays CommonMark and no raw HTML is written.
+     *
+     * @param body writes what is folded, into a writer of its own
+     */
+    public MarkdownWriter details(String summary, Consumer<MarkdownWriter> body) {
+        if (summary == null || summary.isBlank()) {
+            throw new IllegalArgumentException("A fold needs a summary: it is all the reader sees of it.");
+        }
+        MarkdownWriter folded = new MarkdownWriter();
+        body.accept(folded);
+        if (!folded.hasContent()) {
+            throw new IllegalArgumentException("A fold with nothing in it is a control that opens onto nothing; "
+                                               + "write no fold instead.");
+        }
+        return block(container("details", Md.text(summary), folded.text().strip()));
+    }
+
+    /**
+     * One labelled row of a {@link #groupedTable grouped table}.
+     *
+     * @param label what the row's first cell says
+     * @param body  writes the row's last cell, which may hold any block - a fold, a paragraph, a fence
+     */
+    public record Row(Markdown label, Consumer<MarkdownWriter> body) {
+    }
+
+    /**
+     * Rows that share their first cell, which spans them.
+     *
+     * @param label what the spanning cell says
+     * @param rows  at least one
+     */
+    public record Group(Markdown label, List<Row> rows) {
+    }
+
+    /**
+     * A table of three columns whose first cell spans the rows of its group, and whose last cell may hold blocks.
+     * A Markdown table can do neither, so this is a {@code grouped-table} directive the site builds the table
+     * from. The labels are escaped like any other text; the site copies nothing into an attribute.
+     */
+    public MarkdownWriter groupedTable(String groupHeader, String rowHeader, String bodyHeader, List<Group> groups) {
+        if (groups.isEmpty()) {
+            throw new IllegalArgumentException("A grouped table with no group is a header over nothing.");
+        }
+        StringBuilder table = new StringBuilder();
+        for (String header : List.of(groupHeader, rowHeader, bodyHeader)) {
+            table.append(":::column[").append(Md.text(header).value()).append("]\n:::\n\n");
+        }
+        for (Group group : groups) {
+            if (group.rows().isEmpty()) {
+                throw new IllegalArgumentException("A group needs a row: its label spans the rows it has.");
+            }
+            StringBuilder rows = new StringBuilder();
+            for (Row row : group.rows()) {
+                MarkdownWriter cell = new MarkdownWriter();
+                row.body().accept(cell);
+                if (!cell.hasContent()) {
+                    throw new IllegalArgumentException("A row needs something in its last cell.");
+                }
+                rows.append(container("row", row.label(), cell.text().strip())).append("\n\n");
+            }
+            table.append(container("group", group.label(), rows.toString().strip())).append("\n\n");
+        }
+        return block(container("grouped-table", Markdown.EMPTY, table.toString().strip()));
+    }
+
+    /**
+     * A container directive around content. A directive inside the content would close the outer one early,
+     * so the outer marker is always longer than any the content opens a line with.
+     */
+    private static String container(String name, Markdown label, String content) {
+        String marker = ":".repeat(Math.max(3, longestColonRunOpeningALine(content) + 1));
+        String labelled = label.isEmpty() ? name : name + "[" + label.value() + "]";
+        return marker + labelled + "\n\n" + content + "\n\n" + marker;
+    }
+
     /** Writes the paragraph, or the alternative when there is nothing to say. */
     public MarkdownWriter paragraphOrNothing(Markdown text, String whenEmpty) {
         return text.isEmpty() ? paragraph(whenEmpty) : paragraph(text);
@@ -205,6 +284,18 @@ public final class MarkdownWriter {
 
     private static String oneLine(String value) {
         return value.replace("\r\n", " ").replace('\n', ' ').replace('\r', ' ');
+    }
+
+    private static int longestColonRunOpeningALine(String value) {
+        int longest = 0;
+        for (String line : value.split("\n", -1)) {
+            int run = 0;
+            while (run < line.length() && line.charAt(run) == ':') {
+                run++;
+            }
+            longest = Math.max(longest, run);
+        }
+        return longest;
     }
 
     private static int longestBacktickRun(String value) {

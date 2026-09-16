@@ -88,8 +88,8 @@ class DocumentationBuildRunnerConcurrencyTest {
         assertThat(onAnother.built).describedAs("the second instance should have built something").isNotEmpty();
         List<String> everything = new ArrayList<>(onOne.built);
         everything.addAll(onAnother.built);
-        assertThat(everything).describedAs("every part exactly once, and all of them").hasSize(PARTS);
-        assertThat(everything).doesNotHaveDuplicates();
+        assertThat(everything).describedAs("every part exactly once, and all of them").hasSize(PARTS)
+                .doesNotHaveDuplicates();
         assertThat(requests.pending()).describedAs("nothing should still be owed").isEmpty();
     }
 
@@ -126,8 +126,8 @@ class DocumentationBuildRunnerConcurrencyTest {
 
         Map<String, Map<String, String>> contexts = new LinkedHashMap<>(onOne.logContexts);
         contexts.putAll(onAnother.logContexts);
-        assertThat(contexts).describedAs("one context per part, and all of them").hasSize(PARTS);
-        assertThat(contexts).allSatisfy((part, context) -> assertThat(context)
+        assertThat(contexts).describedAs("one context per part, and all of them").hasSize(PARTS)
+                .allSatisfy((part, context) -> assertThat(context)
                 .containsEntry(BuildLogContext.SITE, SITE)
                 .describedAs("the part it was building, and not the one before it on this thread")
                 .containsEntry(BuildLogContext.PART, part)
@@ -159,8 +159,8 @@ class DocumentationBuildRunnerConcurrencyTest {
 
         runnerWith(builder, metrics).runOnce();
 
-        assertThat(builder.attempted).describedAs("every part once, and all of them").hasSize(PARTS);
-        assertThat(builder.attempted).doesNotHaveDuplicates();
+        assertThat(builder.attempted).describedAs("every part once, and all of them").hasSize(PARTS)
+                .doesNotHaveDuplicates();
         // Half of them threw, and every one of those is an outcome the pass counted rather than a slot it lost.
         assertThat(metrics.broken).hasValue(PARTS / 2);
         assertThat(metrics.partsBuilt).describedAs("the other half really built").hasSize(PARTS / 2);

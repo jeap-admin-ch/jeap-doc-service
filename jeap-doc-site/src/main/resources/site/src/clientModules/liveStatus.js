@@ -3,9 +3,8 @@
  *
  * The page is generated content, so a tree whose documentation has not moved is not generated again and the
  * page stays exactly as it was. That is the truthful reading for its provenance - this content was imported
- * then, this build wrote it - and a lie for its status: when the architecture repository was last read, and
- * when the schedule fires next. So the doc service leaves those cells empty and answers them live, and this
- * fills them in.
+ * then, this build wrote it - and a lie for when a schedule fires next. So the doc service leaves that cell
+ * empty and answers it live, and this fills it in.
  *
  * It finds them the way `publicationNumbers.js` finds the numbers of the run, and for the same three reasons:
  *
@@ -25,7 +24,6 @@ const FILE_NAME = 'live-status.json';
  * in `AboutThisDocumentation` for the same reason - the two have to agree, and what catches a disagreement is
  * the browser test asserting the fetched values appear on the page.
  */
-const LAST_READ_COLUMN = 'Last read';
 const SCHEDULE_COLUMN = 'Schedule';
 const NEXT_COLUMN = 'Next';
 
@@ -64,21 +62,6 @@ function fill(cell, value) {
     written.setAttribute(MARKER, 'true');
     written.textContent = value;
     cell.replaceChildren(written);
-}
-
-/** The last read of every environment, keyed by the environment id its row names in the first column. */
-function fillEnvironments(environments) {
-    const table = tableWith(LAST_READ_COLUMN);
-    if (!table) {
-        return;
-    }
-    const column = headingsOf(table).indexOf(LAST_READ_COLUMN);
-    const byId = new Map(environments.map((environment) => [environment.id, environment.lastRead]));
-    for (const row of table.querySelectorAll('tbody tr')) {
-        const cells = cellsOf(row);
-        const id = cells[0] ? cells[0].textContent.trim() : '';
-        fill(cells[column], byId.get(id));
-    }
 }
 
 /**
@@ -151,7 +134,6 @@ async function fillIn() {
     if (!link.isConnected) {
         return;
     }
-    fillEnvironments(status.environments);
     fillSchedules(status.schedules);
 }
 

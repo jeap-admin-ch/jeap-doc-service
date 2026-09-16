@@ -1,7 +1,6 @@
 package ch.admin.bit.jeap.doc.web.api.sites;
 
 import ch.admin.bit.jeap.doc.domain.BuildRequest;
-import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;

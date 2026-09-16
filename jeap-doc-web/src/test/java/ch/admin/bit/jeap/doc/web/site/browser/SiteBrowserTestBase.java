@@ -1,9 +1,12 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
+import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
+import ch.admin.bit.jeap.doc.domain.architecture.MessageSchema;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
 import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
@@ -57,16 +60,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.stream.Stream;
 
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Drives a real browser over the documentation site, as it is served by the running service.
@@ -170,7 +170,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     /** How many further reactions the system's graph carries, so that it is one nobody reads at a glance. */
     protected static final int WIDE_REACTIONS = 30;
 
-    private static final Instant GENERATED_AT = Instant.parse("2026-08-26T10:15:30Z");
+    protected static final Instant GENERATED_AT = Instant.parse("2026-08-26T10:15:30Z");
 
     /** What the {@code instance} column of these builds says, so that a row is recognisable in the database. */
     private static final String INSTANCE = "browser-test";
@@ -339,6 +339,8 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 WrittenContent sources = super.write(buildId, written, part, content, generatedAt);
                 for (SiteEnvironment environment : written.environments()) {
                     writeGuidePage(content.resolve(environment.id()), environment);
+                    writeFoldPage(content.resolve(environment.id()));
+                    writeTablesPage(content.resolve(environment.id()));
                     writeComponentPage(content.resolve(environment.id()));
                     writeReactingSystem(content.resolve(environment.id()), environment);
                     writeDocumentedSystem(content.resolve(environment.id()), environment);
@@ -558,12 +560,29 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * same - these tests are what prove it renders.
      */
     private static ch.admin.bit.jeap.doc.domain.DocumentationProvenance provenance() {
+        NeverImported imports = new NeverImported();
         return new ch.admin.bit.jeap.doc.domain.DocumentationProvenance(
-                new DocumentationSites(new SiteProperties()), new NeverImported(),
+                new DocumentationSites(new SiteProperties()), imports, importStatesOf(imports),
                 withoutArchitectureModel(),
                 new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
                 new BuildProperties(), new ArchitectureImportProperties(),
+                new ch.admin.bit.jeap.doc.domain.upload.UploadProperties(),
+                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties(),
                 java.time.Clock.systemDefaultZone());
+    }
+
+    /** The one display read a provenance asks for, answered by the same import state. */
+    private static ch.admin.bit.jeap.doc.domain.port.DisplayReads importStatesOf(NeverImported imports) {
+        return (ch.admin.bit.jeap.doc.domain.port.DisplayReads) java.lang.reflect.Proxy.newProxyInstance(
+                SiteBrowserTestBase.class.getClassLoader(),
+                new Class<?>[]{ch.admin.bit.jeap.doc.domain.port.DisplayReads.class},
+                (proxy, method, arguments) -> {
+                    if (!method.getName().equals("importState")) {
+                        throw new UnsupportedOperationException(method.getName());
+                    }
+                    return imports.state((String) arguments[0],
+                            (ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind) arguments[1]);
+                });
     }
 
     /** An instance whose architecture imports have never run. */
@@ -668,9 +687,9 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
             package "catalog" [[/guide/]] {
               component "gateway" as c_gateway_2 [[/]]
             }
-            c_orders_intake -[#blue]-> c_orders_risk : OrdersPaymentAcceptedEvent\\nOrdersPaymentRejectedEvent
-            c_orders_intake -[#blue]-> c_gateway : ShippingArrangedEvent
-            c_orders_intake .[#blue].> c_gateway_2 : GET /api/tariffs
+            c_orders_intake -[#green,dashed]-> c_orders_risk : OrdersPaymentAcceptedEvent\\nOrdersPaymentRejectedEvent
+            c_orders_intake -[#blue,dashed]-> c_gateway : ShippingArrangeCommand
+            c_orders_intake -[#blue]-> c_gateway_2 : GET /api/tariffs
             @enduml""";
 
     /**
@@ -718,6 +737,110 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     protected static final String DOCUMENTED_LIBRARY_ROUTE =
             "systems/" + DOCUMENTED_SYSTEM + "/system-architecture/building-block-view/libraries/"
             + DOCUMENTED_LIBRARY + "/library-architecture";
+
+    /** Where the page with folds is served. */
+    protected static final String FOLD_ROUTE = "folds";
+
+    /**
+     * A page of folds, written by {@code MarkdownWriter} as a generated page is. One fold per kind of content a
+     * generated page folds: code, and the two diagram languages, which draw when they come into view.
+     */
+    private static void writeFoldPage(Path environmentTree) throws IOException {
+        MarkdownWriter page = new MarkdownWriter()
+                .heading(1, "Folds")
+                .details("Version 1.0.0", body -> body.fence("java", "record FoldedKey(String id) {}"))
+                .details("PlantUML", body -> body.fence("plantuml", """
+                        @startuml
+                        component "folded-left" as l
+                        component "folded-right" as r
+                        l --> r
+                        @enduml"""))
+                .details("GraphViz", body -> body.fence("dot", "digraph { foldedA -> foldedB }"))
+                .details("<script>window.MARKER_FOLD = 1</script>", body -> body.paragraph("Harmless."));
+        Files.writeString(environmentTree.resolve(FOLD_ROUTE + ".md"), page.text(), StandardCharsets.UTF_8);
+    }
+
+    /** Where the page with a long and a short table is served - see {@code TableControlsBrowserIT}. */
+    protected static final String TABLES_ROUTE = "tables";
+
+    /** The rows of the long table, above the threshold at which a table gets a filter. */
+    protected static final int RELATIONS = 20;
+
+    /** The counts of the short table, in the order written; a numeric sort must not order them as text. */
+    protected static final List<String> TIMES_OBSERVED = List.of("12'408", "987", "96", "2'150", "31", "4");
+
+    /** The column of counterparts, written as the generator writes one: links, comma separated. */
+    protected static final String CALLERS_COLUMN = "Callers";
+
+    /** A description with commas in it, which is prose and not a list of anything. */
+    protected static final String PROSE_DESCRIPTION = "Manages orders, invoices, deliveries, and returns";
+
+    /** The counterparts of the row the chip is tested on, the last two of them behind it. */
+    protected static final List<String> WIDE_CALLERS =
+            List.of("alpha-caller", "beta-caller", "gamma-caller", "delta-caller", "epsilon-caller");
+
+    /**
+     * A cell of counterparts, as the component pages write one: one link per counterpart, comma separated.
+     * The first row carries five, which is what the client module collapses behind its chip.
+     */
+    private static ch.admin.bit.jeap.doc.markdown.Markdown callers(int row) {
+        if (row == 0) {
+            // The first caller carries a pact above the line, as a component page writes one: it is part of
+            // that item and not an item of its own.
+            return ch.admin.bit.jeap.doc.markdown.Md.joinWith(", ", WIDE_CALLERS.stream()
+                    .map(caller -> caller.equals(WIDE_CALLERS.getFirst())
+                            ? ch.admin.bit.jeap.doc.markdown.Md.sentence("{}{}",
+                                    ch.admin.bit.jeap.doc.markdown.Md.link("#" + caller, caller),
+                                    ch.admin.bit.jeap.doc.markdown.Md.superscript(
+                                            ch.admin.bit.jeap.doc.markdown.Md.link("#pact", "pact")))
+                            : ch.admin.bit.jeap.doc.markdown.Md.link("#" + caller, caller))
+                    .toList());
+        }
+        if (row % 4 == 0) {
+            return ch.admin.bit.jeap.doc.markdown.Md.text("-");
+        }
+        return ch.admin.bit.jeap.doc.markdown.Md.joinWith(", ", List.of(
+                ch.admin.bit.jeap.doc.markdown.Md.link("#caller-" + row, "caller-" + row),
+                ch.admin.bit.jeap.doc.markdown.Md.code("caller-" + row + "-b")));
+    }
+
+    private static void writeTablesPage(Path environmentTree) throws IOException {
+        String[] systems = {"orders", "shipping", "billing", "catalog", "warehouse"};
+        String[] types = {"publishes", "consumes", "calls"};
+        String[] travels = {"OrderPlacedEvent", "PaymentAcceptedEvent", "ShipmentCreatedCommand", "InvoiceIssuedEvent",
+                "StockReservedEvent"};
+        List<List<ch.admin.bit.jeap.doc.markdown.Markdown>> relations = new java.util.ArrayList<>();
+        for (int i = 0; i < RELATIONS; i++) {
+            String from = systems[i % systems.length] + "-" + (i % 2 == 0 ? "intake" : "worker");
+            String to = systems[(i * 3 + 1) % systems.length] + "-" + (i % 3 == 0 ? "dispatch" : "service");
+            relations.add(List.of(ch.admin.bit.jeap.doc.markdown.Md.link("#" + from, from),
+                    ch.admin.bit.jeap.doc.markdown.Md.text(to),
+                    ch.admin.bit.jeap.doc.markdown.Md.text(types[i % types.length]),
+                    ch.admin.bit.jeap.doc.markdown.Md.code(travels[(i * 7) % travels.length]),
+                    callers(i)));
+        }
+        String[] reactions = {"OrderPlacedEvent", "PaymentAcceptedEvent", "ShipmentCreatedCommand",
+                "InvoiceIssuedEvent", "StockReservedEvent", "RefundRequestedCommand"};
+        List<List<ch.admin.bit.jeap.doc.markdown.Markdown>> observed = new java.util.ArrayList<>();
+        for (int i = 0; i < reactions.length; i++) {
+            observed.add(List.of(ch.admin.bit.jeap.doc.markdown.Md.code(reactions[i]),
+                    ch.admin.bit.jeap.doc.markdown.Md.text("shipping-dispatch"),
+                    ch.admin.bit.jeap.doc.markdown.Md.text(TIMES_OBSERVED.get(i))));
+        }
+        MarkdownWriter page = new MarkdownWriter()
+                .heading(1, "Tables")
+                .paragraph(ch.admin.bit.jeap.doc.markdown.Md.link("./" + FOLD_ROUTE + ".md", "The page with folds"))
+                .heading(2, "Relations")
+                .table(List.of("From", "To", "Type", "Interaction", CALLERS_COLUMN), relations)
+                .heading(2, "Reactions")
+                .table(List.of("Trigger", "Reacting component", "Times observed"), observed)
+                // A table of prose, as a description column is: its commas are not separators.
+                .heading(2, "Descriptions")
+                .table(List.of("Component", "Description"),
+                        List.of(List.of(ch.admin.bit.jeap.doc.markdown.Md.code("orders-intake"),
+                                ch.admin.bit.jeap.doc.markdown.Md.text(PROSE_DESCRIPTION))));
+        Files.writeString(environmentTree.resolve(TABLES_ROUTE + ".md"), page.text(), StandardCharsets.UTF_8);
+    }
 
     /** Shared with {@link SiteSearchBrowserIT}, which indexes the same pages the site is built from. */
     protected static void writeGuidePage(Path environmentTree, SiteEnvironment environment) throws IOException {
@@ -768,7 +891,8 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      */
     private void writeReactingSystem(Path environmentTree, SiteEnvironment environment)
             throws IOException {
-        DocumentedMessage trigger = message("OrdersPaymentAcceptedEvent", REACTING_MESSAGE);
+        DocumentedMessage trigger = message("OrdersPaymentAcceptedEvent", REACTING_MESSAGE)
+                .withVersions(TRIGGER_VERSIONS);
         DocumentedMessage dispatched = message("ShippingDispatchedEvent", "shipping-dispatched-event");
         DocumentedSystem shipping = new DocumentedSystem("shipping", REACTING_SYSTEM, "Ships what was ordered",
                 List.of(), null,
@@ -868,15 +992,15 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 new ObservedReactions.ObservedMessage(7, UNDOCUMENTED_MESSAGE, null),
                 new ObservedReactions.ObservedMessage(VARIANT_MESSAGE_ID, "OrdersPaymentAcceptedEvent", VARIANT)));
         List<ObservedReactions.ObservedReaction> reactions = new java.util.ArrayList<>(List.of(
-                new ObservedReactions.ObservedReaction(REACTION_ID, REACTING_COMPONENT),
+                new ObservedReactions.ObservedReaction(REACTION_ID, REACTING_COMPONENT, null),
                 // Three reactions of one component to one message: one dashed box with three nodes in it.
-                new ObservedReactions.ObservedReaction(4243, BUSY_COMPONENT),
-                new ObservedReactions.ObservedReaction(4244, BUSY_COMPONENT),
-                new ObservedReactions.ObservedReaction(4245, BUSY_COMPONENT),
+                new ObservedReactions.ObservedReaction(4243, BUSY_COMPONENT, null),
+                new ObservedReactions.ObservedReaction(4244, BUSY_COMPONENT, null),
+                new ObservedReactions.ObservedReaction(4245, BUSY_COMPONENT, null),
                 // A component this landscape does not document: drawn, and not a link.
-                new ObservedReactions.ObservedReaction(4246, UNDOCUMENTED_COMPONENT),
+                new ObservedReactions.ObservedReaction(4246, UNDOCUMENTED_COMPONENT, null),
                 // And one nothing triggered, which the observer can hold.
-                new ObservedReactions.ObservedReaction(4247, REACTING_COMPONENT)));
+                new ObservedReactions.ObservedReaction(4247, REACTING_COMPONENT, null)));
         List<ObservedReactions.ObservedTrigger> triggers = new java.util.ArrayList<>(List.of(
                 new ObservedReactions.ObservedTrigger(1, REACTION_ID, 12),
                 new ObservedReactions.ObservedTrigger(1, 4243, 400),
@@ -893,7 +1017,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
             long message = 100 + index;
             long reaction = 200 + index;
             messages.add(new ObservedReactions.ObservedMessage(message, "ShippingBulkEvent" + index, null));
-            reactions.add(new ObservedReactions.ObservedReaction(reaction, "shipping-bulk-" + index));
+            reactions.add(new ObservedReactions.ObservedReaction(reaction, "shipping-bulk-" + index, null));
             triggers.add(new ObservedReactions.ObservedTrigger(message, reaction, index));
         }
         return new ObservedReactions(messages, reactions, triggers, actions);
@@ -908,7 +1032,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         return new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(11, "ShippingDispatchedEvent", null),
                         new ObservedReactions.ObservedMessage(13, "BillingSettledEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(OTHER_REACTION_ID, OTHER_COMPONENT)),
+                List.of(new ObservedReactions.ObservedReaction(OTHER_REACTION_ID, OTHER_COMPONENT, null)),
                 List.of(new ObservedReactions.ObservedTrigger(11, OTHER_REACTION_ID, 3)),
                 List.of(new ObservedReactions.ObservedAction(OTHER_REACTION_ID, 13)));
     }
@@ -918,8 +1042,8 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         return new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null),
                         new ObservedReactions.ObservedMessage(3, "ShippingDispatchedEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(REACTION_ID, REACTING_COMPONENT),
-                        new ObservedReactions.ObservedReaction(4247, REACTING_COMPONENT)),
+                List.of(new ObservedReactions.ObservedReaction(REACTION_ID, REACTING_COMPONENT, null),
+                        new ObservedReactions.ObservedReaction(4247, REACTING_COMPONENT, null)),
                 List.of(new ObservedReactions.ObservedTrigger(1, REACTION_ID, 12)),
                 List.of(new ObservedReactions.ObservedAction(REACTION_ID, 3)));
     }
@@ -937,8 +1061,8 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     private static ObservedReactions messageGraph(long subject, String variant) {
         return new ObservedReactions(
                 List.of(new ObservedReactions.ObservedMessage(subject, "OrdersPaymentAcceptedEvent", variant)),
-                List.of(new ObservedReactions.ObservedReaction(REACTION_ID, REACTING_COMPONENT),
-                        new ObservedReactions.ObservedReaction(4243, BUSY_COMPONENT)),
+                List.of(new ObservedReactions.ObservedReaction(REACTION_ID, REACTING_COMPONENT, null),
+                        new ObservedReactions.ObservedReaction(4243, BUSY_COMPONENT, null)),
                 List.of(new ObservedReactions.ObservedTrigger(subject, REACTION_ID, 12),
                         new ObservedReactions.ObservedTrigger(subject, 4243, 400)),
                 List.of());
@@ -948,6 +1072,22 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         return new DocumentedComponent(name, name, description, ComponentType.SELF_CONTAINED_SYSTEM, null,
                 null, null, List.of(), null, null, null);
     }
+
+    /**
+     * The versions of the triggering message: one with a key and a value schema, and one with a value schema
+     * only - so the versions table has a group of two rows and a group of one.
+     */
+    protected static final List<DocumentedMessageVersion> TRIGGER_VERSIONS = List.of(
+            new DocumentedMessageVersion("1.0.0", null, null, null,
+                    new MessageSchema("OrdersPaymentAcceptedEvent_v1.avdl", "https://registry.example/v1.avdl",
+                            "record OrdersPaymentAcceptedEventPayload {\n    string orderId;\n}")),
+            new DocumentedMessageVersion("2.0.0", "BACKWARD", "1.0.0",
+                    new MessageSchema("OrdersPaymentAcceptedEvent_key.avdl", "https://registry.example/key.avdl",
+                            "record OrdersPaymentAcceptedEventKey {\n    string orderId;\n}"),
+                    new MessageSchema("OrdersPaymentAcceptedEvent_v2.avdl", "https://registry.example/v2.avdl",
+                            "record OrdersPaymentAcceptedEventPayload {\n    string orderId;\n"
+                            + "    union { null, string } aFieldWithAVeryLongNameThatWouldRunPastANarrowColumn = null;"
+                            + "\n}")));
 
     private static DocumentedMessage message(String name, String slug) {
         return new DocumentedMessage(name, slug, MessageKind.EVENT, "internal", "shipping-topic", null, null,

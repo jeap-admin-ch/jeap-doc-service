@@ -130,7 +130,9 @@ class ArchRepoMessageSchemaUpstreamTest {
      */
     @Test
     void version_whenTheEnvironmentHasNoArchitectureRepository_thenTheReasonIsTheConfiguration() {
-        assertThatThrownBy(() -> schemas.version("nowhere", ref(VERSION_PATH), null))
+        MessageVersionRef version = ref(VERSION_PATH);
+
+        assertThatThrownBy(() -> schemas.version("nowhere", version, null))
                 .isInstanceOf(ArchitectureModelUnavailableException.class)
                 .hasMessageContaining("No architecture repository is configured");
     }
@@ -206,7 +208,9 @@ class ArchRepoMessageSchemaUpstreamTest {
     void version_whenTheUpstreamCannotBeRead_thenTheRunIsToldSo() {
         stub(VERSION_PATH, 503, "");
 
-        assertThatThrownBy(() -> schemas.version(ENVIRONMENT, ref(VERSION_PATH), null))
+        MessageVersionRef version = ref(VERSION_PATH);
+
+        assertThatThrownBy(() -> schemas.version(ENVIRONMENT, version, null))
                 .isInstanceOf(ArchitectureModelUnavailableException.class);
     }
 

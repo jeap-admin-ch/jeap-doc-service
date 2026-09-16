@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.upload;
 
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -32,7 +33,8 @@ class DocumentationUploadDescriptorTest {
 
     @Test
     void build_whenComponentDocumentationWithoutComponent_thenRejected() {
-        assertThatThrownBy(() -> componentDocs().component(null).build())
+        DocumentationUploadDescriptorBuilder withoutComponent = componentDocs().component(null);
+        assertThatThrownBy(withoutComponent::build)
                 .isInstanceOfSatisfying(InvalidUploadException.class,
                         e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.MISSING_PARAMETER))
                 .hasMessageContaining("component");
@@ -40,14 +42,16 @@ class DocumentationUploadDescriptorTest {
 
     @Test
     void build_whenLibraryDocumentationWithoutLibrary_thenRejected() {
-        assertThatThrownBy(() -> libraryDocs().library(null).build())
+        DocumentationUploadDescriptorBuilder withoutLibrary = libraryDocs().library(null);
+        assertThatThrownBy(withoutLibrary::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("library");
     }
 
     @Test
     void build_whenComponentDocumentationWithoutVersion_thenRejected() {
-        assertThatThrownBy(() -> componentDocs().version(null).build())
+        DocumentationUploadDescriptorBuilder withoutVersion = componentDocs().version(null);
+        assertThatThrownBy(withoutVersion::build)
                 .isInstanceOfSatisfying(InvalidUploadException.class,
                         e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.MISSING_PARAMETER))
                 .hasMessageContaining("version");
@@ -55,7 +59,8 @@ class DocumentationUploadDescriptorTest {
 
     @Test
     void build_whenLibraryDocumentationWithoutVersion_thenRejected() {
-        assertThatThrownBy(() -> libraryDocs().version(null).build())
+        DocumentationUploadDescriptorBuilder withoutVersion = libraryDocs().version(null);
+        assertThatThrownBy(withoutVersion::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("version");
     }
@@ -67,7 +72,8 @@ class DocumentationUploadDescriptorTest {
 
     @Test
     void build_whenSystemDocumentationNamesAComponent_thenRejected() {
-        assertThatThrownBy(() -> systemDocs().component("foo-bar-scs").build())
+        DocumentationUploadDescriptorBuilder withComponent = systemDocs().component("foo-bar-scs");
+        assertThatThrownBy(withComponent::build)
                 .isInstanceOfSatisfying(InvalidUploadException.class,
                         e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
                 .hasMessageContaining("component");
@@ -75,28 +81,32 @@ class DocumentationUploadDescriptorTest {
 
     @Test
     void build_whenComponentDocumentationNamesALibrary_thenRejected() {
-        assertThatThrownBy(() -> componentDocs().library("foo-bar-lib").build())
+        DocumentationUploadDescriptorBuilder withLibrary = componentDocs().library("foo-bar-lib");
+        assertThatThrownBy(withLibrary::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("library");
     }
 
     @Test
     void build_whenHtmlWithoutLocation_thenRejected() {
-        assertThatThrownBy(() -> htmlComponentDocs().location(null).build())
+        DocumentationUploadDescriptorBuilder withoutLocation = htmlComponentDocs().location(null);
+        assertThatThrownBy(withoutLocation::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("location");
     }
 
     @Test
     void build_whenHtmlWithoutTopic_thenRejected() {
-        assertThatThrownBy(() -> htmlComponentDocs().topic(null).build())
+        DocumentationUploadDescriptorBuilder withoutTopic = htmlComponentDocs().topic(null);
+        assertThatThrownBy(withoutTopic::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("topic");
     }
 
     @Test
     void build_whenHtmlWithoutLabel_thenRejected() {
-        assertThatThrownBy(() -> htmlComponentDocs().label(null).build())
+        DocumentationUploadDescriptorBuilder withoutLabel = htmlComponentDocs().label(null);
+        assertThatThrownBy(withoutLabel::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("label");
     }
@@ -143,7 +153,8 @@ class DocumentationUploadDescriptorTest {
 
     @Test
     void build_whenSiteIsNoSlug_thenRejected() {
-        assertThatThrownBy(() -> systemDocs().site("Catalog").build())
+        DocumentationUploadDescriptorBuilder withSite = systemDocs().site("Catalog");
+        assertThatThrownBy(withSite::build)
                 .isInstanceOfSatisfying(InvalidUploadException.class,
                         e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
                 .hasMessageContaining("site");
@@ -151,21 +162,25 @@ class DocumentationUploadDescriptorTest {
 
     @Test
     void build_whenMarkdownCarriesTheParametersOfHtmlDocuments_thenRejected() {
-        assertThatThrownBy(() -> componentDocs().location("6-runtime-view").build())
+        DocumentationUploadDescriptorBuilder withLocation = componentDocs().location("6-runtime-view");
+        assertThatThrownBy(withLocation::build)
                 .isInstanceOfSatisfying(InvalidUploadException.class,
                         e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
                 .hasMessageContaining("location");
-        assertThatThrownBy(() -> componentDocs().topic("spring-rest-docs").build())
+        DocumentationUploadDescriptorBuilder withTopic = componentDocs().topic("spring-rest-docs");
+        assertThatThrownBy(withTopic::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("topic");
-        assertThatThrownBy(() -> componentDocs().label("Spring REST Docs").build())
+        DocumentationUploadDescriptorBuilder withLabel = componentDocs().label("Spring REST Docs");
+        assertThatThrownBy(withLabel::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("label");
     }
 
     @Test
     void build_whenIdentifierIsNoSlug_thenRejected() {
-        assertThatThrownBy(() -> systemDocs().system("ORDERS").build())
+        DocumentationUploadDescriptorBuilder withSystem = systemDocs().system("ORDERS");
+        assertThatThrownBy(withSystem::build)
                 .isInstanceOfSatisfying(InvalidUploadException.class,
                         e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
                 .hasMessageContaining("system");
@@ -173,16 +188,20 @@ class DocumentationUploadDescriptorTest {
 
     @Test
     void build_whenProvenanceIsIncomplete_thenRejected() {
-        assertThatThrownBy(() -> systemDocs().sourceRepository(null).build())
+        DocumentationUploadDescriptorBuilder withoutSourceRepository = systemDocs().sourceRepository(null);
+        assertThatThrownBy(withoutSourceRepository::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("source-repository");
-        assertThatThrownBy(() -> systemDocs().sourceRevision(null).build())
+        DocumentationUploadDescriptorBuilder withoutSourceRevision = systemDocs().sourceRevision(null);
+        assertThatThrownBy(withoutSourceRevision::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("source-revision");
-        assertThatThrownBy(() -> systemDocs().sourceRef(null).build())
+        DocumentationUploadDescriptorBuilder withoutSourceRef = systemDocs().sourceRef(null);
+        assertThatThrownBy(withoutSourceRef::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("source-ref");
-        assertThatThrownBy(() -> systemDocs().sourceTimestamp(null).build())
+        DocumentationUploadDescriptorBuilder withoutSourceTimestamp = systemDocs().sourceTimestamp(null);
+        assertThatThrownBy(withoutSourceTimestamp::build)
                 .isInstanceOf(InvalidUploadException.class)
                 .hasMessageContaining("source-timestamp");
     }

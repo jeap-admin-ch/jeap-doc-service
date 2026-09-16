@@ -110,7 +110,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
                         {"paths": ["4-runtime-view/reactions.md",
                                    "5-building-block-view/whitebox-view.md",
                                    "1-intro/_draft.md"]}""").with(mayUpload()))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.type").value(DocumentationValidationController.PROBLEM_TYPE))
                 .andExpect(jsonPath("$.title").value("The documentation structure is invalid"))
                 .andExpect(jsonPath("$.status").value(422))
@@ -144,7 +144,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
                         .content("""
                                 {"paths": ["1-intro/goals.md"]}""")
                         .with(mayUpload()))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.findings[0].code").value("UNKNOWN_TEMPLATE"))
                 .andExpect(jsonPath("$.findings[0].message").value(
                         org.hamcrest.Matchers.containsString("arc42")));
@@ -196,7 +196,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
                 .collect(Collectors.joining(","));
 
         mockMvc.perform(validationOf("{\"paths\": [" + paths + "]}").with(mayUpload()))
-                .andExpect(status().isPayloadTooLarge())
+                .andExpect(status().isContentTooLarge())
                 .andExpect(jsonPath("$.code").value("TOO_MANY_PATHS"));
     }
 
@@ -208,7 +208,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
     @Test
     void aBodyOfVeryManyTinyPaths_isRefusedOnTheirNumber() throws Exception {
         mockMvc.perform(validationOf(tree(500, "a")).with(mayUpload()))
-                .andExpect(status().isPayloadTooLarge())
+                .andExpect(status().isContentTooLarge())
                 .andExpect(jsonPath("$.code").value("TOO_MANY_PATHS"));
     }
 
@@ -223,7 +223,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
         String path = "1-intro/" + "p".repeat(1088) + ".md";
 
         mockMvc.perform(chunkedValidationOf(tree(10_000, path)))
-                .andExpect(status().isPayloadTooLarge())
+                .andExpect(status().isContentTooLarge())
                 .andExpect(jsonPath("$.code").value("SIZE_LIMIT_EXCEEDED"));
     }
 
@@ -253,7 +253,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
                 .collect(Collectors.joining(","));
 
         mockMvc.perform(validationOf("{\"paths\": [" + paths + "]}").with(mayUpload()))
-                .andExpect(status().isPayloadTooLarge())
+                .andExpect(status().isContentTooLarge())
                 // The length decided, not the count: TOO_MANY_PATHS here would mean the body was parsed.
                 .andExpect(jsonPath("$.code").value("SIZE_LIMIT_EXCEEDED"));
     }
@@ -268,7 +268,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
                         .content("""
                                 {"paths": ["1-intro/goals.md", "5-building-block-view/design.md"]}""")
                         .with(mayUpload()))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.detail").value("1 problem."))
                 .andExpect(jsonPath("$.pathsChecked").value(0));
     }
@@ -284,7 +284,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_TYPE, startsWith("application/json")));
         mockMvc.perform(validationOf("{\"paths\": [\"1-intro/index.md\"]}").with(mayUpload()))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(header().string(HttpHeaders.CONTENT_TYPE, startsWith("application/problem+json")));
     }
 
@@ -295,7 +295,7 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
                 .andExpect(status().isOk());
         mockMvc.perform(validationOf("{\"paths\": [\"1-intro/index.md\"]}")
                         .accept(MediaType.APPLICATION_PROBLEM_JSON).with(mayUpload()))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.findings[0].code").value("RESERVED_NAME"));
     }
 

@@ -323,6 +323,9 @@ public class SiteSources {
         values.put("part", partOf(part));
         values.put("generatedAt", generatedAt.toString());
         values.put("generatedAtDisplay", DisplayTime.of(generatedAt));
+        // For the footer, which names the service that generated the site. Null where the version cannot be
+        // read, and the footer then says the same sentence without it.
+        values.put("serviceVersion", DocServiceVersion.get());
         return values;
     }
 
@@ -472,6 +475,9 @@ public class SiteSources {
                 // way, and quoting them is what keeps that true of a value somebody changes later.
                 .replace("{{environmentIdScalar}}", JSON.writeValueAsString(environment.id()))
                 .replace("{{generatedAtScalar}}", JSON.writeValueAsString(generatedAt.toString()))
+                // Beside it the same moment as a reader reads it, because the provenance block under the page
+                // falls back to the instant where this is missing.
+                .replace("{{generatedAtDisplayScalar}}", JSON.writeValueAsString(DisplayTime.of(generatedAt)))
                 // The front matter is YAML, and a title is free text: 'jEAP: Documentation' or one starting
                 // with # or [ would be invalid front matter, and the build would fail minutes later with a
                 // js-yaml message naming neither the property nor the site. A JSON string is a valid YAML

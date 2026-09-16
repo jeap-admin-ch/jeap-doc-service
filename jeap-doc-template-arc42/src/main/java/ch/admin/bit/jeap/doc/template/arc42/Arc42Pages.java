@@ -48,7 +48,10 @@ final class Arc42Pages {
                 .put("doc_environment", context.environment())
                 .put("doc_model_imported_at", context.hasModelImportedAt()
                         ? context.modelImportedAt().toString() : null)
-                .put("doc_generated_at", context.generatedAt().toString());
+                .put("doc_model_imported_at_display", context.hasModelImportedAt()
+                        ? context.modelImportedAtDisplay() : null)
+                .put("doc_generated_at", context.generatedAt().toString())
+                .put("doc_generated_at_display", context.generatedAtDisplay());
     }
 
     /**
@@ -69,7 +72,8 @@ final class Arc42Pages {
                 .put("doc_status", "generated")
                 .put("doc_source", "doc-service")
                 .put("doc_environment", context.environment())
-                .put("doc_generated_at", context.generatedAt().toString());
+                .put("doc_generated_at", context.generatedAt().toString())
+                .put("doc_generated_at_display", context.generatedAtDisplay());
     }
 
     /**
@@ -91,19 +95,22 @@ final class Arc42Pages {
     }
 
     /**
-     * Writes the {@code _category_.json} that names a folder, places it in the navigation and says whether it
-     * starts open.
-     * <p>
-     * <b>Open down to the pages of a chapter, and no further.</b> A reader lands on a system and has to be
-     * able to see what is documented about it without clicking twelve times; below that, a system of thirty
-     * components expanded to every page of each of them is a sidebar nobody can use. So the chapters and the
-     * building block view's own subtree are open, and a component's arc42 tree inside it is not.
+     * Writes the {@code _category_.json} that names a folder and places it in the navigation. The category
+     * starts closed: Docusaurus opens the path to the page the reader is on.
      */
-    static void writeCategory(Path directory, String label, int position, boolean expanded)
-            throws IOException {
+    static void writeCategory(Path directory, String label, int position) throws IOException {
         Files.createDirectories(directory);
-        Files.writeString(directory.resolve(CategoryFile.NAME),
-                expanded ? CategoryFile.expanded(label, position) : CategoryFile.of(label, position),
+        Files.writeString(directory.resolve(CategoryFile.NAME), CategoryFile.of(label, position),
+                StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The same, open. Only for a category at the top of a part's sidebar, which the site styles as a section
+     * title and which would otherwise hide the whole tree.
+     */
+    static void writeOpenCategory(Path directory, String label, int position) throws IOException {
+        Files.createDirectories(directory);
+        Files.writeString(directory.resolve(CategoryFile.NAME), CategoryFile.expanded(label, position),
                 StandardCharsets.UTF_8);
     }
 
@@ -118,7 +125,7 @@ final class Arc42Pages {
     static Path chapterDirectory(StructureTemplate template, Path structureDirectory, StructureChapter chapter)
             throws IOException {
         Path directory = structureDirectory.resolve(chapter.folder());
-        writeCategory(directory, chapter.label(), template.positionOf(chapter), true);
+        writeCategory(directory, chapter.label(), template.positionOf(chapter));
         return directory;
     }
 }

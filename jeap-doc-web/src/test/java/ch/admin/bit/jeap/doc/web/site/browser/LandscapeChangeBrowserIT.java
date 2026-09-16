@@ -426,10 +426,10 @@ class LandscapeChangeBrowserIT extends BrowserTestBase {
     /**
      * <b>What the page cannot carry, fetched and filled in.</b>
      * <p>
-     * When the architecture repository was last read and when the import fires next move with the clock, so
-     * they are not written into the page at all - a part whose documentation has not moved is not generated
-     * again, and the case above is what proves that happens. The page leaves a cell for each of them, names
-     * where they are, and a client module of the template fills them in.
+     * When a schedule fires next moves with the clock, so it is not written into the page at all - a part
+     * whose documentation has not moved is not generated again, and the case above is what proves that
+     * happens. The page leaves the cell empty, links the resource under the table, and a client module of the
+     * template fills the cell in.
      * <p>
      * <b>This is the only thing checking that the two sides agree.</b> The column headings are constants in
      * {@code AboutThisDocumentation} and in {@code liveStatus.js}, and nothing compares them at compile time:
@@ -441,19 +441,14 @@ class LandscapeChangeBrowserIT extends BrowserTestBase {
         Response served = open(ROOT + "/about-this-documentation/");
 
         assertThat(served.status()).isEqualTo(200);
-        // The sentence the page carries whether or not anything is fetched, so that a reader with no scripts
-        // is told where the state is rather than shown a timestamp nobody keeps true.
+        // The source line the page carries whether or not anything is fetched, so that a reader with no
+        // scripts can follow it themselves.
         PlaywrightAssertions.assertThat(page.getByText("live-status.json")).isVisible();
 
-        // One cell per environment of this site and one per schedule it tabulates - so two, and both filled
-        // from a single fetch.
+        // One cell per scheduled job of the service, all filled from a single fetch.
         Locator filled = page.locator("span[data-jeap-doc-live]");
-        PlaywrightAssertions.assertThat(filled).hasCount(2);
+        PlaywrightAssertions.assertThat(filled).hasCount(5);
         assertThat(filled.nth(0).textContent())
-                .describedAs("when the architecture repository was last read, as this page shows it")
-                .matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} .+")
-                .doesNotContain("not read since");
-        assertThat(filled.nth(1).textContent())
                 .describedAs("when the import fires next, spelled out from now")
                 .contains("(in ");
         assertNothingWentWrongInTheBrowser();

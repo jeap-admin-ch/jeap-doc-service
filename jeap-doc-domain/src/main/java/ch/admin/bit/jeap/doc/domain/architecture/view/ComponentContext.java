@@ -156,12 +156,24 @@ public record ComponentContext(
      */
     public static ComponentContext of(ArchitectureModel model, DocumentedSystem system,
                                       DocumentedComponent component, int maxComponents, int maxSystems) {
+        return of(model, system, component, maxComponents, maxSystems, ViewExcludedComponents.NONE);
+    }
+
+    /**
+     * The same, without the relations of the components left out of the views - unless this is one of them:
+     * its own page shows what it exchanges.
+     */
+    public static ComponentContext of(ArchitectureModel model, DocumentedSystem system,
+                                      DocumentedComponent component, int maxComponents, int maxSystems,
+                                      ViewExcludedComponents excluded) {
         Nodes nodes = new Nodes(model, system, component);
         Map<EdgeKey, Edge> byKey = new LinkedHashMap<>();
         Map<EdgeKey, Set<String>> labelsByKey = new LinkedHashMap<>();
+        ViewExcludedComponents applied = excluded.excludes(component.name()) ? ViewExcludedComponents.NONE
+                : excluded;
 
         for (SystemRelation relation : model.relations()) {
-            Ends ends = endsOf(relation, nodes);
+            Ends ends = applied.excludes(relation) ? null : endsOf(relation, nodes);
             if (ends == null) {
                 continue;
             }

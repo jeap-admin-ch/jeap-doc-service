@@ -2,7 +2,6 @@ package ch.admin.bit.jeap.doc.template.arc42;
 
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
-import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.markdown.Md;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 
@@ -42,7 +41,8 @@ final class Arc42ChapterIndexPage {
                         : Arc42Pages.generatedWithoutTheModel(chapter.label(), 0, context))
                 .heading(1, chapter.label())
                 .paragraph(Md.text(Arc42Chapters.summaryOf(chapter)))
-                .paragraph("The pages of this chapter are in the navigation beside this one.");
+                .paragraph("The pages in this chapter are available in the navigation alongside this "
+                           + "page.");
         Arc42Pages.write(chapterDirectory, Arc42Pages.INDEX, page);
     }
 }

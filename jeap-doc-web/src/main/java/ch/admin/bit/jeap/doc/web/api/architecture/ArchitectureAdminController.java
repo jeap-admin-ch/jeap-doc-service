@@ -3,8 +3,8 @@ package ch.admin.bit.jeap.doc.web.api.architecture;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportJob;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportQueue;
-import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
+import ch.admin.bit.jeap.doc.domain.port.DisplayReads;
 import ch.admin.bit.jeap.doc.web.api.Roles;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -51,16 +51,17 @@ class ArchitectureAdminController {
     private static final Pattern LINE_BREAK = Pattern.compile("[\\r\\n]");
 
     private final ArchitectureImportJob job;
-    private final ArchitectureImportRepository imports;
+    /** The import states it reports, which may lag a moment - see {@link DisplayReads}. */
+    private final DisplayReads reads;
     private final ArchitectureModelSource architectureModel;
 
     /** Where an ask is put: it collapses a second ask for one environment and reports a full queue. */
     private final ArchitectureImportQueue queue;
 
-    ArchitectureAdminController(ArchitectureImportJob job, ArchitectureImportRepository imports,
+    ArchitectureAdminController(ArchitectureImportJob job, DisplayReads reads,
                                 ArchitectureModelSource architectureModel, ArchitectureImportQueue queue) {
         this.job = job;
-        this.imports = imports;
+        this.reads = reads;
         this.architectureModel = architectureModel;
         this.queue = queue;
     }
@@ -115,7 +116,7 @@ class ArchitectureAdminController {
                         architectureModel.sourceUrlOf(environment).orElse(""),
                         // The model first, then the artifact kinds in the order they are imported in.
                         Arrays.stream(ArchitectureImportKind.values())
-                                .map(kind -> ImportStateDto.of(imports.state(environment, kind)))
+                                .map(kind -> ImportStateDto.of(reads.importState(environment, kind)))
                                 .toList()))
                 .toList();
     }

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-09-15
+
+- A component's pages name who is on the other side: the **Callers** of each REST operation with its Pact contract, and the **Consumers** and **Publishers** of its messages, three per cell and the rest behind a `+N more` chip - see [Generating the documentation](docs/generation.md#who-is-on-the-other-side-on-a-components-pages).
+- Every table can be sorted by a click on a header and one of more than 15 rows filtered; a message page lists its versions with the key and the value schema folded into the row - see [Generating the documentation](docs/generation.md#every-table-can-be-sorted-and-a-long-one-filtered).
+- A reaction table heads its last column **Median per day**, reads that number off the reaction instead of off its trigger, and names the variant of a message beside its type.
+- The generated pages are reworded throughout, every timestamp reads to the second in the default time zone, the sidebar shows the path to the open page, and a chapter the model has nothing for is left out.
+- A `:::details[Summary]` directive folds part of a page, the diagrams draw an event, a command and a REST call differently, and the new property `jeap.doc.generator.view-excluded-components` keeps a component out of the views of other pages - see [Configuration](docs/configuration.md).
+- The reads behind the published site, its status and the import states go to the read replica where the instance configures one (`jeap.datasource.replica.enabled`).
+
+### Dependencies
+- **ch.admin.bit.jeap:jeap-spring-boot-parent**: 41.1.0 → 41.3.0 (minor)
+- **com.microsoft.playwright:playwright**: 1.62.0 → 1.63.0 (minor)
+- **@matfsw/docusaurus-plantuml-plugin**: 1.8.5 → 1.8.6 (patch)
+
 ## [3.2.0] - 2026-09-15
 
 - An asset of a Markdown set may lie in a folder inside its chapter, up to five folders deep; a page still lies directly in its chapter - see [What an upload is validated against](docs/upload-validation.md).

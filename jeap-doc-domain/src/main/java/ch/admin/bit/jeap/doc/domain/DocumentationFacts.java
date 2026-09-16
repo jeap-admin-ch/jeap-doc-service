@@ -22,7 +22,7 @@ import java.util.List;
  * @param service      the doc service itself, the same for every site
  * @param site         the site this describes
  * @param environments its environments, in the order the switcher shows them
- * @param schedules    when the documentation changes next
+ * @param schedules    the scheduled jobs of the service, in the order the page tabulates them
  */
 // What a build cost is deliberately absent. A page cannot describe the build that writes it, and describing
 // the publication before it would print numbers that are not the reader's - so the five metrics of the run
@@ -32,10 +32,11 @@ public record DocumentationFacts(
         Service service,
         SiteFacts site,
         List<EnvironmentFacts> environments,
-        Schedules schedules) {
+        List<Schedule> schedules) {
 
     public DocumentationFacts {
         environments = List.copyOf(environments);
+        schedules = List.copyOf(schedules);
     }
 
     /**
@@ -95,15 +96,18 @@ public record DocumentationFacts(
     }
 
     /**
-     * When the documentation changes next. A cron expression and, where it is one this service can read, the
-     * moment it fires - both in the time zone of the service.
+     * One scheduled job of the service, in the time zone of the service.
      *
-     * @param import_   when the architecture repository is imported, or null for never. It is also when the
-     *                  documentation is published: an import asks for every part of every site documenting
-     *                  the environment it read
-     * @param importAt  the next import, or null where there is no schedule
+     * @param job    which job it is; what it does is worded on the page
+     * @param cron   the cron expression, or null where the job does not run
+     * @param nextAt when it fires next, or null where there is no schedule
      */
-    public record Schedules(String import_, Instant importAt) {
+    public record Schedule(ScheduledJob job, String cron, Instant nextAt) {
+    }
+
+    /** The scheduled jobs the page names. */
+    public enum ScheduledJob {
+        ARCHITECTURE_IMPORT, RECONCILE, BUILD_HISTORY, UPLOAD_HOUSEKEEPING, CUSTOM_SWEEP
     }
 
 }

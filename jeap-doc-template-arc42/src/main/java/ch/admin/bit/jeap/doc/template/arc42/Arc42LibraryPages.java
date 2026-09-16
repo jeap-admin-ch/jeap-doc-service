@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.template.arc42;
 
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
@@ -53,7 +54,7 @@ final class Arc42LibraryPages {
             return;
         }
         Path group = buildingBlock.resolve(DocumentationPaths.LIBRARIES_SEGMENT);
-        Arc42Pages.writeCategory(group, LIBRARIES_LABEL, LIBRARIES_POSITION, true);
+        Arc42Pages.writeCategory(group, LIBRARIES_LABEL, LIBRARIES_POSITION);
         writeIndex(system, libraries, context, group);
         for (CustomSubject library : libraries) {
             writeLibrary(template, system, library, context, group.resolve(library.name()));
@@ -95,11 +96,9 @@ final class Arc42LibraryPages {
     private static void writeLibrary(Arc42Template template, SystemDocumentation system,
                                      CustomSubject library, GenerationContext context, Path directory)
             throws IOException {
-        Arc42Pages.writeCategory(directory, library.name(), 0, true);
+        Arc42Pages.writeCategory(directory, library.name(), 0);
         Path structure = directory.resolve(template.libraryPathSegment());
-        // Closed, like a component's: a system with several libraries expanded down to twelve chapters each
-        // is a sidebar nobody can use.
-        Arc42Pages.writeCategory(structure, template.libraryLabel(), 1, false);
+        Arc42Pages.writeCategory(structure, template.libraryLabel(), 1);
 
         List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
                 system.custom().chapterFoldersOf(library));
@@ -133,7 +132,7 @@ final class Arc42LibraryPages {
             rows.add(List.of(Md.text("Repository"), Md.code(provenance.sourceRepository())));
             rows.add(List.of(Md.text("Branch or tag"), Md.code(provenance.sourceRef())));
             rows.add(List.of(Md.text("Built from"), Md.code(provenance.sourceRevision())));
-            rows.add(List.of(Md.text("Uploaded"), Md.text(provenance.uploadedAt().toString())));
+            rows.add(List.of(Md.text("Uploaded"), Md.text(DisplayTime.of(provenance.uploadedAt()))));
         });
         page.table(List.of("", ""), rows);
         Arc42Pages.write(introduction, Arc42Template.LIBRARY_OVERVIEW_PAGE + "."

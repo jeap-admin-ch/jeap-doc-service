@@ -5,6 +5,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.ApiOperation;
 import ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -68,6 +69,18 @@ public final class DocumentedApiPaths {
 
     public boolean excludesNothing() {
         return excluded.isEmpty();
+    }
+
+    /** The operations of an overview this documentation leaves out, sorted by path and then by method. */
+    public List<ApiOperation> leftOut(RestApiOverview api) {
+        if (api == null || excludesNothing()) {
+            return List.of();
+        }
+        return api.operations().stream()
+                .filter(operation -> !documents(operation.path()))
+                .sorted(Comparator.comparing(ApiOperation::path).thenComparing(ApiOperation::method,
+                        Comparator.nullsFirst(Comparator.naturalOrder())))
+                .toList();
     }
 
     /**

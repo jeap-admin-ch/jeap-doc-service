@@ -28,6 +28,7 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.slf4j.LoggerFactory.getLogger;
@@ -60,7 +61,7 @@ class NodeProcessTest {
     void run_whenTheScriptSucceeds_thenItReturns() throws IOException {
         script("ok.mjs", "process.stdout.write('done')");
 
-        node.run(workingDirectory, "ok.mjs");
+        assertThatCode(() -> node.run(workingDirectory, "ok.mjs")).doesNotThrowAnyException();
     }
 
     @Test
@@ -262,7 +263,7 @@ class NodeProcessTest {
                 console.log('[INFO] Compiling Client');
                 """);
 
-        try (BuildLogContext ignored = BuildLogContext.of(PartKey.of("default", "system-orders"))) {
+        try (BuildLogContext _ = BuildLogContext.of(PartKey.of("default", "system-orders"))) {
             BuildLogContext.buildIs(4711L);
             node.run(workingDirectory, "chatter.mjs");
         }

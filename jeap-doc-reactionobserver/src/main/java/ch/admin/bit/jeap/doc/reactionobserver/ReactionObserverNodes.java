@@ -45,4 +45,10 @@ final class ReactionObserverNodes {
         JsonNode value = node.path(field);
         return value.isString() ? value.stringValue() : null;
     }
+
+    /** A number field, or null where the observer sent none - a reaction it counted nothing for sends none. */
+    static Integer number(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        return value.isNumber() ? value.asInt() : null;
+    }
 }

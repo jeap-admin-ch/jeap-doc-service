@@ -75,7 +75,7 @@ class UploadExceptionHandlerTest {
         handler.handleInvalidUpload(new InvalidUploadException(code, "rejected"), request());
 
         assertThat(log.list).singleElement().satisfies(event -> {
-            assertThat(event.getLevel().toString()).isEqualTo(level);
+            assertThat(event.getLevel()).hasToString(level);
             assertThat(event.getFormattedMessage()).contains(UPLOAD_ID).contains(code.name());
         });
     }

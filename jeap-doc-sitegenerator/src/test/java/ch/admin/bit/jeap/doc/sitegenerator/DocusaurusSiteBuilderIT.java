@@ -13,7 +13,6 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
 
@@ -179,11 +178,11 @@ class DocusaurusSiteBuilderIT {
                 StandardCharsets.UTF_8);
         assertThat(inDevelopment).contains("All systems")
                 .describedAs("the sidebar's way out carries the environment the reader is in")
-                .containsPattern("href=\"?" + Pattern.quote("/docs/dev/systems/") + "[\"> ]");
-        // What prefixing twice would have produced. The main environment's index is on this page too - the
-        // footer of the site links to it from every tree, which is what a footer is - so its absence is not
-        // what says the sidebar got the environment right; the href above is.
-        assertThat(inDevelopment).doesNotContain("/docs/dev/dev/");
+                .containsPattern("href=\"?" + Pattern.quote("/docs/dev/systems/") + "[\"> ]")
+                // What prefixing twice would have produced. The main environment's index is on this page too - the
+                // footer of the site links to it from every tree, which is what a footer is - so its absence is not
+                // what says the sidebar got the environment right; the href above is.
+                .doesNotContain("/docs/dev/dev/");
     }
 
     /**
@@ -211,9 +210,9 @@ class DocusaurusSiteBuilderIT {
         assertThat(sharedOfPart).describedAs("and so does a part").isNotEmpty();
         for (String name : sharedOfShell.keySet()) {
             if (sharedOfPart.containsKey(name)) {
-                assertThat(sharedOfPart.get(name))
+                assertThat(sharedOfPart)
                         .describedAs("the shared file %s, which both parts publish to one prefix", name)
-                        .isEqualTo(sharedOfShell.get(name));
+                        .containsEntry(name, sharedOfShell.get(name));
             }
         }
     }

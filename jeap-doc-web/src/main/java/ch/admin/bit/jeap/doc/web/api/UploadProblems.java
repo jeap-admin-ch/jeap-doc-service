@@ -51,10 +51,10 @@ public final class UploadProblems {
                  CONTENT_LENGTH_MISMATCH, INVALID_BUNDLE -> HttpStatus.BAD_REQUEST;
             case UPLOAD_IN_PROGRESS, UPLOAD_ID_CONFLICT -> HttpStatus.CONFLICT;
             case LENGTH_REQUIRED -> HttpStatus.LENGTH_REQUIRED;
-            case SIZE_LIMIT_EXCEEDED, TOO_MANY_PATHS, UNPACKS_TO_TOO_MUCH -> HttpStatus.PAYLOAD_TOO_LARGE;
+            case SIZE_LIMIT_EXCEEDED, TOO_MANY_PATHS, UNPACKS_TO_TOO_MUCH -> HttpStatus.CONTENT_TOO_LARGE;
             // The set describes itself well enough to be placed and would not be published as it is, which is
             // what 422 says. The findings travel with it - see the validation endpoint's own answer.
-            case STRUCTURE_INVALID -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case STRUCTURE_INVALID -> HttpStatus.UNPROCESSABLE_CONTENT;
             case STORAGE_FAILED -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
     }

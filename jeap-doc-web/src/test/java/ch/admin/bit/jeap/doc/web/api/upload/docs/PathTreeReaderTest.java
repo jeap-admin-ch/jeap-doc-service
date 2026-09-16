@@ -115,8 +115,8 @@ class PathTreeReaderTest {
 
         assertThat(reader.read(json("{\"paths\": [\"a\", \"b\", \"c\"]}"), SourceFormat.HTML))
                 .hasSize(3);
-        assertThatThrownBy(() ->
-                reader.read(json("{\"paths\": [\"a\", \"b\", \"c\", \"d\"]}"), SourceFormat.HTML))
+        InputStream fourPaths = json("{\"paths\": [\"a\", \"b\", \"c\", \"d\"]}");
+        assertThatThrownBy(() -> reader.read(fourPaths, SourceFormat.HTML))
                 .isInstanceOf(InvalidUploadException.class)
                 .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.TOO_MANY_PATHS);
     }

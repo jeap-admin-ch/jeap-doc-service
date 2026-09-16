@@ -74,7 +74,7 @@ class ArchitectureImportSchedulingContextTest {
      * beside it waited for the last import to end.
      */
     @Test
-    void configureTasks_thenTheCronHandsTheImportToTheImportExecutorAndReturns() throws InterruptedException {
+    void configureTasks_thenTheCronHandsTheImportToTheImportExecutorAndReturns() {
         CountDownLatch imported = new CountDownLatch(1);
         AtomicReference<String> ranOnThread = new AtomicReference<>();
         ArchitectureImportJob job = mock(ArchitectureImportJob.class);

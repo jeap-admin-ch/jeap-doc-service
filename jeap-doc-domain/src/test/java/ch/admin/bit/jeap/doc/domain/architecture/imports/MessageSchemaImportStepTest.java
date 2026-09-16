@@ -159,9 +159,9 @@ class MessageSchemaImportStepTest {
 
         step.run(ENVIRONMENT, Deadline.none());
 
-        assertThat(schemas.stored.keySet())
+        assertThat(schemas.stored)
                 .describedAs("the shipping schemas are not thrown away because the index went quiet about them")
-                .contains("shipping shippingsentevent 1.0.0");
+                .containsKey("shipping shippingsentevent 1.0.0");
     }
 
     @Test

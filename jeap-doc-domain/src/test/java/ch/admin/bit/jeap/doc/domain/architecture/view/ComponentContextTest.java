@@ -511,4 +511,19 @@ class ComponentContextTest {
         assertThat(upper.key()).isEqualTo(lower.key());
         assertThat(upper.key().component()).isEqualTo("orders-risk".toLowerCase(Locale.ROOT));
     }
+
+    /** Another component's page does not show a left-out component, and the left-out one's own page does. */
+    @Test
+    void of_whenAComponentIsLeftOutOfTheViews_thenOnlyItsOwnContextShowsIt() {
+        DocumentedSystem orders = orders(List.of(
+                event("OrdersAccepted", "orders", "orders-audit", "orders", "orders-intake")));
+        ViewExcludedComponents excluded = ViewExcludedComponents.excluding(List.of("orders-audit"));
+        DocumentedComponent audit = orders.components().stream()
+                .filter(component -> component.name().equals("orders-audit")).findFirst().orElseThrow();
+
+        assertThat(ComponentContext.of(model(orders), orders, intakeOf(orders), NO_LIMIT, NO_LIMIT, excluded)
+                .isEmpty()).isTrue();
+        assertThat(ComponentContext.of(model(orders), orders, audit, NO_LIMIT, NO_LIMIT, excluded).edges())
+                .hasSize(1);
+    }
 }

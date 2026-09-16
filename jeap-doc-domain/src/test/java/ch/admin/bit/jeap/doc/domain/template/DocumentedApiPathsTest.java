@@ -95,9 +95,33 @@ class DocumentedApiPathsTest {
      */
     @Test
     void excluding_whenAPatternIsNotARegularExpression_thenItIsRefused() {
-        assertThatThrownBy(() -> DocumentedApiPaths.excluding(List.of("/actuator(")))
+        List<String> patterns = List.of("/actuator(");
+
+        assertThatThrownBy(() -> DocumentedApiPaths.excluding(patterns))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("/actuator(")
                 .hasMessageContaining("not a regular expression");
+    }
+
+    @Test
+    void leftOut_namesTheExcludedOperationsByPathThenMethod() {
+        RestApiOverview api = new RestApiOverview("1", null, List.of(new ApiGroup("Mixed", null, List.of(
+                new ApiOperation("POST", "/actuator/refresh", "", false, List.of()),
+                operation("/api/orders"),
+                new ApiOperation("GET", "/actuator/refresh", "", false, List.of()),
+                operation("/actuator/health")))));
+
+        assertThat(DocumentedApiPaths.excluding(DEFAULT).leftOut(api))
+                .extracting(operation -> operation.method() + " " + operation.path())
+                .containsExactly("GET /actuator/health", "GET /actuator/refresh", "POST /actuator/refresh");
+    }
+
+    @Test
+    void leftOut_whenNothingIsExcluded_thenNothing() {
+        RestApiOverview api = new RestApiOverview("1", null,
+                List.of(new ApiGroup("Actuator", null, List.of(operation("/actuator/health")))));
+
+        assertThat(DocumentedApiPaths.ALL.leftOut(api)).isEmpty();
+        assertThat(DocumentedApiPaths.excluding(DEFAULT).leftOut(null)).isEmpty();
     }
 }

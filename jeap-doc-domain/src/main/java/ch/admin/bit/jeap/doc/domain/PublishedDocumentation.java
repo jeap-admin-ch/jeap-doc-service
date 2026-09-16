@@ -1,9 +1,8 @@
 package ch.admin.bit.jeap.doc.domain;
 
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
+import ch.admin.bit.jeap.doc.domain.port.DisplayReads;
 import ch.admin.bit.jeap.doc.domain.port.PublishedPart;
 import ch.admin.bit.jeap.doc.domain.port.PublishedSearchIndex;
-import ch.admin.bit.jeap.doc.domain.port.SearchIndexRepository;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
 import ch.admin.bit.jeap.doc.domain.port.StoredObject;
 import lombok.RequiredArgsConstructor;
@@ -38,8 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class PublishedDocumentation {
 
-    private final DocumentationBuildRepository builds;
-    private final SearchIndexRepository searchIndexes;
+    private final DisplayReads reads;
     private final DocumentationSites sites;
     private final SitePartition partition;
     private final SitePublicationStorage storage;
@@ -154,7 +152,7 @@ public class PublishedDocumentation {
         Map<String, String> prefixByPart = new HashMap<>();
         List<SitePart> owners = new ArrayList<>();
         Optional<Site> configured = sites.find(site);
-        for (PublishedPart part : builds.publishedPartsOf(site)) {
+        for (PublishedPart part : reads.publishedPartsOf(site)) {
             if (part.objectPrefix() == null) {
                 // Published once and since expired by the retention. There is nothing to serve from it, and
                 // treating it as published would answer 404 for every page instead of "not generated yet".
@@ -170,7 +168,7 @@ public class PublishedDocumentation {
         owners.sort(Comparator.comparingInt(SitePart::specificity).reversed());
         // Read here rather than per request, and cached for the same few seconds as the parts: a page of the
         // site and the index it searches should not be minutes apart in what they were read from.
-        String searchIndex = searchIndexes.currentOf(site)
+        String searchIndex = reads.currentSearchIndexOf(site)
                 .map(PublishedSearchIndex::objectPrefix).orElse(null);
         return new CachedParts(prefixByPart, List.copyOf(owners), searchIndex, now);
     }

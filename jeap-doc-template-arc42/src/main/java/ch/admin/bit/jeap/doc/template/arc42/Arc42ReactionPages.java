@@ -51,7 +51,12 @@ final class Arc42ReactionPages {
         provenance(page, context);
     }
 
-    /** One row per reaction: what triggered it, who reacted, what it published in answer, how often. */
+    /**
+     * One row per reaction: what triggered it, who reacted, what it published in answer, how often.
+     * <p>
+     * <b>The last column says what the number is.</b> It is the observer's median of the daily counts, not a
+     * total, and a column called <i>Times observed</i> was read as one.
+     */
     private static void table(MarkdownWriter page, ReactionView view) {
         if (view.rows().isEmpty()) {
             return;
@@ -59,13 +64,13 @@ final class Arc42ReactionPages {
         List<List<Markdown>> rows = new ArrayList<>();
         for (ReactionView.Row row : view.rows()) {
             rows.add(List.of(
-                    row.trigger() == null ? Md.italic("no trigger observed") : Md.code(row.trigger()),
+                    row.trigger() == null ? Md.text("-") : Md.code(row.trigger()),
                     Md.code(row.component()),
-                    row.answers().isEmpty() ? Md.italic("nothing observed")
+                    row.answers().isEmpty() ? Md.text("-")
                             : Md.text(String.join(", ", row.answers())),
                     row.median() == null ? Md.italic("unknown") : Md.text(Integer.toString(row.median()))));
         }
-        page.table(List.of("Triggered by", "Component", "Publishes in answer", "Times observed"), rows);
+        page.table(List.of("Trigger", "Component", "Action", "Median per day"), rows);
     }
 
     /**

@@ -1,7 +1,6 @@
 package ch.admin.bit.jeap.doc.domain.architecture.imports;
 
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
-import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 import org.springframework.scheduling.support.CronExpression;

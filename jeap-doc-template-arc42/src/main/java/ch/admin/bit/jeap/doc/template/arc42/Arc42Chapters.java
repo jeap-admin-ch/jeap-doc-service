@@ -52,18 +52,24 @@ public final class Arc42Chapters {
     /** What each chapter answers, for the landing page of the structure. */
     static String summaryOf(StructureChapter chapter) {
         return switch (chapter.number()) {
-            case 1 -> "What the system is, and who is responsible for it.";
-            case 2 -> "What was fixed before the first design decision.";
+            case 1 -> "An overview of the system, including its purpose and ownership.";
+            case 2 -> "The technical, organizational, and regulatory constraints that shape the architecture "
+                      + "and limit the available design choices.";
             case 3 -> "Who the system talks to, and about what.";
             case 4 -> "The decisions that shape everything below.";
-            case 5 -> "How the system is decomposed, and what flows between the parts.";
+            case 5 -> "How the system is decomposed into components and how data and messages flow between "
+                      + "them.";
             case 6 -> "How the system behaves while it runs.";
-            case 7 -> "Where it runs.";
-            case 8 -> "The concepts that apply everywhere rather than in one place.";
+            case 7 -> "How the system is deployed across its runtime infrastructure and environments.";
+            case 8 -> "Cross-cutting concepts that apply across the system rather than to a specific "
+                      + "component or area.";
             case 9 -> "Why the architecture is the way it is.";
-            case 10 -> "The quality goals, as measurable scenarios.";
-            case 11 -> "What is known to be risky, and what is owed.";
-            case 12 -> "The terms, and what they mean here.";
+            case 10 -> "The quality requirements of the system, expressed as concrete and measurable "
+                       + "scenarios.";
+            case 11 -> "Known architectural risks and technical debt that may affect the system's "
+                       + "maintainability, reliability, or future evolution.";
+            case 12 -> "The key terms used throughout the architecture documentation and their meaning in "
+                       + "this system context.";
             default -> "";
         };
     }

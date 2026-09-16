@@ -97,8 +97,12 @@ class ReactionObserverConfigurationTest {
     void anEnvironmentWithoutAnArchitectureRepository_failsTheStartup() {
         ReactionObserverProperties properties = properties("dev", "https://observer", "doc-client");
 
-        assertThatThrownBy(() -> configuration.reactionObserverClients(properties, sites, JSON,
-                provider(builders()), provider(registrations()), provider(models())))
+        ObjectProvider<JeapOAuth2RestClientBuilderFactory> builders = provider(builders());
+        ObjectProvider<ClientRegistrationRepository> registrations = provider(registrations());
+        ObjectProvider<ArchitectureModelUpstream> models = provider(models());
+
+        assertThatThrownBy(() -> configuration.reactionObserverClients(properties, sites, JSON, builders,
+                registrations, models))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.archrepo.environments");
     }

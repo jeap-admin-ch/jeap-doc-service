@@ -15,14 +15,16 @@ class DocStorageBucketAvailabilityCheckIT extends RustFsTestContainerBase {
 
     @Test
     void afterPropertiesSet_whenBucketDoesNotExist_thenFails() {
-        assertThatThrownBy(() -> checkFor("no-such-bucket").afterPropertiesSet())
+        DocStorageBucketAvailabilityCheck check = checkFor("no-such-bucket");
+        assertThatThrownBy(check::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("no-such-bucket");
     }
 
     @Test
     void afterPropertiesSet_whenBucketNotConfigured_thenFails() {
-        assertThatThrownBy(() -> checkFor(null).afterPropertiesSet())
+        DocStorageBucketAvailabilityCheck check = checkFor(null);
+        assertThatThrownBy(check::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.storage.bucket");
     }
@@ -37,7 +39,8 @@ class DocStorageBucketAvailabilityCheckIT extends RustFsTestContainerBase {
         properties.setBucket(TEST_BUCKET_NAME);
         properties.setPublicationConcurrency(0);
 
-        assertThatThrownBy(() -> new DocStorageBucketAvailabilityCheck(S3_CLIENT, properties).afterPropertiesSet())
+        DocStorageBucketAvailabilityCheck check = new DocStorageBucketAvailabilityCheck(S3_CLIENT, properties);
+        assertThatThrownBy(check::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.storage.publication-concurrency");
     }

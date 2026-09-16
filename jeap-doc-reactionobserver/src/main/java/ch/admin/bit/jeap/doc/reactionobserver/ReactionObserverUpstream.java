@@ -357,9 +357,9 @@ class ReactionObserverUpstream implements ReactionGraphUpstream {
                     + "<system-name>_@reactions_#read on the reaction observer.")
                     .formatted(environment, urlOf(environment), e.getStatus(), environment), e);
         }
-        return new ArchitectureModelUnavailableException("The reaction observer of the environment %s at %s "
-                                                         + "answered %d."
-                .formatted(environment, urlOf(environment), e.getStatus()), e);
+        return new ArchitectureModelUnavailableException(
+                ("The reaction observer of the environment %s at %s answered %d.")
+                        .formatted(environment, urlOf(environment), e.getStatus()), e);
     }
 
     private ArchitectureModelUnavailableException unreachable(String environment, RuntimeException e) {

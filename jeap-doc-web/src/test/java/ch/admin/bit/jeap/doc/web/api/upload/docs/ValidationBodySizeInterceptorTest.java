@@ -53,7 +53,9 @@ class ValidationBodySizeInterceptorTest {
     void aBodyOverTheLimit_isRefusedBeforeItIsRead() {
         properties.getValidation().setMaxPaths(1);
 
-        assertThatThrownBy(() -> preHandle(interceptor.limit(SourceFormat.MARKDOWN) + 1))
+        long tooLong = interceptor.limit(SourceFormat.MARKDOWN) + 1;
+
+        assertThatThrownBy(() -> preHandle(tooLong))
                 .isInstanceOf(InvalidUploadException.class)
                 .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.SIZE_LIMIT_EXCEEDED)
                 .hasMessageContaining("announces");

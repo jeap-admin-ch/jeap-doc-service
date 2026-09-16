@@ -34,13 +34,8 @@ public final class CategoryFile {
     }
 
     /**
-     * The same, open when the page is first shown.
-     * <p>
-     * <b>What a reader sees without clicking is the shape of the documentation.</b> Collapsed, a system's
-     * sidebar is a list of twelve chapter names and says nothing about what is in them - and a reader who
-     * does not already know arc42 cannot tell which one holds the thing they came for. The site is configured
-     * with {@code autoCollapseCategories: false}, so what is opened here stays open while the reader moves
-     * around.
+     * The same, open when the page is first shown. Meant for a category at the top of a sidebar: everything
+     * below starts closed, and Docusaurus opens the path to the page the reader is on.
      */
     public static String expanded(String label, int position) {
         return """

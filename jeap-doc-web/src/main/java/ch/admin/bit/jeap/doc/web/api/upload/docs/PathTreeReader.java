@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonParser;
+import tools.jackson.core.ObjectReadContext;
 import tools.jackson.core.JsonToken;
 import tools.jackson.core.json.JsonFactory;
 
@@ -69,7 +70,8 @@ class PathTreeReader {
      */
     List<String> read(InputStream body, SourceFormat sourceFormat) {
         try (JsonParser parser =
-                     JSON.createParser(UploadBodies.limitedTo(body, maxBytes(properties, sourceFormat)))) {
+                     JSON.createParser(ObjectReadContext.empty(),
+                             UploadBodies.limitedTo(body, maxBytes(properties, sourceFormat)))) {
             return tree(parser, sourceFormat);
         } catch (JacksonException e) {
             // Not the parser's own text: what is wrong with the JSON is the caller's to see in their body, and

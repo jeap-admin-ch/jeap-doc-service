@@ -81,7 +81,9 @@ class SiteGeneratorAvailabilityCheckTest {
         configured.setColorScheme("corporate");
         siteProperties.setSites(Map.of(Site.DEFAULT_SITE, configured));
 
-        assertThatThrownBy(() -> checkWith(siteProperties, installedDependencies()).afterPropertiesSet())
+        SiteGeneratorAvailabilityCheck check = checkWith(siteProperties, installedDependencies());
+
+        assertThatThrownBy(check::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(Site.DEFAULT_SITE)
                 .hasMessageContaining("corporate")
@@ -97,7 +99,9 @@ class SiteGeneratorAvailabilityCheckTest {
         BuildProperties properties = buildProperties();
         properties.setNodeModulesDirectory(workspaceRoot.resolve("nowhere"));
 
-        assertThatThrownBy(() -> checkWith(new SiteProperties(), properties).afterPropertiesSet())
+        SiteGeneratorAvailabilityCheck check = checkWith(new SiteProperties(), properties);
+
+        assertThatThrownBy(check::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.build.node-modules-directory");
     }
@@ -113,7 +117,9 @@ class SiteGeneratorAvailabilityCheckTest {
         Files.writeString(properties.getNodeModulesDirectory().resolveSibling(SiteTemplate.LOCKFILE),
                 "{\"name\": \"something-else\"}", StandardCharsets.UTF_8);
 
-        assertThatThrownBy(() -> checkWith(new SiteProperties(), properties).afterPropertiesSet())
+        SiteGeneratorAvailabilityCheck check = checkWith(new SiteProperties(), properties);
+
+        assertThatThrownBy(check::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("rebuilt");
     }

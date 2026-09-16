@@ -8,7 +8,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Asks for a part of a documentation site to be published.
@@ -30,7 +33,7 @@ import java.util.List;
  * every one of those requests, so that the wall clock of a full publication is a thing the service can measure
  * across its instances. An upload does not: one part is not a publication.
  * <p>
- * <b>Only the upload names one part.</b> An import asks for the whole site: which
+ * <b>Only the upload names one system.</b> An import asks for the whole site: which
  * systems its landscape changed is a question this variant does not ask, because a part is a system and a
  * system is quick to generate - so asking is more machinery than rebuilding.
  * <p>
@@ -58,13 +61,21 @@ public class DocumentationBuildTrigger {
      * <b>An upload names no environment</b> ({@code DocumentationUploadDescriptor} carries the site, the system,
      * the component and the version), so the partition decides which parts that touches. With a part per system
      * it is exactly one.
+     * <p>
+     * <b>The shell is asked for too.</b> It holds the systems index, which changes when a system gets its first
+     * documentation or loses its last. A shell whose content did not move is not generated.
+     * <p>
+     * <b>A system the site no longer has is not asked for.</b> After its last set is removed, a system nothing
+     * else knows has no content, and its build would fail. Its published pages are taken away by
+     * {@link DepartedParts}, like those of a system that left the landscape.
      */
     public void requestBecauseOfUpload(String site, String system) {
         sites.find(site)
                 .filter(Site::publishOnUpload)
                 .ifPresent(configured -> {
-                    List<SitePart> parts = partition.partsDocumenting(configured, null, system);
-                    // No publication: an upload asks for one part, and one part is not a publication. Not
+                    List<SitePart> parts = shellAndPartsStillOnTheSite(configured,
+                            partition.partsDocumenting(configured, null, system));
+                    // No publication: an upload asks for one system, and that is not a publication. Not
                     // forced either - an upload changes the content, so the digest decides and is right.
                     requestParts(parts, BuildTrigger.UPLOAD, null, false);
                     metrics.triggered(configured.id(), BuildTrigger.UPLOAD, parts.size());
@@ -171,6 +182,28 @@ public class DocumentationBuildTrigger {
                 .filter(request -> request.part().equals(part))
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * The shell, and the parts of the system the site still has. Nothing when no part documents the system at
+     * all, which is a name with no slug.
+     */
+    private List<SitePart> shellAndPartsStillOnTheSite(Site site, List<SitePart> documenting) {
+        if (documenting.isEmpty()) {
+            return documenting;
+        }
+        Set<PartKey> onTheSite = partition.partsOf(site).stream().map(SitePart::key).collect(Collectors.toSet());
+        List<SitePart> parts = new ArrayList<>();
+        parts.add(partition.shellOf(site));
+        for (SitePart part : documenting) {
+            if (onTheSite.contains(part.key())) {
+                parts.add(part);
+            } else {
+                log.info("The site {} no longer has {}, so only its landing pages are asked for.", site.id(),
+                        part.key());
+            }
+        }
+        return parts;
     }
 
     /**

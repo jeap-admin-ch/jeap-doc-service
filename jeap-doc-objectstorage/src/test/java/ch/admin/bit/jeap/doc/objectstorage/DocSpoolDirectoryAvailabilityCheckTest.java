@@ -36,7 +36,8 @@ class DocSpoolDirectoryAvailabilityCheckTest {
 
     @Test
     void afterPropertiesSet_whenTheDirectoryDoesNotExist_thenTheServiceDoesNotStart() {
-        assertThatThrownBy(() -> check(spoolDirectory.resolve("not-there")).afterPropertiesSet())
+        DocSpoolDirectoryAvailabilityCheck check = check(spoolDirectory.resolve("not-there"));
+        assertThatThrownBy(check::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.storage.spool-directory");
     }

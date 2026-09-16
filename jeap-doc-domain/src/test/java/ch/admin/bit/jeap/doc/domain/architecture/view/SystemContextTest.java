@@ -157,4 +157,19 @@ class SystemContextTest {
                 .extracting(DocumentedSystem::name).isEqualTo("shipping");
         assertThat(landscape.systemOf("nobody")).isEmpty();
     }
+
+    /** A neighbour only a left-out component reaches is not in the context at all. */
+    @Test
+    void of_whenAComponentIsLeftOutOfTheViews_thenItsRelationsAreNot() {
+        DocumentedSystem orders = system("orders", List.of(component("orders-service"), component("orders-mock")),
+                List.of(event("TariffsChanged", "tariffs", "tariffs-service", "orders", "orders-mock"),
+                        event("OrdersPaid", "orders", "orders-service", "shipping", "shipping-service")),
+                List.of());
+        ArchitectureModel landscape = model(orders, system("tariffs"), system("shipping"));
+
+        SystemContext context = SystemContext.of(landscape, orders, NO_LIMIT,
+                ViewExcludedComponents.excluding(List.of("orders-mock")));
+
+        assertThat(context.neighbours()).containsExactly("shipping");
+    }
 }

@@ -110,6 +110,8 @@ because nothing outside the replication has any use for them.
 - **Where Jackson is needed it is Jackson 3** - the `tools.jackson` group and packages, never
   `com.fasterxml.jackson`. Its exceptions are unchecked.
 - An adapter module depends on the domain, never on another adapter.
+- **A read that may lag has a port of its own, `DisplayReads`.** It serves what is shown and served and may be
+  answered by a read replica; every read that decides a write goes through the repository ports and the primary.
 - Each module contributes one auto-configuration (`Doc*Configuration`, registered in
   `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`), so an instance provides its
   application class and its configuration and gets the wiring.

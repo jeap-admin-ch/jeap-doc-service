@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.web.site;
 
-import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.BuildState;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildRunner;
@@ -257,8 +256,8 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
         build();
 
         String view = page("/systems/orders/system-architecture/context-and-scope/system-context-view/");
-        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml");
-        assertThat(view).doesNotContain(".png");
+        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml")
+                .doesNotContain(".png");
     }
 
     @Test
@@ -343,9 +342,9 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
         build();
 
         String view = page("/systems/orders/system-architecture/building-block-view/whitebox-view/");
-        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml");
-        assertThat(view).doesNotContain(".png");
-        assertThat(view).contains("orders-intake");
+        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml")
+                .doesNotContain(".png")
+                .contains("orders-intake");
     }
 
     /**
@@ -388,15 +387,15 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
         build();
 
         String view = page(COMPONENT_TREE + "building-block-view/database-schema/");
-        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml");
-        // Only .png: the site's own logo is an .svg on every page. That the diagram figure itself carries no
-        // image at all is asserted in DocusaurusSiteBuilderIT, where the figure is.
-        assertThat(view).doesNotContain(".png");
-        assertThat(view).describedAs("the schema the architecture repository served, not a placeholder")
+        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml")
+                // Only .png: the site's own logo is an .svg on every page. That the diagram figure itself carries no
+                // image at all is asserted in DocusaurusSiteBuilderIT, where the figure is.
+                .doesNotContain(".png")
+                .describedAs("the schema the architecture repository served, not a placeholder")
                 .contains("orders_order")
                 .contains("orders_party")
-                .contains("1.2.3");
-        assertThat(view).describedAs("and the machinery of the schema is named rather than silently dropped")
+                .contains("1.2.3")
+                .describedAs("and the machinery of the schema is named rather than silently dropped")
                 .contains("flyway_schema_history")
                 .doesNotContain("%d");
     }
@@ -407,9 +406,9 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
         build();
 
         String view = page(COMPONENT_TREE + "context-and-scope/context-view/");
-        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml");
-        assertThat(view).doesNotContain(".png");
-        assertThat(view).contains("orders-intake").contains("shipping");
+        assertThat(view).containsPattern("data-plantuml-diagram=\"?plantuml")
+                .doesNotContain(".png")
+                .contains("orders-intake").contains("shipping");
     }
 
     /**
@@ -422,10 +421,10 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
 
         String view = page(COMPONENT_TREE + "building-block-view/rest-api/");
         assertThat(view).contains("Orders").contains("Everything about an order")
-                .contains("/api/orders").contains("List the orders");
-        assertThat(view).describedAs("a tag the specification declares and nothing uses is not a group")
-                .doesNotContain("Nobody uses this tag");
-        assertThat(view).contains("https://archrepo.example.com/swagger-ui/index.html");
+                .contains("/api/orders").contains("List the orders")
+                .describedAs("a tag the specification declares and nothing uses is not a group")
+                .doesNotContain("Nobody uses this tag")
+                .contains("https://archrepo.example.com/swagger-ui/index.html");
     }
 
     /**
@@ -442,20 +441,15 @@ class DocumentationGenerationIT extends DocServiceIntegrationTestBase {
                           + "orders-payment-accepted-event/");
     }
 
-    /**
-     * A component the architecture repository knows only the name of gets three chapters and no empty
-     * folder.
-     */
+    /** No content, no page: a component the architecture repository knows only the name of gets chapter 1. */
     @Test
-    void aComponentWithNothingToDecomposeHasNoBuildingBlockView() throws Exception {
+    void aComponentWithNothingToDecomposeHasNoEmptyChapter() throws Exception {
         build();
 
         String quiet = "/systems/orders/system-architecture/building-block-view/components/orders-quiet/"
                        + "component-architecture/";
         assertThat(page(quiet)).contains("Component Architecture");
-        assertThat(page(quiet + "context-and-scope/context-view/"))
-                .describedAs("a component that exchanges nothing says so rather than drawing an empty box")
-                .contains("records no relation");
+        mockMvc.perform(get(quiet + "context-and-scope/")).andExpect(status().isNotFound());
         mockMvc.perform(get(quiet + "building-block-view/")).andExpect(status().isNotFound());
     }
 

@@ -112,7 +112,7 @@ public record ReactionView(
                 .map(action -> new ActionEdge(action.reactionId(), action.messageId()))
                 .toList();
         return new ReactionView(messages, clusters, triggers, actions,
-                rowsOf(messages, clusters, triggersOfReaction, actionsOfReaction));
+                rowsOf(messages, clusters, mediansOf(graph), triggersOfReaction, actionsOfReaction));
     }
 
     /** The edges of a graph by the reaction they belong to, in the order they arrived. */
@@ -211,6 +211,7 @@ public record ReactionView(
      */
     private static List<Row> rowsOf(
             List<MessageNode> messages, List<ReactionCluster> clusters,
+            Map<Long, Integer> medianOfReaction,
             Map<Long, List<ObservedReactions.ObservedTrigger>> triggersOfReaction,
             Map<Long, List<ObservedReactions.ObservedAction>> actionsOfReaction) {
         Map<Long, MessageNode> byId = new LinkedHashMap<>();
@@ -222,24 +223,62 @@ public record ReactionView(
                         .getOrDefault(reaction.id(), List.of()).stream()
                         .map(action -> byId.get(action.messageId()))
                         .filter(Objects::nonNull)
-                        .map(MessageNode::name)
+                        .map(ReactionView::named)
                         .sorted()
                         .toList();
-                // The trigger first and its median after it: a median is null where the observer kept no
-                // number, and finding one in a stream of nulls throws.
-                Integer median = triggersOfReaction.getOrDefault(reaction.id(), List.of()).stream()
-                        .findFirst()
-                        .map(ObservedReactions.ObservedTrigger::median)
-                        .orElse(null);
+                Integer median = medianOf(reaction.id(), medianOfReaction, triggersOfReaction);
                 MessageNode trigger = cluster.triggerMessageId() == null ? null
                         : byId.get(cluster.triggerMessageId());
-                rows.add(new Row(trigger == null ? null : trigger.name(), cluster.component(), answers,
+                rows.add(new Row(trigger == null ? null : named(trigger), cluster.component(), answers,
                         median));
             }
         }
         rows.sort(Comparator.comparing((Row row) -> row.trigger() == null ? "" : row.trigger())
                 .thenComparing(Row::component));
         return List.copyOf(rows);
+    }
+
+    /** The number the observer counted for each reaction, where it sent one. */
+    private static Map<Long, Integer> mediansOf(ObservedReactions graph) {
+        Map<Long, Integer> medians = new LinkedHashMap<>();
+        graph.reactions().stream()
+                .filter(reaction -> reaction.median() != null)
+                .forEach(reaction -> medians.put(reaction.id(), reaction.median()));
+        return medians;
+    }
+
+    /**
+     * How often a reaction was seen: <b>its own number</b>, and its trigger's only where the observer sent
+     * none on the node.
+     * <p>
+     * The observer counts per reaction and has carried the number on the reaction node since its 12.2.0. The
+     * trigger edge is the fallback, because a graph stored before that version has nothing on the node - and
+     * a reaction that no message triggered has no edge at all, which is what the node's number is for.
+     */
+    private static Integer medianOf(long reaction, Map<Long, Integer> medianOfReaction,
+                                    Map<Long, List<ObservedReactions.ObservedTrigger>> triggersOfReaction) {
+        Integer median = medianOfReaction.get(reaction);
+        if (median != null) {
+            return median;
+        }
+        // The trigger first and its median after it: a median is null where the observer kept no number, and
+        // finding one in a stream of nulls throws.
+        return triggersOfReaction.getOrDefault(reaction, List.of()).stream()
+                .findFirst()
+                .map(ObservedReactions.ObservedTrigger::median)
+                .orElse(null);
+    }
+
+    /**
+     * A message as the table names it: the type, and the variant after it where there is one.
+     * <p>
+     * The variant is what tells two rows apart. Four reactions to four variants of one message type are four
+     * rows of the same three names without it, and the diagram above them draws four distinct nodes.
+     */
+    private static String named(MessageNode message) {
+        return message.variant() == null || message.variant().isBlank()
+                ? message.name()
+                : message.name() + " [" + message.variant() + "]";
     }
 
     private static MessageNode messageNode(ObservedReactions.ObservedMessage message,
@@ -357,8 +396,9 @@ public record ReactionView(
     /**
      * One row of the table under the diagram.
      *
-     * @param trigger the message that triggered it, or null where the observer holds a reaction without one
-     * @param answers the messages published in answer, sorted, possibly none
+     * @param trigger the message that triggered it with its variant, or null where the observer holds a
+     *                reaction without one
+     * @param answers the messages published in answer with their variants, sorted, possibly none
      * @param median  how often it was observed, or null
      */
     public record Row(String trigger, String component, List<String> answers, Integer median) {

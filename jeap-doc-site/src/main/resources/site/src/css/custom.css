@@ -75,7 +75,13 @@ html {
     line-height: 1.4;
 }
 
-.menu__link--active:not(.menu__link--sublist) {
+/*
+ * The page the reader is on stands out, whether it is a page or a category with a page of its own. Docusaurus
+ * marks every category on the path active too; those keep the colour and get no background. Infima draws a
+ * category's background on its wrapper and forces none on the link, so the wrapper is what gets it.
+ */
+.menu__link[aria-current="page"],
+.menu__list-item-collapsible--active {
     background-color: var(--jeap-accent-soft);
     font-weight: 600;
 }
@@ -200,4 +206,267 @@ summary:focus-visible,
     outline: 2px solid var(--ifm-color-primary);
     outline-offset: 2px;
     border-radius: 3px;
+}
+
+/*
+ * A grouped table - see plugins/remark-grouped-table. As wide as the page, so an opened fold is never cut off,
+ * with the two label columns narrow and every cell's content at its top.
+ */
+table.groupedTable {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+}
+
+table.groupedTable th:nth-child(1) {
+    width: 6rem;
+}
+
+table.groupedTable th:nth-child(2) {
+    width: 5rem;
+}
+
+/* No stripes: a group spans several rows, and stripes by row would colour its spanning cell by chance. */
+table.groupedTable tr {
+    background: none;
+}
+
+table.groupedTable td {
+    vertical-align: top;
+}
+
+table.groupedTable td > p {
+    margin: 0.35rem 0 0;
+}
+
+/* A fold in a cell is one slim line until it is opened. */
+table.groupedTable td > details {
+    --ifm-alert-padding-vertical: 0.2rem;
+    --ifm-alert-padding-horizontal: 0.6rem;
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+table.groupedTable td > details > summary {
+    line-height: 1.5;
+}
+
+table.groupedTable td > details > summary::before {
+    top: 0.35rem;
+}
+
+table.groupedTable td > details [class*="collapsibleContent"] {
+    margin-top: 0.3rem;
+    padding-top: 0.4rem;
+}
+
+table.groupedTable td > details pre {
+    margin-bottom: 0.2rem;
+    overflow-x: auto;
+}
+
+table.groupedTable td > details [class*="codeBlockContent"] pre code {
+    padding: 0.5rem 0.75rem;
+}
+
+/*
+ * What src/clientModules/tableControls.js adds to a table: sort buttons in the header, and a filter bar above a
+ * table of more than 15 rows.
+ */
+.jeapTableFilter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.jeapTableFilterField {
+    position: relative;
+    flex: 0 1 22rem;
+    min-width: 0;
+}
+
+.jeapTableFilterIcon {
+    position: absolute;
+    left: 0.6rem;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    transform: translateY(-50%);
+    fill: var(--jeap-muted);
+    pointer-events: none;
+}
+
+.jeapTableFilterInput {
+    width: 100%;
+    font: inherit;
+    font-size: 0.875rem;
+    color: var(--ifm-color-content);
+    background: var(--ifm-background-color);
+    border: 1px solid var(--jeap-border-strong);
+    border-radius: 6px;
+    padding: 0.38rem 2rem;
+}
+
+.jeapTableFilterInput::placeholder {
+    color: var(--jeap-muted);
+}
+
+/* The bar has its own clear button. */
+.jeapTableFilterInput::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.jeapTableFilterInput:focus-visible {
+    outline: 2px solid var(--ifm-color-primary);
+    outline-offset: 1px;
+    border-color: var(--ifm-color-primary);
+}
+
+.jeapTableFilterClear {
+    position: absolute;
+    right: 0.25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.6rem;
+    height: 1.6rem;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--jeap-muted);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.jeapTableFilterClear:hover {
+    background: var(--jeap-surface);
+    color: var(--ifm-color-content);
+}
+
+.jeapTableFilterCount {
+    font-size: 0.8rem;
+    color: var(--jeap-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.jeapTableFilterCount b {
+    color: var(--ifm-color-content);
+    font-weight: 600;
+}
+
+.markdown table thead th.jeapTableSortable {
+    padding: 0;
+}
+
+.jeapTableSort {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--ifm-heading-color);
+}
+
+.jeapTableSort:hover {
+    background: var(--jeap-accent-soft);
+}
+
+.jeapTableSort:focus-visible {
+    outline: 2px solid var(--ifm-color-primary);
+    outline-offset: -2px;
+}
+
+.jeapTableSortArrows {
+    display: inline-flex;
+    flex: none;
+    flex-direction: column;
+    gap: 1px;
+    opacity: 0.35;
+}
+
+.jeapTableSortArrows svg {
+    display: block;
+    width: 8px;
+    height: 5px;
+    fill: currentColor;
+}
+
+th[aria-sort] .jeapTableSort {
+    color: var(--ifm-color-primary);
+}
+
+th[aria-sort] .jeapTableSortArrows {
+    opacity: 1;
+}
+
+th[aria-sort='ascending'] .jeapTableSortDown,
+th[aria-sort='descending'] .jeapTableSortUp {
+    opacity: 0.2;
+}
+
+.markdown table .jeapTableNumeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+th.jeapTableNumeric .jeapTableSort {
+    flex-direction: row-reverse;
+}
+
+.markdown table tr[hidden] {
+    display: none;
+}
+
+mark.jeapTableMark {
+    background: var(--jeap-mark-background);
+    color: var(--jeap-mark-color);
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+/* The chip that shows what a long cell holds beyond its first three items. */
+.jeapCellMore {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--ifm-toc-border-color);
+    border-radius: 999px;
+    background: var(--jeap-surface);
+    color: var(--jeap-muted);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.jeapCellMore:hover {
+    border-color: var(--ifm-color-primary);
+    color: var(--ifm-color-primary);
+}
+
+.jeapCellMore:focus-visible {
+    outline: 2px solid var(--ifm-color-primary);
+    outline-offset: 1px;
+}
+
+.jeapTableEmpty td {
+    text-align: center;
+    color: var(--jeap-muted);
+    font-style: italic;
+    padding: 1.25rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .jeapTableSort,
+    .jeapTableFilterClear {
+        transition: background-color 120ms;
+    }
 }

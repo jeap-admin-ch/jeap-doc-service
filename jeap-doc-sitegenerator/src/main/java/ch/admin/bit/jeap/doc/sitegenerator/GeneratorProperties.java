@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExcludedComponents;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.DocumentedApiPaths;
 import jakarta.annotation.PostConstruct;
@@ -99,6 +100,22 @@ public class GeneratorProperties {
         return DocumentedApiPaths.excluding(restApiExcludedPaths);
     }
 
+    /**
+     * The components left out of the diagrams and relations tables of other pages, as regular expressions that
+     * have to match a whole component name - a test double that publishes other systems' events, say. Their
+     * own pages stay. Empty by default.
+     * <p>
+     * <b>It bounds the views and what they write, and nothing else.</b> A counterpart column - the callers of
+     * an operation, the consumers and publishers of a message - is read from the relations and the contracts
+     * rather than from a view, and names an excluded component like any other.
+     */
+    private List<String> viewExcludedComponents = new ArrayList<>();
+
+    /** Which components the views leave out - see {@link ViewExcludedComponents}. Compiled on every call. */
+    public ViewExcludedComponents viewExclusions() {
+        return ViewExcludedComponents.excluding(viewExcludedComponents);
+    }
+
     /** The five bounds in one value, which is what a template is handed. */
     public DiagramLimits limits() {
         return new DiagramLimits(maxDiagramNodes, maxEdgeLabels, maxContextComponents, maxSchemaTableDiagram,
@@ -140,6 +157,12 @@ public class GeneratorProperties {
             // which is a build failing an hour after the deployment that caused it.
             throw new IllegalStateException(
                     "jeap.doc.generator.rest-api-excluded-paths is not usable: " + e.getMessage(), e);
+        }
+        try {
+            viewExclusions();
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "jeap.doc.generator.view-excluded-components is not usable: " + e.getMessage(), e);
         }
     }
 }

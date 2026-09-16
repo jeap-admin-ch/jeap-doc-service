@@ -120,13 +120,12 @@ class SiteServingBrowserIT extends SiteBrowserTestBase {
 
         Response document = open("/" + GUIDE_ROUTE + "/");
 
-        assertThat(document.headers().get("cache-control")).isEqualTo("no-cache");
+        assertThat(document.headers()).containsEntry("cache-control", "no-cache");
         assertThat(document.headers().get("etag")).startsWith("W/\"");
         List<Response> assets = responses.stream()
                 .filter(response -> response.url().contains("/assets/"))
                 .toList();
-        assertThat(assets).describedAs("the hashed assets of the page").isNotEmpty();
-        assertThat(assets).allSatisfy(asset ->
+        assertThat(assets).describedAs("the hashed assets of the page").isNotEmpty().allSatisfy(asset ->
                 assertThat(asset.headers().get("cache-control")).contains("immutable"));
     }
 

@@ -140,6 +140,8 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
                           version = excluded.version,
                           uploaded_at = excluded.uploaded_at
             """, nativeQuery = true)
+    // One parameter per column of the row an upsert writes, so the statement stays one statement.
+    @SuppressWarnings("java:S107")
     void upsert(@Param("site") String site, @Param("kind") String kind, @Param("system") String system,
                 @Param("name") String name, @Param("sourceFormat") String sourceFormat,
                 @Param("template") String template, @Param("location") String location,

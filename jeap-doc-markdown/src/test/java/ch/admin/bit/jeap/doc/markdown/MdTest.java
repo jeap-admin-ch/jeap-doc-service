@@ -217,9 +217,11 @@ class MdTest {
 
     @Test
     void sentence_whenThePlaceholdersAndArgumentsDisagree_thenItFails() {
-        assertThatThrownBy(() -> Md.sentence("{} and {}", Md.text("one")))
+        Markdown one = Md.text("one");
+        Markdown two = Md.text("two");
+        assertThatThrownBy(() -> Md.sentence("{} and {}", one))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Md.sentence("{}", Md.text("one"), Md.text("two")))
+        assertThatThrownBy(() -> Md.sentence("{}", one, two))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -233,5 +235,19 @@ class MdTest {
     void bold_andItalic_leaveNothingBehindWhenThereIsNothing() {
         assertThat(Md.bold((String) null)).isEqualTo(Markdown.EMPTY);
         assertThat(Md.italic("")).isEqualTo(Markdown.EMPTY);
+    }
+
+    /**
+     * A directive and not a {@code <sup>} element: raw HTML is escaped and shown as text, so the element is
+     * built by the site template's plugin. The name here and the name there have to agree.
+     */
+    @Test
+    void superscript_writesADirectiveAndKeepsWhatIsInIt() {
+        assertThat(Md.superscript(Md.link("https://pacts.example.ch/orders", "pact")).value())
+                .isEqualTo(":sup[[pact](https://pacts.example.ch/orders)]");
+        assertThat(Md.superscript(Md.text("<script>")).value())
+                .describedAs("what it raises is still escaped")
+                .doesNotContain("<script>");
+        assertThat(Md.superscript(Markdown.EMPTY)).isEqualTo(Markdown.EMPTY);
     }
 }

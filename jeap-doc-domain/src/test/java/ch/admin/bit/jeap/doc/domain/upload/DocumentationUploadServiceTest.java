@@ -590,7 +590,9 @@ class DocumentationUploadServiceTest {
     void receive_whenTheSiteIsNotConfigured_thenNoBuildIsAskedForAndItIsCountedAsARefusal() {
         DocumentationUploadDescriptor unknownSite = descriptor().site("a-site-nobody-configured").build();
 
-        assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle(), BUNDLE.length))
+        InputStream bundle = bundle();
+
+        assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle, BUNDLE.length))
                 .isInstanceOf(InvalidUploadException.class);
 
         verify(buildTrigger, never()).requestBecauseOfUpload(anyString(), anyString());
@@ -625,7 +627,9 @@ class DocumentationUploadServiceTest {
     void receive_whenTheSiteIsNotConfigured_thenItIsRefusedAndNothingIsStored() {
         DocumentationUploadDescriptor unknownSite = descriptor().site("a-site-nobody-configured").build();
 
-        assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle(), BUNDLE.length))
+        InputStream bundle = bundle();
+
+        assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle, BUNDLE.length))
                 .isInstanceOf(InvalidUploadException.class)
                 .extracting(failure -> ((InvalidUploadException) failure).getCode())
                 .isEqualTo(InvalidUploadException.Code.UNKNOWN_SITE);
@@ -641,7 +645,9 @@ class DocumentationUploadServiceTest {
     void receive_whenTheSiteIsNotConfigured_thenTheReasonNamesTheSitesThatAre() {
         DocumentationUploadDescriptor unknownSite = descriptor().site("a-site-nobody-configured").build();
 
-        assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle(), BUNDLE.length))
+        InputStream bundle = bundle();
+
+        assertThatThrownBy(() -> service.receive(UPLOAD_ID, unknownSite, bundle, BUNDLE.length))
                 .hasMessageContaining("a-site-nobody-configured")
                 .hasMessageContaining(Site.DEFAULT_SITE);
     }

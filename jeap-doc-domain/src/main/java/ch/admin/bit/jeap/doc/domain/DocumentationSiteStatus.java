@@ -1,7 +1,6 @@
 package ch.admin.bit.jeap.doc.domain;
 
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
-import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
+import ch.admin.bit.jeap.doc.domain.port.DisplayReads;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -23,8 +22,7 @@ import java.util.stream.Collectors;
 public class DocumentationSiteStatus {
 
     private final DocumentationSites sites;
-    private final DocumentationBuildRepository builds;
-    private final DocumentationBuildRequestRepository requests;
+    private final DisplayReads reads;
 
     /**
      * Every configured site, in the order they are configured.
@@ -37,9 +35,9 @@ public class DocumentationSiteStatus {
      * sites are configured rather than discovered, so there are a handful of them.
      */
     public List<SiteStatus> all() {
-        Map<String, BuildRequest> pending = requests.pending().stream()
+        Map<String, BuildRequest> pending = reads.pendingRequests().stream()
                 .collect(Collectors.toMap(BuildRequest::site, Function.identity(), (first, second) -> first));
-        Map<String, List<DocumentationBuild>> running = builds.running().stream()
+        Map<String, List<DocumentationBuild>> running = reads.runningBuilds().stream()
                 .collect(Collectors.groupingBy(DocumentationBuild::site));
         return sites.all().stream()
                 .map(site -> statusOf(site, pending.get(site.id()),
@@ -52,11 +50,11 @@ public class DocumentationSiteStatus {
      */
     public Optional<SiteStatus> of(String site) {
         return sites.find(site).map(configured -> statusOf(configured,
-                requests.pending().stream()
+                reads.pendingRequests().stream()
                         .filter(request -> request.site().equals(configured.id()))
                         .findFirst()
                         .orElse(null),
-                builds.running().stream()
+                reads.runningBuilds().stream()
                         .filter(build -> build.site().equals(configured.id()))
                         .toList()));
     }
@@ -65,14 +63,14 @@ public class DocumentationSiteStatus {
      * The most recent builds of a site, newest first.
      */
     public List<DocumentationBuild> recentBuilds(String site, int limit) {
-        return builds.recent(site, limit);
+        return reads.recentBuilds(site, limit);
     }
 
     /**
      * One build of one site.
      */
     public Optional<DocumentationBuild> build(String site, long id) {
-        return builds.find(site, id);
+        return reads.build(site, id);
     }
 
     /**
@@ -83,7 +81,7 @@ public class DocumentationSiteStatus {
      */
     private SiteStatus statusOf(Site site, BuildRequest pending, List<DocumentationBuild> running) {
         return new SiteStatus(site, pending, running,
-                builds.published(PartKey.shellOf(site.id())).orElse(null),
-                builds.recent(site.id(), 1).stream().findFirst().orElse(null));
+                reads.publishedBuild(PartKey.shellOf(site.id())).orElse(null),
+                reads.recentBuilds(site.id(), 1).stream().findFirst().orElse(null));
     }
 }

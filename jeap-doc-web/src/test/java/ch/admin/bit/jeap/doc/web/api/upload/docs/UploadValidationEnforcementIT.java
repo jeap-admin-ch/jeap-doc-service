@@ -72,7 +72,7 @@ class UploadValidationEnforcementIT extends DocServiceIntegrationTestBase {
 
         mockMvc.perform(uploadOf(uploadId, parameters, bundleOf(paths))
                         .with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("STRUCTURE_INVALID"))
                 .andExpect(jsonPath("$.findings[0].code").value(finding));
         return uploadId;
@@ -145,7 +145,7 @@ class UploadValidationEnforcementIT extends DocServiceIntegrationTestBase {
 
         mockMvc.perform(uploadOf(UUID.randomUUID(), parameters, bundleOf("13-appendix/extra.md"))
                         .with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.findings[0].path").value("13-appendix/extra.md"))
                 .andExpect(jsonPath("$.allowedFolders[0]").value("1-intro"))
                 .andExpect(jsonPath("$.detail").value(containsString("would not be published")));

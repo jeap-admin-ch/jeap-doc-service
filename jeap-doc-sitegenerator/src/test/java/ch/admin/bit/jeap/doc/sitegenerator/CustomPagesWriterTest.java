@@ -127,20 +127,18 @@ class CustomPagesWriterTest {
         assertThat(published)
                 .describedAs("the keys the upload may carry, kept as they were written")
                 .contains("title: Why we built this")
-                .contains("description: The goals of the system");
-        assertThat(published)
+                .contains("description: The goals of the system")
                 .describedAs("an allowlist, so a page cannot claim to be generated or seize a route")
                 .doesNotContain("slug:")
-                .doesNotContain("doc_status: generated");
-        assertThat(published)
+                .doesNotContain("doc_status: generated")
                 .contains("doc_status: custom")
                 .contains("doc_source: upload")
                 .contains("doc_source_repository: orders-docs")
                 .contains("doc_source_ref: main")
                 .contains("doc_source_revision: cafebabe")
                 .describedAs("a version is quoted, because plainly written it would read as a number")
-                .contains("doc_version: 1.4.0");
-        assertThat(published).endsWith("Because the old one could not do it.\n");
+                .contains("doc_version: 1.4.0")
+                .endsWith("Because the old one could not do it.\n");
     }
 
     /**

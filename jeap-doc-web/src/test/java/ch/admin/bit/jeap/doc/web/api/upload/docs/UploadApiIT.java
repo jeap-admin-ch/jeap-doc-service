@@ -134,7 +134,7 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
         mockMvc.perform(uploadOf(systemDocs())
                         .content(bundleOfAtLeast(128 * 1024))
                         .with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
-                .andExpect(status().isPayloadTooLarge())
+                .andExpect(status().isContentTooLarge())
                 .andExpect(jsonPath("$.code").value("SIZE_LIMIT_EXCEEDED"));
     }
 

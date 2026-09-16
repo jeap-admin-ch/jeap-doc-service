@@ -34,6 +34,12 @@ class ArchitectureEnumsTest {
         assertThat(RelationKind.of(sent)).isEqualTo(RelationKind.OTHER);
     }
 
+    @ParameterizedTest
+    @CsvSource({"REST_API,REST", "EVENT,Event", "COMMAND,Command", "OTHER,Other"})
+    void relationKind_typeIsWhatTheRelationsTablesShow(RelationKind kind, String type) {
+        assertThat(kind.type()).isEqualTo(type);
+    }
+
     @Test
     void relationKind_everyKindHasAVerbAPageCanUse() {
         for (RelationKind kind : RelationKind.values()) {

@@ -12,13 +12,17 @@ public final class MarkdownAssetRules {
     /** How many folders below its chapter an asset may lie. A rule of this service, not of an instance. */
     public static final int MAX_FOLDER_DEPTH = 5;
 
-    /**
-     * What no instance may add as an asset type: a page type, a document the site would render on its own
-     * origin, code the site or the browser would run, and the executables a microsite refuses by default.
-     */
-    public static final Set<String> NEVER_ALLOWED = neverAllowed();
+    private static final Set<String> NEVER_ALLOWED = neverAllowed();
 
     private MarkdownAssetRules() {
+    }
+
+    /**
+     * Whether no instance may add this as an asset type: a page type, a document the site would render on its
+     * own origin, code the site or the browser would run, or an executable a microsite refuses by default.
+     */
+    public static boolean isNeverAllowed(String extension) {
+        return NEVER_ALLOWED.contains(extension);
     }
 
     private static Set<String> neverAllowed() {

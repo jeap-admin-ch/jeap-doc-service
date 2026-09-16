@@ -34,8 +34,7 @@ class JsoupHtmlText implements HtmlText {
         // Before the navigation goes: the title is in the head, but an h1 that stands in for it is not.
         String title = title(document);
         document.select(properties.ignoredSelectorQuery()).remove();
-        Element body = document.body();
-        return new Extracted(title, body == null ? "" : body.text());
+        return new Extracted(title, document.body().text());
     }
 
     private static Document parse(byte[] html) {

@@ -9,6 +9,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.scheduling.config.CronTask;
+import org.springframework.scheduling.config.IntervalTask;
 import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 
 import java.time.Duration;
@@ -70,7 +72,7 @@ class DocumentationBuildSchedulingTest {
 
         scheduling().configureTasks(registrar);
 
-        assertThat(registrar.getCronTaskList()).extracting(task -> task.getExpression())
+        assertThat(registrar.getCronTaskList()).extracting(CronTask::getExpression)
                 .contains("0 0 7 * * *");
     }
 
@@ -84,7 +86,7 @@ class DocumentationBuildSchedulingTest {
 
         assertThat(registrar.getCronTaskList())
                 .describedAs("the three nightly clean-ups, and nothing else").hasSize(3);
-        assertThat(registrar.getCronTaskList()).extracting(task -> task.getExpression())
+        assertThat(registrar.getCronTaskList()).extracting(CronTask::getExpression)
                 .containsOnly(properties.getHistoryCron());
     }
 
@@ -98,7 +100,7 @@ class DocumentationBuildSchedulingTest {
         scheduling().configureTasks(registrar);
 
         assertThat(registrar.getFixedDelayTaskList()).singleElement()
-                .extracting(task -> task.getIntervalDuration())
+                .extracting(IntervalTask::getIntervalDuration)
                 .isEqualTo(Duration.ofSeconds(45));
     }
 
@@ -110,7 +112,9 @@ class DocumentationBuildSchedulingTest {
     void configureTasks_whenTheLockLeaseIsShorterThanTheMinimum_thenTheStartupFails() {
         properties.setLockLease(Duration.ofSeconds(5));
 
-        assertThatThrownBy(() -> scheduling().configureTasks(registrar))
+        DocumentationBuildScheduling scheduling = scheduling();
+
+        assertThatThrownBy(() -> scheduling.configureTasks(registrar))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.build.lock-lease")
                 .hasMessageContaining("PT5S");
@@ -134,7 +138,9 @@ class DocumentationBuildSchedulingTest {
     void configureTasks_whenTooFewSitesAreKept_thenTheStartupFails(int retention) {
         properties.setRetention(retention);
 
-        assertThatThrownBy(() -> scheduling().configureTasks(registrar))
+        DocumentationBuildScheduling scheduling = scheduling();
+
+        assertThatThrownBy(() -> scheduling.configureTasks(registrar))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.build.retention");
     }
@@ -157,7 +163,9 @@ class DocumentationBuildSchedulingTest {
     void configureTasks_whenAStaticGenerationTaskWouldCarryNoPages_thenTheStartupFails(int taskSize) {
         properties.setSsgTaskSize(taskSize);
 
-        assertThatThrownBy(() -> scheduling().configureTasks(registrar))
+        DocumentationBuildScheduling scheduling = scheduling();
+
+        assertThatThrownBy(() -> scheduling.configureTasks(registrar))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.build.ssg-task-size");
     }

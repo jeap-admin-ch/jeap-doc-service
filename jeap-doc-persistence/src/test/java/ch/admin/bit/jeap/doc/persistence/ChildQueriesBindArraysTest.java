@@ -35,8 +35,8 @@ class ChildQueriesBindArraysTest {
     void everyQueryReadingAChildTableByItsParents_bindsOneArray() throws Exception {
         List<Method> reads = childTableReads();
 
-        assertThat(reads).describedAs("the queries this test is about").hasSizeGreaterThanOrEqualTo(8);
-        assertThat(reads).allSatisfy(method -> {
+        assertThat(reads).describedAs("the queries this test is about").hasSizeGreaterThanOrEqualTo(8)
+                .allSatisfy(method -> {
             assertThat(method.getParameterTypes()[0])
                     .describedAs("%s binds its identifiers as", method.getName())
                     .isEqualTo(Long[].class);

@@ -50,7 +50,7 @@ public class CustomProperties {
 
     /**
      * Asset types a Markdown set may carry on top of its template's list. It only adds, and it cannot add
-     * anything on {@link MarkdownAssetRules#NEVER_ALLOWED}. An HTML microsite ignores it.
+     * anything on {@link MarkdownAssetRules#isNeverAllowed}. An HTML microsite ignores it.
      */
     private Set<String> additionalAssetExtensions = Set.of();
 
@@ -71,7 +71,7 @@ public class CustomProperties {
                 .collect(Collectors.toUnmodifiableSet());
         additionalAssetExtensions = normalized(additionalAssetExtensions);
         for (String extension : additionalAssetExtensions) {
-            if (MarkdownAssetRules.NEVER_ALLOWED.contains(extension)) {
+            if (MarkdownAssetRules.isNeverAllowed(extension)) {
                 throw new IllegalStateException(("jeap.doc.custom.additional-asset-extensions names '%s', which "
                         + "can never be an asset: it is a page type, a document or code the site would render or "
                         + "run, or an executable.").formatted(extension));

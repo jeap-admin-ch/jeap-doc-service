@@ -148,12 +148,18 @@ category file, so the navigation reads the same whichever version of it is insta
 | `11-risks`                        | Risks and Technical Debt |
 | `12-glossary`                     | Glossary                 |
 
-The generator writes into four of them. The other eight are there for what a team uploads.
+The generator writes into four of them: 1, 3, 5 and 6. The other eight are there for what a team uploads.
+
+**No content, no page.** A generated chapter the model has nothing for is left out, and nothing links to it.
+Chapter 1 is always written. For a system, chapter 3 needs a relation to another system, chapter 5 a
+component, a library, an event or a command, and its whitebox page a component. Chapter 6 needs an observed
+reaction. The names stay reserved all the same, and a chapter a team uploads is there whether or not anything
+is generated into it.
 
 **A component carries the same twelve chapters one level down**, under a segment of its own, and the generator
-writes into the same four of them. Which of a component's chapters exist depends on what the architecture
-repository knows about it: chapters 1, 3 and 6 can always be written, and chapter 5 appears when there is a
-database schema, a REST API or a message contract to put in it.
+writes into the same four of them. Chapter 3 appears when the component exchanges something, chapter 5 when
+there is a database schema, a REST API or a message contract to put in it, and chapter 6 when a reaction was
+observed.
 
 ### Where a page is served
 

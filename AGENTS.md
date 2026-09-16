@@ -128,7 +128,7 @@ of a line and are **not** guarded; no caller reaches that today, and whoever wri
 apply `withoutOpeningABlock` there too. Leading whitespace is dropped in `Md.text` instead, because four
 *columns* of it - a tab counts to the next tab stop - open a code block wherever the fragment lands. **So a
 separator written as `Md.text(" - ")` between two fragments loses its leading space and the two run
-together**: put a separator in the pattern of `Md.sentence` or in `Md.joinWith`, which keep it. PlantUML escaping is a third thing again - the fence body is opaque to Markdown, and `PlantUmlViews`
+together**, and so does `Md.text(" " + version)`: put a separator in the pattern of `Md.sentence` or in `Md.joinWith`, which keep it. PlantUML escaping is a third thing again - the fence body is opaque to Markdown, and `PlantUmlViews`
 does its own.
 
 **`Md.link` throws, `Md.linkOrCode` does not, and which one to use depends on where the target came from.** A
@@ -145,7 +145,16 @@ documentation other teams uploaded, and an inline `<script>` that became markup 
 Removing the plugin, or ordering something before it that resolves HTML, reopens that - and the site build is
 green either way, so the test that notices is `RawHtmlEscapingBrowserIT`, in a real browser.
 
-The generator writes no raw tags, so nothing on the site needs the escaping turned off. An uploaded file a
+The generator writes no raw tags, so nothing on the site needs the escaping turned off. **A fold is a directive,
+not a tag**: `MarkdownWriter.details` writes `:::details[Summary]`, and `plugins/remark-details` builds the
+`details` element after the escaping has run. It copies no attribute from the directive, and it must not start
+to - that would be the raw HTML the escaping keeps out. `DetailsBrowserIT` checks it in a browser. **A grouped table is the same kind of thing**:
+`MarkdownWriter.groupedTable` writes nested `grouped-table`, `column`, `group` and `row` directives, and
+`plugins/remark-grouped-table` builds the table from them - with the spanning cell a Markdown table cannot have
+- again taking no attribute from the page. `GroupedTableBrowserIT` checks it. **`src/clientModules/tableControls.js` sorts and filters tables in the
+browser**, and the same rule holds there: it moves the nodes a table has, marks matches on text nodes only, and
+never assigns markup built from page text. It skips a table with `rowspan` or `colspan` in its body, so a grouped
+table keeps its groups. `TableControlsBrowserIT` checks it. An uploaded file a
 browser renders as a document - an SVG - is a second path to the same place, and `SiteHeaders` sandboxes it.
 
 ### A microsite is contained by its origin, not by a list
@@ -187,6 +196,13 @@ it", the answer is a port and an adapter.
   else.
 - **Where Jackson is needed it is Jackson 3**: the `tools.jackson` group and packages, never
   `com.fasterxml.jackson`. Its exceptions are unchecked.
+
+**A read that may lag goes through `DisplayReads`, and nothing else does.** Its adapter runs each read on the
+read replica where an instance has one. Only what shows or serves something may use it: a build, an import, an
+upload or a clean-up that decided on a lagging read would, for example, delete the workspace of a build that
+just started. `DisplayReadsUsageTest` holds the list of services allowed to depend on it, and
+`DisplayReadsAdapterIT` checks that every method is routed. Add a method to both the port and the adapter, never
+a `@TransactionalReadReplica` on another adapter.
 
 Adding a port means the wiring can now break without a compile error, so `DocServiceWiringIT` asserts that every
 port has exactly one adapter in the real application context. **Add the new port to it.**
@@ -362,6 +378,9 @@ requires goes there too**, and `./mvnw verify` over the whole build is what says
   `Content-Security-Policy` applies to every path of a site and is what would silently stop the diagrams or
   the colour mode; a suite serving the generated files itself sends none and passes regardless. They
   build one real site per JVM and publish it the way a build does.
+- **Do not act on a diagram element across a re-render.** The diagram plugin replaces a diagram's element when
+  it draws or focuses a node, so a locator resolved before that fails with *Element is not attached to the
+  DOM*. Scroll and wait in one `page.waitForFunction` instead.
 
 ## Publishing a site in parts
 
@@ -380,6 +399,10 @@ are what keep that working. The plan behind it is the enabler's `MODULARIZATION.
   written again** - fifty-two parts writing the same ninety names was five thousand requests for bytes that
   were already there - and what decides is the stored entity tag, never that the key exists: the fixed-name
   files of that prefix do change with a new version of the template.
+- **A trigger that names a system asks for the shell too.** The shell holds the systems index, so a first upload
+  or a last removal changes it. And it asks only for system parts `SitePartition.partsOf` still lists: a part
+  with no content fails its build. A test of such a change reaches the page **through the index**, not by its
+  URL - opening the URL passes while the index is stale.
 - **The search index is not a shared file, and must not become one.** It lives under `<site>/search/<id>/`
   with its own row, because the shared prefix holds what *every part writes identically* and an index has one
   writer, one lifecycle and an identifier. `PublishedDocumentation.prefixOf` routes `/pagefind/**` to it ahead
@@ -571,6 +594,9 @@ running: retrying is what a pipeline is supposed to do, so that stays at `INFO`.
 ## Traps this service has already fallen into
 
 Every rule below cost a review finding. They are cheap to follow and expensive to rediscover.
+
+- **`.formatted` binds to the last string literal, not to the concatenation.** `"a %s " + "b %d".formatted(x, y)`
+  formats only `"b %d"` and leaves `%s` in the message. Put the whole pattern in parentheses, or on one line.
 
 - **A microsite has no page rows, so anything that narrows documentation by its pages hides it.** The build
   narrowed a subject's sets to the Markdown of one template before asking which chapters it documents - and a

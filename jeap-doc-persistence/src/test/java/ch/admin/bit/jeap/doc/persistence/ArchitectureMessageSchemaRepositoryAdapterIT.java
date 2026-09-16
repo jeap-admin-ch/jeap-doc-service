@@ -45,8 +45,10 @@ class ArchitectureMessageSchemaRepositoryAdapterIT extends PostgresTestContainer
      */
     @Test
     void store_whenTheRenderingIsLong_thenItSurvivesTheRoundTrip() {
-        String longRendering = ("//-- Start OrdersPaidEventValue.avdl\n"
-                                + "string orderId;\n").repeat(4000);
+        String longRendering = """
+                //-- Start OrdersPaidEventValue.avdl
+                string orderId;
+                """.repeat(4000);
         schemas.store(new MessageVersionSchemas("long", "orders", "OrdersPaidEvent", "1.0.0", null, null, null,
                 new MessageSchema("OrdersPaidEventValue.avdl", "https://registry/value.avdl", longRendering),
                 "\"sha256:long\"", REPLICATED_AT));

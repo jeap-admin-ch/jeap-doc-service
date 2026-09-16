@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.template.arc42;
 
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.architecture.ApiGroup;
 import ch.admin.bit.jeap.doc.domain.architecture.ApiOperation;
 import ch.admin.bit.jeap.doc.domain.architecture.ContractRole;
@@ -17,6 +18,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.SchemaForeignKey;
 import ch.admin.bit.jeap.doc.domain.architecture.SchemaTable;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ComponentContext;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ComponentCounterparts;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
@@ -31,6 +33,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static ch.admin.bit.jeap.doc.markdown.MarkdownWriter.NOT_KNOWN;
 import static ch.admin.bit.jeap.doc.template.arc42.Arc42Chapters.BUILDING_BLOCK_VIEW;
@@ -77,6 +80,9 @@ final class Arc42ComponentPages {
     private static final List<String> MESSAGE_COLUMNS =
             List.of("Message", "Kind", "Defined by", TOPIC_LABEL, VERSIONS_LABEL);
 
+    /** What the components calling an operation are called on the page. */
+    private static final String CALLERS_LABEL = "Callers";
+
     private Arc42ComponentPages() {
     }
 
@@ -90,23 +96,27 @@ final class Arc42ComponentPages {
             throws IOException {
         DocumentationPaths.ComponentPaths paths = pathsOf(template, system, component);
         Path structure = componentDirectory.resolve(template.componentPathSegment());
-        // Closed, and the one category here that is. Every component of a system expanded down to its own
-        // twelve chapters is a sidebar that a system of thirty components makes unusable; what a reader needs
-        // to see under a component is that its architecture is documented at all.
-        Arc42Pages.writeCategory(structure, template.componentLabel(), 1, false);
+        Arc42Pages.writeCategory(structure, template.componentLabel(), 1);
 
         // The chapters first, so the landing page lists only the ones that exist. A link to a page nothing
         // wrote fails the whole site build.
         writeIntroduction(template, system, component, context, structure);
-        writeContextAndScope(template, system, component, context, paths, structure);
+        ComponentContext componentContext = ComponentContext.of(context.model(), system, component,
+                context.limits().maxContextComponents(), context.limits().maxDiagramNodes(),
+                context.viewExcludedComponents());
+        // No content, no page: a component that exchanges nothing gets no chapter 3.
+        boolean contextAndScope = !componentContext.isEmpty();
+        if (contextAndScope) {
+            writeContextAndScope(template, system, component, componentContext, context, paths, structure);
+        }
         boolean buildingBlockView =
                 writeBuildingBlockView(template, system, component, context, paths, structure);
         boolean runtimeView = writeRuntimeView(template, component, context, paths, structure);
 
         List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
                 documented.customChaptersOfComponent(component.slug()));
-        writeLandingPage(template, system, component, context, paths, structure, buildingBlockView,
-                runtimeView, uploaded);
+        writeLandingPage(template, system, component, context, paths, structure, contextAndScope,
+                buildingBlockView, runtimeView, uploaded);
 
         // The uploaded pages last, into the chapters this template named - a generated chapter included,
         // because the generator owns a chapter's index page and an upload owns the pages beside it.
@@ -125,25 +135,26 @@ final class Arc42ComponentPages {
     private static void writeLandingPage(Arc42Template template, DocumentedSystem system,
                                          DocumentedComponent component, GenerationContext context,
                                          DocumentationPaths.ComponentPaths paths, Path structure,
-                                         boolean buildingBlockView, boolean runtimeView,
-                                         List<StructureChapter> uploaded) throws IOException {
+                                         boolean contextAndScope, boolean buildingBlockView,
+                                         boolean runtimeView, List<StructureChapter> uploaded)
+            throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(template.componentLabel(), 0, context))
                 .heading(1, template.componentLabel() + " - " + component.name())
-                .paragraph(Md.sentence("The architecture of {}, a component of {}, described according to "
-                                       + "{}: what it is, what it talks to, what it keeps and how it behaves "
-                                       + "while it runs.",
+                .paragraph(Md.sentence("The architecture of {}, a component of {}, documented using "
+                                       + "{}: interactions, data model and runtime behavior.",
                         Md.code(component.name()),
                         Md.link(DocumentationPaths.system(system.slug()), system.name()),
                         Md.link("https://arc42.org/overview/", Arc42Template.ID)))
-                .paragraph("Chapters with nothing in them do not appear. A gap in the numbering means the "
-                           + "chapter has not been written, not that it is empty.");
+                .paragraph("Chapters without documented content are omitted. A gap in the chapter "
+                           + "numbering indicates that the corresponding section has not yet been authored or "
+                           + "that no generated content is available to create it.");
 
         List<List<Markdown>> rows = new ArrayList<>();
         // The generated chapters and the uploaded ones, in the template's order. A chapter that exists and is
         // not listed here is a chapter a reader finds only in the sidebar.
         for (StructureChapter chapter : Arc42CustomChapters.merged(template,
-                chaptersOf(buildingBlockView, runtimeView), uploaded)) {
+                chaptersOf(contextAndScope, buildingBlockView, runtimeView), uploaded)) {
             rows.add(List.of(Md.link(paths.chapter(chapter), chapter.label()),
                     Md.text(Arc42Chapters.componentSummaryOf(chapter))));
         }
@@ -152,12 +163,15 @@ final class Arc42ComponentPages {
     }
 
     /**
-     * The chapters this run wrote. Two of them are conditional: chapter 5, which a component with no schema,
-     * no REST API and no message contract has nothing to put in, and chapter 6, which holds the reactions
-     * observed at runtime and is written only where something was observed.
+     * The chapters this run wrote. Chapter 1 always; chapters 3, 5 and 6 only where the model has something
+     * for them.
      */
-    private static List<StructureChapter> chaptersOf(boolean buildingBlockView, boolean runtimeView) {
-        List<StructureChapter> chapters = new ArrayList<>(List.of(INTRODUCTION, CONTEXT_AND_SCOPE));
+    private static List<StructureChapter> chaptersOf(boolean contextAndScope, boolean buildingBlockView,
+                                                     boolean runtimeView) {
+        List<StructureChapter> chapters = new ArrayList<>(List.of(INTRODUCTION));
+        if (contextAndScope) {
+            chapters.add(CONTEXT_AND_SCOPE);
+        }
         if (buildingBlockView) {
             chapters.add(BUILDING_BLOCK_VIEW);
         }
@@ -182,8 +196,7 @@ final class Arc42ComponentPages {
                 .frontMatter(Arc42Pages.generated(INTRODUCTION.label(), 0, context)
                         .put("description", component.description()))
                 .heading(1, INTRODUCTION.label())
-                .paragraphOrNothing(Md.text(component.description()),
-                        "The architecture repository holds no description of this component.");
+                .paragraph(Md.text(component.description()));
 
         List<List<Markdown>> rows = new ArrayList<>();
         rows.add(List.of(Md.text("Component"), Md.code(component.name())));
@@ -194,24 +207,23 @@ final class Arc42ComponentPages {
         rows.add(List.of(Md.text("Known from"), Md.textOr(component.importer(), NOT_KNOWN)));
         rows.add(List.of(Md.text("Last seen"), component.lastSeen() == null
                 ? Markdown.EMPTY
-                : Md.text(component.lastSeen().toInstant().toString())));
+                : Md.text(DisplayTime.of(component.lastSeen()))));
         page.table(List.of("", ""), rows);
 
         if (component.isStaleAt(context.generatedAt())) {
             page.admonition("warning", "Not seen recently", Md.sentence(
                     "No importer has seen this component since {}. What is documented here may describe "
                     + "something that no longer exists.",
-                    Md.code(component.lastSeen().toInstant().toString())));
+                    Md.code(DisplayTime.of(component.lastSeen()))));
         }
-        page.paragraph("What this component is for and the goals it is built to are written by the team that "
-                       + "owns it and appear beside this page.");
         Arc42Pages.write(directory, Arc42Pages.INDEX, page);
     }
 
     /** Chapter 3: what the component talks to. The diagram is a page of its own, like the system's. */
     private static void writeContextAndScope(Arc42Template template, DocumentedSystem system,
-                                             DocumentedComponent component, GenerationContext context,
-                                             DocumentationPaths.ComponentPaths paths, Path structure)
+                                             DocumentedComponent component, ComponentContext componentContext,
+                                             GenerationContext context, DocumentationPaths.ComponentPaths paths,
+                                             Path structure)
             throws IOException {
         Path directory = Arc42Pages.chapterDirectory(template, structure, CONTEXT_AND_SCOPE);
         MarkdownWriter index = new MarkdownWriter()
@@ -222,7 +234,7 @@ final class Arc42ComponentPages {
                         CONTEXT_VIEW_LABEL)));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
-        writeContextView(system, component, context, directory);
+        writeContextView(system, component, componentContext, context, directory);
     }
 
     /**
@@ -231,49 +243,39 @@ final class Arc42ComponentPages {
      * The table is what makes a bounded diagram honest: an arrow reading {@code 5 Events} hides five names.
      */
     private static void writeContextView(DocumentedSystem system, DocumentedComponent component,
-                                         GenerationContext context, Path directory) throws IOException {
-        ComponentContext componentContext = ComponentContext.of(context.model(), system, component,
-                context.limits().maxContextComponents(), context.limits().maxDiagramNodes());
+                                         ComponentContext componentContext, GenerationContext context,
+                                         Path directory) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(CONTEXT_VIEW_LABEL, 1, context))
                 .heading(1, CONTEXT_VIEW_LABEL)
-                .paragraph(Md.sentence("What {} exchanges with the other components of {} and with the "
-                                       + "components of the systems around it, and what travels between "
-                                       + "them. Each is drawn inside the system that owns it, and only the "
-                                       + "ones this component exchanges something with are named - a box for "
-                                       + "another system is not that system's decomposition. A solid arrow "
-                                       + "is a message, a dotted one a REST call.",
+                .paragraph(Md.sentence("The interactions of {} with other {} components and with "
+                                       + "components of external systems. " + PlantUmlViews.ARROW_LEGEND,
                         Md.code(component.name()),
                         Md.link(DocumentationPaths.system(system.slug()), system.name())));
 
-        if (componentContext.isEmpty()) {
-            page.paragraph("The architecture model records no relation between this component and anything "
-                           + "else. It exchanges nothing that any importer has seen.");
-        } else {
-            PlantUmlViews.Diagram diagram = PlantUmlViews.componentContextView(componentContext, context);
-            page.fence(PlantUmlViews.LANGUAGE, diagram.source());
-            int counterparts = componentContext.counterparts().size();
-            if (componentContext.truncated() > 0) {
-                page.admonition("note", "Not every counterpart is drawn",
-                        Arc42Pages.leftOut(componentContext.truncated(),
-                                ("One of the %d counterparts this component exchanges something with is left "
-                                 + "out of the diagram so that it stays readable. The table below names it.")
-                                        .formatted(counterparts),
-                                ("%d of the %d counterparts this component exchanges something with are left "
-                                 + "out of the diagram so that it stays readable. The table below lists every "
-                                 + "one of them.")
-                                        .formatted(componentContext.truncated(), counterparts)));
-            }
-            writeUnplacedNote(page, componentContext);
-            page.heading(2, "Relations");
-            page.table(List.of("From", "To", "Kind", "What travels"), componentContext.edges().stream()
-                    .map(edge -> List.of(
-                            endLink(edge.from()),
-                            endLink(edge.to()),
-                            Md.text(edge.kind().verb()),
-                            Md.joinWith(", ", edge.labels().stream().map(Md::code).toList())))
-                    .toList());
+        PlantUmlViews.Diagram diagram = PlantUmlViews.componentContextView(componentContext, context);
+        page.fence(PlantUmlViews.LANGUAGE, diagram.source());
+        int counterparts = componentContext.counterparts().size();
+        if (componentContext.truncated() > 0) {
+            page.admonition("note", "Not every counterpart is drawn",
+                    Arc42Pages.leftOut(componentContext.truncated(),
+                            ("One of the %d counterparts this component exchanges something with is left "
+                             + "out of the diagram so that it stays readable. The table below names it.")
+                                    .formatted(counterparts),
+                            ("%d of the %d counterparts this component exchanges something with are left "
+                             + "out of the diagram so that it stays readable. The table below lists every "
+                             + "one of them.")
+                                    .formatted(componentContext.truncated(), counterparts)));
         }
+        writeUnplacedNote(page, componentContext);
+        page.heading(2, "Relations");
+        page.table(List.of("From", "To", "Type", "Interaction"), componentContext.edges().stream()
+                .map(edge -> List.of(
+                        endLink(edge.from()),
+                        endLink(edge.to()),
+                        Md.text(edge.kind().type()),
+                        Md.joinWith(", ", edge.labels().stream().map(Md::code).toList())))
+                .toList());
         Arc42Pages.write(directory, COMPONENT_CONTEXT_VIEW_PAGE + ".md", page);
     }
 
@@ -309,9 +311,7 @@ final class Arc42ComponentPages {
 
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context))
-                .heading(1, BUILDING_BLOCK_VIEW.label())
-                .paragraph(Md.sentence("The data {} keeps and the interfaces it offers.",
-                        Md.code(component.name())));
+                .heading(1, BUILDING_BLOCK_VIEW.label());
         index.bulletList(contents);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
         return true;
@@ -343,8 +343,7 @@ final class Arc42ComponentPages {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(DATABASE_SCHEMA_LABEL, 1, context))
                 .heading(1, DATABASE_SCHEMA_LABEL)
-                .paragraph(Md.sentence("The database {} keeps its data in, as its build published it.",
-                        Md.code(component.name())));
+                .paragraph(Md.sentence("The database schema of {}.", Md.code(component.name())));
 
         List<List<Markdown>> facts = new ArrayList<>();
         // As code, like every other identifier on these pages: a database name and a version are things to
@@ -356,7 +355,7 @@ final class Arc42ComponentPages {
         }
         page.table(List.of("", ""), facts);
 
-        if (schema == null) {
+        if (documented == null) {
             page.paragraph("The architecture repository knows that this component publishes a database "
                            + "schema and this service has not replicated it yet, so there is no diagram and "
                            + "no list of tables. The next import brings them.");
@@ -435,8 +434,7 @@ final class Arc42ComponentPages {
             return;
         }
         page.admonition("info", "Some tables are left out on purpose", Md.sentence(
-                "The machinery of a schema is not the data of the component, so neither the diagram nor "
-                + "the list carries {}.",
+                "The following technical table(s) are not shown in the diagram and the list below: {}",
                 Md.joinWith(", ", documented.hiddenTables().stream().map(Md::code).toList())));
     }
 
@@ -567,12 +565,22 @@ final class Arc42ComponentPages {
         // reader came for - see DocumentedApiPaths. Applied here rather than when the specification was
         // replicated, so that changing the list takes effect on the next build.
         RestApiOverview api = context.apiPaths().documented(declared);
+        // Once per page: the join walks every relation of the landscape, and a page has many operations.
+        ComponentCounterparts.RestCallers callers = ComponentCounterparts.callersOf(context.model(), component);
+        // The Swagger UI of the architecture repository, where there is one. linkOrCode answers nothing
+        // at all for a URL it cannot link, and the sentence then stops at the repository.
+        Markdown swagger = component.openApi() == null ? Markdown.EMPTY
+                : Md.linkOrCode(component.openApi().swaggerUrl(), component.openApi().swaggerUrl());
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(REST_API_LABEL, 2, context))
                 .heading(1, REST_API_LABEL)
-                .paragraph(Md.sentence("The resources {} offers over REST. It is an overview - the "
-                                       + "specification itself is served by the architecture repository.",
-                        Md.code(component.name())));
+                .paragraph(swagger.isEmpty()
+                        ? Md.sentence("The resources {} offers over REST. It is an overview - the "
+                                      + "specification itself is served by the architecture repository.",
+                                Md.code(component.name()))
+                        : Md.sentence("The resources {} offers over REST. It is an overview - the "
+                                      + "specification itself is served by the architecture repository at {}.",
+                                Md.code(component.name()), swagger));
 
         List<List<Markdown>> facts = new ArrayList<>();
         facts.add(List.of(Md.text("Specification version"), version(component, api)));
@@ -587,9 +595,9 @@ final class Arc42ComponentPages {
                 Md.text(String.valueOf(operationCountOf(component, api, context)))));
         page.table(List.of("", ""), facts);
 
-        writeExcludedNote(page, declared, api);
+        writeExcludedNote(page, declared, context);
         if (declared == null || api == null) {
-            writeOperationsFromTheModel(page, component, context);
+            writeOperationsFromTheModel(page, component, context, callers);
         } else if (api.isEmpty()) {
             writeEveryOperationExcluded(page, component, declared);
         } else {
@@ -598,38 +606,67 @@ final class Arc42ComponentPages {
                 if (!Md.text(group.description()).isEmpty()) {
                     page.paragraph(Md.text(group.description()));
                 }
-                page.table(List.of("Method", "Path", "Summary"), group.operations().stream()
-                        .map(operation -> List.of(
-                                Md.code(operation.method()),
-                                Md.code(operation.path()),
-                                summaryOf(operation)))
-                        .toList());
+                page.table(List.of("Method", "Path", "Summary", CALLERS_LABEL),
+                        group.operations().stream()
+                                .map(operation -> List.of(
+                                        Md.code(operation.method()),
+                                        Md.code(operation.path()),
+                                        summaryOf(operation),
+                                        counterparts(callers.of(operation.method(), operation.path()))))
+                                .toList());
             }
+            writeCalledButNotDeclaredNote(page, callers, context);
         }
         Arc42Pages.write(directory, REST_API_PAGE + ".md", page);
     }
 
+    /** How many left-out operations the note names before it only counts the rest. */
+    static final int MAX_LEFT_OUT_NAMED = 20;
+
     /**
-     * That some of the specification's operations are not described here, and how many.
+     * The operations the relations know and the specification does not declare, with their callers.
      * <p>
-     * Said rather than left to be noticed: the count in the facts table is what the page documents, so
-     * without this a reader comparing it with the specification would find operations the documentation does
-     * not mention and no reason why.
+     * The architecture model holds a called operation the published specification has no path for - a
+     * concrete {@code GET /api/vats/1} against a specification that declares no {@code /api/vats} at all - and
+     * no normalisation joins those. Named here rather than dropped, because a caller that is on no row of the
+     * page is a caller the reader cannot see.
+     * <p>
+     * <b>An excluded path is not one of them.</b> It is declared, it is simply not shown, and
+     * {@link #writeExcludedNote} already says so.
+     */
+    private static void writeCalledButNotDeclaredNote(MarkdownWriter page,
+                                                      ComponentCounterparts.RestCallers callers,
+                                                      GenerationContext context) {
+        List<ComponentCounterparts.Operation> undeclared = callers.notLookedUp().stream()
+                .filter(operation -> context.apiPaths().documents(operation.path()))
+                .toList();
+        if (undeclared.isEmpty()) {
+            return;
+        }
+        page.paragraph("These operations are called but not declared by the specification:");
+        page.table(List.of("Operation", CALLERS_LABEL), undeclared.stream()
+                .map(operation -> List.of(Md.code(operation.label()), counterparts(operation.callers())))
+                .toList());
+    }
+
+    /**
+     * Which of the specification's operations are not described here, and why. Without it, a reader comparing
+     * the count with the specification finds operations the page does not mention.
      */
     private static void writeExcludedNote(MarkdownWriter page, RestApiOverview declared,
-                                          RestApiOverview documented) {
-        if (declared == null || documented == null) {
+                                          GenerationContext context) {
+        List<ApiOperation> leftOut = context.apiPaths().leftOut(declared);
+        if (leftOut.isEmpty()) {
             return;
         }
-        int excluded = declared.operations().size() - documented.operations().size();
-        if (excluded == 0) {
-            return;
-        }
-        page.admonition("note", "Not every operation is documented", Arc42Pages.leftOut(excluded,
-                ("One of the %d operations this specification declares is not described here. Open the "
-                 + "specification itself to read it.").formatted(declared.operations().size()),
-                ("%d of the %d operations this specification declares are not described here. Open the "
-                 + "specification itself to read them.").formatted(excluded, declared.operations().size())));
+        List<Markdown> named = leftOut.stream().limit(MAX_LEFT_OUT_NAMED)
+                .map(operation -> Md.code(operation.method() == null || operation.method().isBlank()
+                        ? operation.path() : operation.method() + " " + operation.path()))
+                .toList();
+        int more = leftOut.size() - named.size();
+        page.paragraph(Md.sentence("The following technical endpoints are not shown below: {}{}.",
+                Md.joinWith(", ", named),
+                more == 0 ? Markdown.EMPTY : Md.sentence(" and {} more", Md.text(String.valueOf(more)))));
     }
 
     /**
@@ -666,7 +703,8 @@ final class Arc42ComponentPages {
      * whether the specification happens to have been replicated yet.
      */
     private static void writeOperationsFromTheModel(MarkdownWriter page, DocumentedComponent component,
-                                                    GenerationContext context) {
+                                                    GenerationContext context,
+                                                    ComponentCounterparts.RestCallers callers) {
         page.heading(2, OPERATIONS_LABEL);
         List<RestApiOperation> documented = component.restApis().stream()
                 .filter(operation -> context.apiPaths().documents(operation.path()))
@@ -680,9 +718,43 @@ final class Arc42ComponentPages {
         page.paragraph("Grouping the operations needs the published specification, which has not been "
                        + "replicated for this component. Until it is, they are listed as the architecture "
                        + "model has them.");
-        page.table(List.of("Method", "Path"), documented.stream()
-                .map(operation -> List.of(Md.code(operation.method()), Md.code(operation.path())))
+        page.table(List.of("Method", "Path", CALLERS_LABEL), documented.stream()
+                .map(operation -> List.of(Md.code(operation.method()), Md.code(operation.path()),
+                        counterparts(callers.of(operation.method(), operation.path()))))
                 .toList());
+    }
+
+    /**
+     * A cell of counterparts: their names, comma separated, linked where this run wrote their pages.
+     * <p>
+     * Plain inline content, and deliberately. A fold is a block and a table cell holds inline content only,
+     * and a cell built as a grouped table would lose the sorting and the filtering of {@code tableControls.js}
+     * - which skips a table with a merged cell. So a long cell stays complete here, for the filter and for
+     * the search index, and the site template's client module is what shows the first three of it.
+     * <p>
+     * <b>{@code linkOrCode} for the Pact URL, not {@code link}</b>: it is whatever the broker gave the
+     * architecture repository, and {@code Md.link} throws on a target it will not put on a page - which would
+     * end the generation of every system.
+     */
+    private static Markdown counterparts(List<ComponentCounterparts.Counterpart> counterparts) {
+        if (counterparts.isEmpty()) {
+            return Md.text("-");
+        }
+        return Md.joinWith(", ", counterparts.stream().map(Arc42ComponentPages::counterpart).toList());
+    }
+
+    private static Markdown counterpart(ComponentCounterparts.Counterpart counterpart) {
+        Markdown name = counterpart.isLinkable()
+                ? Md.link(DocumentationPaths.component(counterpart.systemSlug(), SYSTEM_SEGMENT,
+                        BUILDING_BLOCK_VIEW, counterpart.componentSlug()), counterpart.component())
+                : Md.code(counterpart.component());
+        if (counterpart.pactUrl() == null) {
+            return name;
+        }
+        // Raised above the line, so that the contract is a note on the caller rather than a second name in
+        // the row. Md.sentence and not Md.join: Md.text drops a leading space.
+        return Md.sentence("{}{}", name,
+                Md.superscript(Md.linkOrCode(counterpart.pactUrl(), "pact")));
     }
 
     /**
@@ -743,18 +815,20 @@ final class Arc42ComponentPages {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(MESSAGES_LABEL, 3, context))
                 .heading(1, MESSAGES_LABEL)
-                .paragraph(Md.sentence("The events and commands {} has a contract for, and the topics they "
-                                       + "travel on. Each of them is documented with the system that defines "
-                                       + "it, which is {} for the messages of its own and the defining system "
-                                       + "itself for the rest.",
+                .paragraph(Md.sentence("The events and commands for which {} defines or consumes a "
+                                       + "contract, together with the topics on which they are exchanged. "
+                                       + "Each message is documented by the system that defines its contract: "
+                                       + "messages defined by {} are listed in {}, while externally defined "
+                                       + "messages are documented by their respective owning systems.",
                         Md.code(component.name()),
+                        Md.link(DocumentationPaths.system(system.slug()), system.name()),
                         Md.link(DocumentationPaths.chapter(system.slug(), SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW),
-                                "the system's building block view")));
+                                "its building block view")));
 
-        writeContracts(page, system, component, messages, ContractRole.PRODUCES, "Produces");
-        writeContracts(page, system, component, messages, ContractRole.CONSUMES, "Consumes");
+        writeContracts(page, system, component, messages, ContractRole.PRODUCES, "Produces", context);
+        writeContracts(page, system, component, messages, ContractRole.CONSUMES, "Consumes", context);
         writeContracts(page, system, component, messages, ContractRole.UNKNOWN,
-                "Contracts With An Unrecognised Role");
+                "Contracts With An Unrecognised Role", context);
         Arc42Pages.write(directory, MESSAGES_PAGE + ".md", page);
     }
 
@@ -766,17 +840,26 @@ final class Arc42ComponentPages {
      */
     private static void writeContracts(MarkdownWriter page, DocumentedSystem system,
                                        DocumentedComponent component, List<ContractedMessage> messages,
-                                       ContractRole role, String heading) {
+                                       ContractRole role, String heading, GenerationContext context) {
+        // Who is on the other side of this role. A role this service does not know has no other side to
+        // name, and that table keeps the columns it has.
+        String counterpartColumn = counterpartColumnOf(role);
+        ContractRole otherSide = otherSideOf(role);
         List<List<Markdown>> rows = new ArrayList<>();
         for (ContractedMessage contracted : messages) {
             DocumentedMessage message = contracted.message();
             for (MessageContract contract : contractsOf(message, component, system, role)) {
-                rows.add(List.of(
+                List<Markdown> row = new ArrayList<>(List.of(
                         messageLink(contracted.definedBy(), message),
                         Md.text(message.kind().label()),
                         systemLink(contracted.definedBy(), system),
                         Md.code(contract.topic()),
                         Md.joinWith(", ", contract.versions().stream().map(Md::code).toList())));
+                if (counterpartColumn != null) {
+                    row.add(counterparts(ComponentCounterparts.counterpartsOf(context.model(), message,
+                            otherSide, component.name())));
+                }
+                rows.add(List.copyOf(row));
             }
         }
         if (rows.isEmpty() && role == ContractRole.UNKNOWN) {
@@ -791,7 +874,22 @@ final class Arc42ComponentPages {
             page.paragraph("The architecture model names a role this service does not know for these "
                            + "contracts, so which side the component is on is not shown.");
         }
-        page.table(MESSAGE_COLUMNS, rows);
+        page.table(counterpartColumn == null ? MESSAGE_COLUMNS
+                : Stream.concat(MESSAGE_COLUMNS.stream(), Stream.of(counterpartColumn)).toList(), rows);
+    }
+
+    /** What the counterparts of a role are called on the page, or null where the role has no other side. */
+    private static String counterpartColumnOf(ContractRole role) {
+        return switch (role) {
+            case PRODUCES -> "Consumers";
+            case CONSUMES -> "Publishers";
+            case UNKNOWN -> null;
+        };
+    }
+
+    /** The role of the counterparts, which is the other one. */
+    private static ContractRole otherSideOf(ContractRole role) {
+        return role == ContractRole.PRODUCES ? ContractRole.CONSUMES : ContractRole.PRODUCES;
     }
 
     /**
@@ -910,7 +1008,7 @@ final class Arc42ComponentPages {
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(RUNTIME_VIEW.label(), 0, context))
                 .heading(1, RUNTIME_VIEW.label())
-                .paragraph(Md.sentence("How {} behaves while it runs.", Md.code(component.name())))
+                .paragraph(Md.sentence("The runtime behavior of {}.", Md.code(component.name())))
                 .bulletList(List.of(Md.link(paths.page(RUNTIME_VIEW, COMPONENT_REACTIONS_PAGE),
                         COMPONENT_REACTIONS_LABEL)));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
@@ -918,8 +1016,8 @@ final class Arc42ComponentPages {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(COMPONENT_REACTIONS_LABEL, 1, context))
                 .heading(1, COMPONENT_REACTIONS_LABEL)
-                .paragraph(Md.sentence("Which message makes {} react, and what it publishes in answer.",
-                        Md.code(component.name())));
+                .paragraph(Md.sentence("The messages that trigger a reaction in {} and the events or "
+                                       + "commands it publishes in response.", Md.code(component.name())));
         Arc42ReactionPages.write(page, reactions, context, component.name());
         Arc42Pages.write(directory, COMPONENT_REACTIONS_PAGE + ".md", page);
         return true;

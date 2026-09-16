@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentation;
 import ch.admin.bit.jeap.doc.domain.custom.CustomPage;
@@ -72,11 +73,43 @@ final class UploadedDocumentation {
 
             :::
 
+            :::details[Uploaded <b>fold</b>]
+
+            Folded by the team.
+
+            :::
+
             ```plantuml
             @startuml
             Alice -> Bob: hello
             @enduml
             ```
+            """;
+
+    /** An uploaded page with a table of 18 terms, in the constraints chapter - see {@code TableControlsBrowserIT}. */
+    static final String TERMS_PAGE = "terms";
+
+    private static final String TERMS_BODY = """
+            | Term | Meaning | Since |
+            | ---- | ------- | ----- |
+            | Backorder | An order line waiting for stock | 1.10 |
+            | Carrier | The company that moves a parcel | 1.2 |
+            | Consignment | Parcels travelling together | 1.9 |
+            | Customs declaration | What the [customs office](https://www.bazg.admin.ch) receives | 1.10 |
+            | Dispatch | Handing a parcel to a carrier | 1.0 |
+            | Fulfilment | Picking, packing and dispatch of an order | 1.0 |
+            | Invoice | The bill for an order | 1.1 |
+            | Lot | Goods produced together | 1.4 |
+            | Manifest | The list of parcels of a pickup | 1.9 |
+            | Order | What a customer buys at once | 1.0 |
+            | Parcel | One box on its way | 1.0 |
+            | Pickup | A carrier collecting parcels | 1.3 |
+            | Refund | Money returned for an order | 1.5 |
+            | Return | Goods sent back by a customer | 1.5 |
+            | SKU | A stock keeping unit | 1.0 |
+            | Stock reservation | Stock held for an order | 1.6 |
+            | Tariff number | The customs code of a good | 1.10 |
+            | Warehouse | Where the stock is kept | 1.0 |
             """;
 
     private static final Instant UPLOADED_AT = Instant.parse("2026-09-01T07:15:00Z");
@@ -192,7 +225,8 @@ final class UploadedDocumentation {
                         new Page("zzz-first.md", "A " + GLOSSARY_WORD + " and what it is"),
                         new Page("aaa-second.md", "Z is for the last word")),
                 "2-constraints", List.of(new Page("given.md", "What was given"),
-                        new Page(RAW_HTML_PAGE + ".md", "Raw HTML as it was uploaded", RAW_HTML_BODY))));
+                        new Page(RAW_HTML_PAGE + ".md", "Raw HTML as it was uploaded", RAW_HTML_BODY),
+                        new Page(TERMS_PAGE + ".md", "Terms of the trade", TERMS_BODY))));
         pages.put(new CustomSubject(Site.DEFAULT_SITE, SubjectKind.LIBRARY, system, library), Map.of(
                 "12-glossary", List.of(new Page("terms.md", "The terms of the client"))));
         List<CustomSet> sets = new ArrayList<>(setsOf(pages));
@@ -265,6 +299,7 @@ final class UploadedDocumentation {
             generated.put("doc_source_ref", "main");
             generated.put("doc_source_revision", REVISION);
             generated.put("doc_uploaded_at", UPLOADED_AT.toString());
+            generated.put("doc_uploaded_at_display", DisplayTime.of(UPLOADED_AT));
             try {
                 Files.createDirectories(chapterDirectory);
                 Files.writeString(chapterDirectory.resolve(MICROSITE_TOPIC + "-microsite.md"),
@@ -299,6 +334,7 @@ final class UploadedDocumentation {
             generated.put("doc_source_ref", "main");
             generated.put("doc_source_revision", REVISION);
             generated.put("doc_uploaded_at", UPLOADED_AT.toString());
+            generated.put("doc_uploaded_at_display", DisplayTime.of(UPLOADED_AT));
             String uploaded = """
                     ---
                     title: %s

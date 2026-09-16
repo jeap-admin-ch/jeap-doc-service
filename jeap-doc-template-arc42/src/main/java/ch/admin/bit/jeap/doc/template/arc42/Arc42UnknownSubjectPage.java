@@ -45,9 +45,9 @@ final class Arc42UnknownSubjectPage {
     static void writeForComponent(Arc42Template template, SystemDocumentation system,
                                   SystemDocumentation.ComponentDocumentation component,
                                   GenerationContext context, Path componentDirectory) throws IOException {
-        Arc42Pages.writeCategory(componentDirectory, component.name(), 0, true);
+        Arc42Pages.writeCategory(componentDirectory, component.name(), 0);
         Path structure = componentDirectory.resolve(template.componentPathSegment());
-        Arc42Pages.writeCategory(structure, template.componentLabel(), 1, false);
+        Arc42Pages.writeCategory(structure, template.componentLabel(), 1);
 
         List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
                 system.customChaptersOfComponent(component.slug()));
@@ -73,8 +73,9 @@ final class Arc42UnknownSubjectPage {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generatedWithoutTheModel(component.name(), 0, context))
                 .heading(1, component.name())
-                .paragraph(Md.sentence("A component of this system that the architecture model does not hold. "
-                                       + "What is documented about it was written by the team that owns it."))
+                .paragraph(Md.sentence("This component is not present in the architecture model. Any "
+                                       + "available documentation for it is maintained by the team that owns "
+                                       + "the component."))
                 .heading(2, "Documentation")
                 .bulletList(List.of(Md.link("./" + template.componentPathSegment() + "/",
                         template.componentLabel())));
@@ -89,7 +90,8 @@ final class Arc42UnknownSubjectPage {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generatedWithoutTheModel(template.componentLabel(), 0, context))
                 .heading(1, template.componentLabel() + " - " + component.name())
-                .paragraph(Md.sentence("What the team that owns {} has written about it, according to {}.",
+                .paragraph(Md.sentence("The architecture documentation for {}, maintained by its owning "
+                                       + "team and structured according to {}.",
                         Md.code(component.name()), Md.link("https://arc42.org/overview/", Arc42Template.ID)));
         List<List<Markdown>> rows = new ArrayList<>();
         for (StructureChapter chapter : chapters) {
@@ -105,15 +107,16 @@ final class Arc42UnknownSubjectPage {
         return new MarkdownWriter()
                 .frontMatter(Arc42Pages.generatedWithoutTheModel(LABEL, 0, context))
                 .heading(1, LABEL)
-                .paragraph(Md.sentence("The architecture model of the {} environment does not hold the {} {}. "
-                                       + "Everything on these pages was written by the team that owns it.",
+                .paragraph(Md.sentence("The architecture model for the {} environment does not currently "
+                                       + "contain the {} {}. All documentation available on these pages has "
+                                       + "therefore been provided by the team that owns it.",
                         Md.bold(context.environment()), Md.text(kind), Md.code(name)))
-                .paragraph("So the pages this service generates from the architecture model are missing: "
-                           + "there is no context view, nothing about the data it keeps or the interfaces it "
-                           + "offers, and no list of the messages it publishes or consumes.")
-                .paragraph(Md.sentence("They appear on their own once it is in the model, which happens when "
-                                       + "it is deployed and the importers of the architecture repository "
-                                       + "see it. Nothing has to be uploaded again."));
+                .paragraph("Pages generated from the architecture model are unavailable for this component. "
+                           + "This includes the context view, persisted data, exposed interfaces, and the "
+                           + "list of messages the component publishes or consumes.")
+                .paragraph(Md.sentence("These pages are generated automatically once the component appears in "
+                                       + "the architecture model. This happens after the component is "
+                                       + "deployed and discovered by the architecture repository importers."));
     }
 
     static void writeForSystem(Arc42Template template, SystemDocumentation system, GenerationContext context,

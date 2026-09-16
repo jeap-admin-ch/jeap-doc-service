@@ -149,8 +149,8 @@ class SearchIndexRepositoryAdapterIT extends PostgresTestContainerBase {
                 NOW.plusSeconds(10));
 
         String stored = rows.findById(id).orElseThrow().getFailureReason();
-        assertThat(stored).hasSize(SearchIndexRepositoryAdapter.MAX_FAILURE_REASON);
-        assertThat(stored).endsWith("the real reason");
+        assertThat(stored).hasSize(SearchIndexRepositoryAdapter.MAX_FAILURE_REASON)
+                .endsWith("the real reason");
     }
 
     @Test

@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.persistence;
 
-import ch.admin.bit.jeap.doc.domain.architecture.MessageSchema;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;

@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import software.amazon.awssdk.services.s3.model.GetObjectTaggingRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.Tag;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -145,7 +146,7 @@ class S3CustomDocumentationStorageIT extends RustFsTestContainerBase {
 
             List<String> values = S3_CLIENT.getObjectTagging(GetObjectTaggingRequest.builder()
                             .bucket(TEST_BUCKET_NAME).key(prefix + "index.html").build())
-                    .tagSet().stream().map(tag -> tag.value()).toList();
+                    .tagSet().stream().map(Tag::value).toList();
             assertThat(values).describedAs("the rule that expires the uploads must not reach a microsite")
                     .containsExactly(S3CustomDocumentationStorage.CONTENT_TAG_VALUE);
         }
@@ -158,8 +159,9 @@ class S3CustomDocumentationStorageIT extends RustFsTestContainerBase {
     @Test
     void promoteFiles_whenTheFilesUnpackToMoreThanAllowed_isRefused() {
         try (UploadedBundles.ReceivedBundle received = receivedMicrosite()) {
-            assertThatThrownBy(() ->
-                    storage.promoteFiles(received, htmlKey(), 33, 1, new BundleLimits(5000, 8)))
+            CustomSetKey key = htmlKey();
+            BundleLimits limits = new BundleLimits(5000, 8);
+            assertThatThrownBy(() -> storage.promoteFiles(received, key, 33, 1, limits))
                     .isInstanceOf(InvalidUploadException.class)
                     .hasFieldOrPropertyWithValue("code",
                             InvalidUploadException.Code.UNPACKS_TO_TOO_MUCH);
@@ -268,8 +270,7 @@ class S3CustomDocumentationStorageIT extends RustFsTestContainerBase {
 
         String objectKey = storage.promote(stored, key(), 11, 1);
 
-        assertThat(objectKey).startsWith("current/docs/default/system/orders/");
-        assertThat(objectKey)
+        assertThat(objectKey).startsWith("current/docs/default/system/orders/")
                 .describedAs("the upload and the attempt are in the key, so a replaced set is a new object "
                              + "and an attempt that was given up on cannot overwrite what took over")
                 .contains("/11/1/bundle.zip");
@@ -284,7 +285,7 @@ class S3CustomDocumentationStorageIT extends RustFsTestContainerBase {
 
         List<String> values = S3_CLIENT.getObjectTagging(GetObjectTaggingRequest.builder()
                         .bucket(TEST_BUCKET_NAME).key(objectKey).build())
-                .tagSet().stream().map(tag -> tag.value()).toList();
+                .tagSet().stream().map(Tag::value).toList();
         assertThat(values).describedAs("the rule that expires the uploads must not reach a set")
                 .containsExactly(S3CustomDocumentationStorage.CONTENT_TAG_VALUE);
     }

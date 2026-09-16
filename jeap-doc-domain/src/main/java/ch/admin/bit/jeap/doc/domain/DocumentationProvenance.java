@@ -1,13 +1,17 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
+import ch.admin.bit.jeap.doc.domain.port.DisplayReads;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -16,6 +20,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiFunction;
 
 /**
  * Assembles what the doc service may say about itself in public.
@@ -39,10 +44,14 @@ public class DocumentationProvenance {
 
     private final DocumentationSites sites;
     private final ArchitectureImportRepository imports;
+    /** For the live status only. The facts go into a page a build writes, so they read the primary. */
+    private final DisplayReads reads;
     private final ArchitectureModelSource architectureModel;
     private final StructureTemplates templates;
     private final BuildProperties buildProperties;
     private final ArchitectureImportProperties importProperties;
+    private final UploadProperties uploadProperties;
+    private final CustomProperties customProperties;
     private final Clock clock;
 
     /**
@@ -68,18 +77,18 @@ public class DocumentationProvenance {
 
     private DocumentationLiveStatus liveStatusOf(Site site) {
         Instant now = clock.instant();
-        List<DocumentationLiveStatus.EnvironmentStatus> environments = environmentsOf(site).stream()
+        List<DocumentationLiveStatus.EnvironmentStatus> environments = environmentsOf(site, reads::importState).stream()
                 .map(environment -> new DocumentationLiveStatus.EnvironmentStatus(
                         environment.id(), environment.modelConfigured(), environment.lastImportAt(),
                         environment.lastImportOutcome(), environment.importIsBehind(now),
                         lastReadOf(environment, now)))
                 .toList();
-        DocumentationFacts.Schedules schedules = schedulesOf(site);
-        List<DocumentationLiveStatus.ScheduleStatus> tabulated = schedules.import_() == null
-                || schedules.importAt() == null
-                ? List.of()
-                : List.of(new DocumentationLiveStatus.ScheduleStatus(schedules.import_(), schedules.importAt(),
-                        whenItFiresNext(schedules.importAt(), now)));
+        // Only the jobs that have a schedule: a row the page shows as not scheduled has no cell to fill.
+        List<DocumentationLiveStatus.ScheduleStatus> tabulated = schedulesOf(site).stream()
+                .filter(schedule -> schedule.cron() != null && schedule.nextAt() != null)
+                .map(schedule -> new DocumentationLiveStatus.ScheduleStatus(schedule.cron(), schedule.nextAt(),
+                        whenItFiresNext(schedule.nextAt(), now)))
+                .toList();
         return new DocumentationLiveStatus(site.id(), now, environments, tabulated);
     }
 
@@ -140,7 +149,7 @@ public class DocumentationProvenance {
         return new DocumentationFacts(
                 new DocumentationFacts.Service(version, generatedAt),
                 siteFactsOf(site),
-                environmentsOf(site),
+                environmentsOf(site, imports::state),
                 schedulesOf(site));
     }
 
@@ -150,11 +159,12 @@ public class DocumentationProvenance {
                 site.architectureModelRequired(), site.publishOnUpload(), buildProperties.getRetention());
     }
 
-    private List<DocumentationFacts.EnvironmentFacts> environmentsOf(Site site) {
+    private List<DocumentationFacts.EnvironmentFacts> environmentsOf(
+            Site site, BiFunction<String, ArchitectureImportKind, ArchitectureImportState> states) {
         List<DocumentationFacts.EnvironmentFacts> environments = new ArrayList<>();
         for (SiteEnvironment environment : site.environments()) {
             boolean configured = architectureModel.isConfiguredFor(environment.id());
-            ArchitectureImportState state = imports.state(environment.id(), ArchitectureImportKind.MODEL);
+            ArchitectureImportState state = states.apply(environment.id(), ArchitectureImportKind.MODEL);
             environments.add(new DocumentationFacts.EnvironmentFacts(environment.id(), environment.label(),
                     environment.main(), environment.latest(), configured, state.lastSuccessAt(),
                     state.lastOutcome(), importProperties.getStaleAfter()));
@@ -163,17 +173,35 @@ public class DocumentationProvenance {
     }
 
     /**
-     * What a reader wants to know is when the content changes, and that is the import: it asks for every part
-     * of every site documenting the environment it read, so a site has no publication schedule of its own.
-     * The import schedule is instance-wide rather than per site, and it belongs on every site's page.
+     * Every scheduled job of the service, in the order the page tabulates them.
+     * <p>
+     * The import comes first because it is what changes the content: it asks for every part of every site
+     * documenting the environment it read, so a site has no publication schedule of its own. A site whose
+     * environments read no architecture model is not imported, whatever the instance configures.
+     * <p>
+     * The jobs are instance-wide rather than per site, and they belong on every site's page.
      */
-    private DocumentationFacts.Schedules schedulesOf(Site site) {
-        String importCron = importProperties.getCron();
+    private List<DocumentationFacts.Schedule> schedulesOf(Site site) {
         boolean anyEnvironmentReadsAModel = site.environments().stream()
                 .anyMatch(environment -> architectureModel.isConfiguredFor(environment.id()));
-        return new DocumentationFacts.Schedules(
-                anyEnvironmentReadsAModel ? importCron : null,
-                anyEnvironmentReadsAModel ? NextOccurrence.of(importCron, clock).orElse(null) : null);
+        UploadProperties.Housekeeping housekeeping = uploadProperties.getHousekeeping();
+        return List.of(
+                schedule(DocumentationFacts.ScheduledJob.ARCHITECTURE_IMPORT,
+                        anyEnvironmentReadsAModel ? importProperties.getCron() : null),
+                schedule(DocumentationFacts.ScheduledJob.RECONCILE, buildProperties.getReconcileCron()),
+                schedule(DocumentationFacts.ScheduledJob.BUILD_HISTORY, buildProperties.getHistoryCron()),
+                schedule(DocumentationFacts.ScheduledJob.UPLOAD_HOUSEKEEPING,
+                        housekeeping.isEnabled() ? housekeeping.getCron() : null),
+                schedule(DocumentationFacts.ScheduledJob.CUSTOM_SWEEP, customProperties.getSweepCron()));
+    }
+
+    /** One job. A cron that is blank or the disabled dash is no schedule, and the page says so. */
+    private DocumentationFacts.Schedule schedule(DocumentationFacts.ScheduledJob job, String cron) {
+        String scheduled = cron == null || cron.isBlank() || Scheduled.CRON_DISABLED.equals(cron.strip())
+                ? null
+                : cron;
+        return new DocumentationFacts.Schedule(job, scheduled,
+                NextOccurrence.of(scheduled, clock).orElse(null));
     }
 
 }

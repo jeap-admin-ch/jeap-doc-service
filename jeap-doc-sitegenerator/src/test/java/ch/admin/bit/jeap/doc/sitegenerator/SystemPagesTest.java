@@ -73,9 +73,17 @@ class SystemPagesTest {
 
         String landingPage = Files.readString(directory.resolve("systems").resolve("orders")
                 .resolve("index.md"));
-        assertThat(landingPage).doesNotContain("/systems/orders/silence/");
-        assertThat(landingPage).describedAs("with nothing to link to there is no section either")
+        assertThat(landingPage).doesNotContain("/systems/orders/silence/")
+                .describedAs("with nothing to link to there is no section either")
                 .doesNotContain("## Documentation");
+    }
+
+    @Test
+    void write_whenAnAliasOnlyRepeatsTheName_thenTheLandingPageLeavesItOut() throws IOException {
+        pagesWith(new SilentTemplate()).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        assertThat(Files.readString(directory.resolve("systems").resolve("orders").resolve("index.md")))
+                .contains("| Also known as | `order-desk` |");
     }
 
     @Test
@@ -105,6 +113,23 @@ class SystemPagesTest {
         assertThat(template.context).isNotNull();
         assertThat(template.context.modelImportedAt()).isEqualTo(CONTENT_IMPORTED_AT);
         assertThat(template.context.generatedAt()).isEqualTo(GENERATED_AT);
+    }
+
+    @Test
+    void write_thenTheComponentsLeftOutOfTheViewsReachTheTemplate() throws IOException {
+        RecordingTemplate template = new RecordingTemplate();
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setViewExcludedComponents(List.of("orders-mock"));
+        SystemPages pages = new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE,
+                NoReactions.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE,
+                new CustomProperties(), new StructureTemplates(List.of(template)), properties,
+                new ArchitectureImportProperties(), BuildMetrics.NONE, null);
+
+        pages.write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        assertThat(template.context.viewExcludedComponents().excludes("orders-mock")).isTrue();
+        assertThat(template.context.viewExcludedComponents().excludes("orders-intake")).isFalse();
     }
 
     /**
@@ -466,7 +491,7 @@ class SystemPagesTest {
         @Override
         public ArchitectureSnapshot read(String environment) {
             return new ArchitectureSnapshot(
-                    ArchitectureModel.of(List.of(new DocumentedSystem("ORDERS", "orders", null, List.of(), null,
+                    ArchitectureModel.of(List.of(new DocumentedSystem("ORDERS", "orders", null, List.of("orders", "order-desk"), null,
                             List.of(new DocumentedComponent("orders-intake", "orders-intake", null,
                                     ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null,
                                     null)),

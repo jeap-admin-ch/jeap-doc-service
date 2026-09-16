@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.template.arc42;
 
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
@@ -129,12 +130,10 @@ class Arc42LibraryTreeTest {
     void theLibrarysOwnStructure_startsClosed() throws IOException {
         writeWith(Map.of("2-constraints", List.of("what-was-given.md")));
 
-        assertThat(Files.readString(libraryTree().resolve("_category_.json")))
-                .describedAs("the library itself is open").contains("\"collapsed\": false");
+        assertThat(Files.readString(libraryTree().resolve("_category_.json"))).doesNotContain("collapsed");
         assertThat(Files.readString(
                 libraryTree().resolve(Arc42Template.LIBRARY_SEGMENT).resolve("_category_.json")))
-                .describedAs("and its twelve chapters are not, like a component's - a category with no "
-                             + "collapsed key is closed until a reader opens it")
+                .describedAs("a category with no collapsed key is closed until a reader opens it")
                 .doesNotContain("collapsed");
     }
 
@@ -145,7 +144,10 @@ class Arc42LibraryTreeTest {
         Path overview = libraryTree().resolve(Arc42Template.LIBRARY_SEGMENT).resolve("1-intro")
                 .resolve("library-overview.md");
         assertThat(overview).exists();
-        assertThat(Files.readString(overview)).contains(LIBRARY).contains("docs").contains("main");
+        assertThat(Files.readString(overview)).contains(LIBRARY).contains("docs").contains("main")
+                .describedAs("when it was uploaded, as a reader reads it")
+                .contains("| Uploaded | " + DisplayTime.of(Instant.EPOCH) + " |")
+                .doesNotContain("1970-01-01T00:00:00Z");
     }
 
     @Test
@@ -165,8 +167,8 @@ class Arc42LibraryTreeTest {
         String landing = Files.readString(
                 libraryTree().resolve(Arc42Template.LIBRARY_SEGMENT).resolve("index.md"));
 
-        assertThat(landing).contains("Glossary").contains("Introduction and Goals");
-        assertThat(landing).describedAs("a chapter nobody wrote is not linked, or the build fails on it")
+        assertThat(landing).contains("Glossary").contains("Introduction and Goals")
+                .describedAs("a chapter nobody wrote is not linked, or the build fails on it")
                 .doesNotContain("Deployment View");
     }
 

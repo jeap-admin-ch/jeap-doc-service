@@ -62,7 +62,8 @@ class PublishedDocumentationTest {
     void setUp() {
         clock = new MovableClock(NOW);
         properties = new PublicationProperties();
-        documentation = new PublishedDocumentation(builds, searchIndexes, new DocumentationSites(new SiteProperties()),
+        documentation = new PublishedDocumentation(new DisplayReadsOf(builds, null, searchIndexes, null),
+                new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(new TwoSystems(), new NoCustomDocumentation()), storage, properties, clock);
     }
 
@@ -88,10 +89,10 @@ class PublishedDocumentationTest {
         documentation.open(SITE, "index.html");
         documentation.open(SITE, "systems/index.html");
 
-        verify(storage).open(eq("default/43"), eq("systems/orders/system-architecture/intro/index.html"));
+        verify(storage).open("default/43", "systems/orders/system-architecture/intro/index.html");
         // The shell owns the site's own pages and everything no part claims - the systems index among them.
-        verify(storage).open(eq("default/42"), eq("index.html"));
-        verify(storage).open(eq("default/42"), eq("systems/index.html"));
+        verify(storage).open("default/42", "index.html");
+        verify(storage).open("default/42", "systems/index.html");
     }
 
     /**
@@ -106,8 +107,8 @@ class PublishedDocumentationTest {
         documentation.open(SITE, "systems/orders/index.html");
         documentation.open(SITE, "dev/systems/orders/index.html");
 
-        verify(storage).open(eq("default/43"), eq("systems/orders/index.html"));
-        verify(storage).open(eq("default/43"), eq("dev/systems/orders/index.html"));
+        verify(storage).open("default/43", "systems/orders/index.html");
+        verify(storage).open("default/43", "dev/systems/orders/index.html");
     }
 
     /**
@@ -122,8 +123,8 @@ class PublishedDocumentationTest {
         documentation.open(SITE, "assets/js/main.a1b2c3.js");
         documentation.open(SITE, "img/logo.svg");
 
-        verify(storage).open(eq("default/shared"), eq("assets/js/main.a1b2c3.js"));
-        verify(storage).open(eq("default/shared"), eq("img/logo.svg"));
+        verify(storage).open("default/shared", "assets/js/main.a1b2c3.js");
+        verify(storage).open("default/shared", "img/logo.svg");
     }
 
     /**
@@ -144,8 +145,8 @@ class PublishedDocumentationTest {
         assertThat(documentation.open(SITE, "assets/js/main.a1b2c3.js")).isPresent();
 
         InOrder inOrder = inOrder(storage);
-        inOrder.verify(storage).open(eq("default/shared"), eq("assets/js/main.a1b2c3.js"));
-        inOrder.verify(storage).open(eq("default/42"), eq("assets/js/main.a1b2c3.js"));
+        inOrder.verify(storage).open("default/shared", "assets/js/main.a1b2c3.js");
+        inOrder.verify(storage).open("default/42", "assets/js/main.a1b2c3.js");
     }
 
     /**
@@ -159,7 +160,7 @@ class PublishedDocumentationTest {
 
         assertThat(documentation.open(SITE, "assets/js/main.a1b2c3.js")).isPresent();
 
-        verify(storage).open(eq("default/shared"), eq("assets/js/main.a1b2c3.js"));
+        verify(storage).open("default/shared", "assets/js/main.a1b2c3.js");
         verify(storage, never()).open(eq("default/42"), any());
         verify(storage, never()).open(eq("default/43"), any());
     }
@@ -194,7 +195,7 @@ class PublishedDocumentationTest {
 
         documentation.open(SITE, "systems/orders/index.html");
 
-        verify(storage).open(eq("default/42"), eq("systems/orders/index.html"));
+        verify(storage).open("default/42", "systems/orders/index.html");
     }
 
     /**

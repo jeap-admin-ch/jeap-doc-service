@@ -71,7 +71,9 @@ class SpooledBundleTest {
     void tooManyPaths_isRefusedWhileReading() throws IOException {
         Path file = archiveOf("1-intro/a.md", "1-intro/b.md", "1-intro/c.md");
 
-        assertThatThrownBy(() -> SpooledBundle.of(file, SHA256, Files.size(file), new BundleLimits(2, 1 << 20)))
+        long size = Files.size(file);
+        BundleLimits limits = new BundleLimits(2, 1 << 20);
+        assertThatThrownBy(() -> SpooledBundle.of(file, SHA256, size, limits))
                 .isInstanceOf(InvalidUploadException.class)
                 .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.TOO_MANY_PATHS);
     }
@@ -80,7 +82,9 @@ class SpooledBundleTest {
     void anArchiveThatSaysItUnpacksToTooMuch_isRefusedWithoutReadingAnEntry() throws IOException {
         Path file = archiveOf("1-intro/goals.md");
 
-        assertThatThrownBy(() -> SpooledBundle.of(file, SHA256, Files.size(file), new BundleLimits(200, 1)))
+        long size = Files.size(file);
+        BundleLimits limits = new BundleLimits(200, 1);
+        assertThatThrownBy(() -> SpooledBundle.of(file, SHA256, size, limits))
                 .isInstanceOf(InvalidUploadException.class)
                 .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.UNPACKS_TO_TOO_MUCH)
                 .hasMessageContaining("unpack")
@@ -94,7 +98,8 @@ class SpooledBundleTest {
         Path file = directory.resolve("not-a-zip.zip");
         Files.writeString(file, "this is not a ZIP at all", StandardCharsets.UTF_8);
 
-        assertThatThrownBy(() -> SpooledBundle.of(file, SHA256, Files.size(file), GENEROUS))
+        long size = Files.size(file);
+        assertThatThrownBy(() -> SpooledBundle.of(file, SHA256, size, GENEROUS))
                 .isInstanceOf(InvalidUploadException.class)
                 .hasFieldOrPropertyWithValue("code", InvalidUploadException.Code.INVALID_BUNDLE);
     }

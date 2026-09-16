@@ -414,7 +414,8 @@ public class DocumentationBuildRunner {
                 // upload or the next import. Not settled either - a model that arrives during this pass makes
                 // the part buildable, and the next refill picks it up.
                 Site site = configured.get();
-                if (readyToBuild.computeIfAbsent(key.site(), id -> readiness.isReadyToBuild(site))) {
+                if (Boolean.TRUE.equals(
+                        readyToBuild.computeIfAbsent(key.site(), id -> readiness.isReadyToBuild(site)))) {
                     queue.add(new Buildable(site, part.get()));
                 }
             }
@@ -437,7 +438,7 @@ public class DocumentationBuildRunner {
                 // it failed - carries the site, the part and the build. The scope is opened here because this
                 // is where one build's work begins and ends on one thread; the slots share a pool, so a
                 // context left behind would label the next build's lines with this part. See BuildLogContext.
-                try (BuildLogContext logged = BuildLogContext.of(next.part().key())) {
+                try (BuildLogContext _ = BuildLogContext.of(next.part().key())) {
                     return buildPart(next.site(), next.part());
                 }
             } catch (Throwable e) {
@@ -814,10 +815,10 @@ public class DocumentationBuildRunner {
                                         BuildRequest request, Throwable e, long startedAt) {
         BuildTrigger trigger = request.trigger();
         try {
-            if (stopping && e instanceof RuntimeException) {
+            if (stopping && e instanceof RuntimeException stopped) {
                 // Not a failure: this instance asked the generator to stop. Recorded apart from one, because
                 // the alarm is on failures and a deployment landing on a build must not page anybody.
-                recordAbort(site, build, request, (RuntimeException) e, startedAt);
+                recordAbort(site, build, request, stopped, startedAt);
                 return;
             }
             builds.failed(build.id(), messageOf(e), clock.instant());

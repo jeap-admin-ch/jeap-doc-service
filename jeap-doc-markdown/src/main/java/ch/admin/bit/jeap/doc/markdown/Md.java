@@ -135,6 +135,17 @@ public final class Md {
         return value.isEmpty() ? Markdown.EMPTY : new Markdown("**" + value.value() + "**");
     }
 
+    /**
+     * Raised above the line - a note beside what it belongs to rather than a second thing in the row.
+     * <p>
+     * A {@code :sup[...]} text directive, not a {@code <sup>} element: raw HTML in a page is escaped and shown
+     * as text, so the element is built by {@code remark-superscript} in the site template instead. The two
+     * have to agree on the name.
+     */
+    public static Markdown superscript(Markdown value) {
+        return value.isEmpty() ? Markdown.EMPTY : new Markdown(":sup[" + value.value() + "]");
+    }
+
     public static Markdown italic(String value) {
         Markdown escaped = text(value);
         return escaped.isEmpty() ? Markdown.EMPTY : new Markdown("*" + escaped.value() + "*");

@@ -59,6 +59,25 @@ survive a methodology that numbers its chapters differently.
 - **Every environment tree** of the site gets the same pages. An upload names no environment, and what a team
   writes is about the thing rather than about a stage.
 
+**A page may fold part of itself.** The site renders a `details` directive as a collapsible, closed until the
+reader opens it:
+
+```markdown
+:::details[Every property]
+
+The folded Markdown, a table or a diagram included.
+
+:::
+```
+
+It is a directive and not a `<details>` tag, because raw HTML in a page is shown as text. The summary is text
+as well.
+
+**A table can be sorted and filtered in the browser.** Every Markdown table of a page gets a sort button in each
+header cell, and one with more than 15 rows a filter above it - an uploaded table as much as a generated one, with
+nothing to write for it. A table needs a header row to be sortable - see
+[Every table can be sorted, and a long one filtered](generation.md#every-table-can-be-sorted-and-a-long-one-filtered).
+
 ## What the service adds to a page
 
 **The body is written through unchanged.** Nothing is appended to it and nothing inside it is rewritten - an
@@ -182,8 +201,10 @@ Three calls remove documentation, and they are different things:
 | `DELETE /api/docs/custom/systems`  | Everything of one system: its own, its components', its libraries' | a sites administrator                           |
 
 A subject that has been documented stays in the catalogue with no set until it is removed itself, which keeps
-the record of what was once published. All three ask for the part to be built - nothing takes a page off a
-part that is already published.
+the record of what was once published. All three ask for the part and the shell to be built - nothing takes a page off a
+part that is already published, and the shell's systems index has to drop a system with nothing left. A system
+the site no longer has at all is not built again: its part is removed like that of a
+[system that left the landscape](generation.md#a-part-the-site-no-longer-has).
 
 **Why an administrator at all.** The write role is granted to the pipeline of a system so that a team can only
 change its own documentation, and that is the right rule while there is a pipeline. There is not always: a

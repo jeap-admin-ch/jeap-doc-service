@@ -14,7 +14,6 @@ import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -105,8 +104,13 @@ final class Documented {
                 Files.createDirectories(chapterDirectory);
                 for (CustomPage page : pages) {
                     Files.writeString(chapterDirectory.resolve(page.fileName()),
-                            "---\ntitle: \"%s\"\nsidebar_position: %d\ndoc_status: custom\n---\n"
-                                    .formatted(page.title(), page.position()));
+                            """
+                            ---
+                            title: "%s"
+                            sidebar_position: %d
+                            doc_status: custom
+                            ---
+                            """.formatted(page.title(), page.position()));
                 }
             } catch (IOException e) {
                 throw new UncheckedIOException(e);

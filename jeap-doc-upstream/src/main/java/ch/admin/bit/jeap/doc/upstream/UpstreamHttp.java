@@ -112,7 +112,7 @@ public final class UpstreamHttp {
                     // cap is clamped first, so that a configured size larger than an array can be does not
                     // overflow into a negative length.
                     byte[] bytes = response.getBody()
-                            .readNBytes((int) Math.min(cap, Integer.MAX_VALUE - 1) + 1);
+                            .readNBytes((int) Math.min(cap, Integer.MAX_VALUE - 1L) + 1);
                     return bytes.length > cap
                             ? new Answer(response.getStatusCode(), headers, null, true)
                             : new Answer(response.getStatusCode(), headers, bytes, false);

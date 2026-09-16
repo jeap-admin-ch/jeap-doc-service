@@ -72,7 +72,7 @@ function Repository({name}) {
  */
 function GeneratedSource({frontMatter}) {
     const environment = frontMatter.doc_environment;
-    const imported = frontMatter.doc_model_imported_at;
+    const imported = frontMatter.doc_model_imported_at_display || frontMatter.doc_model_imported_at;
     const generated = frontMatter.doc_generated_at_display || frontMatter.doc_generated_at;
     const fromTheModel = frontMatter.doc_source !== 'doc-service';
     // The one date this page can name: when the model it was written from was imported, or failing that when

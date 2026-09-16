@@ -36,7 +36,8 @@ class MarkdownWriterTest {
     @Test
     void frontMatter_whenSomethingIsAlreadyWritten_thenItIsRefused() {
         MarkdownWriter writer = new MarkdownWriter().heading(1, "Too late");
-        assertThatThrownBy(() -> writer.frontMatter(frontMatter().put("title", "x")))
+        FrontMatter frontMatter = frontMatter().put("title", "x");
+        assertThatThrownBy(() -> writer.frontMatter(frontMatter))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -91,7 +92,9 @@ class MarkdownWriterTest {
     @Test
     void table_whenARowDoesNotMatchTheHeader_thenItFails() {
         MarkdownWriter writer = new MarkdownWriter();
-        assertThatThrownBy(() -> writer.table(List.of("A", "B"), List.of(List.of(Md.text("only one")))))
+        List<String> header = List.of("A", "B");
+        List<List<Markdown>> rows = List.of(List.of(Md.text("only one")));
+        assertThatThrownBy(() -> writer.table(header, rows))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("2 columns");
     }
@@ -144,6 +147,131 @@ class MarkdownWriterTest {
     void admonition_whenThereIsNothingToSay_thenItIsRefused() {
         MarkdownWriter writer = new MarkdownWriter();
         assertThatThrownBy(() -> writer.admonition("info", "Title", Markdown.EMPTY))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void details_isWrittenAsADirectiveTheSiteFolds() {
+        String page = new MarkdownWriter()
+                .details("Version 1.0.0", body -> body.fence("java", "record Key(String id) {}"))
+                .text();
+
+        assertThat(page).isEqualTo("""
+                :::details[Version 1.0.0]
+
+                ```java
+                record Key(String id) {}
+                ```
+
+                :::
+                """);
+    }
+
+    @Test
+    void details_escapesTheSummary() {
+        String page = new MarkdownWriter().details("<script>] *x*", body -> body.paragraph("Inside.")).text();
+
+        assertThat(page).startsWith(":::details[" + Md.text("<script>] *x*").value() + "]");
+    }
+
+    /** A directive inside the fold would otherwise close it at its own closing line. */
+    @Test
+    void details_whenTheBodyHoldsADirective_thenTheFoldIsMarkedWithMoreColons() {
+        String page = new MarkdownWriter()
+                .details("Notes", body -> body.admonition("note", "Inside", Md.text("Careful.")))
+                .text();
+
+        assertThat(page).startsWith("::::details[Notes]").endsWith("\n::::\n").contains("\n:::note[Inside]\n");
+    }
+
+    @Test
+    void details_whenThereIsNothingToFoldOrNoSummary_thenItIsRefused() {
+        MarkdownWriter writer = new MarkdownWriter();
+        assertThatThrownBy(() -> writer.details("Empty", body -> { }))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> writer.details(" ", body -> body.paragraph("x")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void groupedTable_isWrittenAsNestedDirectivesTheSiteBuildsATableFrom() {
+        String page = new MarkdownWriter()
+                .groupedTable("Version", "", "Schema", List.of(
+                        new MarkdownWriter.Group(Md.code("1.0.0"), List.of(
+                                new MarkdownWriter.Row(Md.text("Key"), cell -> cell.paragraph("Key.avdl")),
+                                new MarkdownWriter.Row(Md.text("Value"), cell -> cell.paragraph("Value.avdl"))))))
+                .text();
+
+        assertThat(page).isEqualTo("""
+                :::::grouped-table
+
+                :::column[Version]
+                :::
+
+                :::column[]
+                :::
+
+                :::column[Schema]
+                :::
+
+                ::::group[`1.0.0`]
+
+                :::row[Key]
+
+                Key.avdl
+
+                :::
+
+                :::row[Value]
+
+                Value.avdl
+
+                :::
+
+                ::::
+
+                :::::
+                """);
+    }
+
+    /** A fold in a cell has its own marker, so every level around it takes one more colon. */
+    @Test
+    void groupedTable_whenACellHoldsAFold_thenEveryLevelAroundItIsMarkedLonger() {
+        String page = new MarkdownWriter()
+                .groupedTable("Version", "", "Schema", List.of(new MarkdownWriter.Group(Md.text("1.0.0"), List.of(
+                        new MarkdownWriter.Row(Md.text("Value"),
+                                cell -> cell.details("Schema", fold -> fold.fence("java", "string id;")))))))
+                .text();
+
+        assertThat(page).startsWith("::::::grouped-table\n")
+                .contains("\n:::::group[1.0.0]\n")
+                .contains("\n::::row[Value]\n")
+                .contains("\n:::details[Schema]\n")
+                .endsWith("\n::::::\n");
+    }
+
+    @Test
+    void groupedTable_escapesItsLabels() {
+        String page = new MarkdownWriter()
+                .groupedTable("<b>]", "", "Schema", List.of(new MarkdownWriter.Group(Md.text("1.0.0"), List.of(
+                        new MarkdownWriter.Row(Md.text("]*x*"), cell -> cell.paragraph("text"))))))
+                .text();
+
+        assertThat(page).contains(":::column[" + Md.text("<b>]").value() + "]")
+                .contains(":::row[" + Md.text("]*x*").value() + "]");
+    }
+
+    @Test
+    void groupedTable_whenThereIsNothingToShow_thenItIsRefused() {
+        MarkdownWriter writer = new MarkdownWriter();
+        assertThatThrownBy(() -> writer.groupedTable("A", "B", "C", List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        List<MarkdownWriter.Group> noRow = List.of(new MarkdownWriter.Group(Md.text("1.0.0"), List.of()));
+        assertThatThrownBy(() -> writer.groupedTable("A", "B", "C", noRow))
+                .isInstanceOf(IllegalArgumentException.class);
+        List<MarkdownWriter.Group> emptyCell = List.of(new MarkdownWriter.Group(Md.text("1.0.0"),
+                List.of(new MarkdownWriter.Row(Md.text("Key"), cell -> { }))));
+        assertThatThrownBy(() -> writer.groupedTable("A", "B", "C", emptyCell))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

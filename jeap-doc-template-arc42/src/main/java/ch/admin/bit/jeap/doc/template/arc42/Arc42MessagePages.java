@@ -69,9 +69,7 @@ final class Arc42MessagePages {
             return false;
         }
         Path directory = buildingBlockDirectory.resolve(group);
-        // Under the building block view, so open with it: what a system publishes and consumes is one
-        // of the three things a reader looks for about it.
-        Arc42Pages.writeCategory(directory, kind.plural(), position, true);
+        Arc42Pages.writeCategory(directory, kind.plural(), position);
         writeIndex(system, kind, group, messages, context, directory);
         for (DocumentedMessage message : messages) {
             writeMessage(message, context, directory);
@@ -104,11 +102,11 @@ final class Arc42MessagePages {
     }
 
     /**
-     * The versions of a message type: the table of what exists, and the schemas below it.
+     * The versions of a message type: a row per version, with a sub-row for its key schema and one for its
+     * value schema.
      * <p>
-     * The table carries the schema <b>names</b> linked into the registry and the compatibility; the schemas
-     * themselves go in sections under it, one per version. A resolved schema is hundreds of lines, and inside a
-     * table cell that is unreadable.
+     * Each schema is folded in its cell, above its name and what the version is compatible with. A resolved
+     * schema is hundreds of lines; open, five versions of them push the contracts off the screen.
      */
     private static void writeVersions(MarkdownWriter page, DocumentedMessage message) {
         page.heading(2, VERSIONS);
@@ -116,44 +114,50 @@ final class Arc42MessagePages {
             page.paragraph("No version of this message is published.");
             return;
         }
-        List<List<Markdown>> rows = new ArrayList<>();
+        List<MarkdownWriter.Group> groups = new ArrayList<>();
         for (DocumentedMessageVersion version : message.versions()) {
-            rows.add(List.of(Md.code(version.version()),
-                    schemaCell(version.key()),
-                    schemaCell(version.value()),
-                    compatibility(version)));
-        }
-        page.table(List.of("Version", "Key schema", "Value schema", "Compatibility"), rows);
-
-        for (DocumentedMessageVersion version : message.versions()) {
-            if (!version.hasSchemas()) {
-                continue;
+            List<MarkdownWriter.Row> rows = new ArrayList<>();
+            if (version.key() != null) {
+                // Compatibility is a statement about the value, so the key row only carries it without one.
+                rows.add(new MarkdownWriter.Row(Md.text("Key"), cell -> writeSchema(cell, version.key(),
+                        version.value() == null ? version : null)));
             }
-            page.heading(3, message.name() + " " + version.version());
-            writeSchema(page, "Key schema", version.key());
-            writeSchema(page, "Value schema", version.value());
+            if (version.value() != null) {
+                rows.add(new MarkdownWriter.Row(Md.text("Value"),
+                        cell -> writeSchema(cell, version.value(), version)));
+            }
+            if (rows.isEmpty()) {
+                rows.add(new MarkdownWriter.Row(Markdown.EMPTY,
+                        cell -> cell.paragraph("No schema of this version is replicated.")));
+            }
+            groups.add(new MarkdownWriter.Group(Md.code(version.version()), rows));
         }
+        page.groupedTable("Version", "", "Schema", groups);
     }
 
     /**
-     * One schema, fenced.
+     * One schema in its cell: the fold first, so the folds of a version line up at the top of their rows, then
+     * the file name and the compatibility.
      * <p>
      * Fenced as {@code java} rather than left plain: the rendering is <b>deliberately not valid Avro IDL</b> -
      * every import is inlined, the namespaces and the enclosing braces are gone - and there is no language for
      * what it actually is. Java highlights it closely enough to be read and wrongly enough that nobody mistakes
      * it for the file, which the schema's link points at.
+     *
+     * @param compatibility the version whose compatibility this row states, or null
      */
-    private static void writeSchema(MarkdownWriter page, String side, MessageSchema schema) {
-        if (schema == null || !schema.hasSource()) {
-            return;
+    private static void writeSchema(MarkdownWriter cell, MessageSchema schema, DocumentedMessageVersion compatibility) {
+        if (schema.hasSource()) {
+            cell.details("Schema", fold -> fold.fence("java", schema.resolvedSchema()));
         }
-        page.paragraph(Md.join(Md.bold(side), Md.text(": "), schemaName(schema)));
-        page.fence("java", schema.resolvedSchema());
-    }
-
-    /** The schema's file name, linked into the registry where there is a link to it. */
-    private static Markdown schemaCell(MessageSchema schema) {
-        return schema == null ? Md.text("") : schemaName(schema);
+        cell.paragraph(schemaName(schema));
+        if (compatibility != null && compatibility.hasCompatibility()) {
+            cell.paragraph(compatibility.compatibleVersion() == null
+                    ? Md.sentence("Avro Schema Compatibility: {}", Md.bold(compatibility.compatibilityMode()))
+                    : Md.sentence("Avro Schema Compatibility with Version {}: {}",
+                            Md.text(compatibility.compatibleVersion()),
+                            Md.bold(compatibility.compatibilityMode())));
+        }
     }
 
     /**
@@ -164,22 +168,15 @@ final class Arc42MessagePages {
      * would end the generation of every system of the environment, not just this page.
      */
     private static Markdown schemaName(MessageSchema schema) {
-        return schema.schemaUrl() == null ? Md.code(nameOf(schema))
+        // A blank URL counts as none: linkOrCode answers nothing at all for one, and a cell with nothing in it
+        // fails the table and with it the build of the whole part.
+        return schema.schemaUrl() == null || schema.schemaUrl().isBlank() ? Md.code(nameOf(schema))
                 : Md.linkOrCode(schema.schemaUrl(), nameOf(schema));
     }
 
+    /** Never blank, so that the cell this names always has content. */
     private static String nameOf(MessageSchema schema) {
-        return schema.schemaName() == null ? "schema" : schema.schemaName();
-    }
-
-    /** What a version declares it is compatible with, which is the answer to <i>may I upgrade</i>. */
-    private static Markdown compatibility(DocumentedMessageVersion version) {
-        if (!version.hasCompatibility()) {
-            return Md.text("");
-        }
-        return version.compatibleVersion() == null
-                ? Md.text(version.compatibilityMode())
-                : Md.text(version.compatibilityMode() + " with " + version.compatibleVersion());
+        return schema.schemaName() == null || schema.schemaName().isBlank() ? "schema" : schema.schemaName();
     }
 
     /** One message: what it is, its versions, and the contracts on it. */

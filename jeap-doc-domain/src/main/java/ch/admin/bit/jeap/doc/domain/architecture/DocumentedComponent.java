@@ -1,6 +1,5 @@
 package ch.admin.bit.jeap.doc.domain.architecture;
 
-import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureModelImportStep;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;

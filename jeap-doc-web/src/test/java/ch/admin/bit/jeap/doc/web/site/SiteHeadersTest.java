@@ -48,7 +48,7 @@ class SiteHeadersTest {
 
         headers.postProcessHeaders(withoutPolicy, "GET", "/uploaded/diagram.svg");
 
-        assertThat(withoutPolicy.get(AbstractHeaders.CONTENT_SECURITY_POLICY)).isEqualTo("sandbox");
+        assertThat(withoutPolicy).containsEntry(AbstractHeaders.CONTENT_SECURITY_POLICY, "sandbox");
     }
 
     @Test
@@ -59,7 +59,7 @@ class SiteHeadersTest {
                 .startsWith("sandbox allow-scripts")
                 .describedAs("with it, a framed page could remove the sandbox and reload itself")
                 .doesNotContain("allow-same-origin");
-        assertThat(sent.get("Cross-Origin-Resource-Policy")).isEqualTo("cross-origin");
+        assertThat(sent).containsEntry("Cross-Origin-Resource-Policy", "cross-origin");
     }
 
     /**
