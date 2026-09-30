@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] - 2026-09-30
+
+### Dependencies
+- Update transitive site dependencies to fix security vulnerabilities: **brace-expansion** 1.1.18 → 1.1.21,
+  **fast-uri** 3.1.6 → 3.1.8, **image-size** 2.0.2 → 2.0.4, **joi** 17.13.6 → 17.13.8, and
+  **webpack-dev-middleware** 7.4.5 → 7.4.6.
+
 ## [3.7.0] - 2026-09-27
 
 ### Dependencies
