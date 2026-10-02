@@ -149,6 +149,15 @@ A diagram is better written as a fenced `plantuml`, `mermaid` or `dot` block tha
 site renders it in the reader's browser, so it stays diffable, searchable and legible in both themes. The
 image formats are for the pictures that have no source - a screenshot, a photograph, a scan.
 
+**A diagram drawn in an editor is the one case where a picture has a source**, and the source is kept in the
+repository rather than uploaded: `images/overview.drawio` beside the `images/overview.svg` exported from it.
+Its extension is not among the ones above on purpose, so an upload that carried one would be
+`FORBIDDEN_EXTENSION` - and that is the safety net rather than the rule. The rule is the doc pipeline's: it
+leaves the sources out of the bundle, and it refuses a set whose source was committed after its image, on the
+assumption that the author forgot to export it. The service cannot check that: it is told the paths of a
+bundle, not the history of the repository the bundle came from. See *Documentation validation* in
+[`jeap-pipeline`](https://jeap-admin-ch.github.io/docs/building-blocks/tooling/jeap-python-pipeline-lib/).
+
 The other files are ones a page links to rather than shows - a specification, sample data, an example payload or
 configuration: `[The API specification](files/api-spec.pdf)`.
 
