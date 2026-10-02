@@ -46,6 +46,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -95,7 +96,6 @@ class DocumentationUploadServiceTest {
      * A bundle that reads as one page in one chapter, and a validation that accepts it. Every test about the
      * upload path needs both; what the rules are is {@code StructureValidationTest}'s.
      */
-    /** A bundle that is read and a set that passes the structure rules. */
     private void acceptsTheSet() {
         when(bundles.receive(any(), anyLong(), any())).thenReturn(new ReceivedOnePage());
         when(validation.validate(any(), any()))
@@ -299,7 +299,7 @@ class DocumentationUploadServiceTest {
         when(documentation.replace(any())).thenAnswer(call ->
                 new CustomDocumentationRepository.Replaced(call.getArgument(0),
                         Optional.of("current/docs/x/17/1/bundle.zip")));
-        org.mockito.Mockito.doThrow(new IllegalStateException("the bucket went away"))
+        doThrow(new IllegalStateException("the bucket went away"))
                 .when(documentationStorage).delete(anyString());
         when(uploadRepository.save(any())).thenAnswer(call -> call.getArgument(0));
 
@@ -448,6 +448,27 @@ class DocumentationUploadServiceTest {
     }
 
     @Test
+    void receive_whenPromotionFails_thenPreviousSetIsUntouchedAndNoBuildIsRequested() {
+        DocumentationUpload claimed = claimed();
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
+        when(subjectRepository.findOrCreate(any(), eq(NOW))).thenAnswer(call -> call.getArgument(0));
+        when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
+                .thenReturn(new UploadClaim.Claimed(claimed));
+        acceptsTheSet();
+        when(bundles.store(anyLong(), anyInt(), any())).thenReturn(STORED);
+        when(documentationStorage.promote(any(), any(), anyLong(), anyInt()))
+                .thenThrow(new IllegalStateException("tagging unavailable"));
+
+        assertThatThrownBy(() -> service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length))
+                .isInstanceOfSatisfying(InvalidUploadException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.STORAGE_FAILED));
+
+        verify(uploadRepository).save(claimed.failed("The bundle could not be stored."));
+        verifyNoInteractions(documentation, buildTrigger);
+        verify(documentationStorage, never()).delete(anyString());
+    }
+
+    @Test
     void receive_whenTheUploadIdDescribesSomethingElse_thenRejected() {
         when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.of(claimed()));
 
@@ -577,7 +598,7 @@ class DocumentationUploadServiceTest {
         takesTheSetOver();
         when(bundles.store(eq(42L), eq(1), any())).thenReturn(STORED);
         when(uploadRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        org.mockito.Mockito.doThrow(new IllegalStateException("the database went away"))
+        doThrow(new IllegalStateException("the database went away"))
                 .when(buildTrigger).requestBecauseOfUpload(anyString(), anyString());
 
         UploadReceipt receipt = service.receive(UPLOAD_ID, descriptor().build(), bundle(), BUNDLE.length);

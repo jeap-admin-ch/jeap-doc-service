@@ -15,9 +15,18 @@ import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectTaggingRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.core.sync.RequestBody;
+import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.services.s3.model.GetObjectTaggingRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.Tag;
+import software.amazon.awssdk.services.s3.model.Tagging;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -34,6 +43,12 @@ import java.util.zip.ZipOutputStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 
 /**
  * The current documentation against a real S3-compatible object storage.
@@ -288,6 +303,57 @@ class S3CustomDocumentationStorageIT extends RustFsTestContainerBase {
                 .tagSet().stream().map(Tag::value).toList();
         assertThat(values).describedAs("the rule that expires the uploads must not reach a set")
                 .containsExactly(S3CustomDocumentationStorage.CONTENT_TAG_VALUE);
+    }
+
+    @Test
+    void promote_whenTaggingFails_leavesAnUnreferencedCopyAndCanBeRetried() {
+        S3Client failingClient = spy(S3_CLIENT);
+        var failure = S3Exception.builder().statusCode(503).message("tagging unavailable").build();
+        // This RustFS version drops tags on copy. Emulate inheritance to exercise the expiration risk.
+        doAnswer(call -> {
+            CopyObjectRequest request = call.getArgument(0);
+            var copied = S3_CLIENT.copyObject(request);
+            var sourceTags = S3_CLIENT.getObjectTagging(GetObjectTaggingRequest.builder()
+                    .bucket(request.sourceBucket()).key(request.sourceKey()).build()).tagSet();
+            S3_CLIENT.putObjectTagging(PutObjectTaggingRequest.builder()
+                    .bucket(request.destinationBucket()).key(request.destinationKey())
+                    .tagging(Tagging.builder().tagSet(sourceTags).build()).build());
+            return copied;
+        }).when(failingClient).copyObject(any(CopyObjectRequest.class));
+        doThrow(failure).when(failingClient).putObjectTagging(any(PutObjectTaggingRequest.class));
+        var failingStorage = new S3CustomDocumentationStorage(failingClient, properties);
+        byte[] bytes = bundle();
+        try (UploadedBundles.ReceivedBundle received = uploads.receive(new ByteArrayInputStream(bytes), bytes.length,
+                new BundleLimits(200, 1 << 20))) {
+            StoredBundle source = uploads.store(51, 1, received);
+            assertThatThrownBy(() -> failingStorage.promote(source, key(), 51, 1)).isSameAs(failure);
+            String orphan = storage.listWrittenBefore(Instant.now().plusSeconds(60)).stream()
+                    .filter(k -> k.endsWith("/51/1/bundle.zip")).findFirst().orElseThrow();
+            assertThat(S3_CLIENT.getObjectTagging(GetObjectTaggingRequest.builder()
+                    .bucket(TEST_BUCKET_NAME).key(orphan).build()).tagSet())
+                    .containsExactly(Tag.builder().key(S3DocumentationBundleStorage.CONTENT_TAG_KEY)
+                            .value(S3DocumentationBundleStorage.CONTENT_TAG_VALUE).build());
+            assertThat(S3_CLIENT.getObjectTagging(GetObjectTaggingRequest.builder()
+                    .bucket(TEST_BUCKET_NAME).key(source.objectKey()).build()).tagSet())
+                    .containsExactly(Tag.builder().key(S3DocumentationBundleStorage.CONTENT_TAG_KEY)
+                            .value(S3DocumentationBundleStorage.CONTENT_TAG_VALUE).build());
+
+            // An orphan may be expired or swept without affecting the next attempt.
+            storage.delete(orphan);
+            String retried = storage.promote(source, key(), 51, 2);
+            assertThat(retried).isNotEqualTo(orphan);
+            assertThat(S3_CLIENT.getObjectTagging(GetObjectTaggingRequest.builder()
+                    .bucket(TEST_BUCKET_NAME).key(retried).build()).tagSet())
+                    .containsExactly(Tag.builder().key(S3DocumentationBundleStorage.CONTENT_TAG_KEY)
+                            .value(S3CustomDocumentationStorage.CONTENT_TAG_VALUE).build());
+            assertThat(S3_CLIENT.getObjectAsBytes(GetObjectRequest.builder()
+                    .bucket(TEST_BUCKET_NAME).key(retried).build()).asByteArray()).isEqualTo(bytes);
+            var copy = ArgumentCaptor.forClass(CopyObjectRequest.class);
+            verify(failingClient).copyObject(copy.capture());
+            assertThat(copy.getValue().taggingDirective()).isNull();
+            assertThat(copy.getValue().tagging()).isNull();
+            verify(failingClient, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+        }
     }
 
     @Test

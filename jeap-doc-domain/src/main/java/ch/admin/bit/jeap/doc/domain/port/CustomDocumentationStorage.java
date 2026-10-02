@@ -25,6 +25,9 @@ public interface CustomDocumentationStorage {
      * A server-side copy rather than a second upload: the object then holds exactly the bytes the pipeline
      * sent, with the digest it was told, and nothing has to be re-read to make it current.
      *
+     * The key is returned only after the copy carries the current-documentation tag. A failure must
+     * propagate so the caller cannot publish a copy that still carries an upload-expiration tag.
+     *
      * @param stored   where the upload put its bundle
      * @param key      the set the bundle becomes
      * @param revision the upload this set comes from, which makes the key of a replaced set a new one

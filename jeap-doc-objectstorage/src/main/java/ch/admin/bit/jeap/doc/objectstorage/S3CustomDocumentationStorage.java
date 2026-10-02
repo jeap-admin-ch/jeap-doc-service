@@ -17,7 +17,6 @@ import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
-import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
@@ -31,7 +30,6 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectTaggingRequest;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.model.Tag;
-import software.amazon.awssdk.services.s3.model.TaggingDirective;
 import software.amazon.awssdk.services.s3.model.Tagging;
 
 import java.io.IOException;
@@ -94,19 +92,15 @@ class S3CustomDocumentationStorage implements CustomDocumentationStorage {
                 .sourceKey(stored.objectKey())
                 .destinationBucket(properties.getBucket())
                 .destinationKey(objectKey)
-                // The source is tagged as an upload, and this object must not be reached by the lifecycle
-                // rule that expires those - so it starts with no tags at all rather than the source's.
-                .taggingDirective(TaggingDirective.REPLACE)
                 .build());
-        // Tagged in a request of its own. A tag on the copy itself is not honoured by every S3
-        // implementation, and an object under this prefix that is tagged as an upload would be expired.
+        // Some S3 stores reject REPLACE. Retag the copy before the database may reference it.
+        // A tagging failure must propagate: the previous set stays current and the copy is an orphan.
         s3Client.putObjectTagging(PutObjectTaggingRequest.builder()
                 .bucket(properties.getBucket())
                 .key(objectKey)
-                .tagging(Tagging.builder().tagSet(Tag.builder()
+                .tagging(tagging -> tagging.tagSet(tag -> tag
                         .key(S3DocumentationBundleStorage.CONTENT_TAG_KEY)
-                        .value(CONTENT_TAG_VALUE)
-                        .build()).build())
+                        .value(CONTENT_TAG_VALUE)))
                 .build());
         log.debug("The bundle {} is the current documentation of {} as {}.", stored.objectKey(), key, objectKey);
         return objectKey;
@@ -137,7 +131,7 @@ class S3CustomDocumentationStorage implements CustomDocumentationStorage {
         AtomicBoolean refused = new AtomicBoolean();
         try (ZipFile archive = new ZipFile(((SpooledBundle) received).file().toFile());
              ExecutorService writers = Executors.newFixedThreadPool(
-                     Math.min(properties.getMicrositeConcurrency(), Math.max(paths.size(), 1)),
+                     Math.clamp(paths.size(), 1, properties.getMicrositeConcurrency()),
                      runnable -> {
                          Thread thread = new Thread(runnable, "microsite-publication");
                          thread.setDaemon(true);
@@ -386,7 +380,7 @@ class S3CustomDocumentationStorage implements CustomDocumentationStorage {
     private void deleteBatch(List<ObjectIdentifier> batch) {
         DeleteObjectsResponse answer = s3Client.deleteObjects(DeleteObjectsRequest.builder()
                 .bucket(properties.getBucket())
-                .delete(Delete.builder().objects(batch).build())
+                .delete(delete -> delete.objects(batch))
                 .build());
         if (answer.hasErrors() && !answer.errors().isEmpty()) {
             S3Error first = answer.errors().getFirst();
@@ -450,7 +444,16 @@ class S3CustomDocumentationStorage implements CustomDocumentationStorage {
     }
 
     private String prefix() {
-        return properties.getCurrentPrefix().replaceAll("^/+|/+$", "");
+        String prefix = properties.getCurrentPrefix();
+        int start = 0;
+        int end = prefix.length();
+        while (start < end && prefix.charAt(start) == '/') {
+            start++;
+        }
+        while (end > start && prefix.charAt(end - 1) == '/') {
+            end--;
+        }
+        return prefix.substring(start, end);
     }
 
     /**
@@ -473,7 +476,7 @@ class S3CustomDocumentationStorage implements CustomDocumentationStorage {
                 .build());
              OutputStream file = Files.newOutputStream(spooled)) {
             body.transferTo(file);
-        } catch (NoSuchKeyException e) {
+        } catch (NoSuchKeyException _) {
             // The row named it and the object is gone: a removal or a replacement took it between this
             // build reading the rows and opening the bundle. Both have asked for the build that publishes
             // what is true now.

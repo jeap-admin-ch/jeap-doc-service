@@ -26,6 +26,14 @@ name what it is expiring rather than a prefix an instance configures for itself.
 `site`, and the rule below therefore covers it: an age rule would take the search off a site nobody has had to
 republish, for the same reason it would take the site itself off.
 
+## Tags while a Markdown bundle is copied
+
+A server-side copy initially inherits `jeap-doc-content=upload`. The service then replaces its tags with
+`jeap-doc-content=current` in a separate request. Only after both requests succeed does the database name
+the new object. Failed tagging leaves an unreferenced copy; its expiration does not remove the previous set.
+The nightly sweep also removes unreferenced copies. Existing lifecycle rules for upload tags remain valid;
+there must still be no age-based rule over current sets or the whole bucket.
+
 ## The rules to provision
 
 | Tag                       | Expire after                                                                                    |                                         |

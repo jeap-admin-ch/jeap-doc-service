@@ -21,6 +21,7 @@ sequenceDiagram
     Note over D: a set that breaks a rule is refused here,<br/>with 422 and nothing stored
     D->>S3: store the bundle under uploads/docs/{id}/{attempt}/bundle.zip
     D->>S3: copy it to the set's own key under current/
+    D->>S3: replace its tags with jeap-doc-content=current
     D->>DB: record the set and its pages
     D->>DB: the upload is PENDING
     D-->>P: 201 + {id, state: PENDING, ...}
@@ -161,8 +162,8 @@ became is the only copy there is, and nothing under that prefix may be expired b
 [Operating the bucket](operating-the-bucket.md#the-rule-that-must-not-be-written).
 
 The service needs `s3:PutObject`, **`s3:PutObjectTagging`** - without it the upload fails with an access
-denied while storing, because the tag travels with the object it writes - and `s3:CopyObject` and
-`s3:DeleteObject`, which is how a set is made current and how one is removed.
+denied while storing - and `s3:GetObject` and `s3:DeleteObject` for reading and removing objects.
+`CopyObject` uses read access to its source and write access to its destination.
 
 ## What is checked, and what is not
 
@@ -195,6 +196,12 @@ system arriving while a build runs are one request, and the next run serves all 
 to a key of its own - a server-side copy, so the bytes never come back through the service - and the files it
 holds are recorded. From then on the set is what a build reads; the uploaded bundle is a staging copy that the
 bucket expires.
+
+The copy omits the tagging directive because some S3-compatible stores reject `REPLACE`. It initially
+inherits the upload tag. A separate `PutObjectTagging` request replaces that tag with `jeap-doc-content=current`
+before any database row references the copy. If copying or tagging fails, the upload fails and the previous
+set remains unchanged. A copy left behind is unreferenced and may be expired or swept. A retry uses a new
+attempt key. Neither operation transfers the bundle through the service again.
 
 The upload itself stays `PENDING`, and the word still fits: what is pending is the **publication**. The set is
 current, and the build that was asked for is what puts it on the site. See

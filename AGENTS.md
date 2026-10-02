@@ -298,7 +298,9 @@ requires goes there too**, and `./mvnw verify` over the whole build is what says
   object rather than the same one overwritten: a build reads the rows and then fetches the object they name,
   and could otherwise see a set that is half replaced - and an attempt that was given up on and kept running
   cannot copy its own bytes over what took over from it. What that costs is an object nothing references when an instance
-  dies between the copy and the commit, which the nightly sweep takes.
+  dies between the copy and the commit, which the nightly sweep takes. CopyObject omits the tagging directive
+  for compatibility with S3 stores that reject REPLACE. A separate PutObjectTagging must succeed before the
+  copy is returned to the domain; a tagging failure must never publish the copy with its inherited upload tag.
 
 - **The two models are joined by the generator and by nothing else.** `…domain.custom` is what a team
   uploaded, `…domain.architecture` is a replica of an upstream, and nothing links them in the database. A
