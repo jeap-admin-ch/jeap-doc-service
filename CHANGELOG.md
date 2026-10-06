@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.1] - 2026-10-06
+
+### Dependencies
+- Update site dependencies to fix security vulnerabilities: **compression** 1.8.1 → 1.8.2 (CVE-2026-87776),
+  **proxy-addr** 2.0.7 → 2.0.8 (CVE-2026-90711), **source-map-js** 1.2.1 → 1.2.2 (CVE-2026-93749) and
+  **tinypool** 1.1.1 → 2.2.0 (CVE-2026-104848, CVE-2026-104849), all pinned through `overrides`. An instance has
+  to rebuild its site image, because the lockfile changed.
+
 ## [3.11.0] - 2026-10-05
 
 ### Dependencies
