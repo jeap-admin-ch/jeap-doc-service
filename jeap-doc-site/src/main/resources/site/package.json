@@ -27,7 +27,7 @@
     "unist-util-visit": "5.1.0"
   },
   "overrides": {
-    "js-yaml": "5.4.2",
+    "js-yaml": "5.4.3",
     "qs": "6.16.0",
     "serialize-javascript": "7.1.2",
     "sockjs": {
