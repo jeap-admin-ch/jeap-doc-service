@@ -326,6 +326,11 @@ built again, so a page carrying the last read would keep claiming one - and the 
 the case that would go unreported. See
 [Generating the documentation](generation.md#what-is-true-only-now-and-why-it-is-fetched-too).
 
+After a successful import of the model - one that replaced it or found it unchanged - the job also follows
+the deployment of what teams uploaded documentation for, and removes the documentation of a system or
+component that was deployed and has left the model. See
+[When a subject is undeployed](custom-documentation.md#when-a-subject-is-undeployed).
+
 ## When it runs
 
 |                                 |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |

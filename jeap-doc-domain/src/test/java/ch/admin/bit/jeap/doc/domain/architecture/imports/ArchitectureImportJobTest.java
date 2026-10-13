@@ -4,6 +4,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemTopology;
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
+import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentationDeployments;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
 import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
@@ -28,6 +29,11 @@ import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * What the job guarantees about its steps, which nothing else asserts.
@@ -48,6 +54,7 @@ class ArchitectureImportJobTest {
     private ArchitectureImportProperties properties;
     private ArchitectureImportShutdown shutdown;
     private RecordingTrigger trigger;
+    private CustomDocumentationDeployments documentationDeployments;
 
     /**
      * The log of the job, because two of its guarantees are levels and nothing else can see them.
@@ -61,6 +68,7 @@ class ArchitectureImportJobTest {
         openApi = new RecordingStep(ArchitectureImportKind.OPENAPI_SPEC);
         databaseSchema = new RecordingStep(ArchitectureImportKind.DATABASE_SCHEMA);
         trigger = new RecordingTrigger();
+        documentationDeployments = mock(CustomDocumentationDeployments.class);
         locks = new RecordingLocks(true);
         imports = new InMemoryImports();
         properties = new ArchitectureImportProperties();
@@ -251,7 +259,55 @@ class ArchitectureImportJobTest {
 
     private ArchitectureImportJob jobOf(ArchitectureImportStep... steps) {
         return new ArchitectureImportJob(List.of(steps), new OneEnvironment(), imports, properties, locks,
-                trigger, shutdown);
+                trigger, shutdown, documentationDeployments);
+    }
+
+    /**
+     * The deployment of what was documented is followed after every model import that succeeded - also one
+     * that found the model unchanged, because documentation uploaded since may be awaiting a deployment that
+     * is already in it.
+     */
+    @Test
+    void importEnvironment_whenTheModelIsReplacedOrUnchanged_thenTheDocumentedDeploymentsAreFollowed() {
+        jobOf(model, openApi).importEnvironment(ENVIRONMENT);
+        model.outcome = ImportOutcome.UNCHANGED;
+        jobOf(model, openApi).importEnvironment(ENVIRONMENT);
+
+        verify(documentationDeployments, times(2)).followTheArchitectureOf(ENVIRONMENT);
+    }
+
+    /** A model that was not read whole is not the landscape, and nothing may be removed for missing from it. */
+    @Test
+    void importEnvironment_whenTheModelImportDidNotSucceed_thenTheDocumentedDeploymentsAreNotFollowed() {
+        model.outcome = ImportOutcome.PARTIAL;
+        jobOf(model).importEnvironment(ENVIRONMENT);
+        model.outcome = ImportOutcome.FAILED;
+        jobOf(model).importEnvironment(ENVIRONMENT);
+        model.throwing = true;
+        jobOf(model).importEnvironment(ENVIRONMENT);
+
+        verifyNoInteractions(documentationDeployments);
+    }
+
+    /** The instance holding the lock imports the model, and follows it itself. */
+    @Test
+    void importEnvironment_whenAnotherInstanceImportsTheModel_thenThisOneDoesNotFollowIt() {
+        locks = new RecordingLocks(false);
+
+        jobOf(model).importEnvironment(ENVIRONMENT);
+
+        verifyNoInteractions(documentationDeployments);
+    }
+
+    /** Following the deployments failing costs the steps after the model nothing. */
+    @Test
+    void importEnvironment_whenFollowingTheDeploymentsFails_thenTheOtherStepsStillRun() {
+        doThrow(new IllegalStateException("database unavailable"))
+                .when(documentationDeployments).followTheArchitectureOf(ENVIRONMENT);
+
+        jobOf(model, openApi).importEnvironment(ENVIRONMENT);
+
+        assertThat(ranInOrder()).containsExactly(ArchitectureImportKind.MODEL, ArchitectureImportKind.OPENAPI_SPEC);
     }
 
     /**

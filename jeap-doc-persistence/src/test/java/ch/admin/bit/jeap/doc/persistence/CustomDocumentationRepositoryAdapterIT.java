@@ -6,6 +6,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.custom.SubjectDeployment;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
@@ -23,6 +24,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static ch.admin.bit.jeap.doc.domain.custom.SubjectDeployment.State.DEPLOYED;
+import static ch.admin.bit.jeap.doc.domain.custom.SubjectDeployment.State.AWAITING_DEPLOYMENT;
+import static ch.admin.bit.jeap.doc.domain.custom.SubjectDeployment.State.UNDEPLOYED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
@@ -301,6 +305,151 @@ class CustomDocumentationRepositoryAdapterIT extends PostgresTestContainerBase {
         assertThat(documentation.of(site, "orders").documentedComponents()).isEmpty();
         assertThat(documentation.find(systemKey())).describedAs("the system's own set is another subject")
                 .isPresent();
+    }
+
+    /** An upload records a new system - and component - as awaiting deployment. */
+    @Test
+    void replace_recordsANewSubjectAsAwaitingDeployment() {
+        documentation.replace(setOf(componentKey("orders-intake"), 1, page("1-intro", "why.md", "Why", 1)));
+
+        assertThat(documentation.deploymentsOf(site)).containsExactlyInAnyOrder(
+                new SubjectDeployment(site, "orders", null, AWAITING_DEPLOYMENT),
+                new SubjectDeployment(site, "orders", "orders-intake", AWAITING_DEPLOYMENT));
+    }
+
+    @Test
+    void markDeployed_movesAnAwaitedSubjectOnce() {
+        documentation.replace(setOf(componentKey("orders-intake"), 1, page("1-intro", "why.md", "Why", 1)));
+
+        assertThat(documentation.markDeployed(site, "orders", "orders-intake", NOW)).isTrue();
+        assertThat(documentation.markDeployed(site, "orders", "orders-intake", NOW))
+                .describedAs("deployed already").isFalse();
+        assertThat(documentation.deploymentsOf(site)).containsExactlyInAnyOrder(
+                new SubjectDeployment(site, "orders", null, AWAITING_DEPLOYMENT),
+                new SubjectDeployment(site, "orders", "orders-intake", DEPLOYED));
+    }
+
+    /** A deployed subject takes every new upload and stays deployed. */
+    @Test
+    void replace_whenTheSubjectIsDeployed_thenItStaysDeployed() {
+        CustomSetKey key = componentKey("orders-intake");
+        documentation.replace(setOf(key, 1, page("1-intro", "why.md", "Why", 1)));
+        documentation.markDeployed(site, "orders", "orders-intake", NOW);
+
+        documentation.replace(setOf(key, 2, page("1-intro", "why.md", "Why", 1)));
+
+        assertThat(documentation.deploymentsOf(site))
+                .contains(new SubjectDeployment(site, "orders", "orders-intake", DEPLOYED));
+    }
+
+    @Test
+    void removeDepartedComponent_takesItsSetsAndLeavesItUndeployedAndTheRestOfTheSystemAlone() {
+        documentation.replace(setOf(componentKey("orders-intake"), 1, page("1-intro", "why.md", "Why", 1)));
+        documentation.replace(setOf(systemKey(), 2, page("1-intro", "goals.md", "Goals", 1)));
+        documentation.markDeployed(site, "orders", "orders-intake", NOW);
+
+        List<String> removed = documentation.removeDepartedComponent(site, "orders", "orders-intake", NOW);
+
+        assertThat(removed).containsExactly("current/docs/1/bundle.zip");
+        assertThat(documentation.find(componentKey("orders-intake"))).isEmpty();
+        assertThat(documentation.find(systemKey())).describedAs("the system's own set is another subject")
+                .isPresent();
+        assertThat(documentation.deploymentsOf(site)).containsExactlyInAnyOrder(
+                new SubjectDeployment(site, "orders", null, AWAITING_DEPLOYMENT),
+                new SubjectDeployment(site, "orders", "orders-intake", UNDEPLOYED));
+    }
+
+    /** Uploading for an undeployed subject starts it over as awaiting deployment, and its new documentation stands. */
+    @Test
+    void replace_whenTheSubjectIsUndeployed_thenItIsAwaitingDeploymentAgain() {
+        CustomSetKey key = componentKey("orders-intake");
+        documentation.replace(setOf(key, 1, page("1-intro", "why.md", "Why", 1)));
+        documentation.markDeployed(site, "orders", "orders-intake", NOW);
+        documentation.removeDepartedComponent(site, "orders", "orders-intake", NOW);
+
+        documentation.replace(setOf(key, 2, page("1-intro", "why.md", "Why", 1)));
+
+        assertThat(documentation.deploymentsOf(site))
+                .contains(new SubjectDeployment(site, "orders", "orders-intake", AWAITING_DEPLOYMENT));
+        assertThat(documentation.find(key)).isPresent();
+    }
+
+    /** An undeployed subject that is deployed again is deployed. */
+    @Test
+    void markDeployed_movesAnUndeployedSubject() {
+        documentation.replace(setOf(componentKey("orders-intake"), 1, page("1-intro", "why.md", "Why", 1)));
+        documentation.markDeployed(site, "orders", "orders-intake", NOW);
+        documentation.removeDepartedComponent(site, "orders", "orders-intake", NOW);
+
+        assertThat(documentation.markDeployed(site, "orders", "orders-intake", NOW)).isTrue();
+        assertThat(documentation.deploymentsOf(site))
+                .contains(new SubjectDeployment(site, "orders", "orders-intake", DEPLOYED));
+    }
+
+    /** A component never seen deployed is not removed for missing from the model. */
+    @Test
+    void removeDepartedComponent_whenItWasNeverDeployed_thenNothingIsRemoved() {
+        documentation.replace(setOf(componentKey("orders-intake"), 1, page("1-intro", "why.md", "Why", 1)));
+
+        assertThat(documentation.removeDepartedComponent(site, "orders", "orders-intake", NOW)).isEmpty();
+        assertThat(documentation.find(componentKey("orders-intake"))).isPresent();
+    }
+
+    @Test
+    void removeDepartedSystem_takesTheSystemAndItsComponentsAndLeavesItsLibraries() {
+        documentation.replace(setOf(componentKey("orders-intake"), 1, page("1-intro", "why.md", "Why", 1)));
+        documentation.replace(setOf(systemKey(), 2, page("1-intro", "goals.md", "Goals", 1)));
+        documentation.replace(setOf(new CustomSetKey(site, SubjectKind.LIBRARY, "orders", "orders-commons",
+                SourceFormat.MARKDOWN, "arc42", null, null), 3, page("1-intro", "why.md", "Why", 1)));
+        documentation.markDeployed(site, "orders", null, NOW);
+        documentation.markDeployed(site, "orders", "orders-intake", NOW);
+
+        List<String> removed = documentation.removeDepartedSystem(site, "orders", NOW);
+
+        assertThat(removed).hasSize(2);
+        assertThat(documentation.of(site, "orders").sets())
+                .extracting(set -> set.key().kind(), set -> set.key().name())
+                .containsExactly(tuple(SubjectKind.LIBRARY, "orders-commons"));
+        assertThat(documentation.deploymentsOf(site)).containsExactlyInAnyOrder(
+                new SubjectDeployment(site, "orders", null, UNDEPLOYED),
+                new SubjectDeployment(site, "orders", "orders-intake", UNDEPLOYED));
+    }
+
+    /** Rechecked under the lock: an upload for a new component may have arrived since the model was read. */
+    @Test
+    void removeDepartedSystem_whenAComponentIsAwaitingDeployment_thenNothingIsRemoved() {
+        documentation.replace(setOf(componentKey("orders-intake"), 1, page("1-intro", "why.md", "Why", 1)));
+        documentation.replace(setOf(componentKey("orders-billing"), 2, page("1-intro", "why.md", "Why", 1)));
+        documentation.markDeployed(site, "orders", null, NOW);
+        documentation.markDeployed(site, "orders", "orders-intake", NOW);
+
+        assertThat(documentation.removeDepartedSystem(site, "orders", NOW)).isEmpty();
+        assertThat(documentation.of(site, "orders").sets()).hasSize(2);
+        assertThat(documentation.deploymentsOf(site)).containsExactlyInAnyOrder(
+                new SubjectDeployment(site, "orders", null, DEPLOYED),
+                new SubjectDeployment(site, "orders", "orders-intake", DEPLOYED),
+                new SubjectDeployment(site, "orders", "orders-billing", AWAITING_DEPLOYMENT));
+    }
+
+    @Test
+    void removeDepartedSystem_whenItWasNeverDeployed_thenNothingIsRemoved() {
+        documentation.replace(setOf(systemKey(), 1, page("1-intro", "goals.md", "Goals", 1)));
+
+        assertThat(documentation.removeDepartedSystem(site, "orders", NOW)).isEmpty();
+        assertThat(documentation.find(systemKey())).isPresent();
+    }
+
+    /** Removing a component's documentation by hand forgets its deployment too; removing a system, all of them. */
+    @Test
+    void removeSubjectAndRemoveSystem_takeTheDeploymentStatesWithThem() {
+        documentation.replace(setOf(componentKey("orders-intake"), 1, page("1-intro", "why.md", "Why", 1)));
+
+        documentation.removeSubject(componentKey("orders-intake").subject());
+        assertThat(documentation.deploymentsOf(site)).containsExactlyInAnyOrder(
+                new SubjectDeployment(site, "orders", null, AWAITING_DEPLOYMENT));
+
+        documentation.removeSystem(site, "orders");
+        assertThat(documentation.deploymentsOf(site)).isEmpty();
     }
 
     /**

@@ -6,6 +6,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,6 +43,26 @@ public class NoCustomDocumentation implements CustomDocumentationRepository {
     @Override
     public int removeSubject(CustomSubject subject) {
         return 0;
+    }
+
+    @Override
+    public List<ch.admin.bit.jeap.doc.domain.custom.SubjectDeployment> deploymentsOf(String site) {
+        return List.of();
+    }
+
+    @Override
+    public boolean markDeployed(String site, String system, String component, Instant at) {
+        return false;
+    }
+
+    @Override
+    public List<String> removeDepartedComponent(String site, String system, String component, Instant at) {
+        return List.of();
+    }
+
+    @Override
+    public List<String> removeDepartedSystem(String site, String system, Instant at) {
+        return List.of();
     }
 
     @Override

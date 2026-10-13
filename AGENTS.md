@@ -306,7 +306,11 @@ requires goes there too**, and `./mvnw verify` over the whole build is what says
   uploaded, `…domain.architecture` is a replica of an upstream, and nothing links them in the database. A
   subject can be in either alone, so `SystemSitePartition` takes the **union** of the two - a system that is
   documented and deployed nowhere would otherwise have no part, and `DepartedParts` would eventually remove
-  what one upload published.
+  what one upload published. The one other place that compares them is `CustomDocumentationDeployments`,
+  after every successful model import: a subject goes from `AWAITING_DEPLOYMENT` to `DEPLOYED` once it is in
+  the model, and to `UNDEPLOYED` - losing all its documentation - once it was deployed and has left. A subject
+  never seen deployed is never removed for being absent - documentation is often uploaded before what it
+  documents is deployed.
 
 - **`-pl <module>` builds against the jars in `~/.m2`, not against your working tree.** A test in
   `jeap-doc-web` sees the last *installed* `jeap-doc-domain` or `jeap-doc-site`, so a change there is invisible

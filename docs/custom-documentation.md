@@ -190,7 +190,9 @@ single page: the version, the repository, the branch and the commit its upload n
 ## Removing documentation
 
 Nothing is removed because it is old. A component that publishes once and stays stable for a year is the
-normal case, and an age rule would delete exactly the documentation of the teams who got it right.
+normal case, and an age rule would delete exactly the documentation of the teams who got it right. What does
+remove documentation without anyone calling for it is its subject leaving the architecture model - see
+[When a subject is undeployed](#when-a-subject-is-undeployed).
 
 Three calls remove documentation, and they are different things:
 
@@ -213,6 +215,50 @@ nobody left holding the role. Removing every set of a system is the administrato
 away what several teams may own.
 
 See [API](api.md) for the parameters.
+
+## When a subject is undeployed
+
+Documentation follows the deployment of what it documents, so nobody has to call the endpoints above for a
+system or component that was undeployed. There is no schedule of its own: it is decided after every
+successful import of an environment's [architecture model](architecture-import.md), also one that found the
+model unchanged.
+
+Every system and component documentation was uploaded for is in one of three states:
+
+| State                 | What it means                                                       | Documentation                  |
+| --------------------- | ------------------------------------------------------------------- | ------------------------------ |
+| `AWAITING_DEPLOYMENT` | uploaded, and not seen in the model yet                             | kept, and every upload added   |
+| `DEPLOYED`            | in the model - a system only while it has at least one component there | kept, and every upload added   |
+| `UNDEPLOYED`          | was deployed, and has left the model                                | all of it removed              |
+
+- **An upload** records a subject it does not know - and, for a component's documentation, its system - as
+  awaiting deployment. One that is undeployed is awaiting deployment again; one awaiting deployment or deployed
+  stays as it is.
+- **An import that finds a subject in the model** marks it deployed, whether it was awaiting deployment or
+  undeployed.
+- **An import that no longer finds a deployed component** marks it undeployed and removes every set of it.
+- **An import that finds a deployed system with no component left** marks it and all its components
+  undeployed, and removes its own documentation and that of all its components - unless one of its components
+  is awaiting deployment: then the system stays deployed, and only its departed components lose their
+  documentation.
+- **Library documentation is never removed** by a deployment, not even when its system leaves the model: a
+  library is deployed nowhere and has no state of its own. Only `DELETE /api/docs/custom/subjects` or
+  `DELETE /api/docs/custom/systems` remove it.
+
+Being absent from the model says nothing about a subject awaiting deployment: documentation is often uploaded
+before what it documents is deployed anywhere. The removal rechecks under the row's lock that the subject is
+still deployed, so two imports deciding about the same subject at once remove nothing twice.
+
+**The model of a site is the union of its environments.** A subject is in the model when any environment of
+the site has it, and gone only when none of them has it any more. Nothing is removed unless every environment
+of the site with an architecture repository has been imported successfully and their models together are not
+empty - an import that failed and stored nothing must never read as every system having left at once.
+"Imported successfully" means at least once, ever, not recently: an import stuck failing is covered by its own
+alert (`jeap_doc_architecture_import_last_success_age_seconds`, see [the architecture import](architecture-import.md)),
+not by this guard.
+
+Documentation uploaded before this was introduced starts out awaiting deployment, so nothing is removed by
+upgrading: a subject has to be seen deployed after the upgrade before its documentation can be removed.
 
 ## Related
 

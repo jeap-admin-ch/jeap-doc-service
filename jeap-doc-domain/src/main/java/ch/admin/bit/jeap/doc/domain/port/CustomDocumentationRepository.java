@@ -4,7 +4,9 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentation;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.custom.SubjectDeployment;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -56,12 +58,15 @@ public interface CustomDocumentationRepository {
     /** Removes one set. Answers false if there was none. */
     boolean remove(CustomSetKey key);
 
-    /** Removes every set of one subject, and answers how many there were. */
+    /**
+     * Removes every set of one subject, and answers how many there were. A component's deployment state goes
+     * with it.
+     */
     int removeSubject(CustomSubject subject);
 
     /**
      * Removes every set of one system of one site - its own, and those of all its components and libraries -
-     * and answers the objects they lay in.
+     * and answers the objects they lay in. The deployment states of the system and its components go with it.
      * <p>
      * <b>The keys and not the count</b>, because the caller has to delete the objects and the rows are the
      * only thing that names them. One call rather than one per subject: what it removes is everything
@@ -69,6 +74,39 @@ public interface CustomDocumentationRepository {
      * would let an upload land between the two.
      */
     List<String> removeSystem(String site, String system);
+
+    /**
+     * The deployment state of every system and component of a site that documentation was uploaded for.
+     * <p>
+     * {@link #replace} records a set's system - and its component, for a component's documentation - as
+     * {@link SubjectDeployment.State#AWAITING_DEPLOYMENT} when it is new or
+     * {@link SubjectDeployment.State#UNDEPLOYED}, and leaves one awaiting deployment or deployed as it is.
+     */
+    List<SubjectDeployment> deploymentsOf(String site);
+
+    /**
+     * Marks a system ({@code component} null) or a component as deployed, if it is awaiting deployment or
+     * undeployed.
+     * Answers whether it was.
+     */
+    boolean markDeployed(String site, String system, String component, Instant at);
+
+    /**
+     * Removes every set of one component and marks it undeployed - if it is still deployed - and answers the
+     * objects the sets lay in.
+     * <p>
+     * <b>Rechecked here, under the row's lock</b>, against a model read a moment ago: a removal that raced
+     * another one, or the component being removed by hand in between, removes nothing twice.
+     */
+    List<String> removeDepartedComponent(String site, String system, String component, Instant at);
+
+    /**
+     * Removes the documentation of one system and of all its components and marks them undeployed - if the
+     * system is still deployed - and answers the objects the sets lay in. The documentation of its libraries
+     * is never removed this way. Nothing is removed while one of its components is awaiting deployment. Rechecked under the row's lock, for
+     * the reason {@link #removeDepartedComponent} is.
+     */
+    List<String> removeDepartedSystem(String site, String system, Instant at);
 
     /** The keys of every set there is, for the sweep that removes objects nothing references. */
     List<String> allObjectKeys();

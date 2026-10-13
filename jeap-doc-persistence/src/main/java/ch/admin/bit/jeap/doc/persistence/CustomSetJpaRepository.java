@@ -101,6 +101,9 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
     /** Everything documented for one system: its own sets, and those of its components and libraries. */
     List<CustomSetEntity> findBySiteAndSystemName(String site, String systemName);
 
+    /** Everything documented for one system except one kind - its libraries, when the system departs. */
+    List<CustomSetEntity> findBySiteAndSystemNameAndKindNot(String site, String systemName, SubjectKind kind);
+
     @Query("select s.objectKey from CustomSetEntity s")
     List<String> objectKeys();
 

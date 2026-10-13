@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.domain.architecture.imports;
 
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
+import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentationDeployments;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
 import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
@@ -57,6 +58,11 @@ public class ArchitectureImportJob {
      * see {@link ArchitectureImportShutdown}.
      */
     private final ArchitectureImportShutdown shutdown;
+    /**
+     * What follows the deployment of what teams uploaded documentation for, and removes the documentation of
+     * what has left - see {@link #followTheModel}.
+     */
+    private final CustomDocumentationDeployments documentationDeployments;
 
     /** The steps of one environment, model first. */
     private List<ArchitectureImportStep> orderedSteps() {
@@ -83,7 +89,9 @@ public class ArchitectureImportJob {
                 askForTheDocumentation(environment, stored);
                 return;
             }
-            stored |= storedAnything(runUnderLock(step, environment));
+            ImportOutcome outcome = runUnderLock(step, environment);
+            stored |= storedAnything(outcome);
+            followTheModel(step, environment, outcome);
         }
         askForTheDocumentation(environment, stored);
     }
@@ -105,7 +113,9 @@ public class ArchitectureImportJob {
                 }
                 log.info("The {} of the environment {} has never been imported; importing it now.",
                         step.kind(), environment);
-                stored |= storedAnything(runUnderLock(step, environment));
+                ImportOutcome outcome = runUnderLock(step, environment);
+                stored |= storedAnything(outcome);
+                followTheModel(step, environment, outcome);
             }
             askForTheDocumentation(environment, stored);
         }
@@ -169,6 +179,28 @@ public class ArchitectureImportJob {
      */
     private static boolean storedAnything(ImportOutcome outcome) {
         return outcome == ImportOutcome.REPLACED;
+    }
+
+    /**
+     * Follows the deployment of what teams uploaded documentation for, once the model of this environment was
+     * imported successfully.
+     * <p>
+     * <b>Also when the model was unchanged</b>: documentation uploaded since the last import is awaiting a
+     * deployment that may already be in the model. And <b>not</b> after a model step that failed, stopped
+     * early or ran on another instance - what is stored is then not known to be the landscape, and the
+     * instance that did import it follows it itself.
+     */
+    private void followTheModel(ArchitectureImportStep step, String environment, ImportOutcome outcome) {
+        if (step.kind() != ArchitectureImportKind.MODEL
+            || (outcome != ImportOutcome.REPLACED && outcome != ImportOutcome.UNCHANGED)) {
+            return;
+        }
+        try {
+            documentationDeployments.followTheArchitectureOf(environment);
+        } catch (RuntimeException e) {
+            log.warn("The environment {} was imported, but the deployment of the documented subjects could not "
+                     + "be followed. The next import tries again.", environment, e);
+        }
     }
 
     /**

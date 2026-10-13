@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.65.0] - 2026-10-19
+
+### Added
+- Uploaded documentation follows the deployment of what it documents. Every system and component documentation
+  was uploaded for is `AWAITING_DEPLOYMENT` until the architecture import finds it in the model, `DEPLOYED`
+  while it is there, and `UNDEPLOYED` once it has left - which is when all of its documentation is removed. A
+  system with no component left in the model is undeployed with its components, unless one of them is still
+  awaiting deployment. Library documentation is never
+  removed this way: a library is deployed nowhere. Nothing awaiting deployment or deployed is ever removed, and an upload for an undeployed
+  subject makes it await deployment again. Decided after every successful model import, with no schedule or
+  configuration of its own, see
+  [When a subject is undeployed](docs/custom-documentation.md#when-a-subject-is-undeployed).
+- A migration adds the table `custom_subject_deployment`. Documentation uploaded before starts out awaiting
+  deployment, so upgrading removes nothing.
+
 ## [3.15.0] - 2026-10-18
 
 ### Dependencies

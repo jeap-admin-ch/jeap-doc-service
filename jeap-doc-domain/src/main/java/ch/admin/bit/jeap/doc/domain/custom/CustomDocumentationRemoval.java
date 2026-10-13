@@ -9,15 +9,20 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 /**
  * Removes documentation a team uploaded: one set, or a whole subject.
  * <p>
- * <b>Nothing is inferred from silence.</b> A set is not removed because it is old, because its subject left
- * the architecture model, or because nothing has been uploaded for a while - a component that publishes once
- * and stays stable for a year is the normal case. It is removed when somebody says so.
+ * <b>Nothing is inferred here.</b> This class does not decide that a subject left the architecture model - a
+ * component that publishes once and stays stable for a year is the normal case. It removes exactly what its
+ * caller names.
+ * <p>
+ * That inference is {@link CustomDocumentationDeployments}', the one caller allowed to make it, and an
+ * operator's through the admin API is the other. Keeping the decision out of here is what lets both exist
+ * without either having to replicate what a removal is.
  * <p>
  * Removing a subject and removing its last set are <b>not the same thing</b>. A subject that has been
  * documented stays in the catalogue with no set until it is removed itself, which is what keeps the record of
@@ -64,6 +69,51 @@ public class CustomDocumentationRemoval {
         int removed = documentation.removeSubject(subject);
         objectKeys.forEach(this::forget);
         return new Removal(removed, askForABuild(subject.site(), subject.system()));
+    }
+
+    /**
+     * Removes the documentation of a component that was deployed and has left the architecture model.
+     * <p>
+     * <b>No build is asked for here.</b> One import can find several components of a system gone, and the
+     * caller asks once per system when it is done - see {@link #askForABuildAfterDepartures}.
+     * <p>
+     * <b>Not the same decision twice.</b> The caller - {@link CustomDocumentationDeployments} - decided the
+     * component is gone from a model it read a moment ago; the repository rechecks that the component is still
+     * marked deployed, under its row's lock, before it removes anything and marks it undeployed.
+     *
+     * @return how many sets were removed - none where the recheck found the component no longer deployed
+     */
+    public int removeDepartedComponent(String site, String system, String component, Instant at) {
+        requireConfiguredSite(site);
+        return forgetAll(documentation.removeDepartedComponent(site, system, component, at));
+    }
+
+    /**
+     * Removes the documentation of a system that was deployed and has no component left in the architecture
+     * model - its own and that of all its components, never that of its libraries. Rechecked the way
+     * {@link #removeDepartedComponent} is, and no build is asked for here either.
+     *
+     * @return how many sets were removed - none where the recheck found the system no longer departed
+     */
+    public int removeDepartedSystem(String site, String system, Instant at) {
+        requireConfiguredSite(site);
+        return forgetAll(documentation.removeDepartedSystem(site, system, at));
+    }
+
+    /**
+     * Asks for the part of a system to be built once, after an import removed the documentation of the
+     * system or of any number of its components.
+     *
+     * @return whether the build was asked for
+     */
+    public boolean askForABuildAfterDepartures(String site, String system) {
+        return askForABuild(site, system);
+    }
+
+    /** Deletes the objects of what a departure removed, and answers how many there were. */
+    private int forgetAll(List<String> objectKeys) {
+        objectKeys.forEach(this::forget);
+        return objectKeys.size();
     }
 
     /**
