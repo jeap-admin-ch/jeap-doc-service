@@ -9,7 +9,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Dependencies
 - Update site dependencies to fix security vulnerabilities: **follow-redirects** 1.16.0 → 1.16.1 (CVE-2026-111755,
-  CVE-2026-111756), **katex** 0.16.47 → 0.18.10 (CVE-2026-103923) by way of **mermaid** 12.1.0 → 12.2.0, and
+  CVE-2026-111756), **launch-editor** 2.14.1 → 2.14.2 (CVE-2026-112942, CVE-2026-112943, CVE-2026-112944),
+  **katex** 0.16.47 → 0.18.10 (CVE-2026-103923) by way of **mermaid** 12.1.0 → 12.2.0, and
   **postcss-selector-parser** 6.1.4 → 6.1.5 (CVE-2026-104844, fixed in 6.1.5 by a backport). An instance has to
   rebuild its site image, because the lockfile changed.
 
