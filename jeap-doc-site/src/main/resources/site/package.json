@@ -17,7 +17,7 @@
     "@docusaurus/faster": "3.10.2",
     "@docusaurus/preset-classic": "3.10.2",
     "@docusaurus/theme-mermaid": "3.10.2",
-    "@matfsw/docusaurus-plantuml-plugin": "1.8.6",
+    "@matfsw/docusaurus-plantuml-plugin": "1.8.8",
     "@mdx-js/react": "3.1.1",
     "clsx": "2.1.1",
     "pagefind": "1.5.2",

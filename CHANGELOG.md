@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.0] - 2026-10-21
+
+### Dependencies
+- **com.microsoft.playwright:playwright**: 1.63.0 → 1.64.0 (minor)
+- **ch.admin.bit.jeap:jeap-spring-boot-parent**: 41.21.0 → 41.23.0 (minor)
+- **@matfsw/docusaurus-plantuml-plugin**: 1.8.6 → 1.8.8 (patch)
+
 ## [3.16.1] - 2026-10-21
 
 ### Dependencies
