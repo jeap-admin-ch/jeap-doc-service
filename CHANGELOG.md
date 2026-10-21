@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.65.0] - 2026-10-19
+## [3.16.1] - 2026-10-21
+
+### Dependencies
+- Update site dependencies to fix security vulnerabilities: **follow-redirects** 1.16.0 → 1.16.1 (CVE-2026-111755,
+  CVE-2026-111756), **katex** 0.16.47 → 0.18.10 (CVE-2026-103923) by way of **mermaid** 12.1.0 → 12.2.0, and
+  **postcss-selector-parser** 6.1.4 → 6.1.5 (CVE-2026-104844, fixed in 6.1.5 by a backport). An instance has to
+  rebuild its site image, because the lockfile changed.
+
+## [3.16.0] - 2026-10-19
 
 ### Added
 - Uploaded documentation follows the deployment of what it documents. Every system and component documentation
