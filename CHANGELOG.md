@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.1] - 2026-10-26
+
+### Dependencies
+- Update site dependencies to fix a security vulnerability: **body-parser** 1.20.6 → 1.20.9 (CVE-2026-111181). An
+  instance has to rebuild its site image, because the lockfile changed.
+
 ## [3.17.0] - 2026-10-21
 
 ### Dependencies
