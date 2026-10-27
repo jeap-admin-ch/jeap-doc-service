@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-10-27
+
+### Dependencies
+- **ch.admin.bit.jeap:jeap-spring-boot-parent**: 41.23.0 → 41.25.0 (minor)
+- **unist-util-visit**: 5.1.0 → 5.2.0 (minor)
+- **serialize-javascript**: 7.1.2 → 7.1.4 (patch)
+- **qs**: 6.16.1 → 6.17.0 (minor)
+- **body-parser**: 1.20.9 → 2.4.0 (major)
+- **@matfsw/docusaurus-plantuml-plugin**: 1.8.8 → 1.8.14 (patch)
+
 ## [3.17.1] - 2026-10-26
 
 ### Dependencies
