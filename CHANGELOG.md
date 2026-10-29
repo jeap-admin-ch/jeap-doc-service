@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.1] - 2026-10-29
+
+### Dependencies
+- Update site dependencies to fix security vulnerabilities: **follow-redirects** 1.16.1 → 1.16.2 (CVE-2026-116689, SNYK-JS-FOLLOWREDIRECTS-21762031) and **webpack-dev-server** 5.2.6 → 5.2.7 (CVE-2026-112085, SNYK-JS-WEBPACKDEVSERVER-21431002). An instance has to rebuild its site image, because the lockfile changed.
+
 ## [4.2.0] - 2026-10-29
 
 ### Dependencies
