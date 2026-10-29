@@ -64,7 +64,9 @@ class LibraryBrowserIT extends SiteBrowserTestBase {
         Response response = open("/" + DOCUMENTED_LIBRARY_ROUTE + "/intro/library-overview/");
 
         assertThat(response.status()).isEqualTo(200);
-        PlaywrightAssertions.assertThat(page.getByText(UploadedDocumentation.LIBRARY_VERSION)).isVisible();
+        // Exact match: the footer shows the doc service's own version, which may contain the library version as a prefix
+        PlaywrightAssertions.assertThat(page.getByText(UploadedDocumentation.LIBRARY_VERSION,
+                new Page.GetByTextOptions().setExact(true))).isVisible();
         PlaywrightAssertions.assertThat(page.getByText(UploadedDocumentation.REVISION).first()).isVisible();
     }
 
