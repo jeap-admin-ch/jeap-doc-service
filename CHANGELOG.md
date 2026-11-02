@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - 2026-11-02
+
+### Dependencies
+- Update site dependencies: **fast-uri** 3.1.8 → 3.1.9 and **joi** 17.13.8 → 17.13.9. An instance has to
+  rebuild its site image, because the lockfile changed.
+
 ## [4.2.1] - 2026-10-29
 
 ### Dependencies
