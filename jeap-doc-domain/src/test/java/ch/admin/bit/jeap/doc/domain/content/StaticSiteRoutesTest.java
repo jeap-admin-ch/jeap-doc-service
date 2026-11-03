@@ -28,6 +28,17 @@ class StaticSiteRoutesTest {
         assertThat(StaticSiteRoutes.routeOf(path)).isEqualTo(route);
     }
 
+    /** Docusaurus keeps the case of a route; only the comparison of two routes ignores it. */
+    @ParameterizedTest
+    @CsvSource({
+            "README.md, ''",
+            "Guides/README.md, Guides",
+            "01-Guides/01-Guides.md, Guides",
+            "01-Guides/02-Setup.md, Guides/Setup"})
+    void publishedRouteOf_thenTheCaseIsKept(String path, String route) {
+        assertThat(StaticSiteRoutes.publishedRouteOf(path)).isEqualTo(route);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"index.md", "README.md", "Index.md"})
     void isTheRootPage_whenAnIndexOrReadmeAtTheRoot_thenTrue(String path) {

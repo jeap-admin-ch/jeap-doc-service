@@ -167,7 +167,7 @@ public class DocumentationUploadService {
      * @param site the static site, where no system is given; the default site where neither is
      */
     public Optional<DocumentationUpload> statusOf(UUID uploadId, String system, String site) {
-        String siteOrDefault = site == null ? Site.DEFAULT_SITE : site;
+        String siteOrDefault = Site.idOrDefault(site);
         return uploadRepository.findByUploadId(uploadId)
                 .filter(upload -> system != null
                         ? system.equals(upload.descriptor().system())

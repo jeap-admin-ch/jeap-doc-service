@@ -55,7 +55,7 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
     /** Every set of one subject, whatever its format or template. */
     @Query("""
             select s from CustomSetEntity s
-            where s.site = :site and s.kind = :kind and s.systemName = :system
+            where s.site = :site and s.kind = :kind and coalesce(s.systemName, '') = coalesce(:system, '')
               and coalesce(s.name, '') = coalesce(:name, '')
             """)
     List<CustomSetEntity> findSubject(@Param("site") String site, @Param("kind") SubjectKind kind,

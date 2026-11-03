@@ -92,12 +92,14 @@ site.
 
 | Meter                       | Type    | Tags |                                                                                                                                                                                                                                              |
 |-----------------------------|---------|------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `jeap.doc.build.slots`      | Gauge   | -    | Builds this instance may run at once - what `max-concurrent-parts` is set to on this container. Configuration rather than measurement, published for the same reason as the timeout: so that a rule and a dashboard need no copy of the number   |
-| `jeap.doc.build.slots.busy` | Gauge   | -    | Builds this instance is running right now                                                                                                                                                                                                    |
+| `jeap.doc.build.slots`      | Gauge   | -    | Build slots this instance has - what `max-concurrent-parts` is set to on this container.        Configuration rather than measurement, published for the same reason as the timeout: so that a rule and a dashboard need no copy of the number   |
+| `jeap.doc.build.slots.busy` | Gauge   | -    | Build slots occupied right now. A build of a site with `build.slots: N` counts `N`                                                                                                                                                           |
 | `jeap.doc.build.contended`  | Counter | -    | Parts left to another instance, which held their lock. A few are how a fleet shares one queue; a lot of them means the instances are chasing each other rather than spreading out. Registered from the start, so it reads `0` rather than being absent |
 | `jeap.doc.build.broken`     | Counter | -    | Parts whose build threw where its own error handling should have covered it. Counted apart from the parts that owed nothing after all: a run full of broken builds must not report itself as one that found nothing to do                       |
 
-**The utilisation is the two gauges over a range**, and there is no meter for it:
+**The utilisation is the two gauges over a range**, and there is no meter for it. Both count slots rather than
+builds, so a build of a site [weighing several slots](configuration.md#one-build-of-a-part-at-a-time-and-a-sites-weight-in-build-slots)
+counts as that many:
 
 ```promql
 avg_over_time(jeap_doc_build_slots_busy[1h]) / avg_over_time(jeap_doc_build_slots[1h])

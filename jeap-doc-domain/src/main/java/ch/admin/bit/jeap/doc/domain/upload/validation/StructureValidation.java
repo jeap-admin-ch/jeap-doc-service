@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.domain.upload.validation;
 
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.SearchIndex;
+import ch.admin.bit.jeap.doc.domain.SharedAssets;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.Slugs;
 import ch.admin.bit.jeap.doc.domain.content.StaticSiteRoutes;
@@ -28,6 +29,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Would this path tree be accepted?
@@ -81,8 +84,14 @@ public class StructureValidation {
      * the search index - and the one the generator fills with a page per tag an uploaded page carries. No page of
      * an uploaded tree may be published in one: it would be unreachable, or two pages would be one route, which
      * fails the build of the whole site.
+     * <p>
+     * <b>The shared folders are among them.</b> Everything below {@link SharedAssets#DIRECTORIES} is published
+     * once per site rather than with its build, so a page there would go live before its build did, outlive a
+     * failed one and stay served after it was removed from the tree.
      */
-    static final Set<String> SERVED_BELOW_EVERY_SITE_ROOT = Set.of(Microsite.SEGMENT, SearchIndex.DIRECTORY, "tags");
+    static final Set<String> SERVED_BELOW_EVERY_SITE_ROOT = Stream.concat(
+                    Stream.of(Microsite.SEGMENT, SearchIndex.DIRECTORY, "tags"), SharedAssets.DIRECTORIES.stream())
+            .collect(Collectors.toUnmodifiableSet());
 
     private final StructureTemplates templates;
     private final UploadProperties properties;
@@ -222,7 +231,7 @@ public class StructureValidation {
                     ("'%s' would be published at /%s/, which the doc service serves on every static site itself. "
                      + "Rename the page or its folder.").formatted(name, route)));
         }
-        String folder = route.contains("/") ? route.substring(0, route.indexOf('/')) : route;
+        String folder = IgnoredPaths.firstSegmentOf(route);
         if (reservedFolders.contains(folder)) {
             return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
                     ("'%s' would be published below /%s/, which the doc service answers itself on this site, so "
@@ -270,9 +279,12 @@ public class StructureValidation {
         Set<String> seen = new HashSet<>();
         Set<String> twice = new HashSet<>();
         for (String path : new LinkedHashSet<>(paths)) {
-            if (DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(path.substring(path.lastIndexOf('/') + 1)))
-                && !seen.add(StaticSiteRoutes.routeOf(path))) {
-                twice.add(StaticSiteRoutes.routeOf(path));
+            if (!DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(path.substring(path.lastIndexOf('/') + 1)))) {
+                continue;
+            }
+            String route = StaticSiteRoutes.routeOf(path);
+            if (!seen.add(route)) {
+                twice.add(route);
             }
         }
         return twice;

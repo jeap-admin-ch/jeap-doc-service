@@ -2,7 +2,6 @@ package ch.admin.bit.jeap.doc.domain.upload;
 
 import ch.admin.bit.jeap.doc.domain.Site;
 import lombok.Builder;
-import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -65,7 +64,7 @@ public record DocumentationUploadDescriptor(
     public DocumentationUploadDescriptor {
         // Normalized, not defaulted on reading: an upload that names no site and one that names the default site
         // are the same upload, and a retry of the one has to be recognised as a retry of the other.
-        site = StringUtils.hasText(site) ? site : Site.DEFAULT_SITE;
+        site = Site.idOrDefault(site);
         // For the same reason: what is compared with a retry is what came back from the database, and PostgreSQL
         // keeps microseconds. A timestamp carrying more precision than that would come back as something else
         // than it went in, and every retry of that upload would be answered as a different upload.

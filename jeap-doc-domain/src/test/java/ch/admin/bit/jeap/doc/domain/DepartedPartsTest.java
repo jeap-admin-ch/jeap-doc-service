@@ -255,7 +255,7 @@ class DepartedPartsTest {
         private List<String> parts = List.of();
 
         @Override
-        public String axis() {
+        public String axis(Site site) {
             return "stub";
         }
 

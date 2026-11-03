@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
+import ch.admin.bit.jeap.doc.domain.content.StaticSiteRoutes;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.NumberPrefixes;
 
@@ -182,17 +183,16 @@ public final class SearchRecords {
     /**
      * Where a page is served.
      * <p>
-     * The path within the environment tree is the path within the site below that environment's prefix -
-     * {@code index.md} collapsing to its directory, and a trailing slash because the site is generated with
-     * {@code trailingSlash: true}. An explicit {@code slug} in the front matter wins, because that is what
-     * Docusaurus will do with it; the root page of every environment carries one.
+     * The path within the environment tree is the path within the site below that environment's prefix, with
+     * a trailing slash because the site is generated with {@code trailingSlash: true}. An explicit {@code slug}
+     * in the front matter wins, because that is what Docusaurus will do with it; the root page of every
+     * environment carries one.
      * <p>
-     * <b>And the number prefixes come off, every segment of the path.</b> The chapter folders are numbered on
-     * disk and Docusaurus does not serve them numbered - {@code 5-building-block-view} is published at
-     * {@code building-block-view} - so a URL taken from the file path names a page that does not exist. It is
-     * the same rule the upload validation applies to a document's name, which is why
-     * {@link NumberPrefixes} is where both can read it. Not applied to a {@code slug}: Docusaurus takes that
-     * one as it is written.
+     * <b>Otherwise the route is the one {@link StaticSiteRoutes} derives</b>, which the upload validation reads
+     * too: an {@code index}, a {@code README} or a page named like its folder is served at the folder's route,
+     * and the number prefixes come off every segment - {@code 5-building-block-view} is published at
+     * {@code building-block-view}. A second rule here is how a search hit comes to name a page that does not
+     * exist. The number prefixes are not taken off a {@code slug}: Docusaurus takes that one as it is written.
      */
     private static String urlOf(String relativePath, String slug, SiteEnvironment environment) {
         // The one tree of a site without environments is served at the site root, like a main environment.
@@ -209,16 +209,7 @@ public final class SearchRecords {
             return slug.startsWith("/") ? prefix + "/" + withoutSlashes + "/"
                     : prefix + "/" + routeOfTheFolder(relativePath) + withoutSlashes + "/";
         }
-        String withoutExtension = relativePath.substring(
-                0, relativePath.length() - DocumentationPaths.MARKDOWN_EXTENSION.length() - 1);
-        String index = DocumentationPaths.INDEX_SEGMENT;
-        String route = withoutExtension;
-        if (withoutExtension.equals(index)) {
-            route = "";
-        } else if (withoutExtension.endsWith("/" + index)) {
-            route = withoutExtension.substring(0, withoutExtension.length() - index.length() - 1);
-        }
-        route = NumberPrefixes.strippedFromEverySegment(route);
+        String route = StaticSiteRoutes.publishedRouteOf(relativePath);
         return route.isEmpty() ? prefix + "/" : prefix + "/" + route + "/";
     }
 

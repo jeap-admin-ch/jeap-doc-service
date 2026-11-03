@@ -30,12 +30,13 @@ public class SiteUploadRules {
         boolean siteLevel = type == DocumentationType.SITE_DOCS;
         boolean takesSiteUploads = takesSiteUploads(site);
         if (siteLevel && !takesSiteUploads) {
-            throw InvalidUploadException.invalidValue("site", siteOr(site),
+            throw InvalidUploadException.invalidValue("site", Site.idOrDefault(site),
                     "a static site, as the documentation of a site is uploaded to one");
         }
         if (!siteLevel && takesSiteUploads) {
             throw InvalidUploadException.invalidValue("type", type.name(),
-                    "SITE_DOCS, as the site %s is a static site and documents no system".formatted(siteOr(site)));
+                    "SITE_DOCS, as the site %s is a static site and documents no system"
+                            .formatted(Site.idOrDefault(site)));
         }
     }
 
@@ -45,12 +46,8 @@ public class SiteUploadRules {
      * @throws InvalidUploadException for a site nobody configures
      */
     public boolean takesSiteUploads(String site) {
-        Site configured = sites.find(siteOr(site))
-                .orElseThrow(() -> InvalidUploadException.unknownSite(siteOr(site), sites.ids()));
+        Site configured = sites.find(Site.idOrDefault(site))
+                .orElseThrow(() -> InvalidUploadException.unknownSite(Site.idOrDefault(site), sites.ids()));
         return contentSources.of(configured).takesSiteUploads();
-    }
-
-    private static String siteOr(String site) {
-        return site == null || site.isBlank() ? Site.DEFAULT_SITE : site;
     }
 }

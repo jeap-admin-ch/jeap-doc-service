@@ -134,6 +134,22 @@ class StructureValidationTest {
         assertThat(codesOf(validate(siteDocs(), path))).containsOnly(FindingCode.RESERVED_NAME);
     }
 
+    /**
+     * What lies below the shared folders is published once per site rather than with a build, so a page there
+     * would go live before its build and outlive its removal from the tree.
+     */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"assets/setup.md", "img/index.md", "branding/logo.md"})
+    void staticSite_aPageInASharedFolder_isAFinding(String path) {
+        assertThat(codesOf(validate(siteDocs(), path))).containsOnly(FindingCode.RESERVED_NAME);
+    }
+
+    /** Only a page is published at its route; an image in such a folder is bundled by the page that shows it. */
+    @Test
+    void staticSite_anImageInASharedFolder_yieldsNothing() {
+        assertThat(validate(siteDocs(), "img/diagram.png").findings()).isEmpty();
+    }
+
     /** The default site is served at the context root, where the service answers its API and the other sites. */
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"api/overview.md", "actuator.md", "site/handbook.md"})

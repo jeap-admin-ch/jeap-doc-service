@@ -79,8 +79,10 @@ class CustomDocumentationRepositoryAdapter implements CustomDocumentationReposit
         List<CustomPageEntity> written = pages.saveAll(set.pages().stream()
                 .map(page -> CustomDocumentationMapper.toEntity(stored.getId(), page))
                 .toList());
-        log.info("The documentation of the {} {} on the site {} is {}: {} file(s), {} bytes.",
-                key.kind(), set.subject().slug(), key.site(),
+        // Two systems may each have a component of one name, so the system is what tells them apart in the log.
+        String ofTheSystem = key.system() == null ? "" : " of the system " + key.system();
+        log.info("The documentation of the {} {}{} on the site {} is {}: {} file(s), {} bytes.",
+                key.kind(), set.subject().slug(), ofTheSystem, key.site(),
                 isNew ? "published for the first time" : "replaced", written.size(), set.sizeInBytes());
         return new Replaced(CustomDocumentationMapper.toDomain(stored, written), previousObjectKey);
     }

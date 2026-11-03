@@ -16,7 +16,7 @@ import java.util.Optional;
 public final class ShellOnlyPartition implements SitePartition {
 
     @Override
-    public String axis() {
+    public String axis(Site site) {
         return "none";
     }
 

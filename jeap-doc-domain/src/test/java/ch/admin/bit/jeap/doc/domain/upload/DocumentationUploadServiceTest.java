@@ -546,6 +546,20 @@ class DocumentationUploadServiceTest {
         assertThat(service.statusOf(UPLOAD_ID, "othersystem", null)).isEmpty();
     }
 
+    /** An empty {@code site} is the default site here as it is for the role check and the upload itself. */
+    @Test
+    void statusOf_whenTheSiteIsBlank_thenItIsTheDefaultSite() {
+        DocumentationUploadDescriptor siteDocs = descriptor().type(DocumentationType.SITE_DOCS)
+                .system(null).component(null).version(null).template(null).site("").build();
+        DocumentationUpload stored = new DocumentationUpload(42L, UPLOAD_ID, DocumentationSubject.of(siteDocs),
+                siteDocs, UploadState.UPLOADING, null, null, 0, 1, NOW, null, null);
+        when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.of(stored));
+
+        assertThat(service.statusOf(UPLOAD_ID, null, "")).contains(stored);
+        assertThat(service.statusOf(UPLOAD_ID, null, " ")).contains(stored);
+        assertThat(service.statusOf(UPLOAD_ID, null, "handbook")).isEmpty();
+    }
+
     @Test
     void statusOf_whenTheUploadIsUnknown_thenEmpty() {
         when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());

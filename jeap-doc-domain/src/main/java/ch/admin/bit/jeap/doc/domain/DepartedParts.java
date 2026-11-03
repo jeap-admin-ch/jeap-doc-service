@@ -105,7 +105,7 @@ public class DepartedParts {
             // published to remove, or its architecture model is empty because an import went wrong - and that
             // must never read as every system having left at once.
             log.debug("The {} partition of the site {} produces no part beside the shell, so nothing is taken "
-                      + "to be gone.", partition.axis(), site.id());
+                      + "to be gone.", partition.axis(site), site.id());
             return 0;
         }
         Instant goneBefore = clock.instant().minus(properties.getDepartedPartRetention());

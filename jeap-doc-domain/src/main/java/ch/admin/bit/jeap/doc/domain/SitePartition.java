@@ -16,10 +16,11 @@ import java.util.Optional;
 public interface SitePartition {
 
     /**
-     * What this partition cuts on, for the log line and the administration API - {@code system},
-     * {@code environment}.
+     * What this partition cuts the given site on, for the log line - {@code system}, {@code environment}. It
+     * takes the site because the partition everything asks hands each site to its content source's, and the
+     * axis is that one's.
      */
-    String axis();
+    String axis(Site site);
 
     /**
      * Every part of the given site, the shell first.

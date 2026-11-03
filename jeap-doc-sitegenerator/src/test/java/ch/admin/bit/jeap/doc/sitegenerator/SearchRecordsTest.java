@@ -463,6 +463,25 @@ class SearchRecordsTest {
         assertThat(records).extracting(SearchRecord::environment).containsOnlyNulls();
     }
 
+    /**
+     * A README, an Index and a page named like its folder are the folder's own page, as Docusaurus serves them -
+     * a hit naming the file instead would lead nowhere.
+     */
+    @Test
+    void of_whenAPageIsAFoldersOwnPageByAnotherName_thenTheUrlIsTheFolder() throws IOException {
+        page(SiteSources.SINGLE_TREE + "/README.md", "Handbook", "Start here.");
+        page(SiteSources.SINGLE_TREE + "/guides/README.md", "Guides", "All guides.");
+        page(SiteSources.SINGLE_TREE + "/Reference/Index.md", "Reference", "Look it up.");
+        page(SiteSources.SINGLE_TREE + "/01-Setup/01-Setup.md", "Setup", "Set it up.");
+        page(SiteSources.SINGLE_TREE + "/01-Setup/guides.md", "Setup Guides", "Not the folder's page.");
+        Site handbook = new Site("handbook", "Handbook", null, null, null, null, List.of(), true, false);
+
+        List<SearchRecord> records = SearchRecords.of(content, handbook);
+
+        assertThat(records).extracting(SearchRecord::url).containsExactlyInAnyOrder(
+                "/", "/guides/", "/Reference/", "/Setup/", "/Setup/guides/");
+    }
+
     /** A folder of a site's one tree called {@code systems} is the authors' own, not the tree of a system. */
     @Test
     void of_whenTheOneTreeHasASystemsFolder_thenItsPagesCarryNoSystemOrSubject() throws IOException {

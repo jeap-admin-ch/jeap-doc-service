@@ -46,7 +46,7 @@ public class SystemSitePartition implements SitePartition {
     private final CustomDocumentationRepository documentation;
 
     @Override
-    public String axis() {
+    public String axis(Site site) {
         return "system";
     }
 

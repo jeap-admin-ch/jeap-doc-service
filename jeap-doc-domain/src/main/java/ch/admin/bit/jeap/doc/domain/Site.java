@@ -50,6 +50,14 @@ public record Site(
     public static final String DEFAULT_SITE = "default";
 
     /**
+     * The site a request names, where a missing or blank one is the default site. The one place that says so,
+     * so that the role check, the upload and the status of an upload cannot read an empty parameter differently.
+     */
+    public static String idOrDefault(String site) {
+        return site == null || site.isBlank() ? DEFAULT_SITE : site;
+    }
+
+    /**
      * The path segment every site but the default one is served below: {@code /site/<id>/}.
      * <p>
      * One segment the service owns, rather than a namespace shared between three things. Before it, a site took

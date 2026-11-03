@@ -59,7 +59,8 @@ public final class IgnoredPaths {
         return SUFFIXES.stream().anyMatch(suffix -> name.length() > suffix.length() && name.endsWith(suffix));
     }
 
-    private static String firstSegmentOf(String path) {
+    /** The first segment of a path separated by {@code /}, or the whole path when it has one segment. */
+    static String firstSegmentOf(String path) {
         int slash = path.indexOf('/');
         return slash < 0 ? path : path.substring(0, slash);
     }

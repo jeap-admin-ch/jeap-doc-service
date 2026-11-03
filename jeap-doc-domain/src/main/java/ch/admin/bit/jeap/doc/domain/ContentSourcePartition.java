@@ -18,8 +18,8 @@ public class ContentSourcePartition implements SitePartition {
     private final ContentSources sources;
 
     @Override
-    public String axis() {
-        return "content source";
+    public String axis(Site site) {
+        return partitionOf(site).axis(site);
     }
 
     @Override

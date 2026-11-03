@@ -454,7 +454,7 @@ public class DocumentationBuildRunner {
                     // A part this partition would never produce: the axis of the split was changed, and what is
                     // asked for belongs to the one before it.
                     log.warn("A build of {} was asked for, and the {} partition of that site has no such part; "
-                             + "the request is dropped.", key, partition.axis());
+                             + "the request is dropped.", key, partition.axis(configured.get()));
                     forgetPartThatIsGone(key, owed.requestedAt());
                     settleWithoutABuild(key);
                     continue;
