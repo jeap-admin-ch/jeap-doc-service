@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.domain.upload;
 
 import ch.admin.bit.jeap.doc.domain.DocumentationBuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
+import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SearchProperties;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
@@ -69,6 +70,7 @@ public class DocumentationUploadService {
     private final UploadProperties uploadProperties;
     private final CustomProperties customProperties;
     private final DocumentationSites sites;
+    private final SiteUploadRules siteUploadRules;
     private final HtmlText htmlText;
     private final SearchProperties searchProperties;
     private final DocumentationBuildTrigger buildTrigger;
@@ -91,6 +93,8 @@ public class DocumentationUploadService {
         long startedAt = System.nanoTime();
         try {
             requireConfiguredSite(descriptor.site());
+            // A static site takes a tree uploaded for it and nothing else, and only a static site takes one.
+            siteUploadRules.requireTheSiteTakes(descriptor.site(), descriptor.type());
             UploadReceipt receipt = doReceive(uploadId, descriptor, bundle, sizeInBytes);
             measure(receipt, descriptor, startedAt);
             return receipt;
@@ -153,14 +157,22 @@ public class DocumentationUploadService {
     }
 
     /**
-     * The upload recorded under the given upload id, if it belongs to the given system.
+     * The upload recorded under the given upload id, if it belongs to the given system - or, where no system is
+     * given, if it is the tree of the given static site.
      * <p>
-     * An upload of another system is answered as if it did not exist: the write role is granted per system, and
-     * what another system uploaded is none of the caller's business - not even whether it exists.
+     * An upload of another system or site is answered as if it did not exist: the write role is granted per
+     * system and per site, and what another one uploaded is none of the caller's business - not even whether it
+     * exists.
+     *
+     * @param site the static site, where no system is given; the default site where neither is
      */
-    public Optional<DocumentationUpload> statusOf(UUID uploadId, String system) {
+    public Optional<DocumentationUpload> statusOf(UUID uploadId, String system, String site) {
+        String siteOrDefault = site == null ? Site.DEFAULT_SITE : site;
         return uploadRepository.findByUploadId(uploadId)
-                .filter(upload -> upload.descriptor().system().equals(system));
+                .filter(upload -> system != null
+                        ? system.equals(upload.descriptor().system())
+                        : upload.descriptor().type() == DocumentationType.SITE_DOCS
+                          && upload.descriptor().site().equals(siteOrDefault));
     }
 
     /**
@@ -178,8 +190,8 @@ public class DocumentationUploadService {
             takeOver(upload, stored, received);
             DocumentationUpload recorded =
                     uploadRepository.save(upload.completed(stored, sizeInBytes, clock.instant()));
-            log.info("Stored the upload {} ({}) of the system {} as {} ({} bytes, sha-256 {}), pending "
-                     + "publication.", recorded.uploadId(), recorded.id(), recorded.descriptor().system(),
+            log.info("Stored the upload {} ({}) of {} as {} ({} bytes, sha-256 {}), pending "
+                     + "publication.", recorded.uploadId(), recorded.id(), subjectOf(recorded.descriptor()),
                     stored.objectKey(), sizeInBytes, stored.sha256());
             // Asking for a build is the last thing an upload does. Guarded, because the set is already current
             // and the upload already recorded: answering 500 for an upload that worked would make the client
@@ -213,7 +225,8 @@ public class DocumentationUploadService {
      * page over one the generator writes itself.
      */
     private void requireAPublishableSet(DocumentationUpload upload, UploadedBundles.ReceivedBundle received) {
-        StructureReport report = validation.validate(upload.descriptor().placement(), received.paths());
+        StructureReport report = validation.validate(upload.descriptor().site(), upload.descriptor().placement(),
+                received.paths());
         if (report.isValid()) {
             return;
         }
@@ -247,7 +260,10 @@ public class DocumentationUploadService {
     private void takeOver(DocumentationUpload upload, StoredBundle stored,
                           UploadedBundles.ReceivedBundle received) {
         DocumentationUploadDescriptor descriptor = upload.descriptor();
-        CustomSetKey key = CustomSetKey.of(descriptor.site(), descriptor.placement());
+        boolean siteDocumentation = descriptor.type() == DocumentationType.SITE_DOCS;
+        CustomSetKey key = siteDocumentation
+                ? CustomSetKey.ofSite(descriptor.site())
+                : CustomSetKey.of(descriptor.site(), descriptor.placement());
         try {
             String objectKey = storeTheSet(upload, key, stored, received);
             // Asked rather than trusted: an attempt that was given up on keeps running, and the one that
@@ -269,7 +285,8 @@ public class DocumentationUploadService {
                             new CustomProvenance(descriptor.sourceRepository(), descriptor.sourceRef(),
                                     descriptor.sourceRevision(), descriptor.sourceTimestamp(),
                                     descriptor.version(), clock.instant()),
-                            UploadedSet.pagesOf(descriptor.sourceFormat(), received.paths(), received)));
+                            siteDocumentation ? UploadedSet.staticPagesOf(received.paths())
+                                    : UploadedSet.pagesOf(descriptor.sourceFormat(), received.paths(), received)));
             replaced.previousObjectKey().ifPresent(this::forgetTheReplacedObject);
         } catch (InvalidUploadException e) {
             // A microsite is unpacked here, and one that unpacks to more than it may is the uploader's to fix,
@@ -360,9 +377,9 @@ public class DocumentationUploadService {
      */
     private InvalidUploadException recordStorageFailure(DocumentationUpload upload, RuntimeException cause) {
         uploadRepository.save(upload.failed(STORAGE_FAILED_REASON));
-        log.error("Failed to store the bundle of the upload {} ({}) of the system {} - the upload is "
+        log.error("Failed to store the bundle of the upload {} ({}) of {} - the upload is "
                   + "recorded as failed and can be retried.",
-                upload.uploadId(), upload.id(), upload.descriptor().system(), cause);
+                upload.uploadId(), upload.id(), subjectOf(upload.descriptor()), cause);
         return new InvalidUploadException(InvalidUploadException.Code.STORAGE_FAILED,
                 STORAGE_FAILED_REASON + " The upload can be retried.", cause);
     }
@@ -374,7 +391,7 @@ public class DocumentationUploadService {
             log.error("The upload {} ({}) is stored, but a build of the documentation of {} on the site {} "
                       + "could not be asked for. It is published by the next architecture import, or when "
                       + "this upload is repeated.",
-                    upload.uploadId(), upload.id(), upload.descriptor().system(),
+                    upload.uploadId(), upload.id(), subjectOf(upload.descriptor()),
                     upload.descriptor().site(), e);
         }
     }
@@ -389,8 +406,8 @@ public class DocumentationUploadService {
      */
     private UploadReceipt replay(DocumentationUpload upload, InputStream bundle) {
         drain(bundle);
-        log.info("The upload {} ({}) of the system {} is already stored; the repetition changed nothing.",
-                upload.uploadId(), upload.id(), upload.descriptor().system());
+        log.info("The upload {} ({}) of {} is already stored; the repetition changed nothing.",
+                upload.uploadId(), upload.id(), subjectOf(upload.descriptor()));
         // The upload this repeats is stored, whichever way it got here.
         askForABuild(upload);
         return UploadReceipt.repeated(upload);
@@ -428,10 +445,16 @@ public class DocumentationUploadService {
      */
     private static void logReceiving(DocumentationUpload upload, long sizeInBytes) {
         DocumentationUploadDescriptor descriptor = upload.descriptor();
-        log.info("Receiving the upload {} ({}), attempt {}: {} of the system {}{} on the site {}, {} bytes.",
-                upload.uploadId(), upload.id(), upload.attempt(), descriptor.type(), descriptor.system(),
+        log.info("Receiving the upload {} ({}), attempt {}: {} of {}{} on the site {}, {} bytes.",
+                upload.uploadId(), upload.id(), upload.attempt(), descriptor.type(), subjectOf(descriptor),
                 descriptor.subjectName() == null ? "" : " (" + descriptor.subjectName() + ")",
                 descriptor.site(), sizeInBytes);
+    }
+
+    /** What an upload documents, as a log line names it: a system, or a static site as a whole. */
+    private static String subjectOf(DocumentationUploadDescriptor descriptor) {
+        return descriptor.type() == DocumentationType.SITE_DOCS ? "the site " + descriptor.site()
+                : "the system " + descriptor.system();
     }
 
     private static void drain(InputStream bundle) {

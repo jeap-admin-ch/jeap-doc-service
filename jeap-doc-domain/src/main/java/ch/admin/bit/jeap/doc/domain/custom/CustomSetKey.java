@@ -26,9 +26,18 @@ public record CustomSetKey(
         String topic) {
 
     public CustomSetKey {
-        if (sourceFormat == null || template == null) {
-            throw new IllegalArgumentException("A set names a source format and a template.");
+        if (sourceFormat == null || (template == null && kind != SubjectKind.SITE)) {
+            throw new IllegalArgumentException(
+                    "A set names a source format, and a template unless it is a static site's.");
         }
+    }
+
+    /**
+     * The key of the one set of a static site. It names no system and no template, and a new upload replaces
+     * it whole.
+     */
+    public static CustomSetKey ofSite(String site) {
+        return new CustomSetKey(site, SubjectKind.SITE, null, null, SourceFormat.MARKDOWN, null, null, null);
     }
 
     /** The key of the set an upload with this placement belongs to. */

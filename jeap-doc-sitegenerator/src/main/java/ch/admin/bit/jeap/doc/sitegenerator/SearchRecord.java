@@ -10,7 +10,8 @@ import java.util.List;
  * @param title       the page's title, from its front matter
  * @param headings    its headings, in the order they appear
  * @param body        everything else, as plain text
- * @param environment the environment tree the page is in - what scopes a search to the tree the reader is in
+ * @param environment the environment tree the page is in - what scopes a search to the tree the reader is in.
+ *                    Null on a site without environments, whose search has no scope
  * @param source      what produced it: {@link #GENERATED}, {@link #MARKDOWN} or {@link #HTML}
  * @param subject     what it documents: {@link #SUBJECT_SYSTEM}, {@link #SUBJECT_COMPONENT},
  *                    {@link #SUBJECT_LIBRARY}, or null for a page of the site itself, which documents nothing and

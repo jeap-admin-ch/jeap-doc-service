@@ -173,6 +173,7 @@ public class Arc42Template implements StructureTemplate {
             case SYSTEM -> generatedForSystem(chapter);
             case COMPONENT -> generatedForComponent(chapter);
             case LIBRARY -> generatedForLibrary(chapter);
+            case SITE -> Set.of();
         };
     }
 

@@ -72,11 +72,15 @@ public final class SearchRecords {
     /**
      * Every page of the given content tree, one record each.
      * <p>
-     * Only the environment trees are read. A content directory also holds the two JSON files the template
-     * reads and the site's branding, and none of that is a page.
+     * Only the environment trees are read, or the one tree of a site without environments. A content directory
+     * also holds the two JSON files the template reads and the site's branding, and none of that is a page.
      */
     public static List<SearchRecord> of(Path contentDirectory, Site site) {
         List<SearchRecord> records = new ArrayList<>();
+        Path singleTree = contentDirectory.resolve(SiteSources.SINGLE_TREE);
+        if (!site.perEnvironment() && Files.isDirectory(singleTree)) {
+            records.addAll(readTree(singleTree, null));
+        }
         for (SiteEnvironment environment : site.environments()) {
             Path tree = contentDirectory.resolve(environment.id());
             if (!Files.isDirectory(tree)) {
@@ -96,7 +100,7 @@ public final class SearchRecords {
                     .map(file -> read(file, tree, environment))
                     .toList();
         } catch (IOException e) {
-            throw new UncheckedIOException("The content tree of " + environment.id() + " could not be read", e);
+            throw new UncheckedIOException("The content tree " + tree.getFileName() + " could not be read", e);
         }
     }
 
@@ -115,16 +119,19 @@ public final class SearchRecords {
         // The fences go first, so that a `#` inside one is never read as a heading.
         String withoutFences = FENCE.matcher(body).replaceAll(" ");
         String micrositeUrl = valueOf(keys, MICROSITE_URL);
+        // A site's one tree documents no system: its folders are whatever its authors named them, and a folder
+        // called systems is not the tree of a system.
+        boolean ofASystem = environment != null;
         return new SearchRecord(
                 urlOf(relative, valueOf(keys, "slug"), environment),
                 title.isEmpty() ? fileNameAsTitle(relative) : title,
                 headingsOf(withoutFences),
                 plain(HEADING.matcher(withoutFences).replaceAll(" ")),
-                environment.id(),
+                environment == null ? null : environment.id(),
                 sourceOf(valueOf(keys, "doc_status"), micrositeUrl),
-                subjectOf(relative),
-                systemOf(relative),
-                nameOf(relative),
+                ofASystem ? subjectOf(relative) : null,
+                ofASystem ? systemOf(relative) : null,
+                ofASystem ? nameOf(relative) : null,
                 micrositeUrl.isEmpty() ? null : micrositeUrl,
                 // A page of the site, not a page inside a microsite: what a hit inside one says it is in is
                 // set where those records are made.
@@ -188,7 +195,8 @@ public final class SearchRecords {
      * one as it is written.
      */
     private static String urlOf(String relativePath, String slug, SiteEnvironment environment) {
-        String prefix = environment.routePrefix();
+        // The one tree of a site without environments is served at the site root, like a main environment.
+        String prefix = environment == null ? "" : environment.routePrefix();
         if (!slug.isEmpty()) {
             String withoutSlashes = slug.replaceAll("^/+", "").replaceAll("/+$", "");
             if (withoutSlashes.isEmpty()) {

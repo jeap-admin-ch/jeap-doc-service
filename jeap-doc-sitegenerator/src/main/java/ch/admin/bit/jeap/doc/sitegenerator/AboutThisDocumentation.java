@@ -82,20 +82,21 @@ public class AboutThisDocumentation {
 
     /**
      * After the root page (0) and the systems tree (1). A later top-level folder takes the next number, so
-     * nothing has to be renumbered to add one.
+     * nothing has to be renumbered to add one. On a site without environments the site template puts the page
+     * after the uploaded tree instead, which no position could.
      */
     private static final int SIDEBAR_POSITION = 2;
 
     /**
-     * Writes the page into one environment tree.
+     * Writes the page into one environment tree, or into the one tree of a site without environments.
      *
      * @param facts                the publishable facts of the site - see {@code DocumentationProvenance}
-     * @param environment          the environment whose tree this is
+     * @param environment          the environment whose tree this is, or null on a site without environments
      * @param models               what each environment's architecture model contributed, by environment id
      * @param buildId              the build writing this page, which its own log lines name
      * @param statusUrl            the absolute URL the numbers of this build are published at
      * @param liveStatusUrl        the absolute URL the service answers this site's live status at
-     * @param environmentDirectory {@code content/<environment>}
+     * @param environmentDirectory {@code content/<environment>}, or the one tree of a site without environments
      */
     public void write(DocumentationFacts facts, SiteEnvironment environment,
                       Map<String, EnvironmentModel> models, long buildId, String statusUrl,
@@ -110,7 +111,7 @@ public class AboutThisDocumentation {
                         // configuration and its own records, and calling it archrepo would make doc_source
                         // useless as a filter.
                         .put("doc_source", "doc-service")
-                        .put("doc_environment", environment.id())
+                        .put("doc_environment", environment == null ? null : environment.id())
                         .put("doc_generated_at", facts.service().generatedAt().toString())
                         .put("doc_generated_at_display", DisplayTime.of(facts.service().generatedAt())))
                 .heading(1, TITLE)
@@ -121,8 +122,10 @@ public class AboutThisDocumentation {
 
         writeOverview(page, facts, environment);
         writePublication(page, facts, buildId, statusUrl);
-        writeEnvironments(page, facts, models);
-        writeSchedules(page, facts, liveStatusUrl);
+        if (environment != null) {
+            writeEnvironments(page, facts, models);
+        }
+        writeSchedules(page, facts, liveStatusUrl, environment != null);
 
         Files.createDirectories(environmentDirectory);
         Files.writeString(environmentDirectory.resolve(FILE_NAME), page.text(), StandardCharsets.UTF_8);
@@ -136,14 +139,19 @@ public class AboutThisDocumentation {
         // would render the name and the id run together.
         rows.add(List.of(Md.text("Site"), Md.sentence("{} ({})",
                 Md.text(facts.site().title()), Md.code(facts.site().id()))));
-        rows.add(List.of(Md.text("Environment"), Md.sentence("{} ({})",
-                Md.text(environment.label()), Md.code(environment.id()))));
+        if (environment != null) {
+            rows.add(List.of(Md.text("Environment"), Md.sentence("{} ({})",
+                    Md.text(environment.label()), Md.code(environment.id()))));
+        }
         rows.add(List.of(Md.text("Available Documentation Structure Templates"), structures(facts)));
         rows.add(List.of(Md.text("Number of published site versions kept"),
                 Md.text(String.valueOf(facts.site().retainedPublications()))));
         rows.add(List.of(Md.text("An upload publishes the site"), yesOrNo(facts.site().publishOnUpload())));
-        rows.add(List.of(Md.text("Waits for the architecture model"),
-                yesOrNo(facts.site().architectureModelRequired())));
+        // A site without environments reads no architecture model, so there is nothing for it to wait for.
+        if (environment != null) {
+            rows.add(List.of(Md.text("Waits for the architecture model"),
+                    yesOrNo(facts.site().architectureModelRequired())));
+        }
         page.table(List.of("", ""), rows);
     }
 
@@ -269,11 +277,18 @@ public class AboutThisDocumentation {
         return facts.environments().stream().anyMatch(DocumentationFacts.EnvironmentFacts::modelConfigured);
     }
 
-    /** Every job of the service that runs on a schedule, and when each fires next. */
-    private void writeSchedules(MarkdownWriter page, DocumentationFacts facts, String liveStatusUrl) {
+    /**
+     * Every job of the service that runs on a schedule, and when each fires next - but the architecture import
+     * only where the site has environments: no import publishes a site without them.
+     */
+    private void writeSchedules(MarkdownWriter page, DocumentationFacts facts, String liveStatusUrl,
+                                boolean perEnvironment) {
         page.heading(2, "Scheduling");
         List<List<Markdown>> rows = new ArrayList<>();
         for (DocumentationFacts.Schedule schedule : facts.schedules()) {
+            if (!perEnvironment && schedule.job() == DocumentationFacts.ScheduledJob.ARCHITECTURE_IMPORT) {
+                continue;
+            }
             rows.add(scheduleRow(whatItDoes(schedule.job()), schedule.cron(),
                     whenThereIsNone(schedule.job(), facts)));
         }

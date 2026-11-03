@@ -13,7 +13,8 @@ import styles from './styles.module.css';
 export default function EnvironmentBanner() {
     const environment = useEnvironment();
 
-    if (environment.main) {
+    // The main tree, or the one tree of a site without environments.
+    if (!environment || environment.main) {
         return null;
     }
 

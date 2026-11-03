@@ -39,7 +39,7 @@ public class DocumentationSites {
      * therefore refused as an environment of any site. Every site but the default one is served below
      * {@link Site#SITE_SEGMENT}, which is a namespace of its own - see the constant.
      */
-    static final Set<String> RESERVED_TOP_LEVEL_SEGMENTS = Set.of("api", "actuator", "swagger-ui", "api-docs",
+    public static final Set<String> RESERVED_TOP_LEVEL_SEGMENTS = Set.of("api", "actuator", "swagger-ui", "api-docs",
             "webjars", "error", "assets", "img", Microsite.SEGMENT);
 
     /**
@@ -119,6 +119,10 @@ public class DocumentationSites {
                 "The site '%s' configures no colour scheme.", id);
 
         List<SiteEnvironment> environments = environmentsOf(id, configured);
+        // That the weight fits the instance's slots is checked by the build runner, which knows the slots.
+        require(configured.getBuild().getSlots() >= 1,
+                "The site '%s' sets build.slots to %d; a build occupies at least one slot.", id,
+                configured.getBuild().getSlots());
         return new Site(
                 id,
                 titleOf(id, configured.getTitle()),
@@ -128,7 +132,10 @@ public class DocumentationSites {
                 configured.getColorScheme(),
                 environments,
                 configured.isPublishOnUpload(),
-                configured.isArchitectureModelRequired());
+                configured.isArchitectureModelRequired(),
+                configured.getBuild().getSlots(),
+                configured.getNavigationLabel(),
+                configured.getContent());
     }
 
     /**
@@ -146,6 +153,13 @@ public class DocumentationSites {
     }
 
     private static List<SiteEnvironment> environmentsOf(String siteId, SiteProperties.Site configured) {
+        if (!configured.isPerEnvironment()) {
+            require(configured.getEnvironments().isEmpty(),
+                    "The site '%s' sets per-environment: false and configures the environments %s. A site "
+                    + "without environments configures none; remove either.", siteId,
+                    configured.getEnvironments().stream().map(SiteProperties.Environment::getId).toList());
+            return List.of();
+        }
         if (configured.getEnvironments().isEmpty()) {
             return DEFAULT_ENVIRONMENTS;
         }
@@ -224,8 +238,9 @@ public class DocumentationSites {
 
     private String describe() {
         return sites.values().stream()
-                .map(site -> "%s (%s)".formatted(site.id(),
-                        site.environments().stream().map(SiteEnvironment::id).toList()))
+                .map(site -> "%s (%s)".formatted(site.id(), site.perEnvironment()
+                        ? site.environments().stream().map(SiteEnvironment::id).toList()
+                        : "without environments"))
                 .toList().toString();
     }
 }

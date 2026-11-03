@@ -31,6 +31,9 @@ public final class DocsPaths {
      */
     public static final String SYSTEMS = CUSTOM + "/systems";
 
+    /** The tree uploaded for a static site, which documents no system. */
+    public static final String SITES = CUSTOM + "/sites";
+
     private DocsPaths() {
     }
 }

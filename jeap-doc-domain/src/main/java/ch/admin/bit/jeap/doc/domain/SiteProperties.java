@@ -40,6 +40,12 @@ public class SiteProperties {
         private String tagline;
 
         /**
+         * What the site's tab in the header bar says, on an instance that serves more than one site. Defaults
+         * to the title.
+         */
+        private String navigationLabel;
+
+        /**
          * The site's logo, as a {@code classpath:} or filesystem resource. Without one the template's own is
          * used.
          */
@@ -58,7 +64,21 @@ public class SiteProperties {
         private String colorScheme = "jeap";
 
         /**
-         * The environments of this site. Empty means the four the doc service defaults to.
+         * Whether this site has a tree per environment. A site without environments is one tree, served at the
+         * site root, and configures no environments.
+         */
+        private boolean perEnvironment = true;
+
+        /**
+         * Where the site's content comes from: one of the content sources the instance provides - the
+         * documentation of the systems, or a static tree uploaded for the site. The service does not start for
+         * a source it does not provide, or for a site its source refuses.
+         */
+        private String content = ch.admin.bit.jeap.doc.domain.Site.DEFAULT_CONTENT;
+
+        /**
+         * The environments of this site. Empty means the four the doc service defaults to, on a site with
+         * environments.
          */
         private List<Environment> environments = List.of();
 
@@ -77,6 +97,21 @@ public class SiteProperties {
          * would publish a site whose system documentation is silently missing.
          */
         private boolean architectureModelRequired = true;
+
+        /** How the builds of this site use the instance's build slots. */
+        private Build build = new Build();
+    }
+
+    /** How the builds of one site use the instance's build slots. */
+    @Data
+    public static class Build {
+
+        /**
+         * How many of the instance's concurrent build slots ({@code jeap.doc.build.max-concurrent-parts}) a
+         * build of a part of this site occupies. A site whose builds need more memory than a typical part
+         * sets more than one. It may not exceed the instance's slots, and the service does not start otherwise.
+         */
+        private int slots = 1;
     }
 
     /**

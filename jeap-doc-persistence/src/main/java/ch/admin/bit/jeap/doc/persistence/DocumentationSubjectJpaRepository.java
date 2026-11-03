@@ -17,7 +17,7 @@ interface DocumentationSubjectJpaRepository extends JpaRepository<DocumentationS
      */
     @Query("""
             select s from DocumentationSubjectEntity s
-             where s.site = :site and s.kind = :kind and s.system = :system
+             where s.site = :site and s.kind = :kind and coalesce(s.system, '') = coalesce(:system, '')
                and coalesce(s.name, '') = coalesce(:name, '')
             """)
     Optional<DocumentationSubjectEntity> find(@Param("site") String site, @Param("kind") SubjectKind kind,
@@ -32,7 +32,7 @@ interface DocumentationSubjectJpaRepository extends JpaRepository<DocumentationS
     @Query(value = """
             insert into documentation_subject (id, site, kind, system_name, name, created_at)
             values (nextval('documentation_subject_id_seq'), :site, :kind, :system, :name, :createdAt)
-            on conflict (site, kind, system_name, coalesce(name, '')) do nothing
+            on conflict (site, kind, coalesce(system_name, ''), coalesce(name, '')) do nothing
             """, nativeQuery = true)
     void insertIfAbsent(@Param("site") String site, @Param("kind") String kind, @Param("system") String system,
                         @Param("name") String name, @Param("createdAt") Instant createdAt);

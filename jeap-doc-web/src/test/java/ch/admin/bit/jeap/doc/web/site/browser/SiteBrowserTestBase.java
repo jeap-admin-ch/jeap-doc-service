@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
+import ch.admin.bit.jeap.doc.domain.PublicationProperties;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
@@ -46,6 +47,8 @@ import ch.admin.bit.jeap.doc.sitegenerator.BuildWorkspaces;
 import ch.admin.bit.jeap.doc.sitegenerator.DocusaurusSiteBuilder;
 import ch.admin.bit.jeap.doc.sitegenerator.NodeProcess;
 import ch.admin.bit.jeap.doc.sitegenerator.SiteSources;
+import ch.admin.bit.jeap.doc.sitegenerator.StaticSiteWriter;
+import ch.admin.bit.jeap.doc.sitegenerator.SystemDocumentationWriter;
 import ch.admin.bit.jeap.doc.sitegenerator.SiteTemplate;
 import ch.admin.bit.jeap.doc.sitegenerator.SiteUrls;
 import ch.admin.bit.jeap.doc.sitegenerator.WrittenContent;
@@ -329,10 +332,12 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * over a fixture that merely looked like the site would prove nothing about the site.
      */
     protected SiteSources fixtureSources(SiteUrls urls, BuildProperties properties) {
-        return new SiteSources(urls, new DefaultResourceLoader(), withoutSystemPages(),
+        return new SiteSources(urls, new DefaultResourceLoader(), java.util.List.of(new SystemDocumentationWriter(withoutSystemPages()),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties, provenance(),
-                new AboutThisDocumentation()) {
+                new AboutThisDocumentation(), new PublicationProperties()) {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,
                                         Instant generatedAt) throws IOException {

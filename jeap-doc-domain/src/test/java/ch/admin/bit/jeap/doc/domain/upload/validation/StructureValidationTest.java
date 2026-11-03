@@ -38,6 +38,9 @@ class StructureValidationTest {
     private static final StructureChapter BUILDING_BLOCKS =
             StructureChapter.numbered(5, "5-building-block-view", "Building Block View");
 
+    /** A site other than the default one, which reserves fewer paths below its root. */
+    private static final String SITE = "handbook";
+
     private final UploadProperties properties = new UploadProperties();
     private final CustomProperties customProperties = new CustomProperties();
     private final StructureValidation validation = new StructureValidation(
@@ -63,8 +66,92 @@ class StructureValidationTest {
                 SourceFormat.HTML, location, "load-test");
     }
 
+    private static DocumentationPlacement siteDocs() {
+        return new DocumentationPlacement(DocumentationType.SITE_DOCS, null, null, null, null,
+                SourceFormat.MARKDOWN, null, null);
+    }
+
+    @Test
+    void staticSite_aTreeOfFoldersWithItsOwnRootAndCategories_yieldsNothing() {
+        StructureReport report = validate(siteDocs(),
+                "index.md",
+                "intro/_category_.json",
+                "intro/01-why.md",
+                "intro/guide/index.md",
+                "intro/guide/setup.md",
+                "intro/guide/flow.png");
+
+        assertThat(report.findings()).isEmpty();
+        assertThat(report.template()).isEqualTo(StructureValidation.STATIC_SITE);
+    }
+
+    /** Docusaurus serves an index, a README and a page named like its folder at the folder's own URL. */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "guide/index.md, guide/README.md",
+            "guide.md, guide/index.md",
+            "guide/guide.md, guide/index.md",
+            "02-guide.md, guide/readme.md",
+            "index.md, README.md",
+            "intro/why.md, intro/01-why.md"})
+    void staticSite_twoPagesAtOneUrl_areAFinding(String one, String other) {
+        StructureReport report = validate(siteDocs(), one, other);
+
+        assertThat(codesOf(report)).containsOnly(FindingCode.COLLIDING_NAME);
+    }
+
+    /** The page about the documentation and the search are the generator's own, at the root of every site. */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "about-this-documentation.md", "about-this-documentation/index.md", "search.md", "01-search/readme.md"})
+    void staticSite_aPageAtAUrlTheGeneratorServes_isAFinding(String path) {
+        assertThat(codesOf(validate(siteDocs(), path))).containsOnly(FindingCode.RESERVED_NAME);
+    }
+
+    /** A folder's own page is decided on the names as written, before a number comes off - as Docusaurus does. */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "01-guides/guides.md, 01-guides/index.md",
+            "00-index.md, README.md"})
+    void staticSite_aNumberedNameBesideAFoldersOwnPage_yieldsNothing(String one, String other) {
+        assertThat(validate(siteDocs(), one, other).findings()).isEmpty();
+    }
+
+    @Test
+    void staticSite_aPageBelowAReservedName_yieldsNothing() {
+        assertThat(validate(siteDocs(), "how-to/search.md", "search/tips.md").findings()).isEmpty();
+    }
+
+    /**
+     * Every site answers its microsites and its search index itself, so a page in such a folder is unreachable,
+     * and the generator writes a page per tag below {@code tags}, which a page there would collide with.
+     */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "microsites/team/a/b/c.md", "pagefind/index.md", "01-Microsites/overview.md", "tags.md",
+            "tags/release.md"})
+    void staticSite_aPageInAFolderTheServiceAnswers_isAFinding(String path) {
+        assertThat(codesOf(validate(siteDocs(), path))).containsOnly(FindingCode.RESERVED_NAME);
+    }
+
+    /** The default site is served at the context root, where the service answers its API and the other sites. */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"api/overview.md", "actuator.md", "site/handbook.md"})
+    void staticSite_onTheDefaultSite_aPageAtAPathTheServiceAnswers_isAFinding(String path) {
+        assertThat(codesOf(validation.validate(null, siteDocs(), List.of(path))))
+                .containsOnly(FindingCode.RESERVED_NAME);
+        assertThat(validate(siteDocs(), path).findings()).isEmpty();
+    }
+
+    @Test
+    void staticSite_mdxAndUnderscoreNames_areFindings() {
+        assertThat(codesOf(validate(siteDocs(), "intro/why.mdx", "_drafts/plan.md")))
+                .containsExactlyInAnyOrder(FindingCode.FORBIDDEN_EXTENSION, FindingCode.UNPUBLISHABLE_NAME);
+    }
+
+    /** On a site of its own, as a static site is: the default site reserves more, see the tests above. */
     private StructureReport validate(DocumentationPlacement placement, String... paths) {
-        return validation.validate(placement, List.of(paths));
+        return validation.validate(SITE, placement, List.of(paths));
     }
 
     private static List<FindingCode> codesOf(StructureReport report) {
@@ -102,7 +189,7 @@ class StructureValidationTest {
         DocumentationPlacement unknown = new DocumentationPlacement(DocumentationType.SYSTEM_DOCS, "orders",
                 null, null, "arc24", SourceFormat.MARKDOWN, null, null);
 
-        StructureReport report = validation.validate(unknown, List.of("1-intro/goals.md"));
+        StructureReport report = validation.validate(SITE, unknown, List.of("1-intro/goals.md"));
 
         assertThat(codesOf(report)).containsExactly(FindingCode.UNKNOWN_TEMPLATE);
         assertThat(report.findings().getFirst().path()).describedAs("about the tree, not about a path").isNull();
@@ -472,9 +559,9 @@ class StructureValidationTest {
 
     @Test
     void aTreeWithNoPath_isEmpty() {
-        assertThat(codesOf(validation.validate(systemDocs(), List.of())))
+        assertThat(codesOf(validation.validate(SITE, systemDocs(), List.of())))
                 .containsExactly(FindingCode.EMPTY_TREE);
-        assertThat(codesOf(validation.validate(systemDocs(), null)))
+        assertThat(codesOf(validation.validate(SITE, systemDocs(), null)))
                 .containsExactly(FindingCode.EMPTY_TREE);
     }
 
@@ -508,7 +595,7 @@ class StructureValidationTest {
      */
     @Test
     void aNullAmongThePaths_isDroppedRatherThanReportedWithoutOne() {
-        StructureReport report = validation.validate(systemDocs(), Arrays.asList("1-intro/goals.md", null));
+        StructureReport report = validation.validate(SITE, systemDocs(), Arrays.asList("1-intro/goals.md", null));
 
         assertThat(report.findings()).isEmpty();
         assertThat(report.pathsChecked()).isEqualTo(1);
@@ -692,7 +779,7 @@ class StructureValidationTest {
             return switch (subject) {
                 case SYSTEM -> Set.of("whitebox-view");
                 case COMPONENT -> Set.of("rest-api");
-                case LIBRARY -> Set.of();
+                case LIBRARY, SITE -> Set.of();
             };
         }
 

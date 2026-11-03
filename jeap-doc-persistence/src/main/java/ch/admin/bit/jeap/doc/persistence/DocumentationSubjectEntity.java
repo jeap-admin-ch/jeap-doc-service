@@ -43,7 +43,7 @@ class DocumentationSubjectEntity {
     @Column(nullable = false)
     private SubjectKind kind;
 
-    @Column(name = "system_name", nullable = false)
+    @Column(name = "system_name")
     private String system;
 
     private String name;

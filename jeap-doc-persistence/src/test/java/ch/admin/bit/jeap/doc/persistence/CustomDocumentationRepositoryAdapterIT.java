@@ -307,6 +307,27 @@ class CustomDocumentationRepositoryAdapterIT extends PostgresTestContainerBase {
                 .isPresent();
     }
 
+    /**
+     * A static site's tree names no system and follows no template, and is still one set: a second upload
+     * replaces it rather than adding another, it is none of the site's subjects, and it records no deployment.
+     */
+    @Test
+    void replace_whenTheSetIsAStaticSitesTree_thenItIsOneSetNamingNoSystem() {
+        CustomSetKey tree = CustomSetKey.ofSite(site);
+        documentation.replace(setOf(tree, 1, new CustomPage("", "intro/why.md", null, 0, false)));
+        documentation.replace(setOf(tree, 2, new CustomPage("", "intro/how.md", null, 0, false),
+                new CustomPage("", "index.md", null, 0, false)));
+
+        CustomSet stored = documentation.find(tree).orElseThrow();
+        assertThat(stored.revision()).isEqualTo(2);
+        assertThat(stored.key()).isEqualTo(tree);
+        assertThat(stored.pages()).extracting(CustomPage::path).containsExactlyInAnyOrder("intro/how.md", "index.md");
+        assertThat(documentation.subjectsOf(site)).isEmpty();
+        assertThat(documentation.deploymentsOf(site)).isEmpty();
+        assertThat(documentation.remove(tree)).isTrue();
+        assertThat(documentation.find(tree)).isEmpty();
+    }
+
     /** An upload records a new system - and component - as awaiting deployment. */
     @Test
     void replace_recordsANewSubjectAsAwaitingDeployment() {

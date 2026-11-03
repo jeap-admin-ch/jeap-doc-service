@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.domain;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
+import ch.admin.bit.jeap.doc.domain.content.ContentSources;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,8 @@ public class DocumentationBuildTrigger {
     private final DocumentationSites sites;
     private final SitePartition partition;
     private final ArchitectureModelSource architectureModel;
+    /** Which sites an import asks for at all: those whose content comes from the architecture model. */
+    private final ContentSources contentSources;
     private final BuildMetrics metrics;
     private final DocumentationBuildPickup pickup;
     private final Clock clock;
@@ -90,13 +93,14 @@ public class DocumentationBuildTrigger {
      * then costs is decided by its content - a part whose pages hash to what is published is not generated -
      * so the price of not knowing which systems moved is the content of every part, and not a site rebuilt.
      * <p>
-     * Every site that has this environment, because an environment is not a site's own: one landscape can be
-     * documented by several of them.
+     * Every site that has this environment and whose content comes from the architecture model, because an
+     * environment is not a site's own: one landscape can be documented by several of them.
      */
     public int requestBecauseTheArchitectureWasImported(String environment) {
         int requested = 0;
         for (Site site : sites.all()) {
-            if (site.environments().stream().noneMatch(each -> each.id().equals(environment))) {
+            if (!contentSources.of(site).publishedByTheArchitectureImport()
+                || site.environments().stream().noneMatch(each -> each.id().equals(environment))) {
                 continue;
             }
             List<SitePart> parts = partition.partsOf(site);
@@ -133,7 +137,7 @@ public class DocumentationBuildTrigger {
     }
 
     private boolean isPublishedByAnImport(Site site) {
-        return site.environments().stream()
+        return contentSources.of(site).publishedByTheArchitectureImport() && site.environments().stream()
                 .anyMatch(environment -> architectureModel.isConfiguredFor(environment.id()));
     }
 
@@ -196,6 +200,10 @@ public class DocumentationBuildTrigger {
         List<SitePart> parts = new ArrayList<>();
         parts.add(partition.shellOf(site));
         for (SitePart part : documenting) {
+            if (part.isShell()) {
+                // Asked for above already: a site that is its shell alone documents everything in it.
+                continue;
+            }
             if (onTheSite.contains(part.key())) {
                 parts.add(part);
             } else {

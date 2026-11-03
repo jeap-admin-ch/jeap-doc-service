@@ -10,6 +10,16 @@ A **documentation site** is one published whole: one navigation and one layout. 
 [configuration](configuration.md#documentation-sites); each of them has its own **environments** - trees of the
 same documentation showing the state of a different stage.
 
+A site configured with `per-environment: false` has no environments: it is **one tree**, served at the site root.
+The generator writes it to `content/tree` rather than to one directory per environment, and the site template
+mounts it at the root - with no environment switcher, no banner and no environment in a search. Its only part is
+the shell.
+
+**What a part contains is its site's content source's.** The documentation of the systems is what is described
+below; a static site is its uploaded tree, written as it is, with a generated root page only where the tree brings
+none - see [Configuration](configuration.md#where-a-sites-content-comes-from). Around either, the generator writes
+the same site-level files: the page about the documentation, the branding, and what the site template reads.
+
 **A site is not one build any more.** It is published as several, one per **part**, because one build of a whole
 landscape stopped fitting: the memory a build needs grows with the pages it produces, and a site of eighteen
 thousand pages needs more of it than any container is given. So the site is cut up, and the doc service serves
@@ -499,6 +509,14 @@ one of them open a new tab. The template passes `target="_self"` for those hrefs
 in the configuration for the footer and the navbar logo. Links inside a diagram were never affected: they are
 written absolute and rendered by PlantUML, which navigates the top-level context.
 
+**An instance of several sites links them in the header bar.** The generator writes the instance's title and
+one tab per site - label, URL, whether it is the current one - into `site.json`, and the template renders the
+tabs left in the bar as plain links: every site is its own Docusaurus build, so a tab is not a route of the build
+it sits in. The generator writes them only for an instance with more than one site or a configured title, so a
+single site keeps the content it hashed to. On an instance of several sites, a change to the sites changes the
+content of every part once, and each part takes it with its next build - see
+[Configuration](configuration.md#several-sites-in-one-header-bar).
+
 ### Every table can be sorted, and a long one filtered
 
 **A reader sorts any table by a click on its header**: ascending, descending, then back to the order the page
@@ -554,15 +572,16 @@ that cell, and clearing the filter closes it again.
 
 ### The page that describes the documentation
 
-Every environment tree carries an **About This Documentation** page, at `/about-this-documentation/`, linked
+Every environment tree, and the one tree of a site without environments, carries an **About This
+Documentation** page, at `/about-this-documentation/`, linked
 from the root page and from the footer. It answers what a reader of a published site cannot otherwise find out:
 what they are looking at, where it came from, and when it changes next.
 
-| Section                         | What it says                                                                                                                                              | Where it comes from                                   |
-|---------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
-| Overview                        | The site, the tree, the structure templates this instance generates, whether an upload publishes the site, whether it waits for the architecture model  | The configuration, through `DocumentationProvenance`  |
-| The publication you are reading | Which build produced this site and when - and the numbers of that run, fetched                                                                          | The build itself, and `about-this-documentation.json` |
-| The environments of this site   | Per environment: which tree it is, what its model contributed, when that content was imported                                                           | The run                                               |
+| Section                         | What it says                                                                                                                                             | Where it comes from                                   |
+|---------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+| Overview                        | The site, the tree, the structure templates this instance generates, whether an upload publishes the site, whether it waits for the architecture model   | The configuration, through `DocumentationProvenance`  |
+| The publication you are reading | Which build produced this site and when - and the numbers of that run, fetched                                                                           | The build itself, and `about-this-documentation.json` |
+| The environments of this site   | Per environment: which tree it is, what its model contributed, when that content was imported. Left out on a site without environments                   | The run                                               |
 | Scheduling                      | A row per scheduled job of the service - the import that publishes the site, the reconcile, and the three clean-ups - and, fetched, when each fires next | The configuration, and `live-status.json`             |
 
 **One page per tree rather than one per site**, which is forced rather than chosen: the site template switches
@@ -686,8 +705,8 @@ Everything that wants documentation rebuilt asks for a **part** of a site, and n
 
 |                       | Which part |
 |-----------------------|------------|
-| **An upload**         | The part that carries the system the documents are for, and the shell. An upload names a system and no environment at all, and with a part per system it does not have to. The shell holds the systems index, which changes when a system is documented for the first time. A removal asks the same way; once the site no longer has the system, only the shell is asked for |
-| **The architecture import** | **Every part** of every site documenting the environment it read, when it stored a *changed* landscape - see below. `jeap.doc.build.triggered` is how many parts that was |
+| **An upload**         | The part that carries the system the documents are for, and the shell. An upload names a system and no environment at all, and with a part per system it does not have to. The shell holds the systems index, which changes when a system is documented for the first time. A removal asks the same way; once the site no longer has the system, only the shell is asked for. A static site's tree asks for its one part |
+| **The architecture import** | **Every part** of every site whose content is the documentation of the systems and that documents the environment it read, when it stored a *changed* landscape - see below. `jeap.doc.build.triggered` is how many parts that was |
 | **An operator**       | The part they named, or every part of the site - `POST /api/sites/{site}/builds`, see [API](api.md). It ignores `publish-on-upload`: a site published only when something is uploaded to it is exactly the site somebody has to be able to publish by hand |
 
 All of them leave the same thing behind: a **request** for that part, at most one at a time. Everything else

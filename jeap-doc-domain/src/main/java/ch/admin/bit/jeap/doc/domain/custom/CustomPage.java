@@ -18,6 +18,7 @@ public record CustomPage(String chapter, String fileName, String title, int posi
 
     /** The path of the file inside the set, which is what the archive holds it under. */
     public String path() {
-        return chapter + "/" + fileName;
+        // A static site's files lie in no chapter: their path is the file name.
+        return chapter.isEmpty() ? fileName : chapter + "/" + fileName;
     }
 }

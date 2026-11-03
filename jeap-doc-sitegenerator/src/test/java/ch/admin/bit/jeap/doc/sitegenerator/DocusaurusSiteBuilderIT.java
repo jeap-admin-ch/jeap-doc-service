@@ -39,6 +39,9 @@ class DocusaurusSiteBuilderIT {
 
     private static final Instant GENERATED_AT = Instant.parse("2026-08-25T10:15:30Z");
 
+    /** A site without environments. */
+    private static final String HANDBOOK = "handbook";
+
     @TempDir
     Path workspaceRoot;
 
@@ -57,10 +60,12 @@ class DocusaurusSiteBuilderIT {
         publication.setUrl("https://doc.example.ch");
         urls = new SiteUrls(publication, "/docs");
         resourceLoader = new org.springframework.core.io.DefaultResourceLoader();
-        sources = new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
+        sources = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
-                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation());
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
         builder = builderWriting(sources);
     }
 
@@ -243,7 +248,7 @@ class DocusaurusSiteBuilderIT {
     /** Sources whose landscape has one system in it, read by every environment. */
     private SiteSources sourcesReadingALandscape() {
         return new SiteSources(urls, resourceLoader,
-                new SystemPages(OneSystemEverywhere.INSTANCE, NoMessageSchemas.INSTANCE,
+                java.util.List.of(new SystemDocumentationWriter(new SystemPages(OneSystemEverywhere.INSTANCE, NoMessageSchemas.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         NoReactions.INSTANCE, NoReactions.INSTANCE,
                         new NoCustomDocumentation(), NoCustomStorage.INSTANCE,
@@ -251,10 +256,12 @@ class DocusaurusSiteBuilderIT {
                         new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
                         new GeneratorProperties(),
                         new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
-                        ch.admin.bit.jeap.doc.domain.port.BuildMetrics.NONE, urls),
+                        ch.admin.bit.jeap.doc.domain.port.BuildMetrics.NONE, urls)),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(OneSystemEverywhere.INSTANCE, new NoCustomDocumentation()), properties,
-                TestProvenance.of(OneSystemEverywhere.INSTANCE), new AboutThisDocumentation());
+                TestProvenance.of(OneSystemEverywhere.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
     }
 
     /** A landscape of one system, read by every environment of the site. */
@@ -304,10 +311,12 @@ class DocusaurusSiteBuilderIT {
      * generator exactly the way a page of real documentation does.
      */
     private SiteSources sourcesAlsoWriting(ExtraPages extra) {
-        return new SiteSources(urls, resourceLoader, NoArchitectureModel.systemPages(urls),
+        return new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
-                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation()) {
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties()) {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,
                                         Instant generatedAt) throws IOException {
@@ -353,6 +362,128 @@ class DocusaurusSiteBuilderIT {
         assertThat(built.pageCount()).isPositive();
         assertThat(built.sizeInBytes()).isPositive();
         assertThat(built.docusaurusMillis()).isPositive();
+    }
+
+    /**
+     * A site without environments is served at its own root, with no environment segment in any URL, and
+     * shows neither a switcher nor a banner - there is nothing to switch to, and nothing to warn about.
+     */
+    @Test
+    void generate_whenTheSiteHasNoEnvironments_thenItIsServedAtItsRootWithNoSwitcherAndNoBanner()
+            throws Exception {
+        SiteProperties configured = handbookWithoutEnvironments();
+        DocumentationSites sites = new DocumentationSites(configured);
+        Site site = sites.find(HANDBOOK).orElseThrow();
+        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), sites,
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
+                properties, TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
+                        new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of())),
+                new AboutThisDocumentation(), new PublicationProperties());
+        DocusaurusSiteBuilder handbookBuilder = builderWriting(writing);
+
+        BuiltSite built = handbookBuilder.generate(
+                handbookBuilder.prepare(5, site, wholeSiteOf(site), GENERATED_AT));
+
+        assertThat(built.directory().resolve("index.html")).isRegularFile();
+        assertThat(built.directory().resolve("about-this-documentation/index.html")).isRegularFile();
+        assertThat(built.directory().resolve(SiteSources.SINGLE_TREE)).doesNotExist();
+        String page = Files.readString(built.directory().resolve("index.html"), StandardCharsets.UTF_8);
+        assertThat(page).contains("Handbook")
+                .doesNotContain("Switch environment")
+                .doesNotContain("noindex")
+                .doesNotContain("This is the documentation of the");
+    }
+
+    /**
+     * An instance of two sites: the built page carries the instance's title beside the logo and a tab per site,
+     * the current one marked, each leading to its site's root - the header bar of {@code mockups/navigation.png}
+     * in the plan of this feature. The page title in the browser still names the site.
+     */
+    @Test
+    void generate_whenTheInstanceServesTwoSites_thenTheHeaderBarCarriesTheTitleAndATabPerSite() throws Exception {
+        SiteProperties configured = new SiteProperties();
+        SiteProperties.Site architecture = new SiteProperties.Site();
+        architecture.setTitle("System Documentation");
+        architecture.setNavigationLabel("Architecture");
+        configured.getSites().put(Site.DEFAULT_SITE, architecture);
+        SiteProperties.Site deployments = new SiteProperties.Site();
+        deployments.setTitle("Deployments");
+        configured.getSites().put("deployments", deployments);
+        PublicationProperties publication = new PublicationProperties();
+        publication.setUrl("https://doc.example.ch");
+        publication.setTitle("Example Documentation");
+        DocumentationSites sites = new DocumentationSites(configured);
+        Site site = sites.find(Site.DEFAULT_SITE).orElseThrow();
+        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), sites,
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
+                properties, TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
+                        new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of())),
+                new AboutThisDocumentation(), publication);
+        DocusaurusSiteBuilder twoSiteBuilder = builderWriting(writing);
+
+        BuiltSite built = twoSiteBuilder.generate(twoSiteBuilder.prepare(6, site, wholeSiteOf(site), GENERATED_AT));
+
+        String page = Files.readString(built.directory().resolve("index.html"), StandardCharsets.UTF_8);
+        assertThat(page).containsPattern("class=\"?navbar__title[^>]*>Example Documentation<");
+        assertThat(page).containsPattern("<title[^>]*>[^<]*System Documentation</title>");
+        assertThat(page).containsPattern("href=\"?/docs/\"?[^>]*aria-current=\"?page\"?[^>]*>Architecture<");
+        assertThat(page).containsPattern("href=\"?/docs/site/deployments/\"?[^>]*>Deployments<");
+        assertThat(page.indexOf(">Architecture<")).isLessThan(page.indexOf(">Deployments<"));
+    }
+
+    /**
+     * A static site is its uploaded tree: the folders {@code intro/} and {@code working-agreements/} are the
+     * navigation, with their pages and nothing generated beside them but the page about the documentation - which
+     * comes last, even after a page the authors did not number.
+     */
+    @Test
+    void generate_whenAStaticSiteIsBuilt_thenItsFoldersAreTheNavigation() throws Exception {
+        SiteProperties configured = handbookWithoutEnvironments();
+        DocumentationSites sites = new DocumentationSites(configured);
+        Site site = sites.find(HANDBOOK).orElseThrow();
+        UploadedTree tree = new UploadedTree(HANDBOOK)
+                .file("intro/_category_.json", "{\"label\": \"Introduction\", \"position\": 1}"
+                        .getBytes(StandardCharsets.UTF_8))
+                .page("intro/why.md", "---\ntitle: Why We Write Things Down\n---\n\nSo that we remember.\n")
+                .file("working-agreements/_category_.json", "{\"label\": \"Working Agreements\", \"position\": 2}"
+                        .getBytes(StandardCharsets.UTF_8))
+                .page("working-agreements/reviews.md", "---\ntitle: Reviews\n---\n\nTwo pairs of eyes.\n")
+                .page("glossary.md", "---\ntitle: Glossary\n---\n\nWords we use.\n");
+        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(tree.writer()), sites,
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
+                properties, TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
+                        new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of())),
+                new AboutThisDocumentation(), new PublicationProperties());
+        DocusaurusSiteBuilder staticBuilder = builderWriting(writing);
+
+        BuiltSite built = staticBuilder.generate(staticBuilder.prepare(7, site, wholeSiteOf(site), GENERATED_AT));
+
+        assertThat(built.directory().resolve("intro/why/index.html")).isRegularFile();
+        assertThat(built.directory().resolve("working-agreements/reviews/index.html")).isRegularFile();
+        assertThat(built.directory().resolve("systems")).doesNotExist();
+        String page = Files.readString(built.directory().resolve("intro/why/index.html"), StandardCharsets.UTF_8);
+        String sidebar = page.substring(page.indexOf("menu__list"));
+        assertThat(sidebar).contains("Introduction").contains("Working Agreements")
+                .contains("Why We Write Things Down");
+        assertThat(sidebar.indexOf("Introduction")).isLessThan(sidebar.indexOf("Working Agreements"));
+        assertThat(sidebar.indexOf("Working Agreements")).isLessThan(sidebar.indexOf(">Glossary<"));
+        assertThat(sidebar.indexOf(">Glossary<"))
+                .describedAs("the page about the documentation after an unnumbered page of the tree")
+                .isLessThan(sidebar.indexOf(">About This Documentation<"));
+    }
+
+    private static SiteProperties handbookWithoutEnvironments() {
+        SiteProperties configured = new SiteProperties();
+        SiteProperties.Site handbook = new SiteProperties.Site();
+        handbook.setTitle("Handbook");
+        handbook.setPerEnvironment(false);
+        handbook.setContent(ch.admin.bit.jeap.doc.domain.content.StaticSiteContent.SOURCE_ID);
+        configured.getSites().put(HANDBOOK, handbook);
+        return configured;
     }
 
     @Test

@@ -47,7 +47,7 @@ public record CustomDocumentation(List<CustomSet> sets) {
      */
     public CustomDocumentation publishedBy(String template) {
         return new CustomDocumentation(sets.stream()
-                .filter(set -> set.key().template().equals(template))
+                .filter(set -> template.equals(set.key().template()))
                 .filter(set -> set.key().sourceFormat() == SourceFormat.MARKDOWN)
                 .toList());
     }
@@ -62,7 +62,7 @@ public record CustomDocumentation(List<CustomSet> sets) {
      */
     public CustomDocumentation ofTemplate(String template) {
         return new CustomDocumentation(sets.stream()
-                .filter(set -> set.key().template().equals(template))
+                .filter(set -> template.equals(set.key().template()))
                 .toList());
     }
 
@@ -138,7 +138,7 @@ public record CustomDocumentation(List<CustomSet> sets) {
         return sets.stream()
                 .filter(set -> set.subject().equals(subject))
                 .filter(set -> set.key().sourceFormat() == SourceFormat.HTML)
-                .filter(set -> set.key().template().equals(template))
+                .filter(set -> template.equals(set.key().template()))
                 .filter(set -> chapterFolder.equals(set.key().location()))
                 .map(Microsite::of)
                 .sorted(Comparator.comparing(Microsite::sortKey, String.CASE_INSENSITIVE_ORDER)

@@ -1,6 +1,8 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
+import ch.admin.bit.jeap.doc.domain.upload.SiteUploadRules;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationPlacement;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureReport;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureValidation;
 import ch.admin.bit.jeap.doc.web.api.Roles;
@@ -60,6 +62,7 @@ class DocumentationValidationController {
 
     private final StructureValidation validation;
     private final PathTreeReader pathTreeReader;
+    private final SiteUploadRules siteUploadRules;
 
     @Operation(summary = "Validate the structure of a documentation set",
             description = "Answers whether the path tree would be accepted, against the chapters, the "
@@ -80,18 +83,23 @@ class DocumentationValidationController {
                     schema = @Schema(implementation = ProblemDetail.class)))
     @PostMapping(path = VALIDATION_PATH, consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE})
-    @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM)
+    @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_THE_SUBJECT)
     public ResponseEntity<Object> validate(
-            @Parameter(description = "What the documents document: system-docs, component-docs or library-docs")
+            @Parameter(description = "Site the set would be uploaded to, which has to take its type, and for "
+                                     + "site-docs the site the role is checked for; without it the default site")
+            @RequestParam(name = "site", required = false) String site,
+            @Parameter(description = "What the documents document: system-docs, component-docs, library-docs, "
+                                     + "or site-docs for the tree of a static site")
             @RequestParam("type") String type,
-            @Parameter(description = "System the documents belong to, and the system the role is checked for")
-            @RequestParam("system") String system,
+            @Parameter(description = "System the documents belong to, and the system the role is checked for; "
+                                     + "none for site-docs")
+            @RequestParam(name = "system", required = false) String system,
             @Parameter(description = "Component the documents belong to, required for component-docs")
             @RequestParam(name = "component", required = false) String component,
             @Parameter(description = "Library the documents belong to, required for library-docs")
             @RequestParam(name = "library", required = false) String library,
-            @Parameter(description = "Section catalog the documents follow, e.g. arc42")
-            @RequestParam("template") String template,
+            @Parameter(description = "Section catalog the documents follow, e.g. arc42; none for site-docs")
+            @RequestParam(name = "template", required = false) String template,
             @Parameter(description = "Format of the documents: markdown or html")
             @RequestParam("source-format") String sourceFormat,
             @Parameter(description = "Section HTML documents are embedded in, e.g. 6-runtime-view")
@@ -105,9 +113,16 @@ class DocumentationValidationController {
         DocumentationPlacement placement = new DocumentationPlacement(
                 DocumentationTypeDto.fromParameterValue(type).toDomain(), system, component, library, template,
                 SourceFormatDto.fromParameterValue(sourceFormat).toDomain(), location, topic);
+        // The site has to be one that takes this type - a static site only its tree, every other site only the
+        // documentation of its systems - as the upload asks, and before a tree is read that the upload would
+        // refuse anyway. Only where a site is named or a tree is checked: a system's dry run named no site before
+        // sites took uploads of their own, and an instance need not serve a default site to answer it.
+        if (site != null || placement.type() == DocumentationType.SITE_DOCS) {
+            siteUploadRules.requireTheSiteTakes(site, placement.type());
+        }
         List<String> paths = pathTreeReader.read(request, placement.sourceFormat());
 
-        StructureReport report = validation.validate(placement, paths);
+        StructureReport report = validation.validate(site, placement, paths);
         StructureReportDto answer = StructureReportDto.of(report);
         if (report.isValid()) {
             log.debug("The documentation set of {} follows {}: {} path(s) checked, {} ignored.",

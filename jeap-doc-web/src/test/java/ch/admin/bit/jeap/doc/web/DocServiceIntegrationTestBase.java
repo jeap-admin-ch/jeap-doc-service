@@ -188,6 +188,14 @@ public abstract class DocServiceIntegrationTestBase {
     }
 
     /**
+     * A role granting the upload of a static site's tree - the site is carried in the tenant part, and a role
+     * without one covers every static site.
+     */
+    protected static SemanticApplicationRole siteUploadsRole(String tenantSite) {
+        return role(tenantSite, "site-uploads", "write");
+    }
+
+    /**
      * A role granting an operation on the documentation, independent of a single system.
      */
     protected static SemanticApplicationRole docsRole(String operation) {

@@ -5,12 +5,13 @@
 The doc service authorizes against **semantic roles**, which requires
 `jeap.security.oauth2.resourceserver.system-name` to be set on the instance:
 
-| Role                                      | Grants                                                               |
-|-------------------------------------------|----------------------------------------------------------------------|
-| `<system-name>_%<system>_@uploads_#write` | Uploading documentation for the system named in the tenant part      |
-| `<system-name>_@docs_#read`               | A name kept free by convention; **nothing in the service checks it** |
-| `<system-name>_@sites_#admin`             | Asking for a documentation site to be published, and removing a part the site no longer has |
-| `<system-name>_@sites_#read`              | Reading what the documentation generator has been doing              |
+| Role                                         | Grants                                                                                      |
+|----------------------------------------------|---------------------------------------------------------------------------------------------|
+| `<system-name>_%<system>_@uploads_#write`    | Uploading documentation for the system named in the tenant part                             |
+| `<system-name>_%<site>_@site-uploads_#write` | Uploading the tree of the static site named in the tenant part                              |
+| `<system-name>_@docs_#read`                  | A name kept free by convention; **nothing in the service checks it**                        |
+| `<system-name>_@sites_#admin`                | Asking for a documentation site to be published, and removing a part the site no longer has |
+| `<system-name>_@sites_#read`                 | Reading what the documentation generator has been doing                                     |
 
 ## A site is nobody's system
 
@@ -49,6 +50,19 @@ already imply.
 **And `DELETE /api/docs/custom/systems` is the administrator's alone.** It removes everything documented for
 a system - its own documentation and that of every component and library under it, which several teams may
 own - so it is not something one system's pipeline may do.
+
+## A static site is uploaded for the site
+
+A static site's tree belongs to the site, not to a system, so it is uploaded with a role of its own:
+`<system-name>_%<site>_@site-uploads_#write`, with the site in the tenant part. A holder may upload to that site
+and to no other, and receives `403` for a static site it is not granted. **The resource differs from `uploads` on
+purpose**: a site's id is never read as a system's name in the tenant part, and a system's upload role never
+reaches a static site. Granted without a tenant part, the role covers every static site - for the operator of the
+instance rather than for a pipeline.
+
+The same role reads the state of such an upload (`?site=<id>`), checks a tree before it is uploaded
+(`type=site-docs&site=<id>` on the validation endpoint) and removes the tree again
+(`DELETE /api/docs/custom/sites?site=<id>`, which an administrator of the sites may call as well).
 
 ## Authentication
 

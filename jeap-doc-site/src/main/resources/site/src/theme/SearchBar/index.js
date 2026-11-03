@@ -2,7 +2,7 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 import clsx from 'clsx';
 import BrowserOnly from '@docusaurus/BrowserOnly';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import {useEnvironment} from '@site/src/data/environments';
+import {scopeLabelOf, useEnvironment} from '@site/src/data/environments';
 import {Excerpt, Kind, titleOf, Where} from '@site/src/components/SearchHit';
 import SearchFacets from '@site/src/components/SearchFacets';
 import {SOURCE, everything, filtersOf, toggled, writeInto}
@@ -43,6 +43,8 @@ const DEBOUNCE_MS = 150;
 function SearchBarInBrowser() {
     const {siteConfig: {baseUrl}} = useDocusaurusContext();
     const environment = useEnvironment();
+    const environmentId = environment ? environment.id : null;
+    const scopeLabel = scopeLabelOf(environment);
 
     const [query, setQuery] = useState('');
     const [results, setResults] = useState(null);
@@ -104,7 +106,7 @@ function SearchBarInBrowser() {
                 return;
             }
             const found = await module.search(query,
-                    {filters: filtersOf(selection, environment.id, BOX_FACETS)});
+                    {filters: filtersOf(selection, environmentId, BOX_FACETS)});
             if (run !== latest.current) {
                 // A slower search of an earlier query came back after a faster one of a later query. Dropping
                 // it is what stops the dropdown flickering back to what the reader typed two letters ago.
@@ -118,7 +120,7 @@ function SearchBarInBrowser() {
         }, DEBOUNCE_MS);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [query, environment.id, load, JSON.stringify(selection)]);
+    }, [query, environmentId, load, JSON.stringify(selection)]);
 
     // Closing on a click outside, which is what a dropdown has to do and what nothing else here would notice.
     useEffect(() => {
@@ -191,7 +193,9 @@ function SearchBarInBrowser() {
     const resultsPage = () => {
         const parameters = new URLSearchParams();
         parameters.set('q', query);
-        parameters.set('env', environment.id);
+        if (environment) {
+            parameters.set('env', environment.id);
+        }
         writeInto(parameters, selection, BOX_FACETS);
         return `${baseUrl}search/?${parameters.toString()}`;
     };
@@ -211,7 +215,7 @@ function SearchBarInBrowser() {
                 aria-controls="search-results-list"
                 aria-autocomplete="list"
                 aria-label="Search the documentation"
-                placeholder={`Search ${environment.label}`}
+                placeholder={`Search ${scopeLabel}`}
                 className={clsx('navbar__search-input', styles.input)}
                 value={query}
                 onChange={(event) => {
@@ -235,7 +239,7 @@ function SearchBarInBrowser() {
                     {loading && !results && <div className={styles.message}>Searching…</div>}
                     {results?.length === 0 && (
                         <div className={styles.message}>
-                            No page of {environment.label} matches <strong>{query}</strong>.
+                            No page of {scopeLabel} matches <strong>{query}</strong>.
                         </div>
                     )}
                     {results?.map((result, index) => (

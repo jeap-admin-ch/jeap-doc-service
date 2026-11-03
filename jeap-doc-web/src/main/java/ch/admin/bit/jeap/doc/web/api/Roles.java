@@ -1,5 +1,8 @@
 package ch.admin.bit.jeap.doc.web.api;
 
+import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.web.api.upload.docs.DocumentationTypeDto;
+
 /**
  * The semantic roles the doc service authorizes against. Each role names the API resource it is granted on, and
  * the system a role is granted for is carried in the tenant part, so a pipeline holding
@@ -9,6 +12,11 @@ package ch.admin.bit.jeap.doc.web.api;
 public final class Roles {
 
     public static final String RESOURCE_UPLOADS = "uploads";
+    /**
+     * Uploading a static site's tree, granted for the site in the tenant part. A resource of its own, so that a
+     * site's id is never read as a system's name, and a system's upload role never reaches a static site.
+     */
+    public static final String RESOURCE_SITE_UPLOADS = "site-uploads";
     public static final String RESOURCE_SITES = "sites";
     public static final String OPERATION_READ = "read";
     public static final String OPERATION_WRITE = "write";
@@ -21,6 +29,8 @@ public final class Roles {
      */
     private static final String CHECKING = "hasRole('";
     private static final String CHECKING_FOR_THE_SYSTEM_PARAMETER = "hasRole(#system, '";
+    /** The site a request names, or the default site where it names none - as the upload itself reads it. */
+    private static final String CHECKING_FOR_THE_SITE_PARAMETER = "hasRole(#site ?: '" + Site.DEFAULT_SITE + "', '";
     private static final String THEN = "', '";
     private static final String DONE = "')";
 
@@ -29,6 +39,25 @@ public final class Roles {
      */
     public static final String HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM =
             CHECKING_FOR_THE_SYSTEM_PARAMETER + RESOURCE_UPLOADS + THEN + OPERATION_WRITE + DONE;
+
+    /**
+     * Uploading documentation, or checking a tree before uploading it: a static site's tree for the site named
+     * by the {@code site} parameter, anything else for the system named by the {@code system} parameter. Which
+     * of the two it is follows the {@code type} parameter, compared the way the upload parses it.
+     */
+    public static final String HAS_UPLOADS_WRITE_ROLE_FOR_THE_SUBJECT =
+            "(#type == '" + DocumentationTypeDto.SITE_DOCS_PARAMETER + "' ? "
+            + CHECKING_FOR_THE_SITE_PARAMETER + RESOURCE_SITE_UPLOADS + THEN + OPERATION_WRITE + DONE + " : "
+            + CHECKING_FOR_THE_SYSTEM_PARAMETER + RESOURCE_UPLOADS + THEN + OPERATION_WRITE + DONE + ")";
+
+    /**
+     * Reading what became of an upload: one of a system's, by the system's upload role, or one of a static
+     * site's, by the site's.
+     */
+    public static final String HAS_UPLOADS_WRITE_ROLE_FOR_THE_SYSTEM_OR_THE_SITE =
+            "(#system != null ? "
+            + CHECKING_FOR_THE_SYSTEM_PARAMETER + RESOURCE_UPLOADS + THEN + OPERATION_WRITE + DONE + " : "
+            + CHECKING_FOR_THE_SITE_PARAMETER + RESOURCE_SITE_UPLOADS + THEN + OPERATION_WRITE + DONE + ")";
 
     /**
      * Administering the documentation sites: asking for a site to be published.
@@ -57,6 +86,14 @@ public final class Roles {
      */
     public static final String HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM_OR_IS_SITES_ADMIN =
             CHECKING_FOR_THE_SYSTEM_PARAMETER + RESOURCE_UPLOADS + THEN + OPERATION_WRITE + DONE
+            + " or " + CHECKING + RESOURCE_SITES + THEN + OPERATION_ADMIN + DONE;
+
+    /**
+     * Removing the tree of the static site named by the {@code site} parameter: the role that uploads it, or an
+     * administrator of the sites - for the same reason a system's documentation may be removed by one.
+     */
+    public static final String HAS_SITE_UPLOADS_WRITE_ROLE_FOR_THE_SITE_OR_IS_SITES_ADMIN =
+            CHECKING_FOR_THE_SITE_PARAMETER + RESOURCE_SITE_UPLOADS + THEN + OPERATION_WRITE + DONE
             + " or " + CHECKING + RESOURCE_SITES + THEN + OPERATION_ADMIN + DONE;
 
     private Roles() {

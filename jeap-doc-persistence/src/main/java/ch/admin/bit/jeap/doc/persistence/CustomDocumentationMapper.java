@@ -23,7 +23,8 @@ final class CustomDocumentationMapper {
     }
 
     static CustomSetKey keyOf(CustomSetEntity entity) {
-        return new CustomSetKey(entity.getSite(), entity.getKind(), entity.getSystemName(), entity.getName(),
+        return new CustomSetKey(entity.getSite(), entity.getKind(), entity.getSystemName(),
+                entity.getName(),
                 entity.getSourceFormat(), entity.getTemplate(), entity.getLocation(), entity.getTopic());
     }
 

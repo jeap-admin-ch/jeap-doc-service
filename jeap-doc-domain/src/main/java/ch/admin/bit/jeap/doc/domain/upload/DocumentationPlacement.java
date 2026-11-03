@@ -14,7 +14,8 @@ import org.springframework.util.StringUtils;
  * is.
  *
  * @param type         what the documents document
- * @param system       the system the documents belong to, and the system the write role must be granted for
+ * @param system       the system the documents belong to, and the system the write role must be granted for;
+ *                     null for a static site's documents, which belong to no system
  * @param component    the component the documents belong to, for component documentation
  * @param library      the library the documents belong to, for library documentation
  * @param template     the section catalog the documents follow, e.g. arc42. <b>Checked here as a slug only</b>
@@ -36,7 +37,12 @@ public record DocumentationPlacement(
 
     static final String COMPONENT_PARAMETER = "component";
     static final String LIBRARY_PARAMETER = "library";
+    private static final String SYSTEM_PARAMETER = "system";
+    private static final String TEMPLATE_PARAMETER = "template";
+    private static final String LOCATION_PARAMETER = "location";
+    private static final String TOPIC_PARAMETER = "topic";
     private static final String MARKDOWN_DOCUMENTATION = "markdown documentation";
+    private static final String SITE_DOCUMENTATION = "the documentation of a static site";
 
     public DocumentationPlacement {
         check(type, system, component, library, template, sourceFormat, location, topic);
@@ -49,19 +55,41 @@ public record DocumentationPlacement(
     static void check(DocumentationType type, String system, String component, String library, String template,
                       SourceFormat sourceFormat, String location, String topic) {
         requirePresent(type, "type", "to know what the documents document");
-        requireSlug(system, "system");
-        requireSlug(template, "template");
         requirePresent(sourceFormat, "source-format", "to know how the documents are written");
+        if (type == DocumentationType.SITE_DOCS) {
+            checkSiteDocumentation(system, component, library, template, sourceFormat, location, topic);
+            return;
+        }
+        requireSlug(system, SYSTEM_PARAMETER);
+        requireSlug(template, TEMPLATE_PARAMETER);
 
         checkSubject(type, component, library);
 
         if (sourceFormat == SourceFormat.HTML) {
-            requireSlug(location, "location");
-            requireSlug(topic, "topic");
+            requireSlug(location, LOCATION_PARAMETER);
+            requireSlug(topic, TOPIC_PARAMETER);
         } else {
-            requireAbsent(location, "location", MARKDOWN_DOCUMENTATION);
-            requireAbsent(topic, "topic", MARKDOWN_DOCUMENTATION);
+            requireAbsent(location, LOCATION_PARAMETER, MARKDOWN_DOCUMENTATION);
+            requireAbsent(topic, TOPIC_PARAMETER, MARKDOWN_DOCUMENTATION);
         }
+    }
+
+    /**
+     * A static site's documents are the site's own: they name no system, component, library or template, and
+     * they are Markdown - a tree published as it is.
+     */
+    private static void checkSiteDocumentation(String system, String component, String library, String template,
+                                               SourceFormat sourceFormat, String location, String topic) {
+        requireAbsent(system, SYSTEM_PARAMETER, SITE_DOCUMENTATION);
+        requireAbsent(component, COMPONENT_PARAMETER, SITE_DOCUMENTATION);
+        requireAbsent(library, LIBRARY_PARAMETER, SITE_DOCUMENTATION);
+        requireAbsent(template, TEMPLATE_PARAMETER, SITE_DOCUMENTATION);
+        if (sourceFormat != SourceFormat.MARKDOWN) {
+            throw InvalidUploadException.invalidValue("source-format", sourceFormat.name(),
+                    "MARKDOWN, as a static site is a tree of Markdown");
+        }
+        requireAbsent(location, LOCATION_PARAMETER, SITE_DOCUMENTATION);
+        requireAbsent(topic, TOPIC_PARAMETER, SITE_DOCUMENTATION);
     }
 
     /** Which of {@code component} and {@code library} goes with which type, and neither with a system. */
@@ -79,6 +107,10 @@ public record DocumentationPlacement(
                 requireSlug(library, LIBRARY_PARAMETER);
                 requireAbsent(component, COMPONENT_PARAMETER, "library documentation");
             }
+            case SITE_DOCS -> {
+                requireAbsent(component, COMPONENT_PARAMETER, SITE_DOCUMENTATION);
+                requireAbsent(library, LIBRARY_PARAMETER, SITE_DOCUMENTATION);
+            }
         }
     }
 
@@ -93,7 +125,11 @@ public record DocumentationPlacement(
      */
     public static Subject subjectOf(DocumentationType type, String system, String component, String library) {
         requirePresent(type, "type", "to know what the documents document");
-        requireSlug(system, "system");
+        if (type == DocumentationType.SITE_DOCS) {
+            requireAbsent(system, SYSTEM_PARAMETER, SITE_DOCUMENTATION);
+        } else {
+            requireSlug(system, SYSTEM_PARAMETER);
+        }
         checkSubject(type, component, library);
         return new Subject(SubjectKind.of(type), system, subjectNameOf(type, component, library));
     }
@@ -101,8 +137,8 @@ public record DocumentationPlacement(
     /**
      * What a set of documents documents, without saying how it is written.
      *
-     * @param kind   whether it is a system, a component or a library
-     * @param system the system it belongs to, also for a component and for a library
+     * @param kind   whether it is a system, a component, a library or a static site
+     * @param system the system it belongs to, also for a component and for a library; null for a static site
      * @param name   the component or the library, null for a system
      */
     public record Subject(SubjectKind kind, String system, String name) {
@@ -123,6 +159,7 @@ public record DocumentationPlacement(
             case SYSTEM_DOCS -> null;
             case COMPONENT_DOCS -> component;
             case LIBRARY_DOCS -> library;
+            case SITE_DOCS -> null;
         };
     }
 

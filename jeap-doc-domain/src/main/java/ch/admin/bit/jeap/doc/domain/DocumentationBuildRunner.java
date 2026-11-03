@@ -13,6 +13,7 @@ import ch.admin.bit.jeap.doc.domain.port.PublishedSite;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildTimeoutException;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuilder;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -101,6 +102,26 @@ public class DocumentationBuildRunner {
     private volatile boolean stopping;
 
     /**
+     * Refuses a site whose builds would occupy more slots than the instance has: such a build could never
+     * start, and every part of the site would wait for ever.
+     */
+    @PostConstruct
+    void checkSlotWeights() {
+        for (Site site : sites.all()) {
+            if (site.buildSlots() > slotsOfTheInstance()) {
+                throw new IllegalStateException(("The site '%s' sets build.slots to %d, and this instance builds "
+                        + "%d part(s) at a time (jeap.doc.build.max-concurrent-parts). A build of that site could "
+                        + "never start; lower the weight or raise the slots.")
+                        .formatted(site.id(), site.buildSlots(), slotsOfTheInstance()));
+            }
+        }
+    }
+
+    private int slotsOfTheInstance() {
+        return Math.max(1, properties.getMaxConcurrentParts());
+    }
+
+    /**
      * Publishes everything this instance is owed, and reports whether it published anything. Called on a fixed
      * delay, and by the tests directly.
      * <p>
@@ -174,8 +195,8 @@ public class DocumentationBuildRunner {
      */
     private final class Pass {
 
-        /** The parts this pass is building right now. */
-        private final Set<PartKey> inFlight = new HashSet<>();
+        /** The parts this pass is building right now, each with the slots it occupies. */
+        private final Map<PartKey, Integer> inFlight = new HashMap<>();
 
         /** The parts this pass is finished with: when it offered each of them, and how that ended. */
         private final Map<PartKey, Settlement> settled = new HashMap<>();
@@ -197,7 +218,10 @@ public class DocumentationBuildRunner {
         private final Set<String> sitesWithABuild = new LinkedHashSet<>();
 
         private final long startedAtNanos = System.nanoTime();
-        /** The build time of this pass added up over every slot: three busy slots for a minute is three. */
+        /**
+         * The build time of this pass added up over every slot: three busy slots for a minute is three, and so
+         * is one build of weight three.
+         */
         private final AtomicLong busyNanos = new AtomicLong();
         private int built;
         private int contended;
@@ -278,8 +302,8 @@ public class DocumentationBuildRunner {
                 }
                 PartKey key = next.part().key();
                 Instant offeredAt = clock.instant();
-                inFlight.add(key);
-                metrics.slotsBusy(inFlight.size());
+                inFlight.put(key, weightOf(next));
+                metrics.slotsBusy(busySlots());
                 PartOutcome outcome = buildOrReport(next);
                 inFlight.remove(key);
                 settle(key, offeredAt, outcome);
@@ -315,10 +339,14 @@ public class DocumentationBuildRunner {
          * {@link BuildPickUpOrder} put them in - oldest second first, largest band first within a second, and
          * <b>the shell of a site last of all</b>, because it carries the links into the system parts. A slot
          * filled with whatever came to hand would publish the shell before the parts it links to.
+         * <p>
+         * <b>A part that needs more slots than are free waits at the head, and nothing overtakes it.</b> A
+         * site's weight says how many slots a build of it occupies. Starting the parts behind it while it waits
+         * would keep the slots busy, and a steady stream of small parts would starve it for good.
          */
         private void fill(CompletionService<PartResult> finished) {
-            while (inFlight.size() < slots() && !stopping) {
-                Buildable next = nextCandidate();
+            while (busySlots() < slots() && !stopping) {
+                Buildable next = nextCandidateThatFits();
                 if (next == null) {
                     return;
                 }
@@ -326,10 +354,32 @@ public class DocumentationBuildRunner {
                 // Taken when the part leaves the queue and not when its build ends: the build claims the
                 // request row before it reads anything, so a request arriving from here on is unserved by it.
                 Instant offeredAt = clock.instant();
-                inFlight.add(key);
-                metrics.slotsBusy(inFlight.size());
+                inFlight.put(key, weightOf(next));
+                metrics.slotsBusy(busySlots());
                 finished.submit(() -> new PartResult(key, offeredAt, buildOrReport(next)));
             }
+        }
+
+        /**
+         * The next candidate if the slots it occupies are free, and null when there is none or the next one
+         * has to wait for slots - which ends the filling until a build is done.
+         */
+        private Buildable nextCandidateThatFits() {
+            refill();
+            Buildable next = queue.peek();
+            if (next == null || weightOf(next) > slots() - busySlots()) {
+                return null;
+            }
+            return queue.poll();
+        }
+
+        /** How many slots the builds of this pass occupy right now. */
+        private int busySlots() {
+            return inFlight.values().stream().mapToInt(Integer::intValue).sum();
+        }
+
+        private static int weightOf(Buildable buildable) {
+            return Math.max(1, buildable.site().buildSlots());
         }
 
         /**
@@ -390,7 +440,7 @@ public class DocumentationBuildRunner {
             Map<String, Boolean> readyToBuild = new HashMap<>();
             for (Owed owed : partsOwedABuild(this::pagesOf)) {
                 PartKey key = owed.part();
-                if (inFlight.contains(key) || !mayOffer(key, owed.requestedAt())) {
+                if (inFlight.containsKey(key) || !mayOffer(key, owed.requestedAt())) {
                     continue;
                 }
                 Optional<Site> configured = sites.find(key.site());
@@ -433,6 +483,7 @@ public class DocumentationBuildRunner {
         @SuppressWarnings("java:S1181") // Catching Throwable is the point: see above.
         private PartOutcome buildOrReport(Buildable next) {
             long startedAt = System.nanoTime();
+            int weight = weightOf(next);
             try {
                 // Everything this build logs - the workspace, the generator's own output, the line that says
                 // it failed - carries the site, the part and the build. The scope is opened here because this
@@ -446,7 +497,7 @@ public class DocumentationBuildRunner {
                         next.part().key(), e);
                 return PartOutcome.BROKEN;
             } finally {
-                busyNanos.addAndGet(System.nanoTime() - startedAt);
+                busyNanos.addAndGet((System.nanoTime() - startedAt) * weight);
             }
         }
 
@@ -479,7 +530,7 @@ public class DocumentationBuildRunner {
 
         private void settle(PartKey part, Instant offeredAt, PartOutcome outcome) {
             settled.put(part, new Settlement(offeredAt, mayBeOfferedAgain(outcome)));
-            metrics.slotsBusy(inFlight.size());
+            metrics.slotsBusy(busySlots());
             switch (outcome) {
                 case BUILT -> {
                     built++;
@@ -500,7 +551,7 @@ public class DocumentationBuildRunner {
         }
 
         private int slots() {
-            return Math.max(1, properties.getMaxConcurrentParts());
+            return slotsOfTheInstance();
         }
 
         /** What building this part cost last time, in pages - see {@link BuildPickUpOrder}. */

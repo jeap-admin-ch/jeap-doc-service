@@ -498,7 +498,7 @@ class ArchitectureImportJobTest {
         private boolean failing;
 
         private RecordingTrigger() {
-            super(null, null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null, null);
         }
 
         @Override

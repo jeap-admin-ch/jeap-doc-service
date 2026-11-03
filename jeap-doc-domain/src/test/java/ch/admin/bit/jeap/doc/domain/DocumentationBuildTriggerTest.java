@@ -1,6 +1,9 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
+import ch.admin.bit.jeap.doc.domain.content.ContentSources;
+import ch.admin.bit.jeap.doc.domain.content.StaticSiteContent;
+import ch.admin.bit.jeap.doc.domain.content.SystemDocumentationContent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -348,6 +351,43 @@ class DocumentationBuildTriggerTest {
         assertThat(metrics.triggered).containsExactly(Site.DEFAULT_SITE + ":SCHEDULE:1");
     }
 
+    /**
+     * The content of a static site does not come from the architecture model, so an import asks for none of it
+     * - and the reconcile does, since nothing else publishes it.
+     */
+    @Test
+    void requestBecauseTheArchitectureWasImported_whenASiteIsStatic_thenItIsLeftToTheReconcile() {
+        SiteProperties.Site handbook = new SiteProperties.Site();
+        handbook.setPerEnvironment(false);
+        handbook.setContent(StaticSiteContent.SOURCE_ID);
+        DocumentationBuildTrigger withAHandbook = triggerFor(propertiesOf(Map.of(
+                Site.DEFAULT_SITE, new SiteProperties.Site(), "handbook", handbook)), landscapeOf("orders"));
+
+        withAHandbook.requestBecauseTheArchitectureWasImported("dev");
+        int reconciled = withAHandbook.requestBecauseNothingElsePublishesTheSite();
+
+        ArgumentCaptor<List<PartKey>> asked = ArgumentCaptor.captor();
+        verify(requests).requestAll(asked.capture(), eq(BuildTrigger.IMPORT), eq(NOW), any(), eq(false));
+        assertThat(asked.getValue()).allMatch(part -> part.site().equals(Site.DEFAULT_SITE));
+        assertThat(reconciled).isOne();
+        verify(requests).requestAll(eq(List.of(PartKey.shellOf("handbook"))), eq(BuildTrigger.SCHEDULE), any(),
+                any(Publication.class), eq(false));
+    }
+
+    /** A static site's tree is uploaded for the site, which is one part: its shell is asked for, once. */
+    @Test
+    void requestBecauseOfUpload_whenTheSiteIsStatic_thenItsShellIsAskedFor() {
+        SiteProperties.Site handbook = new SiteProperties.Site();
+        handbook.setPerEnvironment(false);
+        handbook.setContent(StaticSiteContent.SOURCE_ID);
+        DocumentationBuildTrigger withAHandbook = triggerFor(propertiesOf(Map.of("handbook", handbook)));
+
+        withAHandbook.requestBecauseOfUpload("handbook", null);
+
+        verify(requests).requestAll(eq(List.of(PartKey.shellOf("handbook"))), eq(BuildTrigger.UPLOAD), any(), any(),
+                eq(false));
+    }
+
     /** Fifty parts asked for, and one wake-up: a pass reads what is owed for itself. */
     @Test
     void requestEveryPart_thenThisInstanceIsAskedToLookOnceAndNotOncePerPart() {
@@ -367,8 +407,11 @@ class DocumentationBuildTriggerTest {
     private DocumentationBuildTrigger triggerFor(SiteProperties properties,
                                                  ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource model) {
         DocumentationSites configured = new DocumentationSites(properties);
-        return new DocumentationBuildTrigger(requests, configured, new SystemSitePartition(model, new NoCustomDocumentation()), model,
-                metrics, pickup, Clock.fixed(NOW, ZoneOffset.UTC));
+        ContentSources sources = new ContentSources(List.of(
+                new SystemDocumentationContent(model, new NoCustomDocumentation()), new StaticSiteContent()),
+                configured);
+        return new DocumentationBuildTrigger(requests, configured, new ContentSourcePartition(sources), model,
+                sources, metrics, pickup, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     /**

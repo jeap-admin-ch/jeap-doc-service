@@ -150,9 +150,12 @@ public class PagefindSearchIndexBuilder implements SearchIndexBuilder {
                 ObjectNode json = JSON.createObjectNode()
                         .put("url", searchRecord.url())
                         .put("title", searchRecord.title())
-                        .put("content", searchRecord.content())
-                        .put("environment", searchRecord.environment())
-                        .put("source", searchRecord.source());
+                        .put("content", searchRecord.content());
+                // Absent on a site without environments, whose search is not scoped to a tree.
+                if (searchRecord.environment() != null) {
+                    json.put("environment", searchRecord.environment());
+                }
+                json.put("source", searchRecord.source());
                 // Absent rather than empty, both of them: a record with no value for a key a query names is
                 // excluded by the index, and that is exactly what should happen to the site's own pages when
                 // a reader narrows the search to a subject.

@@ -215,6 +215,25 @@ class DocumentationBuildRequestRepositoryAdapterIT extends PostgresTestContainer
         assertThat(requests.claim(shell(site))).isEmpty();
     }
 
+    /**
+     * A burst of webhook calls or uploads while a part is being built: however many asks arrive, they are one
+     * pending request, and the build after the running one is the only one they cause.
+     */
+    @Test
+    void claim_whenAPartIsAskedForTwentyTimesWhileItsBuildRuns_thenExactlyOneFurtherBuildFollows() {
+        String site = site("burst");
+        requests.request(shell(site), BuildTrigger.IMPORT, NOW, null, false);
+        assertThat(requests.claim(shell(site))).isPresent();
+
+        for (int ask = 1; ask <= 20; ask++) {
+            requests.request(shell(site), BuildTrigger.UPLOAD, NOW.plusSeconds(ask), null, false);
+        }
+
+        assertThat(requests.pending()).filteredOn(request -> request.part().equals(shell(site))).hasSize(1);
+        assertThat(requests.claim(shell(site))).isPresent();
+        assertThat(requests.claim(shell(site))).isEmpty();
+    }
+
     @Test
     void claim_whenNothingPending_thenEmpty() {
         assertThat(requests.claim(shell(site("idle")))).isEmpty();

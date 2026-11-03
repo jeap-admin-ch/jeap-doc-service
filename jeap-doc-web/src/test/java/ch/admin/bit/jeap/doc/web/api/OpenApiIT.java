@@ -38,8 +38,8 @@ class OpenApiIT extends DocServiceIntegrationTestBase {
 
     /**
      * The validation endpoint and the parameters it accepts - and, just as much, the ones it does not: a
-     * pipeline reads this to know that a path tree is asked about with eight parameters and not with the
-     * seventeen of an upload.
+     * pipeline reads this to know that a path tree is asked about with nine parameters and not with the
+     * seventeen of an upload. The site is one of them, because a static site's tree is checked for its site.
      */
     @Test
     void apiDocs_whenSwaggerIsOpen_thenDescribesTheStructureValidation() throws Exception {
@@ -47,15 +47,14 @@ class OpenApiIT extends DocServiceIntegrationTestBase {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/uploads/docs/validation'].post").exists())
                 .andExpect(jsonPath(VALIDATION_PARAMETERS).value(hasItems(
-                        "type", "system", "component", "library", "template", "source-format", "location",
-                        "topic")))
+                        "site", "type", "system", "component", "library", "template", "source-format",
+                        "location", "topic")))
                 // One matcher per name, and not not(hasItems(a, b, c, d)): hasItems is every one of them, so
                 // negating it holds as soon as a single one is absent - and the endpoint could start taking
                 // the other three with this test still green.
                 .andExpect(jsonPath(VALIDATION_PARAMETERS).value(not(hasItem("version"))))
                 .andExpect(jsonPath(VALIDATION_PARAMETERS).value(not(hasItem("source-revision"))))
-                .andExpect(jsonPath(VALIDATION_PARAMETERS).value(not(hasItem("build-url"))))
-                .andExpect(jsonPath(VALIDATION_PARAMETERS).value(not(hasItem("site"))));
+                .andExpect(jsonPath(VALIDATION_PARAMETERS).value(not(hasItem("build-url"))));
     }
 
     /**

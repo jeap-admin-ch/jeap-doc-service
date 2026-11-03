@@ -17,7 +17,9 @@ import java.util.List;
  * @param site                the identifier of the site
  * @param title               what the site calls itself
  * @param publishOnUpload     whether an upload for it asks for a build
- * @param environments        its environments, in the order the switcher shows them
+ * @param perEnvironment      whether it has a tree per environment, or is one tree at its root
+ * @param environments        its environments, in the order the switcher shows them; empty for a site without
+ *                            environments
  * @param pending             the build owed to it, null when nothing is owed
  * @param running             the builds of it running right now
  * @param published           the build whose site is being served, null until one has succeeded
@@ -28,6 +30,7 @@ record SiteStatusDto(
         String site,
         String title,
         boolean publishOnUpload,
+        boolean perEnvironment,
         List<String> environments,
         PendingBuildDto pending,
         List<BuildDto> running,
@@ -54,6 +57,7 @@ record SiteStatusDto(
                 site.id(),
                 site.title(),
                 site.publishOnUpload(),
+                site.perEnvironment(),
                 site.environments().stream().map(SiteEnvironment::id).toList(),
                 PendingBuildDto.of(status.pending()),
                 status.running().stream().map(build -> BuildDto.of(build, now)).toList(),

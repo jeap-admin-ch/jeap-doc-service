@@ -446,6 +446,39 @@ class SearchRecordsTest {
         assertThat(records().getFirst().url()).isEqualTo("/somewhere-else/");
     }
 
+    /**
+     * A site without environments is one tree served at the site root, so its pages are found at the URLs a
+     * main tree's would have, and carry no environment to scope a search by.
+     */
+    @Test
+    void of_whenTheSiteHasNoEnvironments_thenTheOneTreeIsIndexedAtTheSiteRoot() throws IOException {
+        page(SiteSources.SINGLE_TREE + "/index.md", "Handbook", "Start here.");
+        page(SiteSources.SINGLE_TREE + "/1-intro/working-agreements.md", "Working Agreements", "How we work.");
+        Site handbook = new Site("handbook", "Handbook", null, null, null, null, List.of(), true, false);
+
+        List<SearchRecord> records = SearchRecords.of(content, handbook);
+
+        assertThat(records).extracting(SearchRecord::url)
+                .containsExactlyInAnyOrder("/", "/intro/working-agreements/");
+        assertThat(records).extracting(SearchRecord::environment).containsOnlyNulls();
+    }
+
+    /** A folder of a site's one tree called {@code systems} is the authors' own, not the tree of a system. */
+    @Test
+    void of_whenTheOneTreeHasASystemsFolder_thenItsPagesCarryNoSystemOrSubject() throws IOException {
+        page(SiteSources.SINGLE_TREE + "/systems/orders/components/billing/setup.md", "Setup", "How to set up.");
+        Site handbook = new Site("handbook", "Handbook", null, null, null, null, List.of(), true, false);
+
+        List<SearchRecord> records = SearchRecords.of(content, handbook);
+
+        assertThat(records).singleElement().satisfies(hit -> {
+            assertThat(hit.url()).isEqualTo("/systems/orders/components/billing/setup/");
+            assertThat(hit.subject()).isNull();
+            assertThat(hit.system()).isNull();
+            assertThat(hit.name()).isNull();
+        });
+    }
+
     private static String frontMatter(String title, String... keys) {
         // The file content is Markdown with LF line endings on every platform, which %n would not give.
         return "---\ntitle: %s\n%s\n---\n\n# %s\n\nWhat it says.\n" // NOSONAR

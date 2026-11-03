@@ -643,6 +643,140 @@ class DocumentationBuildRunnerTest {
     }
 
     /**
+     * <b>A heavy site waits for its slots, and nothing asked for after it overtakes it.</b> Three of four slots
+     * are busy when a part of a site of weight 2 comes up: it starts once two are free, and the part asked for
+     * after it does not take the one free slot in the meantime - a stream of small parts would starve it.
+     * <p>
+     * Every build is held until the test releases it, because the order builds reach the generator in is the
+     * pool's and not the runner's. The waits that show nothing started are bounded; a runner that let the later
+     * part overtake would start it at once.
+     */
+    @Test
+    void runOnce_whenAHeavySiteWaitsForSlots_thenItStartsOnceTheyAreFreeAndIsNotOvertaken() throws Exception {
+        SiteProperties configured = new SiteProperties();
+        SiteProperties.Site heavy = new SiteProperties.Site();
+        heavy.getBuild().setSlots(2);
+        configured.setSites(new java.util.LinkedHashMap<>(Map.of(SITE, new SiteProperties.Site(), "heavy", heavy)));
+        sites = new DocumentationSites(configured);
+        properties.setMaxConcurrentParts(4);
+        runner = new DocumentationBuildRunner(requests, builds, sites,
+                new SystemSitePartition(NoArchitectureRepository.INSTANCE, new NoCustomDocumentation()), siteBuilder,
+                publication, properties, metrics, locks, readiness, searchIndexing, Clock.fixed(NOW, ZoneOffset.UTC));
+        List<BuildRequest> pending = List.of(
+                requestedSecondsAgo(part("alpha"), 3), requestedSecondsAgo(part("beta"), 3),
+                requestedSecondsAgo(part("gamma"), 3), requestedSecondsAgo(PartKey.of("heavy", "system-x"), 2),
+                requestedSecondsAgo(part("delta"), 1));
+        when(requests.pending()).thenReturn(pending);
+        when(requests.claim(any())).thenAnswer(invocation -> pending.stream()
+                .filter(request -> request.part().equals(invocation.getArgument(0))).findFirst());
+        HeldBuilds held = new HeldBuilds();
+        when(siteBuilder.generate(any())).thenAnswer(invocation -> held.build(invocation.getArgument(0)));
+
+        java.util.concurrent.CompletableFuture<Boolean> pass =
+                java.util.concurrent.CompletableFuture.supplyAsync(runner::runOnce);
+        try {
+            held.awaitStarted("default/system-alpha", "default/system-beta", "default/system-gamma");
+            assertThat(held.startsWithin(Duration.ofMillis(300)))
+                    .describedAs("one slot is free and the heavy part needs two, so nothing starts").isFalse();
+
+            held.release("default/system-alpha");
+            held.awaitStarted("heavy/system-x");
+            assertThat(held.startsWithin(Duration.ofMillis(300)))
+                    .describedAs("all four slots are taken, so the part asked for later still waits").isFalse();
+        } finally {
+            held.releaseAll();
+        }
+
+        assertThat(pass.get(20, TimeUnit.SECONDS)).isTrue();
+        assertThat(held.started.subList(0, 3)).describedAs("the three asked for first, in any order")
+                .containsExactlyInAnyOrder("default/system-alpha", "default/system-beta", "default/system-gamma");
+        assertThat(held.started.subList(3, 5)).containsExactly("heavy/system-x", "default/system-delta");
+        assertThat(held.peak.get()).describedAs("the slots occupied at once, by weight").isEqualTo(4);
+        assertThat(metrics.slotsBusy).describedAs("the gauge counts the heavy build's two slots").contains(4);
+    }
+
+    /** Builds that wait in the site generator until the test lets them finish, weighed like the runner does. */
+    private static final class HeldBuilds {
+
+        private final List<String> started = java.util.Collections.synchronizedList(new ArrayList<>());
+        private final java.util.concurrent.BlockingQueue<String> starts =
+                new java.util.concurrent.LinkedBlockingQueue<>();
+        private final Map<String, CountDownLatch> releases = new java.util.concurrent.ConcurrentHashMap<>();
+        private final AtomicInteger busy = new AtomicInteger();
+        private final AtomicInteger peak = new AtomicInteger();
+
+        BuiltSite build(PreparedPart prepared) throws InterruptedException {
+            String key = prepared.part().key().toString();
+            int weight = prepared.part().site().equals("heavy") ? 2 : 1;
+            peak.accumulateAndGet(busy.addAndGet(weight), Math::max);
+            try {
+                started.add(key);
+                starts.add(key);
+                releaseOf(key).await(20, TimeUnit.SECONDS);
+                return new BuiltSite(Path.of("build"), 12, 4096, 900, Map.of());
+            } finally {
+                busy.addAndGet(-weight);
+            }
+        }
+
+        void awaitStarted(String... keys) throws InterruptedException {
+            for (int i = 0; i < keys.length; i++) {
+                String next = starts.poll(20, TimeUnit.SECONDS);
+                assertThat(next).describedAs("a build started").isNotNull();
+            }
+            assertThat(started).contains(keys);
+        }
+
+        boolean startsWithin(Duration wait) throws InterruptedException {
+            return starts.poll(wait.toMillis(), TimeUnit.MILLISECONDS) != null;
+        }
+
+        void release(String key) {
+            releaseOf(key).countDown();
+        }
+
+        void releaseAll() {
+            List.of("default/system-alpha", "default/system-beta", "default/system-gamma", "heavy/system-x",
+                    "default/system-delta").forEach(this::release);
+        }
+
+        private CountDownLatch releaseOf(String key) {
+            return releases.computeIfAbsent(key, any -> new CountDownLatch(1));
+        }
+    }
+
+    @Test
+    void checkSlotWeights_whenASiteWeighsMoreThanTheInstanceHasSlots_thenTheStartupFailsNamingTheSite() {
+        SiteProperties configured = new SiteProperties();
+        SiteProperties.Site heavy = new SiteProperties.Site();
+        heavy.getBuild().setSlots(4);
+        configured.setSites(new java.util.LinkedHashMap<>(Map.of("heavy", heavy)));
+        properties.setMaxConcurrentParts(3);
+        DocumentationBuildRunner refusing = new DocumentationBuildRunner(requests, builds,
+                new DocumentationSites(configured),
+                new SystemSitePartition(NoArchitectureRepository.INSTANCE, new NoCustomDocumentation()), siteBuilder,
+                publication, properties, metrics, locks, readiness, searchIndexing, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertThatThrownBy(refusing::checkSlotWeights)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("'heavy'")
+                .hasMessageContaining("build.slots");
+    }
+
+    @Test
+    void checkSlotWeights_whenEverySiteFits_thenTheStartupGoesOn() {
+        properties.setMaxConcurrentParts(1);
+
+        runner.checkSlotWeights();
+
+        assertThat(sites.all()).extracting(Site::buildSlots).containsOnly(1);
+    }
+
+    private static BuildRequest requestedSecondsAgo(PartKey part, int seconds) {
+        return new BuildRequest(part, NOW.minusSeconds(seconds), BuildTrigger.IMPORT, null, false);
+    }
+
+    /**
      * Holds the first build in the site generator until the latch is counted down by the four that follow it,
      * and counts it down from each of those. The wait is bounded so that a regression fails the test instead
      * of hanging it.

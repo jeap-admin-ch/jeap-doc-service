@@ -20,7 +20,8 @@ import java.time.temporal.ChronoUnit;
  *
  * @param site             the site the documents belong to - the default site when the upload names none
  * @param type             what the documents document
- * @param system           the system the documents belong to, and the system the write role must be granted for
+ * @param system           the system the documents belong to, and the system the write role must be granted for;
+ *                         null for the documentation of a static site
  * @param component        the component the documents belong to, for component documentation
  * @param library          the library the documents belong to, for library documentation
  * @param template         the section catalog the documents follow, e.g. arc42
@@ -83,6 +84,9 @@ public record DocumentationUploadDescriptor(
             }
             case COMPONENT_DOCS -> requireText(version, "version", "for component documentation");
             case LIBRARY_DOCS -> requireText(version, "version", "for library documentation");
+            case SITE_DOCS -> {
+                // A static site is versioned by its source, which the provenance below records.
+            }
         }
         if (sourceFormat == SourceFormat.HTML) {
             requireText(label, "label", "for HTML documents");

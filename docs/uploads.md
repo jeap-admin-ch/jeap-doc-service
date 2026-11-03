@@ -207,6 +207,76 @@ The upload itself stays `PENDING`, and the word still fits: what is pending is t
 current, and the build that was asked for is what puts it on the site. See
 [The documentation a team writes](custom-documentation.md).
 
+## A static site's tree
+
+A site whose `content` is `static-site` is a tree of Markdown uploaded **for the site itself** - a handbook, a set
+of guides - and published as it is: its folders are the navigation, and nothing is generated into it. Its upload
+names no system, component, library or template:
+
+```
+PUT /api/uploads/docs/{uploadId}?site=handbook&type=site-docs&source-format=markdown&source-repository=...
+```
+
+- **A tree replaces the site's previous tree whole.** A file the new tree does not carry is gone from the site
+  with the next build.
+- **The same checks apply**: the size, the extensions a page and its assets are written in, no `.mdx`, raw HTML
+  shown as text, and the dry run of `POST /api/uploads/docs/validation?type=site-docs&site=handbook`. What does
+  not apply is what belongs to a template: there are no chapters, so a file may lie at the root and in any folder,
+  at any depth. A page's front matter keeps what any uploaded page may say about itself - its title, description,
+  sidebar label, tags and keywords. The [validation rules](upload-validation.md) list the names a tree may not use.
+- **Only a static site takes it, and a static site takes nothing else.** A site-level upload to a site with
+  other content, and a system's upload to a static site, are refused - by the dry run as by the upload, where the
+  dry run names its site.
+- **Its role is the site's**: `<system-name>_%<site>_@site-uploads_#write` - see
+  [Security](security.md#a-static-site-is-uploaded-for-the-site).
+- **Its root page is an `index.md` or `README.md` at the root**, in any case. Without one the site gets a
+  generated root page; a numbered `00-index.md` is a page of its own, at `/index/`.
+- **A tree can be removed again** with `DELETE /api/docs/custom/sites?site=<id>`, by the same role or by an
+  administrator of the sites, and with nothing else: the removal of a set or a subject refuses `type=site-docs`,
+  as it is authorized by a system's role - see [the API](api.md#removing-custom-documentation).
+
+### The navigation of a static site
+
+The sidebar is the tree: every folder is a category, every page an entry in it. **Nothing has to be configured
+for that** - a tree of plain folders and pages is a complete site. What decides how it looks:
+
+- **The order is the numbers.** A leading number on a page or folder, `01-why.md` or `02-working-agreements/`,
+  orders it among its siblings and is not part of its URL or its label. Without a number, an entry comes after the
+  numbered ones, in the order of its name. A page cannot set its own position: `sidebar_position` is not among
+  the front matter an uploaded page keeps.
+- **A folder's own page** is an `index.md`, a `README.md` or a page named like its folder - `guides/guides.md`,
+  compared as written, so `01-guides/guides.md` is not one. Clicking the folder opens it, and its
+  `sidebar_label`, or else its title, labels the folder.
+- **A folder's label** is, in this order: the `label` of its `_category_.json`, the label of its own page, or
+  its name without the number - `02-working-agreements/` shows as `working-agreements`, written as it is.
+
+**`_category_.json` is optional.** A folder carries one only where its name is not the label it should have, or
+to fold it:
+
+```
+intro/
+  _category_.json        # {"label": "Introduction", "position": 1}
+  01-why.md
+  02-how-we-work.md
+working-agreements/
+  index.md               # the folder's own page: its title labels the folder
+  reviews.md
+glossary.md
+```
+
+| Key           | Type    | What it does                                                                                |
+|---------------|---------|---------------------------------------------------------------------------------------------|
+| `label`       | string  | The folder's label in the sidebar                                                           |
+| `position`    | number  | Where the folder goes among its siblings, ahead of any number on the folder or its own page |
+| `collapsed`   | boolean | Whether the folder starts closed                                                            |
+| `collapsible` | boolean | Whether the folder can be closed at all                                                     |
+| `className`   | string  | A CSS class on the folder's sidebar entry                                                   |
+
+Only these keys are published. Everything else - above all a `link`, whose target Docusaurus resolves and fails
+the whole build over when it does not exist - is dropped, and a file that is no JSON object is left out with a
+warning in the log: the folder is then labelled as one without the file is. A `_category_.json` is the one name
+beginning with an underscore a static tree may carry.
+
 ## Related
 
 - [What an upload is validated against](upload-validation.md) - the structural rules, per template

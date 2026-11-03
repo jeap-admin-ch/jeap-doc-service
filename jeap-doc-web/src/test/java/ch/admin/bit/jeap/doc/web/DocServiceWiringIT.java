@@ -8,7 +8,11 @@ import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
 import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
 import ch.admin.bit.jeap.doc.domain.port.UploadMetrics;
+import ch.admin.bit.jeap.doc.domain.content.ContentSources;
+import ch.admin.bit.jeap.doc.domain.content.StaticSiteContent;
+import ch.admin.bit.jeap.doc.domain.content.SystemDocumentationContent;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
+import ch.admin.bit.jeap.doc.sitegenerator.ContentWriter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -94,6 +98,19 @@ class DocServiceWiringIT extends DocServiceIntegrationTestBase {
                 .describedAs("structure templates, of which there may be many")
                 .isNotEmpty();
         assertThat(context.getBean(StructureTemplates.class).ids()).contains("arc42");
+    }
+
+    /**
+     * A content source is a plugin point as well, and so is its writer: every source the service ships is found,
+     * and each has the writer the generator picks for it - a site of a source without one could not be built.
+     */
+    @Test
+    void contentSources_areFoundOnTheClasspathAndEachHasAWriter() {
+        assertThat(context.getBean(ContentSources.class).ids())
+                .contains(SystemDocumentationContent.SOURCE_ID, StaticSiteContent.SOURCE_ID);
+        assertThat(context.getBeansOfType(ContentWriter.class).values())
+                .extracting(ContentWriter::contentSource)
+                .containsExactlyInAnyOrderElementsOf(context.getBean(ContentSources.class).ids());
     }
 
     /**

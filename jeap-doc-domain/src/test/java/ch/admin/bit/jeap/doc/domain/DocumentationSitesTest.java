@@ -26,6 +26,35 @@ class DocumentationSitesTest {
         assertThat(site.mainEnvironment().id()).isEqualTo("prod");
         assertThat(site.latestEnvironment().id()).isEqualTo("dev");
         assertThat(site.publishOnUpload()).isTrue();
+        assertThat(site.perEnvironment()).isTrue();
+    }
+
+    @Test
+    void construct_whenASiteHasNoEnvironments_thenItIsOneTreeWithoutMainOrLatest() {
+        SiteProperties properties = properties(Map.of("handbook",
+                site(configured -> configured.setPerEnvironment(false))));
+
+        Site site = new DocumentationSites(properties).find("handbook").orElseThrow();
+
+        assertThat(site.perEnvironment()).isFalse();
+        assertThat(site.environments()).isEmpty();
+        assertThat(site.routePrefix()).isEqualTo("/site/handbook");
+        assertThatThrownBy(site::mainEnvironment).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(site::latestEnvironment).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void construct_whenASiteWithoutEnvironmentsConfiguresEnvironments_thenFailsTheStartupNamingTheSite() {
+        SiteProperties properties = properties(Map.of("handbook", site(configured -> {
+            configured.setPerEnvironment(false);
+            configured.setEnvironments(List.of(environment("prod", true, true)));
+        })));
+
+        assertThatThrownBy(() -> new DocumentationSites(properties))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("'handbook'")
+                .hasMessageContaining("per-environment: false")
+                .hasMessageContaining("[prod]");
     }
 
     @Test

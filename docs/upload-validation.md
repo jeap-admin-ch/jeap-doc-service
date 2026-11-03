@@ -2,7 +2,8 @@
 
 Documentation reaches the doc service as a ZIP of a folder, and where each file sits in that folder is what
 decides where it is published. This page is the **structural** half of what checks that: the rules the doc
-service applies to the *paths* of an upload, per structure template.
+service applies to the *paths* of an upload, per structure template - and for the tree of a static site, which
+follows none.
 
 **Two stages, and this is the second.** The content of the files - CommonMark, dead links, the front-matter
 allowlist - is checked in the doc workflow, before anything is sent, and the doc service never sees a file's
@@ -230,6 +231,26 @@ sandbox - see [Security](security.md).
 microsite's pages is stored when it is uploaded, under the same prefix as its files so that removing the set
 removes it too - so a set carrying that path is refused rather than silently overwritten. Deeper in the tree
 the name is a team's own business.
+
+## A static site's tree follows no template
+
+A static site's tree (`type=site-docs`) is published as it is, so there are no chapters: a file may lie at the
+root and in any folder, at any depth. Its report names `static-site` as its template and lists no folders. What
+still holds is what holds for every Markdown set:
+
+| # | Rule                                                                                                                                                                                                                                                                                                                                             | Finding                             |
+|---|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------|
+| 1 | The path is relative and normalized, as above                                                                                                                                                                                                                                                                                                    | `INVALID_PATH`                      |
+| 2 | No path appears twice                                                                                                                                                                                                                                                                                                                            | `DUPLICATE_PATH`                    |
+| 3 | No file or folder name begins with `.` or `_` - except a folder's `_category_.json`, which labels and orders it                                                                                                                                                                                                                                  | `HIDDEN_NAME`, `UNPUBLISHABLE_NAME` |
+| 4 | The extension is one a page or its assets are written in: `md`, `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `svg`, `pdf`, `txt`, `csv`, `json`, `yaml`, `yml`, and what the instance adds                                                                                                                                                       | `FORBIDDEN_EXTENSION`               |
+| 5 | No path is both a file and a folder, and no two pages are published at one URL: a leading number is not part of a URL, and an `index`, a `README` or a page named like its folder - compared as written, before a number comes off, so `01-guides/01-guides.md` is the folder's page and `01-guides/guides.md` is not - is the folder's own page | `COLLIDING_NAME`                    |
+| 6 | No page takes a URL the doc service serves on every static site itself: `about-this-documentation` and `search` at the root, as a page or as a folder's own page                                                                                                                                                                                 | `RESERVED_NAME`                     |
+| 7 | No page lies in a folder the doc service answers below every site's root: `microsites` and `pagefind`, and `tags`, where the generator writes a page per tag - and on the default site, which is served at the context root, also `site`, `api`, `actuator`, `swagger-ui`, `api-docs`, `webjars`, `error`, `assets` and `img`                    | `RESERVED_NAME`                     |
+
+An `index.md` or `README.md` at the root is the tree's own root page and replaces the generated one. A site-level
+tree is checked for its site, which has to be a static site, exactly as the upload checks it. Ask with
+`POST /api/uploads/docs/validation?site=<id>&type=site-docs&source-format=markdown`.
 
 ## The finding codes
 

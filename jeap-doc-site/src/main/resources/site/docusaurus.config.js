@@ -6,7 +6,8 @@
  * one site and the next is read from two files the site generator writes into `content/` before the build:
  *
  *   content/site.json          which site this is - title, tagline, colour scheme, logo, url and base url
- *   content/environments.json  the environments of that site, one of which is `main` and one `latest`
+ *   content/environments.json  the environments of that site, one of which is `main` and one `latest` - or
+ *                              none, for a site without environments
  *
  * The site generator owns `content/` and nothing else; this file and everything beside it are copied over the
  * workspace afterwards, so generated content can never replace part of the application.
@@ -31,10 +32,21 @@ function readGenerated(name) {
 const site = readGenerated('site.json');
 const {environments} = readGenerated('environments.json');
 
-const mainEnvironment = environments.find((environment) => environment.main);
-if (!mainEnvironment) {
+/**
+ * Whether the site has a tree per environment. The generator writes `perEnvironment: false` for a site that is
+ * one tree, and nothing for any other site.
+ */
+const perEnvironment = site.perEnvironment !== false;
+
+if (perEnvironment && !environments.some((environment) => environment.main)) {
     throw new Error('No environment is marked as the main one; the site generator guarantees exactly one.');
 }
+
+/**
+ * The one tree of a site without environments, in the shape the docs options read: served at the site root,
+ * like a main environment, from `content/tree`. It is not an environment and is offered nowhere as one.
+ */
+const SINGLE_TREE = {id: 'tree', main: true, hasSystems: false};
 
 /** `/dev`, and the empty string for the environment served at the site root. */
 const routePrefixOf = (environment) => (environment.main ? '' : `/${environment.id}`);
@@ -52,7 +64,7 @@ const part = site.part || {
     shell: true,
     carriesWholeEnvironments: true,
     tree: '',
-    environments: environments.map((environment) => environment.id),
+    environments: perEnvironment ? environments.map((environment) => environment.id) : [],
 };
 
 if (!Array.isArray(part.environments)) {
@@ -79,20 +91,24 @@ if (typeof part.carriesWholeEnvironments !== 'boolean') {
 const partTree = part.tree ? `/${part.tree}` : '';
 
 /**
- * The environments this part actually has content for. The switcher still offers every one of them.
+ * The environments this part actually has content for. The switcher still offers every one of them. On a site
+ * without environments it is the one tree.
  *
  * Filtered by whether the generator wrote anything, and not only by what the part carries: an environment
  * that reads no architecture model has no tree at all, and a system that is not deployed on a stage has none
  * in that stage's tree. A docs plugin instance pointed at a directory that is not there is a build that fails
  * for a legitimate state of the landscape.
  */
-const carriedEnvironments = environments
-    .filter((environment) => part.environments.includes(environment.id))
+const carriedEnvironments = (perEnvironment
+    ? environments.filter((environment) => part.environments.includes(environment.id))
+    : [SINGLE_TREE])
     .filter((environment) => fs.existsSync(path.join(CONTENT_DIR, environment.id + partTree)));
 if (carriedEnvironments.length === 0) {
-    throw new Error(
-        `The part ${part.id} has no content: none of the environments it carries (${part.environments}) has a ` +
-        `directory ${partTree || '/'} under ${CONTENT_DIR}. The site generator writes them before the build.`);
+    throw new Error(perEnvironment
+        ? `The part ${part.id} has no content: none of the environments it carries (${part.environments}) has a ` +
+          `directory ${partTree || '/'} under ${CONTENT_DIR}. The site generator writes them before the build.`
+        : `The part ${part.id} has no content: the site has no environments and ${CONTENT_DIR} has no ` +
+          `directory ${SINGLE_TREE.id}${partTree}. The site generator writes it before the build.`);
 }
 
 /**
@@ -183,6 +199,19 @@ function withSystemsListed(environment, items) {
 }
 
 /**
+ * The page about the documentation goes after the tree of a site without environments. That tree is an upload's,
+ * and orders its entries by number only where its authors numbered them - an entry without one has no position,
+ * and Docusaurus puts it after every entry that has one, so no position given to the page could put it last.
+ */
+function withTheAboutPageLast(items) {
+    if (perEnvironment) {
+        return items;
+    }
+    const isTheAboutPage = (item) => item.type === 'doc' && item.id === 'about-this-documentation';
+    return [...items.filter((item) => !isTheAboutPage(item)), ...items.filter(isTheAboutPage)];
+}
+
+/**
  * The documentation options of one environment of this part. Every environment is a docs plugin instance
  * reading its own composed tree: they are peers, and the main environment is served at the site root so its
  * URLs stay stable.
@@ -220,12 +249,19 @@ function docsOptions(environment) {
         // the default generator's - what is added is the way out of a part, which needs this environment.
         sidebarItemsGenerator: async ({defaultSidebarItemsGenerator, ...args}) => [
             ...escapePointOf(environment),
-            ...withSystemsListed(environment, await defaultSidebarItemsGenerator(args)),
+            ...withTheAboutPageLast(withSystemsListed(environment, await defaultSidebarItemsGenerator(args))),
         ],
     };
 }
 
 const colorScheme = site.colorScheme || 'jeap';
+
+/**
+ * The header bar of an instance with several sites, or a title of its own: that title beside the logo on every
+ * site, and a tab per site. The generator writes it only then, so a single site keeps the header it had.
+ */
+const navigation = site.navigation || null;
+const siteTabs = navigation && Array.isArray(navigation.tabs) && navigation.tabs.length > 1 ? navigation.tabs : [];
 
 /** The version the footer names after the service, where the build could read it. */
 const service = site.serviceVersion ? ` ${site.serviceVersion}` : '';
@@ -256,14 +292,16 @@ const footerLinks = [
             items: site.sites.map((each) => ({label: each.title, href: each.url})),
         }]
         : []),
-    {
-        // One link per environment, to its own root. Every environment has a root page, so these never break -
-        // and they are the shell part's pages, so a part that is not the shell links them without the check.
-        title: 'Environments',
-        items: [...environments]
-            .sort((one, other) => (one.order || 0) - (other.order || 0))
-            .map((environment) => siteLink(environment.label, `${routePrefixOf(environment)}/`)),
-    },
+    // One link per environment, to its own root. Every environment has a root page, so these never break -
+    // and they are the shell part's pages, so a part that is not the shell links them without the check.
+    ...(perEnvironment
+        ? [{
+            title: 'Environments',
+            items: [...environments]
+                .sort((one, other) => (one.order || 0) - (other.order || 0))
+                .map((environment) => siteLink(environment.label, `${routePrefixOf(environment)}/`)),
+        }]
+        : []),
 ];
 
 /**
@@ -450,9 +488,11 @@ const config = {
                 },
             },
             navbar: {
-                title: site.title,
+                // The instance's title, where there is one. The page titles in the browser keep naming the site,
+                // because they are built from the site's own title above.
+                title: navigation ? navigation.title : site.title,
                 logo: {
-                    alt: site.title,
+                    alt: navigation ? navigation.title : site.title,
                     // The site's front page belongs to the part that carries whole environment trees; every
                     // other part links it unchecked. With target, or the logo of a system's part opens the
                     // front page in a new tab - the navbar logo takes one of its own, which Logo passes to Link.
@@ -462,11 +502,12 @@ const config = {
                     height: 28,
                 },
                 items: [
+                    ...(siteTabs.length > 0 ? [{type: 'custom-siteTabs', position: 'left', tabs: siteTabs}] : []),
                     // Before the switcher, and placed by an item rather than left to the theme: the classic
                     // theme renders `@theme/SearchBar` itself when no search item is present, and the two
                     // paths put it in different places.
                     {type: 'search', position: 'right'},
-                    {type: 'custom-environmentSwitcher', position: 'right'},
+                    ...(perEnvironment ? [{type: 'custom-environmentSwitcher', position: 'right'}] : []),
                 ],
             },
             footer: {

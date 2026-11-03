@@ -183,6 +183,21 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
                 .andExpect(jsonPath("$.detail").value(containsString("template")));
     }
 
+    /**
+     * A static site's tree names no system, so the parameter is optional on the endpoint - and a system's upload
+     * that forgets it is told so, rather than refused by a role check that has no system to check.
+     */
+    @Test
+    void upload_whenSystemIsMissing_thenBadRequestBeforeTheRoleIsChecked() throws Exception {
+        Map<String, String> parameters = systemDocs();
+        parameters.remove("system");
+
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MISSING_PARAMETER"))
+                .andExpect(jsonPath("$.detail").value(containsString("system")));
+    }
+
     @Test
     void upload_whenTypeIsUnknown_thenBadRequest() throws Exception {
         Map<String, String> parameters = systemDocs();

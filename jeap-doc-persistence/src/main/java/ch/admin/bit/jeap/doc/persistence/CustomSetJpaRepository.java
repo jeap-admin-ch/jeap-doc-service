@@ -17,14 +17,14 @@ import java.util.Optional;
 interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
 
     /**
-     * The set under one key. The three nullable parts are compared as empty ones, the way the unique index
-     * folds them - two nulls would otherwise never match.
+     * The set under one key. The nullable parts are compared as empty ones, the way the unique index folds
+     * them - two nulls would otherwise never match.
      */
     @Query("""
             select s from CustomSetEntity s
-            where s.site = :site and s.kind = :kind and s.systemName = :system
+            where s.site = :site and s.kind = :kind and coalesce(s.systemName, '') = coalesce(:system, '')
               and coalesce(s.name, '') = coalesce(:name, '')
-              and s.sourceFormat = :sourceFormat and s.template = :template
+              and s.sourceFormat = :sourceFormat and coalesce(s.template, '') = coalesce(:template, '')
               and coalesce(s.location, '') = coalesce(:location, '')
               and coalesce(s.topic, '') = coalesce(:topic, '')
             """)
@@ -71,9 +71,9 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select s from CustomSetEntity s
-            where s.site = :site and s.kind = :kind and s.systemName = :system
+            where s.site = :site and s.kind = :kind and coalesce(s.systemName, '') = coalesce(:system, '')
               and coalesce(s.name, '') = coalesce(:name, '')
-              and s.sourceFormat = :sourceFormat and s.template = :template
+              and s.sourceFormat = :sourceFormat and coalesce(s.template, '') = coalesce(:template, '')
               and coalesce(s.location, '') = coalesce(:location, '')
               and coalesce(s.topic, '') = coalesce(:topic, '')
             """)
@@ -84,7 +84,8 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
                                             @Param("location") String location, @Param("topic") String topic);
 
     /**
-     * Every subject a site holds documentation of, as four columns rather than as rows.
+     * Every system, component and library a site holds documentation of, as four columns rather than as rows.
+     * A static site's own set documents none of them, and is left out.
      * <p>
      * It is asked while a request is served - the site partition adds these to the systems of the architecture
      * model - so it stays a projection: the provenance, the digests and the sizes of every set of a site have
@@ -94,7 +95,7 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
             select distinct new ch.admin.bit.jeap.doc.domain.custom.CustomSubject(
                     s.site, s.kind, s.systemName, s.name)
             from CustomSetEntity s
-            where s.site = :site
+            where s.site = :site and s.kind <> ch.admin.bit.jeap.doc.domain.upload.SubjectKind.SITE
             """)
     List<CustomSubject> subjectsOf(@Param("site") String site);
 
@@ -116,7 +117,7 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
      * takes the row's lock, so the upload that arrives second blocks here - before it deletes anything - and
      * its delete then sees the rows the first one wrote.
      * <p>
-     * The conflict is inferred from the unique index of the identity, which compares the three nullable parts
+     * The conflict is inferred from the unique index of the identity, which compares the nullable parts
      * as empty ones: in PostgreSQL two nulls would not conflict.
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
@@ -129,7 +130,8 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
                     :location, :topic, :label, :revision, :objectKey, :sha256, :sizeInBytes,
                     :sourceRepository, :sourceRef, :sourceRevision, :sourceTimestamp, :version,
                     :uploadedAt)
-            on conflict (site, kind, system_name, coalesce(name, ''), source_format, template,
+            on conflict (site, kind, coalesce(system_name, ''), coalesce(name, ''), source_format,
+                         coalesce(template, ''),
                          coalesce(location, ''), coalesce(topic, ''))
             do update set label = excluded.label,
                           revision = excluded.revision,

@@ -52,7 +52,6 @@ class DocumentationUploadEntity {
     @JoinColumn(name = "subject_id", nullable = false)
     private DocumentationSubjectEntity subject;
 
-    @Column(nullable = false)
     private String template;
 
     @Enumerated(EnumType.STRING)

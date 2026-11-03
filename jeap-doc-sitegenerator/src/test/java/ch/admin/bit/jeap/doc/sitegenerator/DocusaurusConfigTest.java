@@ -100,6 +100,106 @@ class DocusaurusConfigTest {
     }
 
     /**
+     * A site without environments is one docs instance, mounted at the site root from the one tree - with no
+     * switcher in the navbar and no environments in the footer.
+     */
+    @Test
+    void config_whenTheSiteHasNoEnvironments_thenTheOneTreeIsServedAtTheRootWithNothingToSwitch()
+            throws IOException {
+        installTemplate();
+        writeSite("""
+                {"id": "handbook", "title": "Handbook", "baseUrl": "/site/handbook/", "perEnvironment": false,
+                 "part": {"id": "shell", "shell": true, "carriesWholeEnvironments": true, "tree": "",
+                          "environments": []}}
+                """);
+        writeContent("environments.json", """
+                {"environments": []}
+                """);
+        Files.createDirectories(workspace.resolve("content/" + SiteSources.SINGLE_TREE));
+        Files.writeString(workspace.resolve("layout.js"), """
+                const config = require('./docusaurus.config.js');
+                const docs = config.plugins
+                    .filter((plugin) => Array.isArray(plugin))
+                    .filter((plugin) => plugin[0] === '@docusaurus/plugin-content-docs')
+                    .map((plugin) => ({id: plugin[1].id, path: plugin[1].path, route: plugin[1].routeBasePath}));
+                console.log(JSON.stringify({
+                    docs,
+                    navbar: config.themeConfig.navbar.items.map((item) => item.type),
+                    footer: config.themeConfig.footer.links.map((group) => group.title),
+                }));
+                """, StandardCharsets.UTF_8);
+
+        String layout = node.runAndCapture(workspace, "layout.js");
+
+        assertThat(layout).contains("""
+                "docs":[{"id":"tree","path":"content/tree","route":"/"}]""".strip());
+        assertThat(layout).contains("""
+                "navbar":["search"]""".strip());
+        assertThat(layout).contains("""
+                "footer":["Documentation"]""".strip());
+    }
+
+    /**
+     * An instance of several sites: the tabs go left in the header bar, the instance's title beside the logo,
+     * and the site's own title stays what the page titles are built from.
+     */
+    @Test
+    void config_whenTheInstanceHasSeveralSites_thenTheTabsAndTheInstanceTitleAreInTheHeaderBar()
+            throws IOException {
+        installTemplate();
+        writeSite("""
+                {"id": "deployments", "title": "Deployments", "baseUrl": "/site/deployments/",
+                 "navigation": {"title": "Example Documentation", "tabs": [
+                   {"label": "Architecture", "url": "/", "current": false},
+                   {"label": "Deployments", "url": "/site/deployments/", "current": true}]},
+                 "part": {"id": "shell", "shell": true, "carriesWholeEnvironments": true, "tree": "",
+                          "environments": ["prod"]}}
+                """);
+        writeEnvironments("""
+                {"environments": [{"id": "prod", "label": "Production", "main": true, "hasSystems": false}]}
+                """);
+        Files.writeString(workspace.resolve("header.js"), """
+                const config = require('./docusaurus.config.js');
+                const navbar = config.themeConfig.navbar;
+                console.log(JSON.stringify({
+                    title: config.title,
+                    navbarTitle: navbar.title,
+                    tabs: navbar.items.filter((item) => item.type === 'custom-siteTabs')
+                        .map((item) => ({position: item.position, labels: item.tabs.map((tab) => tab.label)})),
+                }));
+                """, StandardCharsets.UTF_8);
+
+        String header = node.runAndCapture(workspace, "header.js");
+
+        assertThat(header).contains("""
+                "title":"Deployments","navbarTitle":"Example Documentation\"""".strip());
+        assertThat(header).contains("""
+                "tabs":[{"position":"left","labels":["Architecture","Deployments"]}]""".strip());
+    }
+
+    /** Without the navigation, the header bar is what it always was: the site's title and no tabs. */
+    @Test
+    void config_whenThereIsNoNavigation_thenTheHeaderBarShowsTheSiteAndNoTabs() throws IOException {
+        installTemplate();
+        writeSite("""
+                {"id": "default", "title": "Documentation", "baseUrl": "/",
+                 "part": {"id": "shell", "shell": true, "carriesWholeEnvironments": true, "tree": "",
+                          "environments": ["prod"]}}
+                """);
+        writeEnvironments("""
+                {"environments": [{"id": "prod", "label": "Production", "main": true, "hasSystems": false}]}
+                """);
+        Files.writeString(workspace.resolve("header.js"), """
+                const config = require('./docusaurus.config.js');
+                console.log(JSON.stringify({navbarTitle: config.themeConfig.navbar.title,
+                    types: config.themeConfig.navbar.items.map((item) => item.type)}));
+                """, StandardCharsets.UTF_8);
+
+        assertThat(node.runAndCapture(workspace, "header.js")).contains("""
+                {"navbarTitle":"Documentation","types":["search","custom-environmentSwitcher"]}""".strip());
+    }
+
+    /**
      * The template as a build installs it, a stub of the one package its configuration imports, and a script
      * that loads the configuration and prints the sidebar it built.
      */

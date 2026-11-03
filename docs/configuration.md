@@ -190,13 +190,17 @@ jeap:
 
 | Property                      | Default                                                         | Description                                                                                                                                                                                                                                                                                                                                                         |
 |-------------------------------|-----------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `title`                       | `Documentation` for the default site, the site id for any other | What the navbar and the browser tab say                                                                                                                                                                                                                                                                                                                             |
+| `title`                       | `Documentation` for the default site, the site id for any other | What the browser tab says, and the navbar on a single site. On an instance with several sites, or with `jeap.doc.publication.title`, the navbar shows that one title on every site - see [Several sites in one header bar](#several-sites-in-one-header-bar)                                                                                                        |
 | `tagline`                     | -                                                               | One line under the title on the root page                                                                                                                                                                                                                                                                                                                           |
 | `logo`, `favicon`             | the template's                                                  | A `classpath:` or filesystem resource with the site's own mark. Without a favicon the logo is used                                                                                                                                                                                                                                                                  |
 | `color-scheme`                | `jeap`                                                          | One of the schemes the site template ships: `jeap`, `neutral`, `high-contrast`. A site does not bring its own CSS - a free-form stylesheet would make every later change to the template able to break it                                                                                                                                                           |
+| `per-environment`             | `true`                                                          | Whether the site has a tree per environment. `false` makes it one tree served at the site root, with no environments, no switcher and no banner - see [Sites without environments](#sites-without-environments)                                                                                                                                                     |
+| `content`                     | `system-documentation`                                          | Where the site's content comes from: `system-documentation`, generated from the architecture model and the teams' uploads, or `static-site`, a tree uploaded for the site - see [Where a site's content comes from](#where-a-sites-content-comes-from)                                                                                                              |
 | `environments`                | `dev`, `ref`, `abn`, `prod`                                     | The environments of this site, below                                                                                                                                                                                                                                                                                                                                |
 | `publish-on-upload`           | `true`                                                          | Whether an upload for this site asks for a build of the part that carries the system it is for                                                                                                                                                                                                                                                                      |
+| `navigation-label`            | the title                                                       | What the site's tab in the header bar says, on an instance with more than one site - see [Several sites in one header bar](#several-sites-in-one-header-bar)                                                                                                                                                                                                        |
 | `architecture-model-required` | `true`                                                          | Whether this site is published only once the architecture model of its environments has been imported. It has an effect only where an architecture repository is configured for one of them, so a site documenting from other sources never meets it. Such a site is not failed but **postponed** until the first import - see [the import](architecture-import.md) |
+| `build.slots`                 | `1`                                                             | How many of the instance's build slots a build of a part of this site occupies - see [a site's weight in build slots](#one-build-of-a-part-at-a-time-and-a-sites-weight-in-build-slots)                                                                                                                                                                             |
 
 The default site is served at the context root of the service, and **every other site below `/site/`** -
 `/site/governance/`, and its environments at `/site/governance/dev/`.
@@ -214,6 +218,42 @@ An environment of any site may not be called `default` or `static`, whatever its
 generator uses inside a site's own content tree. Nor `microsites`: every site serves its uploaded microsites
 below its own root, `/microsites/` or `/site/<id>/microsites/`, and an environment of that name would lose its
 pages to them. All of it is checked while the service starts.
+
+### Where a site's content comes from
+
+Every site has a **content source**, named by `content`:
+
+| `content`              | What the site is                                                                                                                                                                                     | Environments                   |
+|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------|
+| `system-documentation` | The documentation of the systems: generated from the architecture model of each environment and from what the teams upload, a part per system. What a site is without `content`                      | Required                       |
+| `static-site`          | A tree of Markdown uploaded for the site itself and published as it is: its folders are the navigation - see [Uploads](uploads.md#the-navigation-of-a-static-site), and nothing is generated into it | None: `per-environment: false` |
+
+```yaml
+jeap:
+  doc:
+    sites:
+      handbook:
+        title: Handbook
+        per-environment: false
+        content: static-site
+```
+
+A `content` the instance provides no source for stops the service at startup, naming the site and the value, and
+so does a site its source cannot take: `system-documentation` without environments, or `static-site` with them.
+Only the documentation of the systems is published by the architecture import; a static site is published when its
+tree is uploaded, and on the [reconcile schedule](#building-the-documentation) - see [Uploads](uploads.md#a-static-sites-tree)
+for how its tree gets there.
+
+### Sites without environments
+
+A site that does not document stages has no use for a tree per environment. With `per-environment: false` it is
+one tree, served at the site root - `/site/handbook/` and the pages below it, with no environment segment in any
+URL. Its content comes from a source that needs no environments - a `static-site`, configured as in the example
+above. Such a site configures
+**no environments**, and has no `main` or `latest` one; a site that sets
+`per-environment: false` and lists environments stops the service at startup, naming the site. It shows no
+environment switcher and no banner, and its pages are indexed for search like the main tree of any other site.
+A site that leaves `per-environment` out, or sets it to `true`, keeps its environments as described below.
 
 ### Environments
 
@@ -282,6 +322,44 @@ jeap:
 | `jeap.doc.build.reconcile-cron`         | `0 15 6-18/4 * * *` | When to ask for the sites **no architecture import publishes** - one whose environments have no architecture repository. Every four hours through the working day; `-` switches it off. Such a site has no import to publish it, and the content digest covers the service version, so without this it keeps serving what an earlier release generated. Nearly free: a part whose content has not moved is not generated |
 | `jeap.doc.build.departed-part-retention` | `P90D`            | How long a part the site no longer has keeps what it published. On the system axis a decommissioned system takes its part with it, and nothing else would ever remove its objects or its pages. Long on purpose, and the nightly sweep leaves a site alone entirely while its partition produces nothing but the shell - so a landscape that goes briefly wrong cannot take a live system's documentation with it. `DELETE /api/sites/{site}/parts/{part}` removes one without waiting |
 | `jeap.doc.build.history-cron`           | `0 45 2 * * *`     | When old build records are removed, and when what a part the site no longer has published is removed, in the time zone of the service                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+### One build of a part at a time, and a site's weight in build slots
+
+**A part is built by one instance at a time.** Its build holds a lock named after the part, across every
+instance of the service. **A part has at most one pending request**: asks for a part that already has one are
+merged into it, and any number of asks arriving while its build runs lead to exactly one further build. So a
+burst of uploads, or of calls from another service, is one build after the one that is running - see
+[Generation](generation.md#several-triggers-are-one-build).
+
+**The slots of an instance are shared by all its sites**, and a part of one site may need far more memory than
+a typical system part. Such a site sets its **weight**: how many of the instance's `max-concurrent-parts` slots
+a build of one of its parts occupies.
+
+```yaml
+jeap:
+  doc:
+    sites:
+      deployments:
+        build:
+          slots: 2                             # a build of this site occupies two slots
+```
+
+| Property                          | Default | Description                                                                                                                                                                                                                   |
+|-----------------------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.sites.<id>.build.slots` | `1`     | How many build slots a build of a part of this site occupies. It starts only once that many are free, and parts asked for after it do not overtake it while it waits. Above `max-concurrent-parts` the service does not start |
+
+The memory an instance needs is then bounded by
+
+```
+JVM heap + D + (max-concurrent-parts - weight) * S
+
+  D = the peak memory of one build of the heavy site
+  S = the peak memory of the largest other part, read off max_over_time(jeap_doc_container_memory_used_bytes[15m])
+      while such a part builds alone - see Observability
+```
+
+Most of a build's memory is native and outside `max-node-memory`, so the container's limit is what the formula
+sizes - see [Observability](observability.md#the-memory-of-the-container).
 
 The service **does not start** when the site template's dependencies are missing, when they were installed from a
 different `package-lock.json` than the one this version of the service carries, or when Node cannot be run - a
@@ -426,15 +504,45 @@ jeap:
     publication:
       url: https://doc.example.ch
       refresh: PT10S
+      title: Example Documentation
 ```
 
-| Property                       | Default | Description                                                                                                                                                    |
-|--------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `jeap.doc.publication.url`     | -       | The origin the documentation is published under, without a path. It is what the page metadata names - the canonical URL of a page, and its Open Graph tags     |
-| `jeap.doc.publication.refresh` | `PT10S` | How often an instance re-reads which build of a site is the published one, so it picks up what another instance published without asking the database per file |
+| Property                       | Default                                           | Description                                                                                                                                                    |
+|--------------------------------|---------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.publication.url`     | -                                                 | The origin the documentation is published under, without a path. It is what the page metadata names - the canonical URL of a page, and its Open Graph tags     |
+| `jeap.doc.publication.refresh` | `PT10S`                                           | How often an instance re-reads which build of a site is the published one, so it picks up what another instance published without asking the database per file |
+| `jeap.doc.publication.title`   | the `default` site's title, else the first site's | The title beside the logo on every site of the instance - see [Several sites in one header bar](#several-sites-in-one-header-bar)                              |
 
 The path below the origin is derived rather than configured: it is `server.servlet.context-path`, and below it
 the site. A path that has to agree with another value is computed, not written twice.
+
+### Several sites in one header bar
+
+An instance that serves **more than one site** shows one tab per site on the left of the header bar of every
+site, in configuration order, with the current site marked. A tab leads to the root of its site and shows the
+site's `navigation-label`, or its title where it sets none. On a narrow screen the tabs are in the navigation
+menu. The footer keeps its group of sites.
+
+Beside the logo, every site shows **the same title**: `jeap.doc.publication.title`, or without it the title of
+the `default` site, or else of the first configured site. The title of a page in the browser keeps naming its
+own site, so a browser tab or a bookmark still says which site a page belongs to.
+
+```yaml
+jeap:
+  doc:
+    publication:
+      title: Example Documentation
+    sites:
+      default:
+        title: System Documentation
+        navigation-label: Architecture
+      deployments:
+        title: Deployments
+```
+
+The tabs come from the configuration. A site added later appears on each other site with that site's next
+build, since sites do not ask each other to be built. An instance with one site shows no tabs, and unless it
+configures a title its header bar and its content are unchanged.
 
 The generated sites are stored under `jeap.doc.storage.site-prefix` (`sites` by default) and are served to
 **anyone who can reach the service** - see [Security](security.md).

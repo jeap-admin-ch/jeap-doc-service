@@ -13,7 +13,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.util.List;
 
 /**
- * Wires the two endpoints below {@code /api/uploads/docs}: the check that runs before their parameters are
+ * Wires the two endpoints below {@code /api/uploads/docs}: the checks that run before their parameters are
  * bound.
  * <p>
  * <b>Two interceptors and one list each</b>, rather than one list that is right for neither. An upload names
@@ -33,11 +33,11 @@ class DocumentationUploadConfiguration implements WebMvcConfigurer {
             "build-url", "generated-at");
 
     /**
-     * What the structure depends on, and nothing else. No {@code site}: a tree is validated against a
-     * template, and which site publishes it changes none of its rules.
+     * What the structure depends on, and nothing else - and the {@code site}, which a static site's tree is
+     * checked for: its role is granted for the site, not for a system.
      */
     static final List<String> KNOWN_VALIDATION_QUERY_PARAMETERS = List.of(
-            "type", "system", "component", "library", "template", "source-format", "location", "topic");
+            "site", "type", "system", "component", "library", "template", "source-format", "location", "topic");
 
     static final String VALIDATION_PATH = UploadPaths.DOCS + DocumentationValidationController.VALIDATION_PATH;
 
@@ -50,6 +50,12 @@ class DocumentationUploadConfiguration implements WebMvcConfigurer {
     UploadParameterInterceptor documentationValidationParameterInterceptor() {
         return new UploadParameterInterceptor(KNOWN_VALIDATION_QUERY_PARAMETERS,
                 InvalidUploadException::unknown);
+    }
+
+    /** Asks for a system's documentation's system before its role is checked - see the interceptor. */
+    @Bean
+    SystemParameterInterceptor systemParameterInterceptor() {
+        return new SystemParameterInterceptor();
     }
 
     /** Refuses a body that announces too much before it is read - see {@link ValidationBodySizeInterceptor}. */
@@ -65,6 +71,8 @@ class DocumentationUploadConfiguration implements WebMvcConfigurer {
                 .excludePathPatterns(VALIDATION_PATH);
         registry.addInterceptor(documentationValidationParameterInterceptor())
                 .addPathPatterns(VALIDATION_PATH);
+        registry.addInterceptor(systemParameterInterceptor())
+                .addPathPatterns(UploadPaths.DOCS + "/**");
         registry.addInterceptor(validationBodySizeInterceptor())
                 .addPathPatterns(VALIDATION_PATH);
     }

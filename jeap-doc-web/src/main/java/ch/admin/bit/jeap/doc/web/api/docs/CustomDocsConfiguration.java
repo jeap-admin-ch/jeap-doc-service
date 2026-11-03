@@ -22,7 +22,7 @@ import java.util.List;
  * template, its format and, for a microsite, its section and slug. Removing a subject removes every set there
  * is, whatever their format and template - so passing one is not a narrower call but a misunderstanding, and
  * being told so is the point. Removing a system takes neither, and not even a type: it is everything
- * documented for that system.
+ * documented for that system. Removing a static site's tree takes the site and nothing else.
  */
 @Configuration
 class CustomDocsConfiguration implements WebMvcConfigurer {
@@ -46,6 +46,9 @@ class CustomDocsConfiguration implements WebMvcConfigurer {
     /** Everything of one system: no type, because there is nothing to narrow - it is all of it. */
     static final List<String> KNOWN_SYSTEM_QUERY_PARAMETERS = List.of(SITE, SYSTEM);
 
+    /** A static site's tree: the site, and nothing else - it documents no system. */
+    static final List<String> KNOWN_SITE_QUERY_PARAMETERS = List.of(SITE);
+
     @Bean
     UploadParameterInterceptor customDocsSetParameterInterceptor() {
         return new UploadParameterInterceptor(KNOWN_SET_QUERY_PARAMETERS, InvalidUploadException::unknown);
@@ -61,6 +64,11 @@ class CustomDocsConfiguration implements WebMvcConfigurer {
         return new UploadParameterInterceptor(KNOWN_SYSTEM_QUERY_PARAMETERS, InvalidUploadException::unknown);
     }
 
+    @Bean
+    UploadParameterInterceptor customDocsSiteParameterInterceptor() {
+        return new UploadParameterInterceptor(KNOWN_SITE_QUERY_PARAMETERS, InvalidUploadException::unknown);
+    }
+
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(customDocsSetParameterInterceptor())
@@ -69,5 +77,7 @@ class CustomDocsConfiguration implements WebMvcConfigurer {
                 .addPathPatterns(DocsPaths.SUBJECTS);
         registry.addInterceptor(customDocsSystemParameterInterceptor())
                 .addPathPatterns(DocsPaths.SYSTEMS);
+        registry.addInterceptor(customDocsSiteParameterInterceptor())
+                .addPathPatterns(DocsPaths.SITES);
     }
 }

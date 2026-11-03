@@ -19,7 +19,7 @@ import java.util.List;
  * @param part          the identifier of the part within its site
  * @param documents     what it documents, in words
  * @param routePrefixes the URL subtrees it answers for, empty for the part that answers for the remainder
- * @param environments  the environments of the site it carries
+ * @param environments  the environments of the site it carries; empty on a site without environments
  * @param publishedAt   when what is being served for it was built, null while it never has been
  * @param ageSeconds    how long ago that was, null while it has never been published
  * @param contentDigest what the content it was built from hashed to, which is what says whether a build is owed

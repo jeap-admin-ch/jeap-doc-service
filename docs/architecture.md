@@ -77,6 +77,7 @@ The domain is the largest module, so it is divided by what a class is about rath
 | `…doc.domain.custom` | The documentation a team uploaded, as the service holds it: a set, its pages, the subject it documents, and how a page's front matter is rewritten |
 | `…doc.domain.port` | Every interface the domain needs from the outside, and the records they answer with |
 | `…doc.domain.template` | The `StructureTemplate` plugin point - see [Structure templates](structure-templates.md) |
+| `…doc.domain.content` | The `ContentSource` plugin point and the sources the service ships: where a site's content comes from |
 
 **`custom` and `architecture` do not know about each other either.** One is what a team wrote and the other
 is a replica of an upstream; nothing links them in the database, and they are joined per system while a part
@@ -125,6 +126,18 @@ because nothing outside the replication has any use for them.
   implementations as there are templates. **Nothing outside a template module names it** - the site generator
   injects every `StructureTemplate` it finds, and nothing names a template by class. A second structure template
   is a dependency and a bean. See [Structure templates](structure-templates.md).
+- **A content source is a plugin, too.** A site names where its content comes from in `content`, and the
+  plugin point `ContentSource` is in the domain: a source decides which parts its sites have, which triggers
+  ask for them, whether a tree is uploaded for its site itself, and which configuration it refuses at
+  startup. What a source writes into a part is its
+  `ContentWriter`'s, in the site generator, which picks the writer by the site's `content` and writes the
+  site-level files around it. Two sources ship: `system-documentation`, the documentation of the systems as it
+  has always been generated, and `static-site`, a tree uploaded for the site.
+
+  As for a template, **nothing outside a source names it**: the partition everything else asks dispatches each
+  site to its source's partition, and the generator injects every writer it finds. A further source - the
+  deployment log, the governance documentation - is a further source bean and writer, not a change to the site
+  model. An instance whose site names a source it has no source or no writer for does not start.
 - **An HTML parser lives in `jeap-doc-html` and nowhere else.** The domain stays free of infrastructure,
   `jeap-doc-markdown` has no dependencies, and `jeap-doc-objectstorage` is named for what it does - so the
   library that reads what a team's build produced is behind a port of its own, in a module that holds one

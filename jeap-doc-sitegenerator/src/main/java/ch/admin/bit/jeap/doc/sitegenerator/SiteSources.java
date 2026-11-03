@@ -8,12 +8,14 @@ import ch.admin.bit.jeap.doc.domain.DocumentationLiveStatus;
 import ch.admin.bit.jeap.doc.domain.DocumentationProvenance;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.PartKey;
+import ch.admin.bit.jeap.doc.domain.PublicationProperties;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SitePartition;
 
 import tools.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -55,10 +57,11 @@ import java.util.SequencedSet;
 @RequiredArgsConstructor
 public class SiteSources {
 
-    /** Where the root page lives, beside this class - Markdown belongs in a file, not in a string literal. */
-    private static final String ROOT_PAGE_RESOURCE = "root-page.md";
-
-    private static final String ROOT_PAGE_TEMPLATE = readRootPageTemplate();
+    /**
+     * The directory below the content directory that holds the one tree of a site without environments. The
+     * site template mounts it at the site root.
+     */
+    static final String SINGLE_TREE = "tree";
 
     /**
      * Where a site's own logo and favicon are written, below the content directory.
@@ -73,6 +76,8 @@ public class SiteSources {
     /** The path the generated branding is served under, which follows from the directory above. */
     private static final String BRANDING_URL_PREFIX = "branding/";
     private static final String LOGO = "logo";
+    private static final String TITLE = "title";
+    private static final String LABEL = "label";
     private static final String FAVICON = "favicon";
 
     /**
@@ -85,8 +90,11 @@ public class SiteSources {
     private final SiteUrls urls;
     private final ResourceLoader resourceLoader;
 
-    /** Writes the systems. This class writes the site-level files, and templates write the rest. */
-    private final SystemPages systemPages;
+    /**
+     * What each content source writes into a part, by the source's id. This class writes the site-level files
+     * around it.
+     */
+    private final List<ContentWriter> writers;
 
     /** All the sites this instance serves, so the footer of one can link to the others. */
     private final DocumentationSites sites;
@@ -110,6 +118,9 @@ public class SiteSources {
 
     private final AboutThisDocumentation aboutThisDocumentation;
 
+    /** Where the instance's title comes from, which every site shows beside its logo. */
+    private final PublicationProperties publication;
+
     /**
      * Writes one part of a site into the given content directory, and answers what it took to write.
      * <p>
@@ -125,23 +136,11 @@ public class SiteSources {
                                 Instant generatedAt) throws IOException {
         Files.createDirectories(contentDirectory);
         writeBranding(site, contentDirectory);
-        Map<String, EnvironmentModel> models = new LinkedHashMap<>();
-        for (SiteEnvironment environment : site.environments()) {
-            if (!part.carries(environment.id())) {
-                continue;
-            }
-            Path directory = contentDirectory.resolve(environment.id());
-            // The systems first, so the root page can say whether there are any.
-            Optional<EnvironmentModel> model =
-                    systemPages.write(site, environment, part, directory, generatedAt);
-            if (part.carriesWholeEnvironments()) {
-                writeRootPage(site, environment, contentDirectory, generatedAt, model);
-            }
-            model.ifPresent(counts -> models.put(environment.id(), counts));
-        }
+        // The content source's pages first, so that the page about the documentation can print what each
+        // environment's model contributed.
+        Map<String, EnvironmentModel> models = writerOf(site).write(site, part, contentDirectory, generatedAt);
         if (part.carriesWholeEnvironments()) {
-            // After the loop, because the page prints what every environment's model contributed and the loop
-            // is what counted it. One page per tree - see AboutThisDocumentation.
+            // One page per tree - see AboutThisDocumentation.
             writeAboutThisDocumentation(buildId, site, part, contentDirectory, generatedAt, models);
         }
         // Last, both of them, because they record which environments have a systems page: the footer links to
@@ -154,6 +153,26 @@ public class SiteSources {
         CrossPartLinks.rewrite(contentDirectory, part, otherPartsOf(site, part, models), linkPrefixesOf(site));
         log.debug("Wrote the content of {} - {} - into {}.", part.key(), part.documents(), contentDirectory);
         return new WrittenContent(models, volatileTextOf(buildId, generatedAt, models));
+    }
+
+    /**
+     * Refuses to start where a site names a content source this generator has no writer for: every build of
+     * that site would fail.
+     */
+    @PostConstruct
+    void checkWriters() {
+        for (Site site : sites.all()) {
+            writerOf(site);
+        }
+    }
+
+    private ContentWriter writerOf(Site site) {
+        return writers.stream()
+                .filter(writer -> writer.contentSource().equals(site.content()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(("The site '%s' has content: %s, and the site "
+                        + "generator has no writer for it. It writes %s.").formatted(site.id(), site.content(),
+                        writers.stream().map(ContentWriter::contentSource).sorted().toList())));
     }
 
     /**
@@ -217,6 +236,9 @@ public class SiteSources {
     /** What a path of each environment has to carry in front of it to be an absolute URL of this site. */
     private Map<String, CrossPartLinks.EnvironmentLinks> linkPrefixesOf(Site site) {
         Map<String, CrossPartLinks.EnvironmentLinks> prefixes = new LinkedHashMap<>();
+        if (!site.perEnvironment()) {
+            prefixes.put(SINGLE_TREE, new CrossPartLinks.EnvironmentLinks("", urls.baseUrl(site)));
+        }
         for (SiteEnvironment environment : site.environments()) {
             // Both halves, because the pass needs both: the route prefix to compare a page's link against the
             // paths a part owns, and the link prefix to write it absolute.
@@ -242,7 +264,7 @@ public class SiteSources {
                     Map<String, Object> values = new LinkedHashMap<>();
                     values.put("id", environment.id());
                     values.put("short", environment.shortName());
-                    values.put("label", environment.label());
+                    values.put(LABEL, environment.label());
                     values.put("order", environment.order());
                     values.put("main", environment.main());
                     values.put("latest", environment.latest());
@@ -274,7 +296,7 @@ public class SiteSources {
         return model.systems().stream()
                 .<Map<String, Object>>map(system -> {
                     Map<String, Object> values = new LinkedHashMap<>();
-                    values.put("label", system.label());
+                    values.put(LABEL, system.label());
                     values.put("path", system.path());
                     return values;
                 })
@@ -301,7 +323,7 @@ public class SiteSources {
                                               boolean mainHasSystems) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", site.id());
-        values.put("title", site.title());
+        values.put(TITLE, site.title());
         values.put("tagline", site.tagline() == null ? "" : site.tagline());
         values.put("colorScheme", site.colorScheme());
         values.put(LOGO, brandingUrlOf(site.logo(), LOGO));
@@ -314,10 +336,15 @@ public class SiteSources {
         values.put("baseUrl", urls.baseUrl(site));
         // Whether /systems/ exists in the main environment, so the footer links to it only when it does.
         values.put("hasSystems", mainHasSystems);
+        // Only where it is false, so that the content of a site with environments hashes as it always did.
+        if (!site.perEnvironment()) {
+            values.put("perEnvironment", false);
+        }
         // Whether the static generation may use a pool of worker threads - a memory decision, made by the
         // service and read by the template, because Docusaurus has no environment variable for it.
         values.put("ssgWorkerThreads", buildProperties.isSsgWorkerThreads());
         values.put("sites", siblingSites());
+        navigationOf(site).ifPresent(navigation -> values.put("navigation", navigation));
         // Which part of the site this is, so the template knows where to mount its content and which of the
         // site's links it may check. Everything else in this file is the same for every part.
         values.put("part", partOf(part));
@@ -360,11 +387,50 @@ public class SiteSources {
                 .map(other -> {
                     Map<String, Object> values = new LinkedHashMap<>();
                     values.put("id", other.id());
-                    values.put("title", other.title());
+                    values.put(TITLE, other.title());
                     values.put("url", urls.url() + urls.baseUrl(other));
                     return values;
                 })
                 .toList();
+    }
+
+    /**
+     * The header bar of an instance with more than one site, or with a title of its own: the title beside the
+     * logo, and one tab per site with the current one marked.
+     * <p>
+     * <b>Nothing for a single site without a configured title</b>: its header bar is what it always was, and so
+     * is the content of its parts - this file is hashed, and writing anything here would rebuild every part of
+     * every such instance with the release.
+     * <p>
+     * A tab links the root of its site by path. Every site is its own Docusaurus build, so the link is a plain
+     * one rather than a route of this build.
+     */
+    private Optional<Map<String, Object>> navigationOf(Site current) {
+        List<Site> all = sites.all();
+        boolean titled = StringUtils.hasText(publication.getTitle());
+        if (all.size() < 2 && !titled) {
+            return Optional.empty();
+        }
+        Map<String, Object> navigation = new LinkedHashMap<>();
+        navigation.put(TITLE, instanceTitle(all));
+        navigation.put("tabs", all.size() < 2 ? List.of() : all.stream()
+                .map(site -> {
+                    Map<String, Object> tab = new LinkedHashMap<>();
+                    tab.put(LABEL, site.navigationLabel());
+                    tab.put("url", urls.baseUrl(site));
+                    tab.put("current", site.id().equals(current.id()));
+                    return tab;
+                })
+                .toList());
+        return Optional.of(navigation);
+    }
+
+    /** The configured title, or else the default site's, or else the first configured site's. */
+    private String instanceTitle(List<Site> all) {
+        if (StringUtils.hasText(publication.getTitle())) {
+            return publication.getTitle();
+        }
+        return sites.find(Site.DEFAULT_SITE).orElse(all.getFirst()).title();
     }
 
     /**
@@ -440,92 +506,15 @@ public class SiteSources {
         // The live status is not a file anything writes: the service answers it under the same base URL, so
         // that a page of this site can fetch it same-origin.
         String liveStatusUrl = urls.url() + urls.baseUrl(site) + DocumentationLiveStatus.FILE_NAME;
+        if (!site.perEnvironment()) {
+            aboutThisDocumentation.write(facts, null, models, buildId, statusUrl, liveStatusUrl,
+                    contentDirectory.resolve(SINGLE_TREE));
+        }
         for (SiteEnvironment environment : site.environments()) {
             if (part.carries(environment.id())) {
                 aboutThisDocumentation.write(facts, environment, models, buildId, statusUrl, liveStatusUrl,
                         contentDirectory.resolve(environment.id()));
             }
-        }
-    }
-
-    /**
-     * The one page this story generates: what this documentation is, which site and which environment it is,
-     * and when it was generated. Every further page is the business of the stories that generate content.
-     */
-    private void writeRootPage(Site site, SiteEnvironment environment, Path contentDirectory,
-                               Instant generatedAt, Optional<EnvironmentModel> model) throws IOException {
-        Path directory = contentDirectory.resolve(environment.id());
-        Files.createDirectories(directory);
-        String page = ROOT_PAGE_TEMPLATE
-                // The body of the page is Markdown that Docusaurus parses as MDX, so a configured value goes
-                // in escaped - see MarkdownText. The front matter below is a different matter: it is YAML.
-                .replace("{{title}}", MarkdownText.escaped(site.title()))
-                .replace("{{tagline}}", MarkdownText.escaped(site.tagline()))
-                .replace("{{environmentNote}}", environment.latest()
-                        ? ", which carries the documentation of every component as it stands right now, whether "
-                          + "it is deployed anywhere or not"
-                        : "")
-                .replace("{{environmentLabel}}", MarkdownText.escaped(environment.label()))
-                .replace("{{environmentId}}", environment.id())
-                .replace("{{siteId}}", site.id())
-                .replace("{{contents}}", contentsOf(model))
-                .replace("{{systemsRow}}", systemsRowOf(model))
-                .replace("{{generatedAt}}", DisplayTime.of(generatedAt))
-                // Front matter, so YAML scalars: an environment id is a slug and an instant is safe either
-                // way, and quoting them is what keeps that true of a value somebody changes later.
-                .replace("{{environmentIdScalar}}", JSON.writeValueAsString(environment.id()))
-                .replace("{{generatedAtScalar}}", JSON.writeValueAsString(generatedAt.toString()))
-                // Beside it the same moment as a reader reads it, because the provenance block under the page
-                // falls back to the instant where this is missing.
-                .replace("{{generatedAtDisplayScalar}}", JSON.writeValueAsString(DisplayTime.of(generatedAt)))
-                // The front matter is YAML, and a title is free text: 'jEAP: Documentation' or one starting
-                // with # or [ would be invalid front matter, and the build would fail minutes later with a
-                // js-yaml message naming neither the property nor the site. A JSON string is a valid YAML
-                // double-quoted scalar, so encoding it is the whole fix - and Docusaurus puts that title into
-                // the browser tab as text, so it is escaped as YAML here and nothing else.
-                // Last, and that is not cosmetic: a JSON scalar keeps the braces the escaping above takes away,
-                // so a title of '{{tagline}}' substituted any earlier would be substituted again by whichever
-                // replacement follows it, and the browser tab would show the tagline instead of the title.
-                .replace("{{titleScalar}}", JSON.writeValueAsString(site.title()));
-        Files.writeString(directory.resolve("index.md"), page, StandardCharsets.UTF_8);
-    }
-
-    /** What the root page says about this tree: where to start, or that nothing has been published yet. */
-    private static String contentsOf(Optional<EnvironmentModel> model) {
-        if (model.map(EnvironmentModel::systemCount).orElse(0) == 0) {
-            return "Nothing has been published into it yet: the documentation of the systems, their components "
-                   + "and their libraries arrives as the pipelines of those repositories upload it, and as the "
-                   + "architecture model is read.";
-        }
-        return "Start at [Systems](/systems/), which lists every system of the landscape with its components, "
-               + "its events and its commands.";
-    }
-
-    /**
-     * The row counting the systems, or no row at all.
-     * <p>
-     * An environment that reads no architecture model knows nothing about how many systems there are. A zero
-     * would say the landscape is empty rather than that it was never looked at.
-     */
-    private static String systemsRowOf(Optional<EnvironmentModel> model) {
-        return model.map(counts -> "| Systems | " + counts.systemCount() + " |\n").orElse("");
-    }
-
-    /**
-     * The root page, read once while the class is loaded. A page that cannot be read is a broken artifact, not
-     * a runtime condition - so it fails here rather than minutes into the first build.
-     */
-    private static String readRootPageTemplate() {
-        try (InputStream template = SiteSources.class.getResourceAsStream(ROOT_PAGE_RESOURCE)) {
-            if (template == null) {
-                throw new IllegalStateException(
-                        "The root page template %s is missing from the jeap-doc-sitegenerator artifact."
-                                .formatted(ROOT_PAGE_RESOURCE));
-            }
-            return new String(template.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new IllegalStateException("The root page template %s could not be read."
-                    .formatted(ROOT_PAGE_RESOURCE), e);
         }
     }
 

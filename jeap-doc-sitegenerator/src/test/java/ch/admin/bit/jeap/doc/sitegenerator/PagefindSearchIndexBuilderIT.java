@@ -52,9 +52,11 @@ class PagefindSearchIndexBuilderIT {
         SiteUrls urls = new SiteUrls(publication, "/docs");
         DefaultResourceLoader resources = new DefaultResourceLoader();
         SiteSources sources = new SiteSources(urls, resources,
-                NoArchitectureModel.systemPages(urls), new DocumentationSites(new SiteProperties()),
+                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()), properties,
-                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation());
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
         builder = new PagefindSearchIndexBuilder(properties, new BuildWorkspaces(properties), sources,
                 new NodeProcess(properties), new NoCustomDocumentation(), new NoCustomStorage(), resources,
                 CLOCK);
@@ -119,6 +121,49 @@ class PagefindSearchIndexBuilderIT {
         assertThat(index.records()).isEqualTo(SearchRecords.of(content, site).size());
         assertThat(SearchRecords.of(content, site)).extracting(SearchRecord::environment)
                 .containsAll(site.environments().stream().map(e -> e.id()).toList());
+    }
+
+    /**
+     * A site without environments is indexed from its one tree, at the URLs its pages are served at, and with
+     * no environment for a search to be scoped by.
+     */
+    @Test
+    void build_whenTheSiteHasNoEnvironments_thenItsOneTreeIsIndexed() throws IOException {
+        SiteProperties configured = new SiteProperties();
+        SiteProperties.Site handbook = new SiteProperties.Site();
+        handbook.setPerEnvironment(false);
+        handbook.setContent(ch.admin.bit.jeap.doc.domain.content.StaticSiteContent.SOURCE_ID);
+        configured.getSites().put("handbook", handbook);
+        DocumentationSites sites = new DocumentationSites(configured);
+        Site site = sites.find("handbook").orElseThrow();
+        BuildProperties properties = propertiesOf(workspaceRoot);
+        properties.setNodeModulesDirectory(Path.of("target/site-install/node_modules").toAbsolutePath());
+        PublicationProperties publication = new PublicationProperties();
+        publication.setUrl("https://doc.example.ch");
+        SiteUrls urls = new SiteUrls(publication, "/docs");
+        DefaultResourceLoader resources = new DefaultResourceLoader();
+        SiteSources sources = new SiteSources(urls, resources, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), sites,
+                new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()), properties,
+                TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
+                        new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(List.of())),
+                new AboutThisDocumentation(), new PublicationProperties());
+        PagefindSearchIndexBuilder handbookBuilder = new PagefindSearchIndexBuilder(properties,
+                new BuildWorkspaces(properties), sources, new NodeProcess(properties), new NoCustomDocumentation(),
+                new NoCustomStorage(), resources, CLOCK);
+        Path content = new BuildWorkspaces(properties).searchIndexWorkspace(site.id())
+                .resolve(SiteTemplate.CONTENT_DIRECTORY);
+
+        BuiltSearchIndex index = handbookBuilder.build(site, SitePart.wholeSiteOf(site));
+
+        List<SearchRecord> records = SearchRecords.of(content, site);
+        assertThat(index.records()).isPositive().isEqualTo(records.size());
+        assertThat(records).extracting(SearchRecord::url).contains("/", "/about-this-documentation/");
+        assertThat(records).extracting(SearchRecord::environment).containsOnlyNulls();
+        try (Stream<Path> fragments = Files.list(bundle(index).resolve("fragment"))) {
+            assertThat(fragments).hasSize(index.records());
+        }
     }
 
     /** The workspace is scratch space, and a run that has been published has no use for it. */

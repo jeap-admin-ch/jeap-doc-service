@@ -5,6 +5,11 @@ import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.SearchProperties;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
+import ch.admin.bit.jeap.doc.domain.NoArchitectureModel;
+import ch.admin.bit.jeap.doc.domain.NoCustomDocumentation;
+import ch.admin.bit.jeap.doc.domain.content.ContentSources;
+import ch.admin.bit.jeap.doc.domain.content.StaticSiteContent;
+import ch.admin.bit.jeap.doc.domain.content.SystemDocumentationContent;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
@@ -86,10 +91,18 @@ class DocumentationUploadServiceTest {
     @BeforeEach
     void setUp() {
         metrics = new RecordingUploadMetrics();
+        DocumentationSites sites = new DocumentationSites(new SiteProperties());
         service = new DocumentationUploadService(uploadRepository, subjectRepository, bundles, documentation,
-                documentationStorage, validation, new UploadProperties(), new CustomProperties(),
-                new DocumentationSites(new SiteProperties()), htmlText, new SearchProperties(), buildTrigger,
-                metrics, Clock.fixed(NOW, ZoneOffset.UTC));
+                documentationStorage, validation, new UploadProperties(), new CustomProperties(), sites,
+                siteUploadRulesOf(sites), htmlText, new SearchProperties(), buildTrigger, metrics,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    /** The rules over the content sources the service ships. */
+    static SiteUploadRules siteUploadRulesOf(DocumentationSites sites) {
+        return new SiteUploadRules(sites, new ContentSources(List.of(
+                new SystemDocumentationContent(new NoArchitectureModel(), new NoCustomDocumentation()),
+                new StaticSiteContent()), sites));
     }
 
     /**
@@ -98,7 +111,7 @@ class DocumentationUploadServiceTest {
      */
     private void acceptsTheSet() {
         when(bundles.receive(any(), anyLong(), any())).thenReturn(new ReceivedOnePage());
-        when(validation.validate(any(), any()))
+        when(validation.validate(any(), any(), any()))
                 .thenReturn(new StructureReport("arc42", 1, 0, List.of(), List.of(), List.of(),
                         List.of(), 0));
     }
@@ -160,7 +173,7 @@ class DocumentationUploadServiceTest {
         when(uploadRepository.claim(eq(UPLOAD_ID), any(), any(), eq(NOW), any()))
                 .thenReturn(new UploadClaim.Claimed(claimed));
         when(bundles.receive(any(), anyLong(), any())).thenReturn(new ReceivedOnePage());
-        when(validation.validate(any(), any())).thenReturn(new StructureReport("arc42", 1, 0, List.of(),
+        when(validation.validate(any(), any(), any())).thenReturn(new StructureReport("arc42", 1, 0, List.of(),
                 List.of(), List.of(), List.of(new StructureFinding(FindingCode.UNKNOWN_CHAPTER,
                 "nowhere/page.md", "there is no such chapter")), 0));
 
@@ -529,15 +542,15 @@ class DocumentationUploadServiceTest {
         DocumentationUpload stored = claimed().completed(STORED, BUNDLE.length, NOW);
         when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.of(stored));
 
-        assertThat(service.statusOf(UPLOAD_ID, "orders")).contains(stored);
-        assertThat(service.statusOf(UPLOAD_ID, "othersystem")).isEmpty();
+        assertThat(service.statusOf(UPLOAD_ID, "orders", null)).contains(stored);
+        assertThat(service.statusOf(UPLOAD_ID, "othersystem", null)).isEmpty();
     }
 
     @Test
     void statusOf_whenTheUploadIsUnknown_thenEmpty() {
         when(uploadRepository.findByUploadId(UPLOAD_ID)).thenReturn(Optional.empty());
 
-        assertThat(service.statusOf(UPLOAD_ID, "orders")).isEmpty();
+        assertThat(service.statusOf(UPLOAD_ID, "orders", null)).isEmpty();
     }
 
     private static DocumentationUpload claimed() {

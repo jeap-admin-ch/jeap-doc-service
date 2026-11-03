@@ -7,7 +7,9 @@ public enum SubjectKind {
 
     SYSTEM,
     COMPONENT,
-    LIBRARY;
+    LIBRARY,
+    /** A static site as a whole: a tree uploaded for the site, naming no system. */
+    SITE;
 
     /**
      * What an upload of this type documents. <b>Public</b> because a structure template is asked what it
@@ -18,6 +20,7 @@ public enum SubjectKind {
             case SYSTEM_DOCS -> SYSTEM;
             case COMPONENT_DOCS -> COMPONENT;
             case LIBRARY_DOCS -> LIBRARY;
+            case SITE_DOCS -> SITE;
         };
     }
 }

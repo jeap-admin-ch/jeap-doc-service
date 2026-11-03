@@ -3,14 +3,26 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import environments from '@site/content/environments.json';
 
 /**
- * The environments of this site, in the order the switcher shows them.
+ * The environments of this site, in the order the switcher shows them. Empty for a site without environments,
+ * which is one tree at the site root - where every function below answers null for the environment.
  *
  * The file is written by the site generator before the build; nothing here decides what an environment is.
  */
 export const ENVIRONMENTS = [...environments.environments].sort((a, b) => a.order - b.order);
 
-/** The environment served at the site root - exactly one is marked, which the generator guarantees. */
-export const MAIN_ENVIRONMENT = ENVIRONMENTS.find((environment) => environment.main);
+/**
+ * The environment served at the site root - exactly one is marked, which the generator guarantees. Null on a
+ * site without environments.
+ */
+export const MAIN_ENVIRONMENT = ENVIRONMENTS.find((environment) => environment.main) ?? null;
+
+/**
+ * What a search covers, in words: the environment the reader is in, or the documentation as a whole on a site
+ * without environments.
+ */
+export function scopeLabelOf(environment) {
+    return environment ? environment.label : 'the documentation';
+}
 
 /**
  * The environment of an id, and the main environment for an id that names none.
@@ -43,7 +55,7 @@ export function environmentOfPath(sitePath) {
 /** Strips the environment prefix, leaving an environment-relative path. */
 export function withoutEnvironment(sitePath) {
     const environment = environmentOfPath(sitePath);
-    const prefix = routePrefixOf(environment);
+    const prefix = environment ? routePrefixOf(environment) : '';
     if (!prefix) {
         return sitePath;
     }

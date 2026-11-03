@@ -16,10 +16,15 @@ import java.util.List;
  * @param logo                where the site's logo comes from, or null for the one the template ships
  * @param favicon             where the site's favicon comes from, or null for the one the template ships
  * @param colorScheme         the colour scheme of the template this site uses
- * @param environments        the environments of this site, in the order the switcher shows them
+ * @param environments        the environments of this site, in the order the switcher shows them. Empty for a
+ *                            site without environments, which is one tree served at the site root
  * @param publishOnUpload     whether an upload for this site asks for a build
  * @param architectureModelRequired whether this site may only be published once the architecture model of
  *                            its environments has been imported
+ * @param buildSlots          how many of the instance's concurrent build slots a build of a part of this site
+ *                            occupies
+ * @param navigationLabel     what the site's tab in the header bar says; the title where it is not given
+ * @param content             the content source the site's content comes from, by its id
  */
 public record Site(
         String id,
@@ -30,7 +35,10 @@ public record Site(
         String colorScheme,
         List<SiteEnvironment> environments,
         boolean publishOnUpload,
-        boolean architectureModelRequired) {
+        boolean architectureModelRequired,
+        int buildSlots,
+        String navigationLabel,
+        String content) {
 
     /**
      * The site an upload belongs to when it names none.
@@ -57,8 +65,26 @@ public record Site(
      */
     public static final String SITE_SEGMENT = "site";
 
+    /**
+     * The content source of a site that names none: the documentation of the systems, as it has always been
+     * generated. The one source the site model has to name, because it is the default.
+     */
+    public static final String DEFAULT_CONTENT = "system-documentation";
+
     public Site {
         environments = List.copyOf(environments);
+        navigationLabel = navigationLabel == null || navigationLabel.isBlank() ? title : navigationLabel;
+        content = content == null || content.isBlank() ? DEFAULT_CONTENT : content;
+    }
+
+    /**
+     * A site with the defaults of what it does not name: its builds occupy one build slot each, its tab is
+     * labelled with its title, and its content is the documentation of the systems.
+     */
+    public Site(String id, String title, String tagline, String logo, String favicon, String colorScheme,
+                List<SiteEnvironment> environments, boolean publishOnUpload, boolean architectureModelRequired) {
+        this(id, title, tagline, logo, favicon, colorScheme, environments, publishOnUpload,
+                architectureModelRequired, 1, null, DEFAULT_CONTENT);
     }
 
     /**
@@ -77,8 +103,16 @@ public record Site(
     }
 
     /**
-     * The environment served at the site root. Exactly one environment is marked as such, which is checked
-     * while the site is built from its configuration.
+     * Whether this site has a tree per environment. One without is a single tree, and has no main or latest
+     * environment.
+     */
+    public boolean perEnvironment() {
+        return !environments.isEmpty();
+    }
+
+    /**
+     * The environment served at the site root. Exactly one environment of a site with environments is marked as
+     * such, which is checked while the site is built from its configuration.
      */
     public SiteEnvironment mainEnvironment() {
         return environments.stream().filter(SiteEnvironment::main).findFirst()

@@ -16,7 +16,11 @@ public enum DocumentationTypeDto {
 
     SYSTEM_DOCS("system-docs", DocumentationType.SYSTEM_DOCS),
     COMPONENT_DOCS("component-docs", DocumentationType.COMPONENT_DOCS),
-    LIBRARY_DOCS("library-docs", DocumentationType.LIBRARY_DOCS);
+    LIBRARY_DOCS("library-docs", DocumentationType.LIBRARY_DOCS),
+    SITE_DOCS(DocumentationTypeDto.SITE_DOCS_PARAMETER, DocumentationType.SITE_DOCS);
+
+    /** How a static site's tree is named, which the role of the upload is decided by - see {@code Roles}. */
+    public static final String SITE_DOCS_PARAMETER = "site-docs";
 
     private final String parameterValue;
     private final DocumentationType type;

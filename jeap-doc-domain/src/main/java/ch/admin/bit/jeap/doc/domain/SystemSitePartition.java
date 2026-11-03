@@ -6,7 +6,6 @@ import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,9 +23,10 @@ import java.util.TreeSet;
  * <p>
  * What is left over is the shell part: the root page of each environment, the systems index and the page about
  * the documentation.
+ * <p>
+ * A site without environments has no system parts: its one tree is the shell's.
  */
 @Slf4j
-@Service
 @RequiredArgsConstructor
 public class SystemSitePartition implements SitePartition {
 
@@ -63,6 +63,9 @@ public class SystemSitePartition implements SitePartition {
     public List<SitePart> partsOf(Site site) {
         List<SitePart> parts = new ArrayList<>();
         parts.add(shellOf(site));
+        if (!site.perEnvironment()) {
+            return List.copyOf(parts);
+        }
         for (String slug : systemSlugsOf(site)) {
             parts.add(systemPart(site, slug));
         }
@@ -74,7 +77,8 @@ public class SystemSitePartition implements SitePartition {
         if (SitePart.SHELL.equals(partId)) {
             return Optional.of(shellOf(site));
         }
-        if (partId == null || !partId.startsWith(SYSTEM_PREFIX) || partId.length() == SYSTEM_PREFIX.length()) {
+        if (!site.perEnvironment() || partId == null || !partId.startsWith(SYSTEM_PREFIX)
+            || partId.length() == SYSTEM_PREFIX.length()) {
             return Optional.empty();
         }
         return Optional.of(systemPart(site, partId.substring(SYSTEM_PREFIX.length())));
@@ -101,6 +105,9 @@ public class SystemSitePartition implements SitePartition {
      */
     @Override
     public List<SitePart> partsDocumenting(Site site, String environment, String systemName) {
+        if (!site.perEnvironment()) {
+            return List.of();
+        }
         String slug;
         try {
             slug = Slugs.toSlug(systemName);

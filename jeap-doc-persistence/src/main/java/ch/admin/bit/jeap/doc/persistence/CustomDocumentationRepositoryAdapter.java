@@ -50,7 +50,10 @@ class CustomDocumentationRepositoryAdapter implements CustomDocumentationReposit
     public Replaced replace(CustomSet set) {
         CustomSetKey key = set.key();
         Instant uploadedAt = set.provenance().uploadedAt();
-        deployments.recordUpload(key.site(), key.system(), null, uploadedAt);
+        // A static site's set documents no system, so there is no deployment to record it against.
+        if (key.kind() != SubjectKind.SITE) {
+            deployments.recordUpload(key.site(), key.system(), null, uploadedAt);
+        }
         if (key.kind() == SubjectKind.COMPONENT) {
             deployments.recordUpload(key.site(), key.system(), key.name(), uploadedAt);
         }
@@ -76,8 +79,8 @@ class CustomDocumentationRepositoryAdapter implements CustomDocumentationReposit
         List<CustomPageEntity> written = pages.saveAll(set.pages().stream()
                 .map(page -> CustomDocumentationMapper.toEntity(stored.getId(), page))
                 .toList());
-        log.info("The documentation of the {} {} of the system {} on the site {} is {}: {} file(s), {} bytes.",
-                key.kind(), set.subject().slug(), key.system(), key.site(),
+        log.info("The documentation of the {} {} on the site {} is {}: {} file(s), {} bytes.",
+                key.kind(), set.subject().slug(), key.site(),
                 isNew ? "published for the first time" : "replaced", written.size(), set.sizeInBytes());
         return new Replaced(CustomDocumentationMapper.toDomain(stored, written), previousObjectKey);
     }
@@ -238,7 +241,8 @@ class CustomDocumentationRepositoryAdapter implements CustomDocumentationReposit
     }
 
     private Optional<CustomSetEntity> findEntity(CustomSetKey key) {
-        return sets.find(key.site(), key.kind(), key.system(), key.name(), key.sourceFormat(), key.template(),
+        return sets.find(key.site(), key.kind(), key.system(), key.name(), key.sourceFormat(),
+                key.template(),
                 key.location(), key.topic());
     }
 

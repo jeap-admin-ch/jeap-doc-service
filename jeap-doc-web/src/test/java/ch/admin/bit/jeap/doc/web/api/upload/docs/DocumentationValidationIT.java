@@ -162,6 +162,19 @@ class DocumentationValidationIT extends DocServiceIntegrationTestBase {
                 .andExpect(jsonPath("$.type").value(UploadProblems.PROBLEM_TYPE));
     }
 
+    /** A system's dry run that forgets its system is told so, rather than refused by the role check. */
+    @Test
+    void aMissingSystem_isFourHundredBeforeTheRoleIsChecked() throws Exception {
+        mockMvc.perform(post(PATH)
+                        .param("type", "system-docs").param("template", "arc42")
+                        .param("source-format", "markdown")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"paths\": []}")
+                        .with(mayUpload()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MISSING_PARAMETER"))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("system")));
+    }
+
     /**
      * <b>A parameter this endpoint does not accept is a typo, and being told so is the point.</b> A path tree
      * does not depend on a commit hash, so the provenance parameters of an upload are refused here - which is

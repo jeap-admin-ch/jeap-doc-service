@@ -1,0 +1,27 @@
+/* Only on a wide screen: on a narrow one Docusaurus hides the items of the bar and shows them in its menu. */
+@media (min-width: 997px) {
+    .tabs {
+        display: flex;
+        align-self: stretch;
+        margin-left: 1.5rem;
+    }
+
+    .tab {
+        display: flex;
+        align-items: center;
+        padding: 0 1rem;
+        font-weight: 600;
+        /* Room for the mark under the current tab, so that marking one moves nothing. */
+        border-bottom: 3px solid transparent;
+    }
+
+    .current {
+        border-bottom-color: var(--ifm-color-primary);
+    }
+}
+
+@media (max-width: 996px) {
+    .tabs {
+        display: none;
+    }
+}

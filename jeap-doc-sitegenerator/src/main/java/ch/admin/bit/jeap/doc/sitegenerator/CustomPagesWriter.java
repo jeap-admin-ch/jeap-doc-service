@@ -59,7 +59,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
      * already absurd - the bound that decides is the set's, and this only keeps one entry from being the
      * whole of it.
      */
-    private static final int MAX_FILE_BYTES = 64 * 1024 * 1024;
+    static final int MAX_FILE_BYTES = 64 * 1024 * 1024;
 
     private final CustomDocumentation documentation;
 

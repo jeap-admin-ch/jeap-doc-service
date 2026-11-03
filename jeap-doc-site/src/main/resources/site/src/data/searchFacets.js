@@ -51,7 +51,8 @@ export function selectionFrom(parameters, groups = FACETS) {
 }
 
 /**
- * The filters of one search: the environment, and every group the reader has narrowed.
+ * The filters of one search: the environment, and every group the reader has narrowed. A site without
+ * environments passes null, and its search is not scoped to a tree.
  *
  * **A group is sent as `{any: [...]}`.** An array is read as "all of these at once", and since a record
  * carries one value per key, a two-value array returns nothing at all - silently. A group everything is
@@ -59,7 +60,7 @@ export function selectionFrom(parameters, groups = FACETS) {
  * where a record has none.
  */
 export function filtersOf(selection, environment, groups = FACETS) {
-    const filters = {environment: [environment]};
+    const filters = environmentFilterOf(environment);
     for (const group of groups) {
         const selected = selection[group.key] ?? ALL(group);
         if (selected.length < group.values.length) {
@@ -82,11 +83,16 @@ export function filtersOf(selection, environment, groups = FACETS) {
  * first counts within the set this query narrowed to, which is the reader's environment and nothing else.
  */
 export function countingFiltersOf(environment, groups = FACETS) {
-    const filters = {environment: [environment]};
+    const filters = environmentFilterOf(environment);
     for (const group of groups) {
         filters[group.key] = [];
     }
     return filters;
+}
+
+/** The filter scoping a search to the reader's environment, or none on a site without environments. */
+function environmentFilterOf(environment) {
+    return environment ? {environment: [environment]} : {};
 }
 
 /** Writes the selection into the URL parameters, omitting a group the reader has not narrowed. */

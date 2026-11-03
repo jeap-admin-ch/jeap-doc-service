@@ -71,6 +71,25 @@ class SystemSitePartitionTest {
                         .containsExactly("/dev/systems/orders/", "/systems/orders/"));
     }
 
+    /**
+     * A site without environments is one tree, and the shell carries it - even where something was uploaded
+     * for a system, which would otherwise be a part with no tree to write into.
+     */
+    @Test
+    void partsOf_whenTheSiteHasNoEnvironments_thenTheShellIsItsOnlyPart() {
+        SystemSitePartition partition = partitionOfDocumented("orders");
+        Site site = siteWith();
+
+        assertThat(partition.partsOf(site)).singleElement().satisfies(shell -> {
+            assertThat(shell.isShell()).isTrue();
+            assertThat(shell.carriesWholeEnvironments()).isTrue();
+            assertThat(shell.environments()).isEmpty();
+            assertThat(shell.routePrefixes()).isEmpty();
+        });
+        assertThat(partition.partOf(site, "system-orders")).isEmpty();
+        assertThat(partition.partsDocumenting(site, null, "orders")).isEmpty();
+    }
+
     /** The same system on two stages is one part, not two. */
     @Test
     void partsOf_thenASystemOnTwoStagesIsOnePart() {

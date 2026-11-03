@@ -21,6 +21,13 @@ public class PublicationProperties {
     private String url;
 
     /**
+     * The title every site of this instance shows beside its logo, so that the header bar reads the same on all
+     * of them and the site tabs say where the reader is. Without it, the title of the {@code default} site, or
+     * else of the first configured site. A page's title in the browser keeps naming its own site.
+     */
+    private String title;
+
+    /**
      * How often an instance re-reads which build of a site is the published one, so that it picks up what
      * another instance published without asking the database on every request.
      */

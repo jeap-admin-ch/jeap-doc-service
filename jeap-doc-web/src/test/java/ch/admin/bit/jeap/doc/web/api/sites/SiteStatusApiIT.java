@@ -8,6 +8,8 @@ import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
@@ -30,12 +32,21 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
 
     private static final String SITE = "governance";
     private static final String INSTANCE = "site-status-it";
+    private static final String SITE_WITHOUT_ENVIRONMENTS = "site-status-handbook";
 
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private DocumentationBuildRepository builds;
+
+    /** The site without environments, as docs/configuration.md configures its example. */
+    @DynamicPropertySource
+    static void siteProperties(DynamicPropertyRegistry registry) {
+        registry.add("jeap.doc.sites." + SITE_WITHOUT_ENVIRONMENTS + ".title", () -> "Handbook");
+        registry.add("jeap.doc.sites." + SITE_WITHOUT_ENVIRONMENTS + ".per-environment", () -> false);
+        registry.add("jeap.doc.sites." + SITE_WITHOUT_ENVIRONMENTS + ".content", () -> "static-site");
+    }
 
     @Test
     void sites_thenEveryConfiguredSiteWithWhatItIsConfiguredToDo() throws Exception {
@@ -44,7 +55,22 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
                 .andExpect(jsonPath("$[*].site").value(hasItems(Site.DEFAULT_SITE, SITE)))
                 .andExpect(jsonPath("$[?(@.site == 'default')].title").value(hasItems("Documentation")))
                 .andExpect(jsonPath("$[?(@.site == 'default')].publishOnUpload").value(hasItems(true)))
+                .andExpect(jsonPath("$[?(@.site == 'default')].perEnvironment").value(hasItems(true)))
                 .andExpect(jsonPath("$[?(@.site == 'default')].environments[*]").value(hasItems("dev", "prod")));
+    }
+
+    /** A site without environments says so, and lists none - and its only part is the shell. */
+    @Test
+    void site_whenTheSiteHasNoEnvironments_thenItSaysSoAndItsShellIsItsOnlyPart() throws Exception {
+        mockMvc.perform(get(SiteApiPaths.SITE, SITE_WITHOUT_ENVIRONMENTS).with(readRole()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Handbook"))
+                .andExpect(jsonPath("$.perEnvironment").value(false))
+                .andExpect(jsonPath("$.environments").isEmpty());
+        mockMvc.perform(get(SiteApiPaths.PARTS, SITE_WITHOUT_ENVIRONMENTS).with(readRole()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].part").value(org.hamcrest.Matchers.contains("shell")))
+                .andExpect(jsonPath("$[0].environments").isEmpty());
     }
 
     /**

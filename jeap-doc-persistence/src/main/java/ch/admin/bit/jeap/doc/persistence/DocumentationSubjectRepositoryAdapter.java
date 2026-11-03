@@ -28,16 +28,21 @@ class DocumentationSubjectRepositoryAdapter implements DocumentationSubjectRepos
     }
 
     private DocumentationSubject create(DocumentationSubject subject, Instant now) {
-        subjects.insertIfAbsent(subject.site(), subject.kind().name(), subject.system(), subject.name(), now);
+        String system = subject.system();
+        subjects.insertIfAbsent(subject.site(), subject.kind().name(), system, subject.name(), now);
         DocumentationSubject created = subjects
-                .find(subject.site(), subject.kind(), subject.system(), subject.name())
+                .find(subject.site(), subject.kind(), system, subject.name())
                 .map(DocumentationUploadMapper::toDomain)
                 .orElseThrow(() -> new IllegalStateException(
                         "The subject %s of the system %s was neither found nor created."
                                 .formatted(subject.name(), subject.system())));
-        log.info("The {} {} of the system {} is documented for the first time on the site {}.",
-                subject.kind(), subject.name() == null ? subject.system() : subject.name(), subject.system(),
-                subject.site());
+        if (subject.system() == null) {
+            log.info("The static site {} is documented for the first time.", subject.site());
+        } else {
+            log.info("The {} {} of the system {} is documented for the first time on the site {}.",
+                    subject.kind(), subject.name() == null ? subject.system() : subject.name(), subject.system(),
+                    subject.site());
+        }
         return created;
     }
 }

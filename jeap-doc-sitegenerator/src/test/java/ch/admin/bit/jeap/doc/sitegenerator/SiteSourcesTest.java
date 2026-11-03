@@ -82,13 +82,19 @@ class SiteSourcesTest {
         SiteProperties siteProperties = new SiteProperties();
         siteProperties.getSites().put("default", new SiteProperties.Site());
         siteProperties.getSites().put("governance", new SiteProperties.Site());
+        SiteProperties.Site handbook = new SiteProperties.Site();
+        handbook.setPerEnvironment(false);
+        handbook.setContent(ch.admin.bit.jeap.doc.domain.content.StaticSiteContent.SOURCE_ID);
+        siteProperties.getSites().put("handbook", handbook);
         sources = new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
-                NoArchitectureModel.systemPages(new SiteUrls(publication, "")),
+                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(new SiteUrls(publication, ""))),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(siteProperties),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
                 TestProvenance.of(siteProperties, NoArchitectureModel.INSTANCE,
                         new StructureTemplates(List.of())),
-                new AboutThisDocumentation());
+                new AboutThisDocumentation(), publication);
     }
 
     /**
@@ -153,11 +159,13 @@ class SiteSourcesTest {
             }
         };
         return new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
-                NoArchitectureModel.systemPages(new SiteUrls(publication, "")),
+                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(new SiteUrls(publication, ""))),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(siteProperties),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
                 TestProvenance.of(siteProperties, configured, new StructureTemplates(List.of()), imports),
-                new AboutThisDocumentation());
+                new AboutThisDocumentation(), new PublicationProperties());
     }
 
     /**
@@ -207,15 +215,17 @@ class SiteSourcesTest {
         publication.setUrl("https://doc.example.ch");
         SiteUrls urls = new SiteUrls(publication, "");
         return new SiteSources(urls, new DefaultResourceLoader(),
-                new SystemPages(new OneSystemIn(modelled), NoMessageSchemas.INSTANCE,
+                java.util.List.of(new SystemDocumentationWriter(new SystemPages(new OneSystemIn(modelled), NoMessageSchemas.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         NoReactions.INSTANCE, NoReactions.INSTANCE,
                         new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                         new StructureTemplates(List.of()), new GeneratorProperties(),
-                        new ArchitectureImportProperties(), BuildMetrics.NONE, urls),
+                        new ArchitectureImportProperties(), BuildMetrics.NONE, urls)),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), new BuildProperties(),
-                TestProvenance.of(new OneSystemIn(modelled)), new AboutThisDocumentation());
+                TestProvenance.of(new OneSystemIn(modelled)), new AboutThisDocumentation(), new PublicationProperties());
     }
 
     /** A generator over the given landscape, with the partition reading the same one. */
@@ -224,14 +234,16 @@ class SiteSourcesTest {
         publication.setUrl("https://doc.example.ch");
         SiteUrls urls = new SiteUrls(publication, "");
         return new SiteSources(urls, new DefaultResourceLoader(),
-                new SystemPages(landscape, NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                java.util.List.of(new SystemDocumentationWriter(new SystemPages(landscape, NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
                 new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of()),
-                        new GeneratorProperties(), new ArchitectureImportProperties(), BuildMetrics.NONE, urls),
+                        new GeneratorProperties(), new ArchitectureImportProperties(), BuildMetrics.NONE, urls)),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(landscape, new NoCustomDocumentation()), new BuildProperties(),
-                TestProvenance.of(landscape), new AboutThisDocumentation());
+                TestProvenance.of(landscape), new AboutThisDocumentation(), new PublicationProperties());
     }
 
     private JsonNode siteJson() throws IOException {
@@ -344,6 +356,53 @@ class SiteSourcesTest {
         assertThat(part.get("carriesWholeEnvironments").asBoolean()).isTrue();
         assertThat(part.get("shell").asBoolean()).isTrue();
         assertThat(part.get("environments")).isNotEmpty();
+    }
+
+    /**
+     * A site without environments is one tree, written where the template mounts it at the site root. Its pages
+     * name no environment, and the template is told there is none to switch between.
+     */
+    @Test
+    void write_whenTheSiteHasNoEnvironments_thenItsOwnPagesGoIntoTheOneTreeAndNameNoEnvironment()
+            throws IOException {
+        Site site = new Site("handbook", "Handbook", null, null, null, "jeap", List.of(), true, false, 1, null,
+                ch.admin.bit.jeap.doc.domain.content.StaticSiteContent.SOURCE_ID);
+
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
+
+        Path tree = content.resolve(SiteSources.SINGLE_TREE);
+        String root = Files.readString(tree.resolve("index.md"), StandardCharsets.UTF_8);
+        assertThat(root).doesNotContain("{{").doesNotContain("doc_environment")
+                .doesNotContain("| Environment |").doesNotContain("It shows the")
+                .contains("slug: /")
+                .contains("This documentation is generated by the jEAP Doc Service.\n")
+                .contains("| Site | `handbook` |\n| Generated | " + GENERATED_AT_DISPLAY + " |");
+        String about = Files.readString(tree.resolve(AboutThisDocumentation.FILE_NAME), StandardCharsets.UTF_8);
+        assertThat(about).doesNotContain("doc_environment").doesNotContain("| Environment |")
+                .doesNotContain("The environments of this site")
+                .describedAs("no model is read and no import publishes the site")
+                .doesNotContain("Waits for the architecture model")
+                .doesNotContain("The architecture model is imported");
+        assertThat(JSON.readTree(content.resolve("environments.json").toFile()).get("environments")).isEmpty();
+        assertThat(siteJson().get("perEnvironment")).isNotNull();
+        assertThat(siteJson().get("perEnvironment").asBoolean()).isFalse();
+        assertThat(siteJson().get("baseUrl").asString()).isEqualTo("/site/handbook/");
+        try (var entries = Files.list(content)) {
+            assertThat(entries.filter(Files::isDirectory).map(entry -> entry.getFileName().toString()))
+                    .describedAs("no environment tree beside the one tree")
+                    .containsExactly(SiteSources.SINGLE_TREE);
+        }
+    }
+
+    /**
+     * {@code site.json} is part of what a part's content hashes to, so a site with environments must not gain a
+     * key: every part of every existing instance would be rebuilt by the release.
+     */
+    @Test
+    void write_whenTheSiteHasEnvironments_thenSiteJsonDoesNotSayItHas() throws IOException {
+        sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
+
+        assertThat(siteJson().has("perEnvironment")).isFalse();
     }
 
     /**
@@ -534,6 +593,103 @@ class SiteSourcesTest {
         assertThat(page)
                 .startsWith("---\ntitle: \"{{tagline}}\"\n")
                 .contains("# &#123;&#123;tagline&#125;&#125;");
+    }
+
+    /**
+     * An instance of several sites: every site shows the same title beside its logo - the default site's, where
+     * none is configured - and a tab per site in configuration order, labelled with its title and marked where
+     * the reader is. Each tab leads to the root of its site.
+     */
+    @Test
+    void write_whenTheInstanceServesSeveralSites_thenEverySiteCarriesTheTitleAndATabPerSite() throws IOException {
+        Site governance = new Site("governance", "Governance", null, null, null, "jeap", environments(), true, true);
+
+        sources.write(1L, governance, wholeSiteOf(governance), content, GENERATED_AT);
+
+        JsonNode navigation = siteJson().get("navigation");
+        assertThat(navigation.get("title").asString()).describedAs("the default site's title").isEqualTo("Documentation");
+        assertThat(navigation.get("tabs")).hasSize(3);
+        assertThat(StreamSupport.stream(navigation.get("tabs").spliterator(), false)
+                .map(tab -> tab.get("label").asString() + " " + tab.get("url").asString() + " "
+                            + tab.get("current").asBoolean()))
+                .containsExactly("Documentation / false", "governance /site/governance/ true",
+                        "handbook /site/handbook/ false");
+        assertThat(siteJson().get("title").asString()).describedAs("the site keeps its own title for its pages")
+                .isEqualTo("Governance");
+    }
+
+    /** A configured title and navigation labels are what the header bar shows. */
+    @Test
+    void write_whenATitleAndLabelsAreConfigured_thenTheHeaderBarShowsThem() throws IOException {
+        SiteProperties configured = new SiteProperties();
+        SiteProperties.Site architecture = new SiteProperties.Site();
+        architecture.setTitle("System Documentation");
+        architecture.setNavigationLabel("Architecture");
+        configured.getSites().put(Site.DEFAULT_SITE, architecture);
+        SiteProperties.Site deployments = new SiteProperties.Site();
+        deployments.setTitle("Deployments");
+        configured.getSites().put("deployments", deployments);
+        PublicationProperties publication = publication();
+        publication.setTitle("Example Documentation");
+        DocumentationSites sites = new DocumentationSites(configured);
+
+        sourcesOf(configured, publication).write(1L, sites.find("deployments").orElseThrow(),
+                wholeSiteOf(sites.find("deployments").orElseThrow()), content, GENERATED_AT);
+
+        JsonNode navigation = siteJson().get("navigation");
+        assertThat(navigation.get("title").asString()).isEqualTo("Example Documentation");
+        assertThat(StreamSupport.stream(navigation.get("tabs").spliterator(), false)
+                .map(tab -> tab.get("label").asString()))
+                .describedAs("a label where one is configured, the title where it is not")
+                .containsExactly("Architecture", "Deployments");
+    }
+
+    /**
+     * <b>A single site without a configured title gains nothing</b>: {@code site.json} is part of what its parts
+     * hash to, so writing the navigation would rebuild every part of every such instance with the release.
+     */
+    @Test
+    void write_whenTheInstanceServesOneSiteAndNoTitleIsConfigured_thenSiteJsonHasNoNavigation()
+            throws IOException {
+        SiteProperties configured = new SiteProperties();
+        configured.getSites().put(Site.DEFAULT_SITE, new SiteProperties.Site());
+
+        sourcesOf(configured, publication()).write(1L, siteOf(Site.DEFAULT_SITE),
+                wholeSiteOf(siteOf(Site.DEFAULT_SITE)), content, GENERATED_AT);
+
+        assertThat(siteJson().has("navigation")).isFalse();
+    }
+
+    /** One site with a title of its own shows it beside its logo, and still has no tabs. */
+    @Test
+    void write_whenTheInstanceServesOneSiteWithAConfiguredTitle_thenItHasTheTitleAndNoTabs() throws IOException {
+        SiteProperties configured = new SiteProperties();
+        configured.getSites().put(Site.DEFAULT_SITE, new SiteProperties.Site());
+        PublicationProperties publication = publication();
+        publication.setTitle("Example Documentation");
+
+        sourcesOf(configured, publication).write(1L, siteOf(Site.DEFAULT_SITE),
+                wholeSiteOf(siteOf(Site.DEFAULT_SITE)), content, GENERATED_AT);
+
+        assertThat(siteJson().get("navigation").get("title").asString()).isEqualTo("Example Documentation");
+        assertThat(siteJson().get("navigation").get("tabs")).isEmpty();
+    }
+
+    private static PublicationProperties publication() {
+        PublicationProperties publication = new PublicationProperties();
+        publication.setUrl("https://doc.example.ch");
+        return publication;
+    }
+
+    private SiteSources sourcesOf(SiteProperties configured, PublicationProperties publication) {
+        return new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
+                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(new SiteUrls(publication, ""))),
+                        new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
+                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), new DocumentationSites(configured),
+                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
+                buildProperties, TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
+                        new StructureTemplates(List.of())),
+                new AboutThisDocumentation(), publication);
     }
 
     /**

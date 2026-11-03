@@ -1,7 +1,12 @@
 package ch.admin.bit.jeap.doc.domain.upload.validation;
 
+import ch.admin.bit.jeap.doc.domain.DocumentationSites;
+import ch.admin.bit.jeap.doc.domain.SearchIndex;
+import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.Slugs;
+import ch.admin.bit.jeap.doc.domain.content.StaticSiteRoutes;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.custom.Microsite;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.NumberPrefixes;
 import ch.admin.bit.jeap.doc.domain.template.ReservedNames;
@@ -9,6 +14,7 @@ import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationPlacement;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
 import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +53,37 @@ public class StructureValidation {
     /** The longest a path may be. One absurd path among sane ones is a mistake in one path, not a bad tree. */
     public static final int MAX_PATH_LENGTH = 1024;
 
+    /**
+     * What a report names as its template for a static site, which follows none: its tree is the site's own.
+     */
+    static final String STATIC_SITE = "static-site";
+
+    /**
+     * The files a static site is made of: pages, and the assets a page shows or links. The same as a template
+     * documents with, because a static site is written the same way - only without chapters.
+     */
+    static final Set<String> STATIC_SITE_EXTENSIONS = Set.of(
+            "md",
+            "png", "jpg", "jpeg", "gif", "webp", "avif", "svg",
+            "pdf", "txt", "csv", "json", "yaml", "yml");
+
+    /** The one name beginning with an underscore a static site may carry: it labels and orders a folder. */
+    static final String CATEGORY_FILE = "_category_.json";
+
+    /**
+     * The routes at the root of a static site the generator serves itself - the page about the documentation
+     * and the search - which no page of an uploaded tree may take.
+     */
+    static final Set<String> GENERATED_STATIC_SITE_ROUTES = Set.of("about-this-documentation", "search");
+
+    /**
+     * The folders below the root of every site that the doc service answers itself - the uploaded microsites and
+     * the search index - and the one the generator fills with a page per tag an uploaded page carries. No page of
+     * an uploaded tree may be published in one: it would be unreachable, or two pages would be one route, which
+     * fails the build of the whole site.
+     */
+    static final Set<String> SERVED_BELOW_EVERY_SITE_ROOT = Set.of(Microsite.SEGMENT, SearchIndex.DIRECTORY, "tags");
+
     private final StructureTemplates templates;
     private final UploadProperties properties;
     private final CustomProperties customProperties;
@@ -54,11 +91,16 @@ public class StructureValidation {
     /**
      * Checks a tree against where it would be placed.
      *
+     * @param site      the site the set is uploaded to, or null for the default site. Only a static site's tree
+     *                  depends on it, as it is published at the site's root
      * @param placement what the upload documents, and which template and source format it follows
      * @param paths     every file of the set, relative to its root, separated by {@code /}
      */
-    public StructureReport validate(DocumentationPlacement placement, List<String> paths) {
+    public StructureReport validate(String site, DocumentationPlacement placement, List<String> paths) {
         List<String> given = paths == null ? List.of() : paths;
+        if (placement.type() == DocumentationType.SITE_DOCS) {
+            return validateStaticSite(reservedFoldersOf(site), given);
+        }
         Optional<StructureTemplate> template = templates.find(placement.template());
         if (template.isEmpty()) {
             // Nothing else can be said: the chapters, the extensions and the generated names are all the
@@ -95,6 +137,145 @@ public class StructureValidation {
         }
         return report(template.get().id(), checked.size(), ignored.size(), allowedFolders, allowedExtensions,
                 refusedExtensions, findings);
+    }
+
+    /**
+     * A static site's tree is published as it is, so there are no chapters and nothing it could collide with
+     * but itself. What still holds is what holds for every Markdown set: a path that can be published, once;
+     * no hidden or underscore name but a folder's {@code _category_.json}; the extensions a page and its assets
+     * are written in; and no path that is a file and a folder, or two pages at one URL - nor a page at a URL
+     * the generator serves itself, or in a folder the doc service answers itself.
+     */
+    @SuppressWarnings("java:S135") // Guard clauses: one continue per rule, so a path has one finding.
+    private StructureReport validateStaticSite(Set<String> reservedFolders, List<String> given) {
+        List<String> ignored = given.stream().filter(StructureValidation::isDropped).toList();
+        List<String> checked = given.stream().filter(path -> !isDropped(path)).toList();
+        Set<String> allowed = new HashSet<>(STATIC_SITE_EXTENSIONS);
+        allowed.addAll(customProperties.getAdditionalAssetExtensions());
+        List<StructureFinding> findings = new ArrayList<>();
+        if (checked.isEmpty()) {
+            findings.add(StructureFinding.ofTree(FindingCode.EMPTY_TREE,
+                    "The documentation set holds nothing that would be published. Check the path the doc "
+                    + "workflow points at."));
+        }
+        Set<String> duplicated = duplicatesOf(checked);
+        Set<String> folders = staticFoldersOf(checked);
+        Set<String> colliding = collidingStaticDocumentsOf(checked);
+        for (String path : new LinkedHashSet<>(checked)) {
+            Optional<StructureFinding> pathFinding = pathHygiene(path, duplicated);
+            if (pathFinding.isPresent()) {
+                findings.add(pathFinding.get());
+                continue;
+            }
+            String[] segments = path.split("/");
+            Optional<StructureFinding> folderFinding = staticFolderFinding(path, segments);
+            if (folderFinding.isPresent()) {
+                findings.add(folderFinding.get());
+                continue;
+            }
+            if (folders.contains(path)) {
+                findings.add(StructureFinding.of(FindingCode.COLLIDING_NAME, path,
+                        ("'%s' is a file, and other files of the set lie in a folder of that name. One path "
+                         + "cannot be both. Rename the file or the folder.")
+                                .formatted(segments[segments.length - 1])));
+                continue;
+            }
+            staticNameFinding(path, segments[segments.length - 1], allowed, colliding, reservedFolders)
+                    .ifPresent(findings::add);
+        }
+        return report(STATIC_SITE, checked.size(), ignored.size(), List.of(), sorted(allowed), List.of(),
+                findings);
+    }
+
+    private static Optional<StructureFinding> staticFolderFinding(String path, String[] segments) {
+        for (int i = 0; i < segments.length - 1; i++) {
+            Optional<StructureFinding> finding = prefixFinding(path, segments[i], "folder");
+            if (finding.isPresent()) {
+                return finding;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<StructureFinding> staticNameFinding(String path, String name, Set<String> allowed,
+                                                                Set<String> colliding,
+                                                                Set<String> reservedFolders) {
+        if (CATEGORY_FILE.equals(name)) {
+            return Optional.empty();
+        }
+        Optional<StructureFinding> prefix = prefixFinding(path, name, "file");
+        if (prefix.isPresent()) {
+            return prefix;
+        }
+        String extension = extensionOf(name);
+        if (extension == null || !allowed.contains(extension)) {
+            return Optional.of(StructureFinding.of(FindingCode.FORBIDDEN_EXTENSION, path,
+                    ("'%s' is not a file a static site is written with. The extensions it takes are on this "
+                     + "report.").formatted(extension == null ? name : "." + extension)));
+        }
+        if (!DocumentationPaths.MARKDOWN_EXTENSION.equals(extension)) {
+            return Optional.empty();
+        }
+        String route = StaticSiteRoutes.routeOf(path);
+        if (GENERATED_STATIC_SITE_ROUTES.contains(route)) {
+            return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
+                    ("'%s' would be published at /%s/, which the doc service serves on every static site itself. "
+                     + "Rename the page or its folder.").formatted(name, route)));
+        }
+        String folder = route.contains("/") ? route.substring(0, route.indexOf('/')) : route;
+        if (reservedFolders.contains(folder)) {
+            return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
+                    ("'%s' would be published below /%s/, which the doc service answers itself on this site, so "
+                     + "the page could not be reached. Rename the folder.").formatted(name, folder)));
+        }
+        if (colliding.contains(route)) {
+            return Optional.of(StructureFinding.of(FindingCode.COLLIDING_NAME, path,
+                    ("'%s' is published at the URL of another page of the set. A leading number is not part of a "
+                     + "page's URL, and an index, a README or a page named like its folder is the folder's own "
+                     + "page - so the two would be one route. Rename one of them.").formatted(name)));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * The first route segments a static site's page may not take. Every site's own folders, and on the default
+     * site - which is served at the context root - also the paths the service answers on itself and the one
+     * every other site is served below, exactly the names an environment of that site is refused.
+     */
+    private static Set<String> reservedFoldersOf(String site) {
+        if (site != null && !site.isBlank() && !Site.DEFAULT_SITE.equals(site)) {
+            return SERVED_BELOW_EVERY_SITE_ROOT;
+        }
+        Set<String> reserved = new HashSet<>(SERVED_BELOW_EVERY_SITE_ROOT);
+        reserved.addAll(DocumentationSites.RESERVED_TOP_LEVEL_SEGMENTS);
+        reserved.add(Site.SITE_SEGMENT);
+        return reserved;
+    }
+
+    /** Every folder a path of a static site lies in, so that a file of the same path can be refused. */
+    private static Set<String> staticFoldersOf(List<String> paths) {
+        Set<String> folders = new HashSet<>();
+        for (String path : paths) {
+            int slash = path.indexOf('/');
+            while (slash > 0) {
+                folders.add(path.substring(0, slash));
+                slash = path.indexOf('/', slash + 1);
+            }
+        }
+        return folders;
+    }
+
+    /** The routes of a static site that two pages of it would both be published at - see {@link StaticSiteRoutes}. */
+    private static Set<String> collidingStaticDocumentsOf(List<String> paths) {
+        Set<String> seen = new HashSet<>();
+        Set<String> twice = new HashSet<>();
+        for (String path : new LinkedHashSet<>(paths)) {
+            if (DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(path.substring(path.lastIndexOf('/') + 1)))
+                && !seen.add(StaticSiteRoutes.routeOf(path))) {
+                twice.add(StaticSiteRoutes.routeOf(path));
+            }
+        }
+        return twice;
     }
 
     /** The template's extensions and the asset types this instance adds. The only place an extension is decided. */

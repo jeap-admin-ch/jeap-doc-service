@@ -427,9 +427,11 @@ class S3CustomDocumentationStorage implements CustomDocumentationStorage {
      * attempt that took over made current, and the row's digest would stop describing the object it names.
      */
     private String objectKey(CustomSetKey key, long revision, int attempt) {
+        // A static site's set names no system and follows no template; '-' stands in for both, as it does
+        // for a missing name - an empty segment is not a key the object storage takes.
         return String.join("/", prefix(), DOCS_SEGMENT, key.site(), key.kind().name().toLowerCase(),
-                key.system(), key.name() == null ? "-" : key.name(),
-                key.sourceFormat().name().toLowerCase(), key.template(),
+                key.system() == null ? "-" : key.system(), key.name() == null ? "-" : key.name(),
+                key.sourceFormat().name().toLowerCase(), key.template() == null ? "-" : key.template(),
                 key.location() == null ? "-" : key.location() + "-" + key.topic(),
                 Long.toString(revision), Integer.toString(attempt), BUNDLE_NAME);
     }

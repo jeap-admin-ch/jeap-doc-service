@@ -5,6 +5,8 @@ import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
+import ch.admin.bit.jeap.doc.domain.upload.SiteUploadRules;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,7 +16,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Removes documentation a team uploaded: one set, or a whole subject.
+ * Removes documentation a team uploaded: one set, a whole subject, or the tree of a static site.
  * <p>
  * <b>Nothing is inferred here.</b> This class does not decide that a subject left the architecture model - a
  * component that publishes once and stays stable for a year is the normal case. It removes exactly what its
@@ -37,13 +39,24 @@ public class CustomDocumentationRemoval {
     private final CustomDocumentationStorage storage;
     private final DocumentationSites sites;
     private final DocumentationBuildTrigger buildTrigger;
+    private final SiteUploadRules siteUploadRules;
 
     /**
      * Removes one set, and asks for the part that published it to be built.
      *
      * @return what was removed, or empty when there is no such set
+     * @throws IllegalArgumentException for the tree of a static site, which {@link #removeStaticSiteTree}
+     *                                  removes after checking that the site is one
      */
     public Optional<Removal> removeSet(CustomSetKey key) {
+        if (key.kind() == SubjectKind.SITE) {
+            throw new IllegalArgumentException("The tree of a static site is removed with removeStaticSiteTree, "
+                                               + "which checks that the site is one.");
+        }
+        return remove(key);
+    }
+
+    private Optional<Removal> remove(CustomSetKey key) {
         requireConfiguredSite(key.site());
         Optional<CustomSet> set = documentation.find(key);
         if (set.isEmpty()) {
@@ -52,6 +65,22 @@ public class CustomDocumentationRemoval {
         documentation.remove(key);
         forget(set.get().objectKey());
         return Optional.of(new Removal(1, askForABuild(key.site(), key.system())));
+    }
+
+    /**
+     * Removes the tree of a static site, and asks for the site to be built: it is published with a generated
+     * root page until a tree is uploaded again.
+     *
+     * @return what was removed, or empty where the site has no tree
+     * @throws InvalidUploadException where the site is not a static site, which has no tree to remove
+     */
+    public Optional<Removal> removeStaticSiteTree(String site) {
+        requireConfiguredSite(site);
+        if (!siteUploadRules.takesSiteUploads(site)) {
+            throw InvalidUploadException.invalidValue("site", site,
+                    "a static site, as only a static site has a tree uploaded for it");
+        }
+        return remove(CustomSetKey.ofSite(site));
     }
 
     /**

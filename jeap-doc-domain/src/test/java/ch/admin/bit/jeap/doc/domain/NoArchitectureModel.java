@@ -14,7 +14,7 @@ import java.util.Optional;
  * landscape to have parts. What a model does to the parts of a site is {@link SystemSitePartitionTest}'s
  * business, and what it does to readiness is {@link ArchitectureModelReadinessTest}'s.
  */
-class NoArchitectureModel implements ArchitectureModelSource {
+public class NoArchitectureModel implements ArchitectureModelSource {
 
     @Override
     public boolean isConfiguredFor(String environment) {

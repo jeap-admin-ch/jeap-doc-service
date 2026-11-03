@@ -3,7 +3,7 @@ import Layout from '@theme/Layout';
 import BrowserOnly from '@docusaurus/BrowserOnly';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {useHistory, useLocation} from '@docusaurus/router';
-import {environmentById} from '@site/src/data/environments';
+import {environmentById, scopeLabelOf} from '@site/src/data/environments';
 import {Excerpt, Kind, titleOf, Where} from '@site/src/components/SearchHit';
 import SearchFacets from '@site/src/components/SearchFacets';
 import {FACETS, countingFiltersOf, everything, filtersOf, isNarrowed, selectionFrom, toggled, writeInto}
@@ -49,6 +49,8 @@ function Results() {
     const parameters = new URLSearchParams(location.search);
     const query = parameters.get('q') ?? '';
     const environment = environmentById(parameters.get('env'));
+    const environmentId = environment ? environment.id : null;
+    const scopeLabel = scopeLabelOf(environment);
     // The chips are the URL too, so a narrowed result set is a link somebody can share - and a search
     // nobody has narrowed writes no parameter at all, which keeps its URL what it always was.
     const selection = selectionFrom(parameters);
@@ -80,7 +82,7 @@ function Results() {
         try {
             const module = await import(/* webpackIgnore: true */ `${baseUrl}pagefind/pagefind.js`);
             await module.options({baseUrl});
-            const found = await module.search(query, {filters: filtersOf(selection, environment.id)});
+            const found = await module.search(query, {filters: filtersOf(selection, environmentId)});
             if (run !== latest.current) {
                 return;
             }
@@ -104,7 +106,7 @@ function Results() {
         // numbers, not documentation that was never indexed.
         try {
             const module = await import(/* webpackIgnore: true */ `${baseUrl}pagefind/pagefind.js`);
-            const counted = await module.search(query, {filters: countingFiltersOf(environment.id)});
+            const counted = await module.search(query, {filters: countingFiltersOf(environmentId)});
             if (run === latest.current) {
                 setCounts(counted.filters);
             }
@@ -114,7 +116,7 @@ function Results() {
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [baseUrl, query, environment.id, JSON.stringify(selection)]);
+    }, [baseUrl, query, environmentId, JSON.stringify(selection)]);
 
     /** A chip turned on or off, written straight into the URL - which is where the selection lives. */
     const narrow = useCallback((group, value) => {
@@ -158,8 +160,8 @@ function Results() {
                     className={styles.input}
                     type="search"
                     autoFocus
-                    aria-label={`Search the documentation of ${environment.label}`}
-                    placeholder={`Search ${environment.label}`}
+                    aria-label={environment ? `Search the documentation of ${environment.label}` : 'Search the documentation'}
+                    placeholder={`Search ${scopeLabel}`}
                     value={typed}
                     onChange={(event) => setTyped(event.target.value)}/>
             </div>
@@ -180,12 +182,12 @@ function Results() {
             )}
             {state === 'searching' && <p>Searching…</p>}
             {state === 'done' && results?.length === 0 && (
-                <p>No page of {environment.label} matches <strong>{query}</strong>.</p>
+                <p>No page of {scopeLabel} matches <strong>{query}</strong>.</p>
             )}
             {state === 'done' && results?.length > 0 && (
                 <>
                     <p className={styles.count}>
-                        {results.length} page(s) of {environment.label} match <strong>{query}</strong>.
+                        {results.length} page(s) of {scopeLabel} match <strong>{query}</strong>.
                     </p>
                     <ul className={styles.results} aria-label="Search results">
                         {results.map((result) => (

@@ -112,6 +112,24 @@ reach the other.
 - **Nothing arc42-specific goes into `jeap-doc-sitegenerator`.** What belongs there is what every template
   shares: the workspace, the site-level files, the systems index, the Docusaurus run.
 
+### A content source is a plugin point
+
+**Where a site's content comes from is the site's `content`, and `ContentSource` in `jeap-doc-domain` is what it
+names.** A source decides which parts its sites have, which triggers ask for them, whether a tree is uploaded
+for its site itself (`takesSiteUploads`, which `SiteUploadRules` asks for the upload, its dry run and the removal)
+and which configuration it refuses at startup; its writer, a `ContentWriter` in `jeap-doc-sitegenerator`, writes its pages into a part.
+`system-documentation` is the documentation of the systems as it has always been generated, and `static-site` a
+tree uploaded for the site.
+
+- **Nothing outside a source names it.** Everything asks `SitePartition`, and the one bean of it,
+  `ContentSourcePartition`, hands each site to its source's partition; `SiteSources` picks the writer by the
+  site's `content`. A further source is a bean and a writer, not a change to `Site`.
+- **Like `StructureTemplate`, it is not a driven port**: there is one per source.
+- **The content of a site with environments must hash as it did.** `site.json` gains a key only where a site
+  needs it - `perEnvironment` only where it is false, `navigation` only on an instance with several sites or a
+  title - because every byte of it is in a part's digest, and a release that changed it would rebuild every part
+  of every instance.
+
 ### Everything a page says goes through `MarkdownWriter`
 
 `Markdown` cannot be constructed from outside `jeap-doc-markdown`, and the only way to get one is a factory on
@@ -242,7 +260,9 @@ requires goes there too**, and `./mvnw verify` over the whole build is what says
   everywhere else in jEAP. Controllers, interceptors, configurations and exceptions are components, not
   representations, and keep their names.
 - **Security**: semantic roles, with the system a role is granted for in the tenant part
-  (`hasRole(#system, 'uploads', 'write')`). A resource that is not any one system's carries no tenant
+  (`hasRole(#system, 'uploads', 'write')`). A static site's tree is the site's, so its role is a resource of its
+  own with the site in the tenant part (`hasRole(#site, 'site-uploads', 'write')`), and the upload endpoints
+  pick between the two by `type` - see `Roles`. A resource that is not any one system's carries no tenant
   (`hasRole('sites', 'admin')`): a build regenerates the documentation of every system on the site, so it must
   not be reachable through a single system's grant - see `docs/security.md`.
 - **Swagger**: contributed by `jeap-spring-boot-swagger-starter`, disabled unless `jeap.swagger.status` is set;
@@ -334,8 +354,8 @@ requires goes there too**, and `./mvnw verify` over the whole build is what says
 
 - **Documentation sites are configured, never discovered.** `jeap.doc.sites` says which exist; an upload naming
   anything else is rejected, because a typo in a workflow configuration would otherwise create a second site that
-  is generated and served next to the real one. Exactly one environment of a site is `main` and one `latest`,
-  checked while the service starts.
+  is generated and served next to the real one. Exactly one environment of a site with environments is `main`
+  and one `latest`, checked while the service starts; a site with `per-environment: false` has none.
 - **The default site owns the context root; every other site is served below `/site/<id>/`.** So a site id has no
   reserved names: it only has to be a slug and to fit the name of its build lock. What still takes a top-level
   segment is the **default site's environments**, and it is there - and only there - that the paths the service

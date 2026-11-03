@@ -60,22 +60,24 @@ class DocumentationUploadController {
                           "already been stored under the same upload id, and 422 with the findings when the " +
                           "set would not be published as it is - nothing is stored then.")
     @PutMapping(path = "/{uploadId}", consumes = "application/zip", produces = "application/json")
-    @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM)
+    @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_THE_SUBJECT)
     public ResponseEntity<DocumentationUploadResultDto> upload(
             @Parameter(description = "Identifier of this upload, chosen by the client so it can be retried")
             @PathVariable UUID uploadId,
             @Parameter(description = "Site the documents belong to; without it the default site")
             @RequestParam(name = "site", required = false) String site,
-            @Parameter(description = "What the documents document: system-docs, component-docs or library-docs")
+            @Parameter(description = "What the documents document: system-docs, component-docs, library-docs, "
+                                     + "or site-docs for the tree of a static site")
             @RequestParam("type") String type,
-            @Parameter(description = "System the documents belong to, and the system the write role is checked for")
-            @RequestParam("system") String system,
+            @Parameter(description = "System the documents belong to, and the system the write role is checked "
+                                     + "for; none for site-docs, whose role is checked for the site")
+            @RequestParam(name = "system", required = false) String system,
             @Parameter(description = "Component the documents belong to, required for component-docs")
             @RequestParam(name = "component", required = false) String component,
             @Parameter(description = "Library the documents belong to, required for library-docs")
             @RequestParam(name = "library", required = false) String library,
-            @Parameter(description = "Section catalog the documents follow, e.g. arc42 or bmad")
-            @RequestParam("template") String template,
+            @Parameter(description = "Section catalog the documents follow, e.g. arc42 or bmad; none for site-docs")
+            @RequestParam(name = "template", required = false) String template,
             @Parameter(description = "Format of the documents: markdown or html")
             @RequestParam("source-format") String sourceFormat,
             @Parameter(description = "Section HTML documents are embedded in, e.g. 6-runtime-view")
@@ -133,19 +135,24 @@ class DocumentationUploadController {
     }
 
     @Operation(summary = "Read the state of an upload",
-               description = "Answers what became of an upload of the given system - whether its bundle was " +
-                             "stored and is waiting for the documentation generator.")
+               description = "Answers what became of an upload of the given system, or of the given static site " +
+                             "where it names no system - whether its bundle was stored and is waiting for the " +
+                             "documentation generator.")
     @GetMapping(path = "/{uploadId}", produces = "application/json")
-    @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_SYSTEM)
+    @PreAuthorize(Roles.HAS_UPLOADS_WRITE_ROLE_FOR_THE_SYSTEM_OR_THE_SITE)
     public DocumentationUploadStatusDto status(
             @Parameter(description = "Identifier of the upload")
             @PathVariable UUID uploadId,
             @Parameter(description = "System the upload belongs to, and the system the write role is checked for")
-            @RequestParam("system") String system) {
-        return uploadService.statusOf(uploadId, system)
+            @RequestParam(name = "system", required = false) String system,
+            @Parameter(description = "Static site the upload belongs to, where it names no system; without it "
+                                     + "the default site")
+            @RequestParam(name = "site", required = false) String site) {
+        return uploadService.statusOf(uploadId, system, site)
                 .map(DocumentationUploadStatusDto::of)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "No upload %s of the system %s.".formatted(uploadId, system)));
+                        "No upload %s of %s.".formatted(uploadId,
+                                system != null ? "the system " + system : "the site " + site)));
     }
 
     /**

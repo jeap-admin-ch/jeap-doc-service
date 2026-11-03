@@ -36,6 +36,21 @@ public final class UploadedSet {
     }
 
     /**
+     * The files of a static site, each at the path the archive gives it. Nothing is ordered: the tree is
+     * published as it is, and its folders and {@code _category_.json} files are its navigation.
+     */
+    public static List<CustomPage> staticPagesOf(List<String> paths) {
+        List<CustomPage> pages = new ArrayList<>();
+        for (String path : paths) {
+            if (IgnoredPaths.isIgnored(path) || path.endsWith("/")) {
+                continue;
+            }
+            pages.add(new CustomPage("", path, null, 0, !isAPage(path)));
+        }
+        return List.copyOf(pages);
+    }
+
+    /**
      * The files of a set, with the pages of each chapter ordered by their titles.
      * <p>
      * <b>The order is assigned here rather than left to the site generator.</b> Docusaurus sorts the items of

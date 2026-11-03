@@ -67,7 +67,8 @@ for await (const line of lines) {
             ...(record.microsite ? {microsite: record.microsite} : {}),
         },
         filters: {
-            environment: [record.environment],
+            // Absent on a site without environments, whose search is not scoped to a tree.
+            ...(record.environment ? {environment: [record.environment]} : {}),
             source: [record.source],
             ...(record.subject ? {subject: [record.subject]} : {}),
         },

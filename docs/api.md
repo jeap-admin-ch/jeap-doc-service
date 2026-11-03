@@ -10,12 +10,13 @@ UI at `/swagger-ui.html`; both are switched off unless the instance sets `jeap.s
 
 | Method | Path                                                  | Role                                     | Answers      | What it does                                                                                                |
 |--------|-------------------------------------------------------|------------------------------------------|--------------|-------------------------------------------------------------------------------------------------------------|
-| `PUT`  | `/api/uploads/docs/{uploadId}`                        | `<system-name>_%<system>_@uploads_#write` | `201`, `200`, `422` | Stores a documentation set - [Uploading a documentation set](#uploading-a-documentation-set)         |
-| `GET`  | `/api/uploads/docs/{uploadId}?system=`                | `<system-name>_%<system>_@uploads_#write` | `200`        | The state of one upload - [Reading the state of an upload](#reading-the-state-of-an-upload)                 |
-| `POST` | `/api/uploads/docs/validation`                        | `<system-name>_%<system>_@uploads_#write` | `200`, `422` | Whether a path tree would be accepted - [Validating a documentation set](#validating-a-documentation-set)   |
+| `PUT`  | `/api/uploads/docs/{uploadId}`                        | `<system-name>_%<system>_@uploads_#write`, `<system-name>_%<site>_@site-uploads_#write` for `site-docs` | `201`, `200`, `422` | Stores a documentation set - [Uploading a documentation set](#uploading-a-documentation-set)         |
+| `GET`  | `/api/uploads/docs/{uploadId}?system=` or `?site=`    | `<system-name>_%<system>_@uploads_#write`, `<system-name>_%<site>_@site-uploads_#write` with `site` | `200`        | The state of one upload - [Reading the state of an upload](#reading-the-state-of-an-upload)                 |
+| `POST` | `/api/uploads/docs/validation`                        | `<system-name>_%<system>_@uploads_#write`, `<system-name>_%<site>_@site-uploads_#write` for `site-docs` | `200`, `422` | Whether a path tree would be accepted - [Validating a documentation set](#validating-a-documentation-set)   |
 | `DELETE` | `/api/docs/custom/sets`                             | `<system-name>_%<system>_@uploads_#write` or `<system-name>_@sites_#admin` | `200`, `400`, `404` | Removes one documentation set - [Removing custom documentation](#removing-custom-documentation)             |
 | `DELETE` | `/api/docs/custom/subjects`                         | `<system-name>_%<system>_@uploads_#write` or `<system-name>_@sites_#admin` | `200`, `400` | Removes everything documented for one subject - [Removing custom documentation](#removing-custom-documentation) |
 | `DELETE` | `/api/docs/custom/systems`                          | `<system-name>_@sites_#admin`             | `200`, `400` | Removes everything documented for one system - [Removing custom documentation](#removing-custom-documentation) |
+| `DELETE` | `/api/docs/custom/sites`                            | `<system-name>_%<site>_@site-uploads_#write` or `<system-name>_@sites_#admin` | `200`, `400`, `404` | Removes the tree of a static site - [Removing custom documentation](#removing-custom-documentation) |
 | `POST` | `/api/sites/{site}/builds`                            | `<system-name>_@sites_#admin`             | `202`        | Asks for the site to be published - [Asking for a site to be published](#asking-for-a-site-to-be-published) |
 | `POST` | `/api/sites/{site}/parts/{part}/builds`               | `<system-name>_@sites_#admin`             | `202`        | Asks for one part to be published - [Asking for one part to be published](#asking-for-one-part-to-be-published) |
 | `GET`  | `/api/sites`                                          | `<system-name>_@sites_#read`              | `200`        | The state of every configured site - [Reading the state of the sites](#reading-the-state-of-the-sites)     |
@@ -64,26 +65,26 @@ do).
 
 ### Parameters
 
-| Parameter           | Required                             | Value                                                                   | Example                                                         |
-|---------------------|--------------------------------------|-------------------------------------------------------------------------|-----------------------------------------------------------------|
-| `{uploadId}` (path) | yes                                  | UUID the client chooses, so an upload can be retried under it           | `8f1c9a2e-6a1a-4a5f-9a5e-2b0f9a3c1d77`                          |
-| `site`              | no                                   | Documentation site the documents belong to, one the instance configures | `governance`                                                    |
-| `type`              | yes                                  | `system-docs`, `component-docs` or `library-docs`                       | `component-docs`                                                |
-| `system`            | yes                                  | System the documents belong to; the write role is checked for it        | `orders`                                                        |
-| `component`         | for `component-docs`                 | Component the documents belong to                                       | `foo-bar-scs`                                                   |
-| `library`           | for `library-docs`                   | Library the documents belong to                                         | `orders-common-lib`                                             |
-| `template`          | yes                                  | Section catalog the documents follow                                    | `arc42`                                                         |
-| `source-format`     | yes                                  | `markdown` or `html`                                                    | `markdown`                                                      |
-| `location`          | for `source-format=html`             | Section the documents are embedded in                                   | `6-runtime-view`                                                |
-| `topic`             | for `source-format=html`             | Slug identifying the documents within their section                     | `spring-rest-docs`                                              |
-| `label`             | for `source-format=html`             | Menu label of the documents                                             | `Spring REST Docs`                                              |
-| `source-repository` | yes                                  | Repository the documents came from                                      | `ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git`         |
-| `source-revision`   | yes                                  | Commit the documents were built from                                    | `9a1c2f8`                                                       |
-| `source-ref`        | yes                                  | Branch or tag that was built                                            | `main`                                                          |
-| `source-timestamp`  | yes                                  | Timestamp of that commit, ISO-8601                                      | `2026-08-21T09:12:00+02:00`                                     |
-| `version`           | for `component-docs`, `library-docs` | Version of the component or library                                     | `1.4.0`                                                         |
-| `build-url`         | no                                   | Build that uploaded the documents                                       | `https://github.com/orders/foo-bar-scs/actions/runs/1234567890` |
-| `generated-at`      | no                                   | When the documents were generated, ISO-8601                             | `2026-08-21T09:15:00+02:00`                                     |
+| Parameter           | Required                             | Value                                                                                         | Example                                                         |
+|---------------------|--------------------------------------|-----------------------------------------------------------------------------------------------|-----------------------------------------------------------------|
+| `{uploadId}` (path) | yes                                  | UUID the client chooses, so an upload can be retried under it                                 | `8f1c9a2e-6a1a-4a5f-9a5e-2b0f9a3c1d77`                          |
+| `site`              | no                                   | Documentation site the documents belong to, one the instance configures                       | `governance`                                                    |
+| `type`              | yes                                  | `system-docs`, `component-docs`, `library-docs`, or `site-docs` for the tree of a static site | `component-docs`                                                |
+| `system`            | except for `site-docs`               | System the documents belong to; the write role is checked for it                              | `orders`                                                        |
+| `component`         | for `component-docs`                 | Component the documents belong to                                                             | `foo-bar-scs`                                                   |
+| `library`           | for `library-docs`                   | Library the documents belong to                                                               | `orders-common-lib`                                             |
+| `template`          | except for `site-docs`               | Section catalog the documents follow                                                          | `arc42`                                                         |
+| `source-format`     | yes                                  | `markdown` or `html`                                                                          | `markdown`                                                      |
+| `location`          | for `source-format=html`             | Section the documents are embedded in                                                         | `6-runtime-view`                                                |
+| `topic`             | for `source-format=html`             | Slug identifying the documents within their section                                           | `spring-rest-docs`                                              |
+| `label`             | for `source-format=html`             | Menu label of the documents                                                                   | `Spring REST Docs`                                              |
+| `source-repository` | yes                                  | Repository the documents came from                                                            | `ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git`         |
+| `source-revision`   | yes                                  | Commit the documents were built from                                                          | `9a1c2f8`                                                       |
+| `source-ref`        | yes                                  | Branch or tag that was built                                                                  | `main`                                                          |
+| `source-timestamp`  | yes                                  | Timestamp of that commit, ISO-8601                                                            | `2026-08-21T09:12:00+02:00`                                     |
+| `version`           | for `component-docs`, `library-docs` | Version of the component or library                                                           | `1.4.0`                                                         |
+| `build-url`         | no                                   | Build that uploaded the documents                                                             | `https://github.com/orders/foo-bar-scs/actions/runs/1234567890` |
+| `generated-at`      | no                                   | When the documents were generated, ISO-8601                                                   | `2026-08-21T09:15:00+02:00`                                     |
 
 The doc service will host more than one documentation site. An upload without a `site` targets the default site,
 which is what a repository that does not care about sites sends.
@@ -91,6 +92,19 @@ which is what a repository that does not care about sites sends.
 **A `site` the instance does not configure is rejected** (`UNKNOWN_SITE`, and the reason names the sites that do
 exist). Which sites there are is configuration, not something the service works out from what has
 been uploaded - so a typo is answered rather than stored and published nowhere.
+
+**A static site's tree is uploaded for the site itself**, as `type=site-docs&site=<id>`: it names no `system`,
+`component`, `library` or `template`, its `source-format` is `markdown`, and its role is granted for the site -
+see [Uploads](uploads.md#a-static-sites-tree) and [Security](security.md#a-static-site-is-uploaded-for-the-site).
+Only a site whose `content` is `static-site` takes it, and such a site takes nothing else.
+
+```bash
+curl --fail-with-body -X PUT \
+  "https://doc.example.ch/api/uploads/docs/$(uuidgen)?site=handbook&type=site-docs&source-format=markdown\
+&source-repository=ssh://git@bitbucket.example.ch/handbook/handbook.git&source-revision=9a1c2f8\
+&source-ref=main&source-timestamp=2026-08-21T09:12:00%2B02:00" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/zip" --data-binary @handbook.zip
+```
 
 `component` and `library` name the owner of the documents and belong to their type: a `system-docs` upload names
 neither, a `component-docs` upload names a component, a `library-docs` upload a library. `system`, `component`,
@@ -127,7 +141,8 @@ Authorization: Bearer ...
 
 Answers what became of an upload - after a retry, or after an answer that never arrived. The `system` parameter
 names the system the upload belongs to and is what the write role is checked against; an upload of another system
-is answered with `404`.
+is answered with `404`. A static site's tree is read with `?site=<id>` and no `system`, and its site-level role
+is checked for that site.
 
 ```json
 {
@@ -253,9 +268,16 @@ Authorization: Bearer ...
 Below `/api/uploads/docs`, because what is validated is a documentation upload - and the parameter check of
 that path guards it, so a typo in a workflow configuration fails as loudly here as on the upload. The role is
 the upload one, `<system-name>_%<system>_@uploads_#write`: the caller is the pipeline that is about to upload.
+A static site's tree is checked with `type=site-docs&site=<id>` and the site-level role, against the rules of a
+static site rather than a template's - its report names `static-site` as its template.
 
 **The parameters are the ones the structure depends on, and no others**: `type`, `system`,
-`component`/`library`, `template`, `source-format`, and `location`/`topic` for HTML. `site`, `version`,
+`component`/`library`, `template`, `source-format`, and `location`/`topic` for HTML - and `site`, the site the set
+would be uploaded to. Where it is named, or the type is `site-docs`, the site has to take the type, exactly as on
+the upload: a static site takes only its tree, every other site only the documentation of its systems, and the
+other answers `400`. A system's dry run that names no site is answered without one, as before sites took uploads
+of their own - an instance need not serve a default site. A static site's tree is also checked against the paths
+its site answers itself. `version`,
 `label`, the four `source-*` parameters, `build-url` and `generated-at` are **refused** - a path tree does not
 depend on a commit hash, and an endpoint that demanded one to answer a structural question would be answering
 a different one.
@@ -493,6 +515,7 @@ GET /api/sites/{site}   # one of them
   "site": "default",
   "title": "jEAP Documentation",
   "publishOnUpload": true,
+  "perEnvironment": true,
   "environments": ["dev", "ref", "abn", "prod"],
   "pending": { "since": "2026-08-28T09:12:03Z", "trigger": "MANUAL" },
   "running": [],
@@ -504,7 +527,8 @@ GET /api/sites/{site}   # one of them
 It answers *why is this site not updating* without a log search, which is what it is for: what the site is
 configured to do is on it next to what has actually happened. There is no publication schedule any more - a
 site is published when its architecture model is imported and when something is uploaded to it, and a site with
-`publishOnUpload` false that no import feeds is behaving exactly as configured.
+`publishOnUpload` false that no import feeds is behaving exactly as configured. A site without environments
+says `perEnvironment` false and lists no `environments`.
 
 The three build objects on it - `published`, `running` and `lastBuild` - are the same record
 [the build history](#reading-the-builds) answers with, trimmed above only to keep the example readable: they
@@ -652,13 +676,15 @@ failure reason and the upstream URL stay.
 
 ## Removing custom documentation
 
-Three calls remove what a team uploaded, and they are different things. `DELETE /api/docs/custom/sets` removes
+Four calls remove what was uploaded, and they are different things. `DELETE /api/docs/custom/sets` removes
 **one set** - one subject, in one format, under one structure template. `DELETE /api/docs/custom/subjects`
 removes **every set of one subject** and the subject with them - which is also how the documentation of one
 component or one library is removed, by naming it with `type` and `component` or `library`. And `DELETE
 /api/docs/custom/systems` removes **everything documented for one system**: its own documentation and that of
 all its components and libraries, in one call. A subject that has been documented stays in the catalogue with
-no set until it is removed itself, which keeps the record of what was once published.
+no set until it is removed itself, which keeps the record of what was once published. And `DELETE
+/api/docs/custom/sites?site=<id>` removes **the tree of a static site**, which documents no system; the site is
+then published with a generated root page until a tree is uploaded again.
 
 **Not below `/api/uploads`**, because a set outlives every upload that wrote it, and `custom` because what is
 removable is the documentation a team wrote: the generated documentation is not addressable at all, since
@@ -682,11 +708,18 @@ remove *that* site's documentation. Removing a subject removes every set of it w
 template, and removing a system takes not even a type, so passing one does not narrow the call and is refused
 rather than ignored.
 
+A static site's tree is named by its `site` alone, which is required there, and any other parameter is
+refused. A site that is not a static site is answered `400`, and one with no tree `404`. **Only there:** a set or
+subject removal naming `type=site-docs` is answered `400`, because those two are authorized by a system's role,
+which never reaches a static site.
+
 **The roles.** A set and a subject are removed by the pipeline of that system - the same write role an upload
 needs - **or** by an administrator of the sites. The administrator is there for documentation no pipeline can
 reach any more: a repository that has been archived, a component that was renamed, a team that has been
 disbanded. Removing every set of a system is the administrator's alone, because it takes away the
-documentation of every component and library of that system, which several teams may own.
+documentation of every component and library of that system, which several teams may own. A static site's tree
+is removed by the role that uploads it, `<system-name>_%<site>_@site-uploads_#write`, or by an administrator of
+the sites.
 
 Both answer `200` with what was removed and whether a build was asked for, and a set that does not exist
 answers `404`. A request that does not describe a subject - a misspelt `type` or `source-format`, a missing
@@ -710,6 +743,10 @@ curl -X DELETE -H "Authorization: Bearer $TOKEN" \
 # everything documented for one system, its components and its libraries
 curl -X DELETE -H "Authorization: Bearer $TOKEN" \
   "$DOC_SERVICE/api/docs/custom/systems?system=orders"
+
+# the tree of a static site
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  "$DOC_SERVICE/api/docs/custom/sites?site=handbook"
 ```
 
 ## Related

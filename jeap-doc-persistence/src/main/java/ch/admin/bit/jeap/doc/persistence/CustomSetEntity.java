@@ -41,7 +41,7 @@ class CustomSetEntity {
     @Column(nullable = false)
     private SubjectKind kind;
 
-    @Column(name = "system_name", nullable = false)
+    @Column(name = "system_name")
     private String systemName;
 
     private String name;
@@ -50,7 +50,6 @@ class CustomSetEntity {
     @Column(name = "source_format", nullable = false)
     private SourceFormat sourceFormat;
 
-    @Column(nullable = false)
     private String template;
 
     private String location;

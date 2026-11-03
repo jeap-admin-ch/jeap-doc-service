@@ -18,7 +18,8 @@ final class DocumentationUploadMapper {
     }
 
     static DocumentationSubject toDomain(DocumentationSubjectEntity entity) {
-        return new DocumentationSubject(entity.getId(), entity.getSite(), entity.getKind(), entity.getSystem(),
+        return new DocumentationSubject(entity.getId(), entity.getSite(), entity.getKind(),
+                entity.getSystem(),
                 entity.getName(), entity.getCreatedAt());
     }
 
@@ -90,6 +91,7 @@ final class DocumentationUploadMapper {
             case SYSTEM -> DocumentationType.SYSTEM_DOCS;
             case COMPONENT -> DocumentationType.COMPONENT_DOCS;
             case LIBRARY -> DocumentationType.LIBRARY_DOCS;
+            case SITE -> DocumentationType.SITE_DOCS;
         };
     }
 }

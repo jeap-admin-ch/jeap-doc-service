@@ -6,6 +6,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentationRemoval;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationPlacement;
+import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
 import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
 import ch.admin.bit.jeap.doc.web.api.Roles;
 import ch.admin.bit.jeap.doc.web.api.upload.docs.DocumentationTypeDto;
@@ -63,7 +64,7 @@ class CustomDocsAdminController {
             @Parameter(description = "The slug identifying an HTML microsite within its section")
             @RequestParam(required = false) String topic) {
         CustomSetKey key = CustomSetKey.of(siteOr(site), new DocumentationPlacement(
-                DocumentationTypeDto.fromParameterValue(type).toDomain(), system, component, library, template,
+                systemsTypeOf(type), system, component, library, template,
                 SourceFormatDto.fromParameterValue(sourceFormat).toDomain(), location, topic));
 
         return removal.removeSet(key)
@@ -97,7 +98,7 @@ class CustomDocsAdminController {
         // are, and inventing values to throw away would put a template's name in a layer that must not know
         // one.
         DocumentationPlacement.Subject named = DocumentationPlacement.subjectOf(
-                DocumentationTypeDto.fromParameterValue(type).toDomain(), system, component, library);
+                systemsTypeOf(type), system, component, library);
         CustomSubject subject =
                 new CustomSubject(siteOr(site), named.kind(), named.system(), named.name());
 
@@ -128,6 +129,40 @@ class CustomDocsAdminController {
         log.info("Removed every documentation set of the system {}: {} set(s).", system,
                 removed.setsRemoved());
         return ResponseEntity.ok(CustomDocsRemovedDto.of(removed));
+    }
+
+    @Operation(summary = "Remove the tree of a static site",
+            description = "Removes the tree uploaded for a static site and asks for the site to be built: it "
+                          + "is published with a generated root page until a tree is uploaded again. Answers "
+                          + "200 with what was removed, 404 when the site has no tree, and 400 for a site that "
+                          + "is not a static site.")
+    @DeleteMapping(DocsPaths.SITES)
+    @PreAuthorize(Roles.HAS_SITE_UPLOADS_WRITE_ROLE_FOR_THE_SITE_OR_IS_SITES_ADMIN)
+    ResponseEntity<CustomDocsRemovedDto> removeStaticSiteTree(
+            @Parameter(description = "The static site whose tree is removed") @RequestParam String site) {
+        return removal.removeStaticSiteTree(site)
+                .map(removed -> {
+                    log.info("Removed the tree of the static site {}.", site);
+                    return ResponseEntity.ok(CustomDocsRemovedDto.of(removed));
+                })
+                .orElseGet(() -> {
+                    log.info("The static site {} has no tree to remove.", site);
+                    return ResponseEntity.notFound().build();
+                });
+    }
+
+    /**
+     * The type of a system's documentation. A static site's tree is refused here: it is removed with its own
+     * endpoint, under the site's role, and these two are authorized by the role of the system they name.
+     */
+    private static DocumentationType systemsTypeOf(String type) {
+        DocumentationType parsed = DocumentationTypeDto.fromParameterValue(type).toDomain();
+        if (parsed == DocumentationType.SITE_DOCS) {
+            throw InvalidUploadException.invalidValue("type", type,
+                    "system-docs, component-docs or library-docs, as the tree of a static site is removed with "
+                    + "DELETE " + DocsPaths.SITES);
+        }
+        return parsed;
     }
 
     /** An upload that names no site means the default one, and so does a removal. */

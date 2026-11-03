@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] - 2026-11-03
+
+### Added
+- **Static sites**: a site with `content: static-site` publishes a Markdown tree uploaded for the site itself (`type=site-docs`, role `<system-name>_%<site>_@site-uploads_#write`) as it is. `DELETE /api/docs/custom/sites` removes the tree.
+- **Sites without environments**: `per-environment: false` publishes one tree at the site root, without environment switcher or banner.
+- **Site tabs and instance title**: with several sites, or with `jeap.doc.publication.title`, the header bar names the instance and links the sites as tabs, labelled by `navigation-label`.
+- **Build-slot weight**: `jeap.doc.sites.<id>.build.slots` lets a memory-heavy site take several of the `max-concurrent-parts` build slots.
+
+### Changed
+- Database migration `V1_10_0`: the documentation set and subject of a static site name no system and no template.
+
 ## [4.3.0] - 2026-11-02
 
 ### Dependencies
