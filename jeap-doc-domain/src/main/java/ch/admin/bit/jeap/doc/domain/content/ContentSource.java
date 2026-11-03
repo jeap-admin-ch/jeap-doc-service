@@ -30,6 +30,15 @@ public interface ContentSource {
     }
 
     /**
+     * Whether a change the governance import stores asks for the site, the same way {@link
+     * #publishedByTheArchitectureImport()} does for the architecture model - a site of this source is
+     * deliberately left out of the reconcile schedule too, so nothing else would ask for it.
+     */
+    default boolean publishedByTheGovernanceImport() {
+        return false;
+    }
+
+    /**
      * Whether a tree is uploaded for a site of this source itself ({@code type=site-docs}), naming no system. A
      * source that takes one takes nothing else: its site documents no system.
      */

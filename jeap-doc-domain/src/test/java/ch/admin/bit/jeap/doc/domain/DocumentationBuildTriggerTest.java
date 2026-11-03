@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain;
 
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
+import ch.admin.bit.jeap.doc.domain.content.ContentSource;
 import ch.admin.bit.jeap.doc.domain.content.ContentSources;
 import ch.admin.bit.jeap.doc.domain.content.StaticSiteContent;
 import ch.admin.bit.jeap.doc.domain.content.SystemDocumentationContent;
@@ -398,6 +399,87 @@ class DocumentationBuildTriggerTest {
 
         assertThat(asked).hasSize(4);
         verify(pickup, times(1)).whenAskedFor();
+    }
+
+    /**
+     * There is no environment to ask for, unlike the architecture import: the Governance Service is read once
+     * per instance, so every site this content source publishes is asked for at once.
+     */
+    @Test
+    void requestBecauseTheGovernanceWasImported_thenEveryPartOfTheGovernanceSiteIsAskedFor() {
+        DocumentationBuildTrigger withGovernance = triggerFor(propertiesOf(Map.of("governance",
+                governanceSite())), new FakeGovernanceContent());
+
+        int parts = withGovernance.requestBecauseTheGovernanceWasImported();
+
+        assertThat(parts).isOne();
+        verify(requests).requestAll(eq(List.of(PartKey.shellOf("governance"))), eq(BuildTrigger.IMPORT), eq(NOW),
+                any(), eq(false));
+        assertThat(metrics.triggered).containsExactly("governance:IMPORT:1");
+    }
+
+    /** A site the architecture import does not feed and the governance import does not feed either. */
+    @Test
+    void requestBecauseTheGovernanceWasImported_whenNoSiteHasThatContent_thenNothingIsAskedFor() {
+        assertThat(trigger.requestBecauseTheGovernanceWasImported()).isZero();
+
+        verify(requests, never()).requestAll(any(), any(), any(), any(), anyBoolean());
+    }
+
+    /**
+     * A governance site has no environment, unlike one an architecture repository feeds - so excluding it from
+     * the reconcile schedule cannot be the environment check the architecture import uses; it is the content
+     * source alone that decides.
+     */
+    @Test
+    void requestBecauseNothingElsePublishesTheSite_whenAGovernanceSiteExists_thenItIsLeftToTheImport() {
+        DocumentationBuildTrigger withGovernance = triggerFor(propertiesOf(Map.of("governance",
+                governanceSite())), new FakeGovernanceContent());
+
+        assertThat(withGovernance.requestBecauseNothingElsePublishesTheSite()).isZero();
+
+        verify(requests, never()).requestAll(any(), any(), any(), any(), anyBoolean());
+    }
+
+    /** A site of the content source {@code FakeGovernanceContent} resolves to, without environments. */
+    private static SiteProperties.Site governanceSite() {
+        SiteProperties.Site site = new SiteProperties.Site();
+        site.setPerEnvironment(false);
+        site.setContent("governance");
+        return site;
+    }
+
+    private DocumentationBuildTrigger triggerFor(SiteProperties properties, ContentSource extra) {
+        DocumentationSites configured = new DocumentationSites(properties);
+        ContentSources sources = new ContentSources(List.of(
+                new SystemDocumentationContent(new NoArchitectureModel(), new NoCustomDocumentation()),
+                new StaticSiteContent(), extra), configured);
+        return new DocumentationBuildTrigger(requests, configured, new ContentSourcePartition(sources),
+                new NoArchitectureModel(), sources, metrics, pickup, Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    /**
+     * A stand-in for the governance content source: this test is about the trigger, not about the governance
+     * site's own pages, so it only needs {@code id()} and {@code publishedByTheGovernanceImport()}. Its
+     * partition is inherited from {@link StaticSiteContent}, which is shell-only the same way the governance
+     * site is.
+     */
+    private static final class FakeGovernanceContent extends StaticSiteContent {
+
+        @Override
+        public String id() {
+            return "governance";
+        }
+
+        @Override
+        public boolean publishedByTheGovernanceImport() {
+            return true;
+        }
+
+        @Override
+        public boolean takesSiteUploads() {
+            return false;
+        }
     }
 
     private DocumentationBuildTrigger triggerFor(SiteProperties properties) {

@@ -251,6 +251,29 @@ public final class MarkdownWriter {
         return text.isEmpty() ? paragraph(whenEmpty) : paragraph(text);
     }
 
+    /**
+     * A whole Markdown document written outside this service - a rule's explanation - with its own structure
+     * rendered as such: a heading stays a heading - one level down, below the page's own - and a list stays a
+     * list. Nothing in {@link Md} does this, because every one of its factories turns what it is given into one
+     * escaped line; a multi-paragraph document would come out as one unreadable sentence.
+     * <p>
+     * This is not the {@code raw(String)} method the class comment forbids: that would accept any text with no
+     * guarantee at all. Here the guarantee this writer exists to give still holds: nothing it writes becomes
+     * HTML, and nothing it writes reaches past its own block. A {@code <} outside code is written as the
+     * character rather than the tag it would open, a link that cannot leave the page as a link becomes its
+     * text, and a fence or container the document leaves open is closed - see {@link ImportedDocument}.
+     * Everything else is written as it arrived.
+     * <p>
+     * Reserved for a document the jEAP team authors and reviews together with what it explains - never for a
+     * value this method's caller does not control.
+     */
+    public MarkdownWriter importedDocument(String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            return this;
+        }
+        return block(ImportedDocument.contained(markdown));
+    }
+
     /** The page, ending in exactly one newline. */
     public String text() {
         return page.toString();

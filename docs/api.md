@@ -29,6 +29,7 @@ UI at `/swagger-ui.html`; both are switched off unless the instance sets `jeap.s
 | `POST`   | `/api/architecture/imports`                            | `<system-name>_@sites_#admin`                                                                           | `202`, `429`        | Asks for every architecture repository to be imported - [Asking for the architecture repository to be imported](#asking-for-the-architecture-repository-to-be-imported) |
 | `POST`   | `/api/architecture/environments/{environment}/imports` | `<system-name>_@sites_#admin`                                                                           | `202`, `429`        | Asks for one environment's import - [Asking for the architecture repository to be imported](#asking-for-the-architecture-repository-to-be-imported)                     |
 | `GET`    | `/api/architecture/environments`                       | `<system-name>_@sites_#read`                                                                            | `200`               | What the imports have been doing - [Reading what the imports have been doing](#reading-what-the-imports-have-been-doing)                                                |
+| `POST`   | `/api/governance/webhook`                              | `<system-name>_@governance-notifications_#write`                                                        | `202`, `400`        | Reports a completed scoring run of the Governance Service - [Reporting a completed governance scoring run](#reporting-a-completed-governance-scoring-run)              |
 
 Every endpoint answers `401` without a valid token and `403` with a token that lacks the role; the upload role is
 checked for the system named in the request. Everything outside `/api` is the documentation site itself.
@@ -659,6 +660,34 @@ two timestamps: a run that stopped at its deadline stored what it had reached an
 failure. `complete` is why the next run does or does not trust the index tag it was given - see
 [Importing the architecture model](architecture-import.md).
 
+## Reporting a completed governance scoring run
+
+```
+POST /api/governance/webhook
+Authorization: Bearer ...
+Content-Type: application/json
+
+{
+  "eventId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "scoredAt": "2026-11-03T10:47:00Z"
+}
+```
+
+Answered `202` **before the import that follows has even started**: it is handed to the same
+single-threaded executor the schedule uses and runs on its own thread, not on the request. `eventId`
+identifies the scoring run; a repeated delivery of it is ignored, unless the first one reached an instance that
+was stopping and could not take it. `scoredAt` is not otherwise read - the
+import that follows reads the Governance Service's current state rather than this one run's worth of it.
+
+**An import already running absorbs the call** rather than starting a second one beside it: the two merge the
+way two build triggers do, and the call leads to exactly one further import. When the call reaches an instance
+while another instance is importing, it is tried again every 30 seconds until this instance gets to import. A
+missing or blank `eventId` answers `400`.
+
+This is the only thing an instance has to configure to receive it: the role, and the Governance Service's
+client holding it - see [Security](security.md#the-governance-webhook). What happens on this side of the call
+is in [Importing the Governance Service](governance-import.md).
+
 ## Everything outside /api is the documentation
 
 The doc service is a web server as well as an API: every path that is not the API, the actuator, the OpenAPI
@@ -753,6 +782,7 @@ curl -X DELETE -H "Authorization: Bearer $TOKEN" \
 
 - [Uploads](uploads.md)
 - [Architecture](architecture.md)
+- [Importing the Governance Service](governance-import.md)
 - [Security](security.md)
 
 

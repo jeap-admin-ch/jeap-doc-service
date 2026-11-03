@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ch.admin.bit.jeap</groupId>
+        <artifactId>jeap-doc-service</artifactId>
+        <version>4.7.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>jeap-doc-governance</artifactId>
+    <name>${project.groupId}:${project.artifactId}</name>
+
+    <!--
+        The client of the Governance Service's /docs-api: the adapter behind GovernanceUpstream, the one
+        upstream port the governance import reads through.
+
+        An adapter like any other: it depends on the domain, on jeap-doc-upstream for the transport every
+        outbound client of this service shares, and on no other adapter. It does not depend on
+        jeap-doc-sitegenerator - the content source and its pages read what was imported through the domain's
+        repository port, and never reach this client at all.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-doc-domain</artifactId>
+        </dependency>
+        <dependency>
+            <!-- the client, the bounded conditional GET, the exception and the retry policy over it -->
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-doc-upstream</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <!-- the RestClient, with the request-factory builders it is configured through. The restclient
+                 starter and not the webmvc one: a driven adapter that only makes outgoing calls has no use for
+                 a servlet container, and jeap-doc-web is what brings one. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
+        </dependency>
+        <dependency>
+            <!-- GovernanceDtos and the index parsing name JsonMapper directly -->
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <!-- JeapOAuth2RestClientBuilderFactory: the jEAP way of calling another service in the system
+                 context, which is what puts governance-documentation_#read in the token. It arrives with the
+                 security starter, which is what the parent manages the version of. -->
+            <groupId>ch.admin.bit.jeap</groupId>
+            <artifactId>jeap-spring-boot-security-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- The HTTP server the governance client is tested against. The version comes from the parent,
+                 which manages this artifact; it brings wiremock-standalone with it. -->
+            <groupId>org.wiremock.integrations</groupId>
+            <artifactId>wiremock-spring-boot-standalone</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.domain;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRequestRepository;
+import ch.admin.bit.jeap.doc.domain.content.ContentSource;
 import ch.admin.bit.jeap.doc.domain.content.ContentSources;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -137,8 +138,36 @@ public class DocumentationBuildTrigger {
     }
 
     private boolean isPublishedByAnImport(Site site) {
-        return contentSources.of(site).publishedByTheArchitectureImport() && site.environments().stream()
+        ContentSource source = contentSources.of(site);
+        // The governance import is instance-wide, so a governance site has no environment to check it
+        // against - unlike the architecture import, which only excludes an environment the model is actually
+        // configured for.
+        if (source.publishedByTheGovernanceImport()) {
+            return true;
+        }
+        return source.publishedByTheArchitectureImport() && site.environments().stream()
                 .anyMatch(environment -> architectureModel.isConfiguredFor(environment.id()));
+    }
+
+    /**
+     * Asks for every part of every site whose content is published by the governance import, and reports how
+     * many parts that was.
+     * <p>
+     * Unlike {@link #requestBecauseTheArchitectureWasImported}, there is no environment to ask for: the
+     * Governance Service is read once per instance, so this asks for every such site at once.
+     */
+    public int requestBecauseTheGovernanceWasImported() {
+        int requested = 0;
+        for (Site site : sites.all()) {
+            if (!contentSources.of(site).publishedByTheGovernanceImport()) {
+                continue;
+            }
+            List<SitePart> parts = partition.partsOf(site);
+            requestParts(parts, BuildTrigger.IMPORT, Publication.askedAt(clock.instant()), false);
+            metrics.triggered(site.id(), BuildTrigger.IMPORT, parts.size());
+            requested += parts.size();
+        }
+        return requested;
     }
 
     /**

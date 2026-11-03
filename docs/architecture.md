@@ -21,6 +21,7 @@ flowchart LR
         Html[jeap-doc-html<br/>driven adapter]
         ArchRepo[jeap-doc-archrepo<br/>driven adapter]
         Reactions[jeap-doc-reactionobserver<br/>driven adapter]
+        Governance[jeap-doc-governance<br/>driven adapter]
     end
     subgraph Templates[Structure template plugins]
         Arc42[jeap-doc-template-arc42]
@@ -32,6 +33,7 @@ flowchart LR
     Domain -.->|port| Html
     Domain -.->|port| ArchRepo
     Domain -.->|port| Reactions
+    Domain -.->|port| Governance
     Arc42 -.->|implements StructureTemplate| Domain
     Generator -.->|injected| Templates
     Web -.->|injected| Templates
@@ -40,8 +42,10 @@ flowchart LR
     Generator --> Node[Site generator<br/>child process]
     ArchRepo --> Model[(Architecture repository)]
     Reactions --> Observer[(Reaction observer)]
+    Governance --> GovernanceService[(Governance Service)]
     ArchRepo -.->|transport| Upstream[jeap-doc-upstream<br/>support]
     Reactions -.->|transport| Upstream
+    Governance -.->|transport| Upstream
 ```
 
 ## Modules
@@ -58,9 +62,11 @@ flowchart LR
 | `jeap-doc-upstream`         | support         | How another jEAP service is called and replicated: the client and its token, the bounded conditional `GET`, entity tags, redirects, content URLs, one exception with a retry policy over it. **No bean, no auto-configuration, no properties** - and what the two upstream adapters below may not duplicate |
 | `jeap-doc-archrepo`         | driven adapter  | Everything about the architecture repository: the client of its `/docs-api` behind the three upstream ports of [the import](architecture-import.md), and the reading of a replicated artifact behind `ArchitectureArtifactContent`                                                                          |
 | `jeap-doc-reactionobserver` | driven adapter  | Everything about the reaction observer: the client of its replication API behind `ReactionGraphUpstream`, which [the import](architecture-import.md) reads one complete reaction snapshot per environment through                                                                                                    |
+| `jeap-doc-governance`       | driven adapter  | Everything about the Governance Service: the client of its `/docs-api` behind `GovernanceUpstream`, which [the import](governance-import.md) reads through, and the reading of a stored system or rule behind `GovernanceResourceContent`, which [the governance site](governance-site.md) is written from |
 | `jeap-doc-metrics`          | driven adapter  | The Micrometer meters behind the `UploadMetrics`, `BuildMetrics` and `ArchitectureImportMetrics` ports, and the container memory gauges, which are read in this module and have no port in the domain - nothing in the domain asks what the container holds                                                 |
 | `jeap-doc-site`             | resources       | The site generator's own application - no Java. Read from the classpath, never from a directory beside the jar                                                                                                                                                                                              |
 | `jeap-doc-web`              | driving adapter | The Spring Boot application: REST API, OpenAPI, security, and the documentation it serves                                                                                                                                                                                                                   |
+| `jeap-doc-test`             | test support    | For an instance's tests: the base class that verifies the contracts other services hold with the doc service as their provider, with the application, database, object storage and token it runs on - see [Verifying the contracts the service is a provider of](#verifying-the-contracts-the-service-is-a-provider-of) |
 | `jeap-doc-service-instance` | packaging       | POM-only module a project inherits from, or depends on, to create its own doc service instance                                                                                                                                                                                                              |
 
 ### The packages of the domain
@@ -197,6 +203,24 @@ noticing. What each side does is [Generating the documentation](generation.md).
 - the object storage, whose bucket is checked at startup,
 - the database connection, the transaction management and Flyway,
 - the build, the OSS publication, the dependency updates and the vulnerability scan.
+
+## Verifying the contracts the service is a provider of
+
+Other services hold [Pact](https://docs.pact.io/) contracts with the doc service as their provider - today the
+Governance Service's call to [the governance webhook](governance-import.md#the-webhook-and-the-schedule-behind-it).
+An instance verifies them with `jeap-doc-test`: it adds that module as a test dependency, one empty class that
+extends `PactProviderTestBase` and names its own Pact participant through `Pacticipants`, and a
+`pact-verify.yml` that runs the class.
+
+The verification starts the real application with the profile `pact-provider-test` against a PostgreSQL and an
+S3-compatible object storage in containers, so **it needs a Docker daemon**. The calls are authenticated for real:
+the application serves a test JWKS, and a fresh token carrying the role the call needs replaces whatever token
+the consumer recorded - a recorded token would be expired by the time a provider verifies it. The search and
+every build are switched off, so nothing generates a site behind a verification's back.
+
+The images default to the public ones and can be pointed at a mirror with the system properties
+`doc.test.postgres-image` and `doc.test.object-storage-image`. The site generator's startup check still runs
+the Node installation of the machine, so the same Node the build image carries has to be there.
 
 ## Related
 

@@ -221,6 +221,19 @@ a partial run leaves behind, which is what that alert is really about.
 | `jeap.doc.architecture.import`                    | Timer     | `environment`, `kind`, `result`    | One run: how long it took and how it ended                                                                                                                                                       |
 | `jeap.doc.architecture.import.items`              | Counter   | `environment`, `kind`, `outcome`   | Artifact outcomes: `stored`, `unchanged`, `removed`, `skipped`. Full reaction snapshots report their outcome through the import timer                                                                                             |
 
+## The governance import
+
+Its meters, and the alert to write on them, are on
+[Importing the Governance Service](governance-import.md#what-it-reports-about-itself) - the same shape as the
+architecture import's, over the two kinds `system` and `rule` instead of an environment and a kind.
+
+| Meter                                        | Kind    | Tags             | What it is                                                                                      |
+|-----------------------------------------------|---------|------------------|---------------------------------------------------------------------------------------------------|
+| `jeap.doc.governance.import.last.success.age` | Gauge   | `kind`           | How long ago the last successful import of that kind was, `NaN` if there has never been one. **The one to alarm on**. Bound only where a Governance Service is configured |
+| `jeap.doc.governance.resources`               | Gauge   | `kind`           | How many systems or rules are stored, `NaN` before the first success. A drop is a Governance Service that lost its data |
+| `jeap.doc.governance.import`                  | Timer   | `kind`, `result` | One run: how long it took and how it ended - `changed`, `unchanged`, `partial`, `failed`         |
+| `jeap.doc.governance.import.items`            | Counter | `kind`, `outcome`| What a run did: `stored`, `unchanged`, `removed`, `skipped`                                       |
+
 ## What to alarm on
 
 ```promql
@@ -287,5 +300,6 @@ is worse than not answering it: `task_total_memory` was sized from that number.
 
 - [Generating the documentation](generation.md) - what the builds these meters describe actually do
 - [The scheduled jobs](scheduled-jobs.md) - the schedules the age gauges are read against
+- [Importing the Governance Service](governance-import.md)
 - [Configuration](configuration.md)
 - [Operating the bucket](operating-the-bucket.md)

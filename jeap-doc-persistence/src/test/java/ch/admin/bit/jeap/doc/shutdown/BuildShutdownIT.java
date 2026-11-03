@@ -406,6 +406,49 @@ class BuildShutdownIT {
             return ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics.NONE;
         }
 
+        /** The governance import's upstream lives in yet another module; this context serves nothing from it. */
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.GovernanceUpstream governanceUpstream() {
+            return new ch.admin.bit.jeap.doc.domain.port.GovernanceUpstream() {
+
+                @Override
+                public boolean isConfigured() {
+                    return false;
+                }
+
+                @Override
+                public java.util.Optional<ch.admin.bit.jeap.doc.domain.port.GovernanceIndexFetch> systemsIndex(
+                        String knownIndexEtag) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public java.util.Optional<ch.admin.bit.jeap.doc.domain.port.GovernanceIndexFetch> rulesIndex(
+                        String knownIndexEtag) {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public ch.admin.bit.jeap.doc.domain.port.GovernanceResourceFetch system(String systemName,
+                        String knownEtag) {
+                    return ch.admin.bit.jeap.doc.domain.port.GovernanceResourceFetch
+                            .skipped("nothing is served here");
+                }
+
+                @Override
+                public ch.admin.bit.jeap.doc.domain.port.GovernanceResourceFetch rule(String ruleId,
+                        String knownEtag) {
+                    return ch.admin.bit.jeap.doc.domain.port.GovernanceResourceFetch
+                            .skipped("nothing is served here");
+                }
+            };
+        }
+
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.GovernanceImportMetrics governanceImportMetrics() {
+            return ch.admin.bit.jeap.doc.domain.port.GovernanceImportMetrics.NONE;
+        }
+
         /** The publication is not what is under test here, and S3 is not part of this module's tests. */
         @Bean
         SitePublicationStorage publicationStorage() {

@@ -18,6 +18,11 @@ public final class Roles {
      */
     public static final String RESOURCE_SITE_UPLOADS = "site-uploads";
     public static final String RESOURCE_SITES = "sites";
+    /**
+     * The Governance Service's webhook call. Carries no tenant: the call reports that a scoring run completed,
+     * which is not any one system's or site's.
+     */
+    public static final String RESOURCE_GOVERNANCE_NOTIFICATIONS = "governance-notifications";
     public static final String OPERATION_READ = "read";
     public static final String OPERATION_WRITE = "write";
     public static final String OPERATION_ADMIN = "admin";
@@ -95,6 +100,12 @@ public final class Roles {
     public static final String HAS_SITE_UPLOADS_WRITE_ROLE_FOR_THE_SITE_OR_IS_SITES_ADMIN =
             CHECKING_FOR_THE_SITE_PARAMETER + RESOURCE_SITE_UPLOADS + THEN + OPERATION_WRITE + DONE
             + " or " + CHECKING + RESOURCE_SITES + THEN + OPERATION_ADMIN + DONE;
+
+    /**
+     * Notifying this service that a governance scoring run completed.
+     */
+    public static final String HAS_GOVERNANCE_NOTIFICATIONS_WRITE_ROLE =
+            CHECKING + RESOURCE_GOVERNANCE_NOTIFICATIONS + THEN + OPERATION_WRITE + DONE;
 
     private Roles() {
     }

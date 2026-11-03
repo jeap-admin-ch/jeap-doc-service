@@ -1,0 +1,40 @@
+server:
+  # A fixed port, because the JWKS URI below has to name it and is bound before the web server starts. Unlikely
+  # to collide, and an instance whose build occupies it can override server.port on its own test class.
+  port: 18898
+
+spring:
+  main:
+    banner-mode: off
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    # url, username and password come from the PostgreSQL container - see PactProviderTestBase
+
+jeap:
+  web:
+    tls:
+      enabled: false
+  security:
+    oauth2:
+      resourceserver:
+        # Required: the calls are authorized with a semantic role, which the jEAP security starter only
+        # activates when the system name is configured.
+        system-name: jeapdoc
+        # The calls are bearer-authenticated, so a verification has to present a token this application
+        # accepts. The issuer is the test issuer of jeap-spring-boot-security-starter-test (JwsBuilder
+        # .DEFAULT_ISSUER) and the keys are served by the JWKS endpoint mock this application itself carries
+        # under this profile - see PactProviderTestBase, which signs one token per interaction against them.
+        authorization-server:
+          issuer: "http://localhost/auth"
+          # The context path is the instance's own (it is part of the contract), so it is read, not repeated.
+          jwk-set-uri: "http://localhost:${server.port}${server.servlet.context-path:}/.well-known/jwks.json"
+  doc:
+    publication:
+      url: http://localhost
+    # Nothing here generates a site: the search indexer is not installed, and no build may start behind a
+    # verification's back.
+    search:
+      enabled: false
+    build:
+      poll-interval: PT1H
+      pick-up-on-trigger: false

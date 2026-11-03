@@ -21,6 +21,8 @@ to their code, their build pipelines upload it, and the doc service combines it 
 | [Security](docs/security.md)                         | The semantic roles and the rule that a system may only change its own documentation    |
 | [Generation](docs/generation.md)                     | How the documentation site is generated, what triggers a build and how it is published |
 | [Architecture import](docs/architecture-import.md)   | What is replicated from the architecture repository, and what a partial run leaves     |
+| [Importing the Governance Service](docs/governance-import.md) | The webhook, the safety-net schedule, and what is stored                      |
+| [The governance site](docs/governance-site.md)       | Its configuration, its pages, the highlighting and the score history chart            |
 | [Search](docs/search.md)                             | How the documentation is indexed and searched, and what a missing search means         |
 | [The scheduled jobs](docs/scheduled-jobs.md)         | Every job the service runs on its own, its schedule, its lock and which may overlap    |
 | [Structure templates](docs/structure-templates.md)   | The template plugin point, the arc42 chapters and how to add a methodology             |

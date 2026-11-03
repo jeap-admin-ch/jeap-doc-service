@@ -72,11 +72,17 @@ Ports and adapters, one auto-configuration per module - see `docs/architecture.m
   behind `ArchitectureArtifactContent`. An adapter like any other.
 - `jeap-doc-reactionobserver/` - everything about the reaction observer: the client of its replication API,
   behind `ReactionGraphUpstream`. An adapter like any other.
+- `jeap-doc-governance/` - everything about the Governance Service: the client of its `/docs-api`, behind
+  `GovernanceUpstream`, and the reading of a stored system or rule behind `GovernanceResourceContent`. An adapter
+  like any other.
 - `jeap-doc-upstream/` - **how another jEAP service is called**, and the one thing the two adapters above must
   not each have their own copy of: the client and its client-credentials token, the conditional request and the
   entity tag that goes back verbatim, the read that stops at its cap, the redirect that is not followed,
   resolving a content URL against the upstream's origin, one exception class and the retry policy over it. It
   contributes no bean, no auto-configuration and no properties, and it names nothing of the domain.
+- `jeap-doc-test/` - **for an instance's tests**: the base class that verifies the contracts other services hold
+  with the doc service as their provider, with the application, database, object storage and token it needs. It
+  is in `src/main` on purpose; nothing in the service depends on it.
 - `jeap-doc-service-instance/` - POM-only module for downstream instances.
 
 Keep the layering: business logic goes into the domain, technology into an adapter, and an adapter never depends

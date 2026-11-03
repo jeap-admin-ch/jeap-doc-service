@@ -405,6 +405,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 for (SiteEnvironment environment : written.environments()) {
                     writeGuidePage(content.resolve(environment.id()), environment);
                     writeFoldPage(content.resolve(environment.id()));
+                    writeChartPages(content.resolve(environment.id()));
                     writeTablesPage(content.resolve(environment.id()));
                     writeComponentPage(content.resolve(environment.id()));
                     writeReactingSystem(content.resolve(environment.id()), environment);
@@ -769,6 +770,48 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 .details("GraphViz", body -> body.fence("dot", "digraph { foldedA -> foldedB }"))
                 .details("<script>window.MARKER_FOLD = 1</script>", body -> body.paragraph("Harmless."));
         Files.writeString(environmentTree.resolve(FOLD_ROUTE + ".md"), page.text(), StandardCharsets.UTF_8);
+    }
+
+    /** Where the page with a score history chart is served - see {@code MermaidChartBrowserIT}. */
+    protected static final String CHART_ROUTE = "charts";
+
+    /** Where the page with a chart that does not parse is served, on its own so its error stays off the other. */
+    protected static final String BROKEN_CHART_ROUTE = "broken-charts";
+
+    /** A day on the x axis of the chart, which only a drawn chart shows as text. */
+    protected static final String CHART_DAY = "2026-11-02";
+
+    /**
+     * A score history chart in the syntax {@code GovernanceContentWriter.historyChart} writes, copied by hand.
+     * Change it with the generator, or this goes on proving the old syntax. The broken one beside it differs in
+     * one keyword, which is what shows that the check can fail.
+     */
+    private static void writeChartPages(Path environmentTree) throws IOException {
+        String chart = """
+                ---
+                config:
+                  xyChart:
+                    xAxis:
+                      labelRotation: -90
+                  themeVariables:
+                    xyChart:
+                      plotColorPalette: "#3498db"
+                ---
+                xychart-beta
+                    title "Score history"
+                    x-axis ["2026-11-01", "%s", "2026-11-03"]
+                    y-axis "Score (%%)" 0 --> 100
+                    line [68, 70, 72]""".formatted(CHART_DAY);
+        MarkdownWriter page = new MarkdownWriter()
+                .heading(1, "Charts")
+                .heading(2, "Score history")
+                .fence("mermaid", chart);
+        Files.writeString(environmentTree.resolve(CHART_ROUTE + ".md"), page.text(), StandardCharsets.UTF_8);
+        MarkdownWriter broken = new MarkdownWriter()
+                .heading(1, "Broken charts")
+                .heading(2, "Score history")
+                .fence("mermaid", chart.replace("x-axis", "x-axes"));
+        Files.writeString(environmentTree.resolve(BROKEN_CHART_ROUTE + ".md"), broken.text(), StandardCharsets.UTF_8);
     }
 
     /** Where the page with a long and a short table is served - see {@code TableControlsBrowserIT}. */

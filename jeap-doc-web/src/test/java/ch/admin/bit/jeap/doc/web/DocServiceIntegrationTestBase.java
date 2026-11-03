@@ -210,6 +210,14 @@ public abstract class DocServiceIntegrationTestBase {
         return role(null, "sites", operation);
     }
 
+    /**
+     * A role granting the governance webhook call - carries no tenant, the same reason a site's does not: the
+     * call reports a scoring run of the whole Governance Service, not any one system's or site's.
+     */
+    protected static SemanticApplicationRole governanceNotificationsRole(String operation) {
+        return role(null, "governance-notifications", operation);
+    }
+
     private static SemanticApplicationRole role(String tenantSystem, String resource, String operation) {
         return SemanticApplicationRole.builder()
                 .system(SYSTEM_NAME)

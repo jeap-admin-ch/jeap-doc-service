@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] - 2026-11-09
+
+### Added
+- **Governance site**: a site with `content: governance` publishes the Governance Service's scoring data: a system
+  scores overview, a page per system and component with score, trend and score history chart, a page per rule
+  with its explanation and conformance, and a rules overview with exemptions. See
+  [The governance site](docs/governance-site.md).
+- **Governance import**: the new adapter `jeap-doc-governance` reads the Governance Service's `/docs-api` indexes
+  conditionally and fetches only new or changed resources. It runs on `jeap.doc.governance.import.cron`
+  (default `0 55 6-20 * * MON-FRI`), one instance at a time, reports metrics under `jeap.doc.governance.*` and
+  keeps serving the last published site if a run fails.
+- **Governance webhook**: `POST /api/governance/webhook` (role `governance-notifications` / `write`) lets the
+  Governance Service report a completed scoring run. It answers `202`, ignores repeated event IDs and merges
+  concurrent calls into one further import.
+- **`jeap-doc-test`**: base class for verifying the Pact contracts other services hold with the doc service as
+  provider. See [the architecture](docs/architecture.md#verifying-the-contracts-the-service-is-a-provider-of).
+
+### Changed
+- Database migration `V1_12_0` creates the tables `governance_import` and `governance_resource`; every instance
+  runs it, whether or not it configures a Governance Service.
+
+### Fixed
+- `SystemParameterInterceptor.preHandle` returned the same value from two `return` statements (Sonar).
+
+### Dependencies
+- **open** 8.4.2 and 10.2.0 → 11.0.4 (CVE-2026-119025), pinned in the site template's `overrides`. An instance has
+  to rebuild its site image, because the lockfile changed.
+
 ## [4.6.0] - 2026-11-06
 
 ### Changed

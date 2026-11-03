@@ -33,7 +33,7 @@ import java.time.Clock;
 @EnableScheduling
 @EnableConfigurationProperties({UploadProperties.class, SiteProperties.class, BuildProperties.class,
         PublicationProperties.class, ArchitectureImportProperties.class, SearchProperties.class,
-        CustomProperties.class})
+        CustomProperties.class, GovernanceImportProperties.class})
 public class DocDomainConfiguration {
 
     /**

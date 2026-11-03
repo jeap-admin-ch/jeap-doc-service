@@ -328,4 +328,170 @@ class MarkdownWriterTest {
         assertThat(new MarkdownWriter().heading(1, "1. Introduction and Goals").text())
                 .isEqualTo("# 1. Introduction and Goals\n");
     }
+
+    @Test
+    void importedDocument_keepsItsStructure_andShowsRawHtmlAsText() {
+        String page = new MarkdownWriter()
+                .importedDocument("## Why\n\n- one\n- two\n\nA <script>alert(1)</script> and a <br/>.")
+                .text();
+
+        assertThat(page).isEqualTo("""
+                ### Why
+
+                - one
+                - two
+
+                A &lt;script>alert(1)&lt;/script> and a &lt;br/>.
+                """);
+    }
+
+    /** CommonMark does not decode an entity in code, so an escaped {@code <} there would show as {@code &lt;}. */
+    @Test
+    void importedDocument_whenItHasCode_thenTheCodeIsLeftAsItIs() {
+        String page = new MarkdownWriter()
+                .importedDocument("Use `List<String>` here, not <b>.\n\n```xml\n<order id=\"1\"/>\n```")
+                .text();
+
+        assertThat(page).isEqualTo("""
+                Use `List<String>` here, not &lt;b>.
+
+                ```xml
+                <order id="1"/>
+                ```
+                """);
+    }
+
+    /** Left open, the fence would turn everything the page writes after the document into code. */
+    @Test
+    void importedDocument_whenAFenceIsLeftOpen_thenItIsClosedBeforeWhatFollows() {
+        String page = new MarkdownWriter()
+                .importedDocument("Before\n\n~~~~\nnever closed\n```")
+                .paragraph("After")
+                .text();
+
+        assertThat(page).isEqualTo("""
+                Before
+
+                ~~~~
+                never closed
+                ```
+                ~~~~
+
+                After
+                """);
+    }
+
+    @Test
+    void importedDocument_whenAContainerIsLeftOpen_thenItIsClosed_andAStrayCloserIsEscaped() {
+        String page = new MarkdownWriter()
+                .importedDocument(":::\n\n::::note\n\n:::tip\n\nInside\n\n:::")
+                .text();
+
+        assertThat(page).isEqualTo("""
+                \\:::
+
+                ::::note
+
+                :::tip
+
+                Inside
+
+                :::
+                ::::
+                """);
+    }
+
+    /** A target that is not absolute means nothing on this site, and the site build fails on a broken link. */
+    @Test
+    void importedDocument_whenALinkPointsIntoTheSite_thenOnlyItsTextIsKept() {
+        String page = new MarkdownWriter()
+                .importedDocument("""
+                        See [the guide](guide.md), [the root](/), [an anchor](#how), [a site](https://example.org),
+                        [mail](mailto:team@example.org "Mail"), [code](javascript:alert(1)) and ![a chart](chart.png).
+                        [![a badge](badge.svg)](https://example.org/build) and `[not a link](here.md)`.
+                        <https://example.org/plain> [ref]: ./elsewhere.md
+
+                        [ref]: ./elsewhere.md
+                        [ok]: https://example.org/ok
+                        [^1]: A footnote.""")
+                .text();
+
+        assertThat(page).isEqualTo("""
+                See the guide, the root, [an anchor](#how), [a site](https://example.org),
+                [mail](mailto:team@example.org "Mail"), code and a chart.
+                [a badge](https://example.org/build) and `[not a link](here.md)`.
+                <https://example.org/plain> [ref]: ./elsewhere.md
+
+                \\[ref]: ./elsewhere.md
+                [ok]: https://example.org/ok
+                [^1]: A footnote.
+                """);
+    }
+
+    /** Hard-wrapped text splits links over lines, and CommonMark lets brackets and parentheses nest. */
+    @Test
+    void importedDocument_whenALinkWrapsOrNests_thenItIsStillFound() {
+        String page = new MarkdownWriter()
+                .importedDocument("""
+                        See [the
+                        guide](./guide.md), [[[nested]]](./x.md), [parens](./a((b)).md) and [kept](https://example.org/a_(b)).
+                        [![logo](logo.png)](./home.md) and [wrapped](
+                        https://example.org/next "Title").
+
+                        [ref]:
+                          ./elsewhere.md""")
+                .text();
+
+        assertThat(page).isEqualTo("""
+                See the
+                guide, [[nested]], parens and [kept](https://example.org/a_(b)).
+                logo and [wrapped](
+                https://example.org/next "Title").
+
+                \\[ref]:
+                  ./elsewhere.md
+                """);
+    }
+
+    /** A code span may not cross out of a heading, so the backtick there must not hide the HTML after it. */
+    @Test
+    void importedDocument_whenABacktickIsUnmatchedInItsLine_thenItDoesNotHideHtml() {
+        String page = new MarkdownWriter()
+                .importedDocument("# Heading `\nA <b>bold</b> claim `\n\na `b\nc` <i>x</i> `d`")
+                .text();
+
+        assertThat(page).isEqualTo("""
+                ## Heading `
+                A &lt;b>bold&lt;/b> claim `
+
+                a `b
+                c` &lt;i>x&lt;/i> `d`
+                """);
+    }
+
+    /** The page writes its own top-level heading, and a second one would compete with it. */
+    @Test
+    void importedDocument_movesEachHeadingOneLevelDown_butNotInCode() {
+        String page = new MarkdownWriter()
+                .importedDocument("# Title\n\n##### Five\n###### Six\n#hashtag\n\n```bash\n# a comment\n```")
+                .text();
+
+        assertThat(page).isEqualTo("""
+                ## Title
+
+                ###### Five
+                ###### Six
+                #hashtag
+
+                ```bash
+                # a comment
+                ```
+                """);
+    }
+
+    @Test
+    void importedDocument_whenThereIsNothing_thenNothingIsWritten() {
+        assertThat(new MarkdownWriter().importedDocument("  \n ").text()).isEmpty();
+        assertThat(new MarkdownWriter().importedDocument(null).text()).isEmpty();
+    }
 }

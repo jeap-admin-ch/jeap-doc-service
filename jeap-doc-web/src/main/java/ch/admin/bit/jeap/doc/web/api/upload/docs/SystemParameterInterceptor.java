@@ -22,11 +22,10 @@ class SystemParameterInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         String type = request.getParameter("type");
-        if (HttpMethod.GET.matches(request.getMethod()) || type == null) {
-            // A missing type is the binding's to report, as for every required parameter.
-            return true;
-        }
-        if (DocumentationTypeDto.fromParameterValue(type) != DocumentationTypeDto.SITE_DOCS
+        // A missing type is the binding's to report, as for every required parameter - so the check below
+        // only runs once there is one to read, and only for a request that is not a GET.
+        if (!HttpMethod.GET.matches(request.getMethod()) && type != null
+            && DocumentationTypeDto.fromParameterValue(type) != DocumentationTypeDto.SITE_DOCS
             && !StringUtils.hasText(request.getParameter("system"))) {
             throw InvalidUploadException.missing("system",
                     "to know whose documentation it is, as the role it is uploaded with is granted for a system");

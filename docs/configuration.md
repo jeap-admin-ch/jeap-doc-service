@@ -178,14 +178,9 @@ jeap:
         tagline: How the platform is governed
         color-scheme: neutral
         logo: classpath:/branding/governance.svg
-        publish-on-upload: false               # published by the import and by an operator only
-        environments:                          # this one exists on production only
-          - id: prod
-            short-name: PROD
-            label: Production
-            order: 1
-            main: true
-            latest: true
+        per-environment: false                 # the Governance Service is read once per instance, not per stage
+        content: governance
+        publish-on-upload: false               # published by the import only; nothing is ever uploaded for it
 ```
 
 | Property                      | Default                                                         | Description                                                                                                                                                                                                                                                                                                                                                         |
@@ -195,7 +190,7 @@ jeap:
 | `logo`, `favicon`             | the template's                                                  | A `classpath:` or filesystem resource with the site's own mark. Without a favicon the logo is used                                                                                                                                                                                                                                                                  |
 | `color-scheme`                | `jeap`                                                          | One of the schemes the site template ships: `jeap`, `neutral`, `high-contrast`. A site does not bring its own CSS - a free-form stylesheet would make every later change to the template able to break it                                                                                                                                                           |
 | `per-environment`             | `true`                                                          | Whether the site has a tree per environment. `false` makes it one tree served at the site root, with no environments, no switcher and no banner - see [Sites without environments](#sites-without-environments)                                                                                                                                                     |
-| `content`                     | `system-documentation`                                          | Where the site's content comes from: `system-documentation`, generated from the architecture model and the teams' uploads, or `static-site`, a tree uploaded for the site - see [Where a site's content comes from](#where-a-sites-content-comes-from)                                                                                                              |
+| `content`                     | `system-documentation`                                          | Where the site's content comes from: `system-documentation`, generated from the architecture model and the teams' uploads; `static-site`, a tree uploaded for the site; or `governance`, the Governance Service's reports - see [Where a site's content comes from](#where-a-sites-content-comes-from)                                                             |
 | `environments`                | `dev`, `ref`, `abn`, `prod`                                     | The environments of this site, below                                                                                                                                                                                                                                                                                                                                |
 | `publish-on-upload`           | `true`                                                          | Whether an upload for this site asks for a build of the part that carries the system it is for                                                                                                                                                                                                                                                                      |
 | `navigation-label`            | the title                                                       | What the site's tab in the header bar says, on an instance with more than one site - see [Several sites in one header bar](#several-sites-in-one-header-bar)                                                                                                                                                                                                        |
@@ -227,6 +222,7 @@ Every site has a **content source**, named by `content`:
 |------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------|
 | `system-documentation` | The documentation of the systems: generated from the architecture model of each environment and from what the teams upload, a part per system. What a site is without `content`                      | Required                       |
 | `static-site`          | A tree of Markdown uploaded for the site itself and published as it is: its folders are the navigation - see [Uploads](uploads.md#the-navigation-of-a-static-site), and nothing is generated into it | None: `per-environment: false` |
+| `governance`           | The reports of the Governance Service: scores, trends and rule conformance, a part of its own - see [The governance site](governance-site.md) for its pages                                          | None: `per-environment: false` |
 
 ```yaml
 jeap:
@@ -239,10 +235,11 @@ jeap:
 ```
 
 A `content` the instance provides no source for stops the service at startup, naming the site and the value, and
-so does a site its source cannot take: `system-documentation` without environments, or `static-site` with them.
-Only the documentation of the systems is published by the architecture import; a static site is published when its
-tree is uploaded, and on the [reconcile schedule](#building-the-documentation) - see [Uploads](uploads.md#a-static-sites-tree)
-for how its tree gets there.
+so does a site its source cannot take: `system-documentation` without environments, `static-site` with them, or
+`governance` with them. Only the documentation of the systems is published by the architecture import; a static
+site is published when its tree is uploaded, and on the [reconcile schedule](#building-the-documentation) - see
+[Uploads](uploads.md#a-static-sites-tree) for how its tree gets there; a governance site is published by
+[the governance import](governance-import.md).
 
 ### Sites without environments
 
@@ -459,6 +456,43 @@ Two things fail the startup. Both are configuration errors nobody would notice u
 The architecture repository is not called while the service starts. It may be deploying, and an instance that
 refuses to boot because a neighbour is restarting cannot serve the documentation it already has.
 
+## The Governance Service
+
+Where the governance reports are read from. Instance-wide and not per environment, unlike the architecture
+model: a landscape has one Governance Service, and the governance site has no environments either. A blank
+`url` counts as no Governance Service configured, exactly like a missing one.
+
+```yaml
+jeap:
+  doc:
+    governance:
+      url: https://internal.example.ch/governance-service
+      client-registration: doc-service
+      client:
+        connect-timeout: PT5S
+        read-timeout: PT30S
+      max-resource-size: 1MB
+      import:
+        cron: "0 55 6-20 * * MON-FRI"
+```
+
+| Property                                      | Default                 | Description                                                                                                                                                                                                       |
+|------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jeap.doc.governance.url`                     | -                        | Where the Governance Service is. On a platform giving a service two hostnames this is the **internal** one - see [Security](security.md)                                                                        |
+| `jeap.doc.governance.client-registration`     | -                        | The `spring.security.oauth2.client.registration` entry the token is obtained with. Its client needs `<system-name>_@governance-documentation_#read` **on the Governance Service's authorization server**        |
+| `jeap.doc.governance.client.connect-timeout`  | `PT5S`                   | How long the client waits for the connection                                                                                                                                                                      |
+| `jeap.doc.governance.client.read-timeout`     | `PT30S`                  | How long the client waits for one response                                                                                                                                                                       |
+| `jeap.doc.governance.client.retries`          | `2`                      | How often a failed request is tried again, so three attempts in all. Only a connection failure, a read timeout, a `5xx` or a `429` is retried                                                                   |
+| `jeap.doc.governance.client.retry-delay`      | `PT0.5S`                 | How long to wait before the first retry, doubled for each further one                                                                                                                                            |
+| `jeap.doc.governance.client.retry-jitter`     | `PT0.25S`                | How much the delay is varied, so that instances whose schedules fire together do not retry in lockstep                                                                                                           |
+| `jeap.doc.governance.client.max-retry-delay`  | `PT2S`                   | The longest a retry waits, however often the delay has been doubled                                                                                                                                              |
+| `jeap.doc.governance.max-resource-size`       | `1MB`                    | The largest systems index, rules index, system or rule resource that is stored. A bigger one is left where it is, with a warning naming it                                                                      |
+| `jeap.doc.governance.import.cron`             | `0 55 6-20 * * MON-FRI` | When the Governance Service is imported as the safety net - the same minutes as its own reporting job, ten after its scoring. **Empty means never** - see [the import](governance-import.md) and [the scheduled jobs](scheduled-jobs.md) |
+
+An instance that configures no `jeap.doc.governance.url` reads no Governance Service and starts; it publishes
+no governance site. The Governance Service is not called while the service starts, for the same reason the
+architecture repository is not: it may be deploying.
+
 ## The reactions
 
 What reacts to what at runtime, read from the [reaction observer](architecture-import.md) of each stage and
@@ -603,6 +637,8 @@ sets any of these itself wins**; they are defaults, not decisions.
 
 - [Getting started](getting-started.md)
 - [The scheduled jobs](scheduled-jobs.md) - what runs when, and which of them may overlap
+- [Importing the Governance Service](governance-import.md)
+- [The governance site](governance-site.md)
 - [Uploads](uploads.md)
 - [Security](security.md)
 

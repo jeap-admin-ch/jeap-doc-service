@@ -3,18 +3,24 @@ package ch.admin.bit.jeap.doc.web.api.sites;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
+import ch.admin.bit.jeap.doc.domain.DocumentationBuildRunner;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
+import ch.admin.bit.jeap.doc.domain.port.ExclusiveWork;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItems;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -30,7 +36,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class SiteStatusApiIT extends DocServiceIntegrationTestBase {
 
-    private static final String SITE = "governance";
+    /** This class's own site, so that no other class's builds, requests or locks are on it. */
+    private static final String SITE = "site-status-site";
     private static final String INSTANCE = "site-status-it";
     private static final String SITE_WITHOUT_ENVIRONMENTS = "site-status-handbook";
 
@@ -40,9 +47,13 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
     @Autowired
     private DocumentationBuildRepository builds;
 
-    /** The site without environments, as docs/configuration.md configures its example. */
+    @Autowired
+    private ExclusiveWork exclusiveWork;
+
     @DynamicPropertySource
     static void siteProperties(DynamicPropertyRegistry registry) {
+        registry.add("jeap.doc.sites." + SITE + ".title", () -> "Governance");
+        // The site without environments, as docs/configuration.md configures its example.
         registry.add("jeap.doc.sites." + SITE_WITHOUT_ENVIRONMENTS + ".title", () -> "Handbook");
         registry.add("jeap.doc.sites." + SITE_WITHOUT_ENVIRONMENTS + ".per-environment", () -> false);
         registry.add("jeap.doc.sites." + SITE_WITHOUT_ENVIRONMENTS + ".content", () -> "static-site");
@@ -102,22 +113,43 @@ class SiteStatusApiIT extends DocServiceIntegrationTestBase {
     /**
      * A build that is running is the answer to <i>is something happening right now</i>, which is the other half
      * of why this endpoint exists. It is finished again at the end, because the context is shared.
+     * <p>
+     * The build holds its part's lock, as a real one does. A running row without it is a build whose instance
+     * stopped, and a pass of any context on the shared database would give up on it before the request is read.
      */
     @Test
     void site_whenABuildIsRunning_thenItIsOnTheStatusWithTheInstanceRunningIt() throws Exception {
-        Instant now = Instant.now();
-        DocumentationBuild running = builds.start(PartKey.shellOf(SITE), BuildTrigger.MANUAL, INSTANCE, now, null);
+        PartKey part = PartKey.shellOf(SITE);
+        Optional<RunningBuild> observed = exclusiveWork.underLock(DocumentationBuildRunner.LOCK_PREFIX + part,
+                Duration.ofMinutes(5), () -> {
+                    Instant now = Instant.now();
+                    DocumentationBuild running = builds.start(part, BuildTrigger.MANUAL, INSTANCE, now, null);
+                    try {
+                        return new RunningBuild(running.id(), siteStatus());
+                    } finally {
+                        builds.failed(running.id(), "ended by the test", now.plusSeconds(1));
+                    }
+                });
+
+        assertThat(observed).as("the lock of the part was free").isPresent();
+        MvcResult response = observed.get().response();
+        status().isOk().match(response);
+        // The newest first, and this test just started it: no other test of this suite leaves a build of this
+        // site running.
+        jsonPath("$.running[0].id").value(observed.get().id()).match(response);
+        jsonPath("$.running[0].instance").value(INSTANCE).match(response);
+        jsonPath("$.running[0].state").value("RUNNING").match(response);
+        jsonPath("$.running[0].finishedAt").doesNotExist().match(response);
+    }
+
+    private record RunningBuild(Long id, MvcResult response) {
+    }
+
+    private MvcResult siteStatus() {
         try {
-            mockMvc.perform(get(SiteApiPaths.SITE, SITE).with(readRole()))
-                    .andExpect(status().isOk())
-                    // The newest first, and this test just started it: no other test of this suite leaves a
-                    // build of this site running.
-                    .andExpect(jsonPath("$.running[0].id").value(running.id()))
-                    .andExpect(jsonPath("$.running[0].instance").value(INSTANCE))
-                    .andExpect(jsonPath("$.running[0].state").value("RUNNING"))
-                    .andExpect(jsonPath("$.running[0].finishedAt").doesNotExist());
-        } finally {
-            builds.failed(running.id(), "ended by the test", now.plusSeconds(1));
+            return mockMvc.perform(get(SiteApiPaths.SITE, SITE).with(readRole())).andReturn();
+        } catch (Exception e) {
+            throw new IllegalStateException("Reading the status of the site failed.", e);
         }
     }
 

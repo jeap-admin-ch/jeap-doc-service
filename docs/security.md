@@ -12,6 +12,7 @@ The doc service authorizes against **semantic roles**, which requires
 | `<system-name>_@docs_#read`                  | A name kept free by convention; **nothing in the service checks it**                        |
 | `<system-name>_@sites_#admin`                | Asking for a documentation site to be published, and removing a part the site no longer has |
 | `<system-name>_@sites_#read`                 | Reading what the documentation generator has been doing                                     |
+| `<system-name>_@governance-notifications_#write` | Calling the governance webhook - see below                                              |
 
 ## A site is nobody's system
 
@@ -23,6 +24,13 @@ instance rather than to the pipelines that fill it.
 
 Reading is a separate operation from administering: `#read` answers what the generator has been doing and `#admin`
 sets it off, and neither implies the other.
+
+## The governance webhook
+
+`governance-notifications` carries no tenant either: the call reports that a scoring run of the whole
+Governance Service completed, which is not any one system's or site's. It is granted to the Governance
+Service's own client, not to a build pipeline - see [the API](api.md#reporting-a-completed-governance-scoring-run)
+and [Importing the Governance Service](governance-import.md).
 
 ## A system may only change its own documentation
 
@@ -226,19 +234,21 @@ Markdown.
 - [Search](search.md) - what is indexed, and what an uploaded microsite contributes to it
 - [Generating the documentation](generation.md)
 - [Observability](observability.md)
+- [Importing the Governance Service](governance-import.md)
 
 ## What the doc service is a client of
 
-Everything above is about who may call the doc service. It calls two services itself: the architecture
-repository, to read the model it generates the documentation from, and - where it is configured - the reaction
-observer, to read what reacts to what at runtime.
+Everything above is about who may call the doc service. It calls three services itself: the architecture
+repository, to read the model it generates the documentation from; - where it is configured - the reaction
+observer, to read what reacts to what at runtime; and - where it is configured - the Governance Service, to
+read its reports.
 
-|               |                                                                                                                                                                                                                                                                     |
-|---------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| How           | A client-credentials token of this service, obtained through `JeapOAuth2RestClientBuilderFactory` - the jEAP way of calling another service in the system context                                                                                                   |
-| Which role    | `<system-name>_@architecture-model_#read` for the architecture repository, `<system-name>_@reactions_#read` for the reaction observer - both **without a tenant part**, and both granted on **that upstream's** authorization server rather than this service's own |
-| Configured as | `jeap.doc.archrepo.environments.<environment>.client-registration` and `jeap.doc.reactions.environments.<environment>.client-registration`, each naming a `spring.security.oauth2.client.registration` entry                                                        |
-| Secret        | From the secret store of the platform. Never in a repository                                                                                                                                                                                                        |
+|               |                                                                                                                                                                                                                                                                                                                                               |
+|---------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| How           | A client-credentials token of this service, obtained through `JeapOAuth2RestClientBuilderFactory` - the jEAP way of calling another service in the system context                                                                                                                                                                             |
+| Which role    | `<system-name>_@architecture-model_#read` for the architecture repository, `<system-name>_@reactions_#read` for the reaction observer, `<system-name>_@governance-documentation_#read` for the Governance Service - all **without a tenant part**, and all granted on **that upstream's** authorization server rather than this service's own |
+| Configured as | `jeap.doc.archrepo.environments.<environment>.client-registration`, `jeap.doc.reactions.environments.<environment>.client-registration` and `jeap.doc.governance.client-registration`, each naming a `spring.security.oauth2.client.registration` entry                                                                                       |
+| Secret        | From the secret store of the platform. Never in a repository                                                                                                                                                                                                                                                                                  |
 
 **The reaction observer is read with a token and with nothing else.** It also accepts HTTP Basic with an
 in-memory user, which is what the architecture repository's own importer uses; this service does not, because a

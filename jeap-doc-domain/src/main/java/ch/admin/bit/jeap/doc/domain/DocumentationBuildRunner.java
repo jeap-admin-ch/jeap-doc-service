@@ -68,7 +68,7 @@ import java.util.function.ToIntFunction;
 public class DocumentationBuildRunner {
 
     /** The prefix of the lock a part's build holds, so that two parts do not wait for each other. */
-    static final String LOCK_PREFIX = "documentationBuild-";
+    public static final String LOCK_PREFIX = "documentationBuild-";
 
     /**
      * How many poll intervals a request for a site this instance does not know is left alone. An instance not
