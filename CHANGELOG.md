@@ -16,6 +16,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - Database migration `V1_10_0`: the documentation set and subject of a static site name no system and no template.
 
+### Dependencies
+- **ch.admin.bit.jeap:jeap-spring-boot-parent**: 41.29.0 → 41.29.1 (patch)
+- Site dependencies: **pagefind** 1.5.2 → 1.6.0, **@matfsw/docusaurus-plantuml-plugin** 1.8.14 → 1.8.15 and
+  **qs** 6.17.0 → 6.17.1. An instance has to rebuild its site image, because the lockfile changed.
+
 ## [4.3.0] - 2026-11-02
 
 ### Dependencies
