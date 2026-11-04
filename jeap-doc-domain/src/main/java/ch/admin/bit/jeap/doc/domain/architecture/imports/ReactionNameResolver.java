@@ -39,7 +39,7 @@ final class ReactionNameResolver {
                     .map(system -> listed.withName(system.name(), null));
             case COMPONENT_REACTIONS -> resolveComponent(listed);
             case MESSAGE_REACTIONS -> resolveMessage(listed);
-            case MODEL, OPENAPI_SPEC, DATABASE_SCHEMA, MESSAGE_SCHEMA -> Optional.empty();
+            case MODEL, OPENAPI_SPEC, DATABASE_SCHEMA, MESSAGE_SCHEMA, FULL_REACTIONS -> Optional.empty();
         };
     }
 

@@ -1,5 +1,13 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+
+import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactionNetwork;
+import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork;
+import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
+import ch.admin.bit.jeap.doc.sitegenerator.ReactionNetworkFiles;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.domain.PublicationProperties;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
@@ -324,6 +332,18 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     }
 
 
+    private ReactionNetworkFiles reactionNetworkFiles() {
+        var networks = mock(ReactionNetworkPublication.class);
+        var graph = new ReactionNetwork(List.of(
+                new ReactionNetwork.Node(
+                        new ReactionNetwork.Identity("MESSAGE", "9007199254740993"),
+                        "OrderCreatedEvent", "priority", null, null)), List.of());
+        when(networks.read(anyString())).thenReturn(
+                Optional.of(new PublishedReactionNetwork(
+                        graph, Instant.parse("2026-10-29T08:00:00Z"), List.of(), true)));
+        return new ReactionNetworkFiles(networks);
+    }
+
     /**
      * What this suite's fixture site is made of: the pages the generator writes, plus a guide page in every
      * environment tree that says which tree it is.
@@ -338,6 +358,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties, provenance(),
                 new AboutThisDocumentation(), new PublicationProperties()) {
+                new AboutThisDocumentation(), reactionNetworkFiles()) {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,
                                         Instant generatedAt) throws IOException {
@@ -395,6 +416,10 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * {@code remove(Collection<…>)} to the same signature, so one class cannot implement both.
      */
     private static final class Reactions implements ReactionGraphRepository, ReactionGraphContent {
+        @Override
+        public ReactionNetwork readFull(byte[] data) {
+            throw new UnsupportedOperationException();
+        }
 
         @Override
         public List<ReactionGraphRef> findRefs(String environment, ArchitectureImportKind kind) {
@@ -554,7 +579,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
 
             @Override
             public java.util.List<String> systemSlugsOf(String environment) {
-                return java.util.List.of();
+                return List.of();
             }
         };
     }
@@ -569,7 +594,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         return new ch.admin.bit.jeap.doc.domain.DocumentationProvenance(
                 new DocumentationSites(new SiteProperties()), imports, importStatesOf(imports),
                 withoutArchitectureModel(),
-                new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
+                new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(List.of()),
                 new BuildProperties(), new ArchitectureImportProperties(),
                 new ch.admin.bit.jeap.doc.domain.upload.UploadProperties(),
                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties(),
@@ -602,7 +627,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
 
         @Override
         public java.util.List<ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState> states() {
-            return java.util.List.of();
+            return List.of();
         }
 
         @Override
@@ -627,7 +652,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         // that is the same whichever part a page came out of.
         ch.admin.bit.jeap.doc.domain.SitePart whole = new ch.admin.bit.jeap.doc.domain.SitePart(
                 ch.admin.bit.jeap.doc.domain.PartKey.shellOf(site.id()), "the site itself", "", true,
-                site.environments().stream().map(SiteEnvironment::id).toList(), java.util.List.of());
+                site.environments().stream().map(SiteEnvironment::id).toList(), List.of());
         BuiltSite built = builder.generate(builder.prepare(1, site, whole, GENERATED_AT));
         // What a run cost, as the runner writes it at the seam between the generator and the upload. Without
         // it the page describing the documentation has nothing to fetch, and these tests are what prove the
@@ -650,11 +675,6 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         return "This copy is the one in the %s tree.".formatted(environment.id());
     }
 
-    /**
-     * A page in every environment, holding the two things the generated root pages do not: a line naming the
-     * environment it belongs to, so one copy can be told from its neighbours, and a diagram fence, so that the
-     * plugin rendering it has something to render.
-     */
     /**
      * The PlantUML the generator writes, in the syntax it writes it.
      * <p>
@@ -847,7 +867,13 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         Files.writeString(environmentTree.resolve(TABLES_ROUTE + ".md"), page.text(), StandardCharsets.UTF_8);
     }
 
-    /** Shared with {@link SiteSearchBrowserIT}, which indexes the same pages the site is built from. */
+    /**
+     * Shared with {@link SiteSearchBrowserIT}, which indexes the same pages the site is built from.
+     * <p>
+     * A page in every environment, holding the two things the generated root pages do not: a line naming the
+     * environment it belongs to, so one copy can be told from its neighbours, and a diagram fence, so that the
+     * plugin rendering it has something to render.
+     */
     protected static void writeGuidePage(Path environmentTree, SiteEnvironment environment) throws IOException {
         Files.writeString(environmentTree.resolve(GUIDE_ROUTE + ".md"), """
                 # The upload guide
@@ -952,12 +978,6 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     }
 
     /**
-     * The system's own page, which the generator writes above the structure and the template's pages link back
-     * to. Written by hand here because this suite generates a system's tree and not a site's worth - and a
-     * link to a page nothing wrote fails the whole site build, which is the rule these pages are subject to as
-     * much as a real build's.
-     */
-    /**
      * A system whose documentation a team wrote: no architecture model holds it, it has a library, and its
      * pages are the ones an upload brings. Written through the template and the real page writer, so what a
      * browser sees here is what an upload produces.
@@ -971,6 +991,12 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 context, environmentTree.resolve("systems").resolve(DOCUMENTED_SYSTEM));
     }
 
+    /**
+     * The system's own page, which the generator writes above the structure and the template's pages link back
+     * to. Written by hand here because this suite generates a system's tree and not a site's worth - and a
+     * link to a page nothing wrote fails the whole site build, which is the rule these pages are subject to as
+     * much as a real build's.
+     */
     private static void writeSystemPage(Path environmentTree, String slug, String description)
             throws IOException {
         Path systemDirectory = environmentTree.resolve("systems").resolve(slug);
@@ -1090,9 +1116,11 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                     new MessageSchema("OrdersPaymentAcceptedEvent_key.avdl", "https://registry.example/key.avdl",
                             "record OrdersPaymentAcceptedEventKey {\n    string orderId;\n}"),
                     new MessageSchema("OrdersPaymentAcceptedEvent_v2.avdl", "https://registry.example/v2.avdl",
-                            "record OrdersPaymentAcceptedEventPayload {\n    string orderId;\n"
-                            + "    union { null, string } aFieldWithAVeryLongNameThatWouldRunPastANarrowColumn = null;"
-                            + "\n}")));
+                            """
+                            record OrdersPaymentAcceptedEventPayload {
+                                string orderId;
+                                union { null, string } aFieldWithAVeryLongNameThatWouldRunPastANarrowColumn = null;
+                            }""")));
 
     private static DocumentedMessage message(String name, String slug) {
         return new DocumentedMessage(name, slug, MessageKind.EVENT, "internal", "shipping-topic", null, null,
@@ -1129,7 +1157,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
 
                 @Override
                 public java.util.List<String> systemSlugsOf(String environment) {
-                    return java.util.List.of();
+                    return List.of();
                 }
             };
 }

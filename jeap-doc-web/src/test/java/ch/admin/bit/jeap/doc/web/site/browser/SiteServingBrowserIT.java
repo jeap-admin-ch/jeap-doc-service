@@ -23,6 +23,35 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SiteServingBrowserIT extends SiteBrowserTestBase {
 
+    @SuppressWarnings("unchecked")
+    @Test
+    void fullGraphIsGeneratedPublishedAndLoadedUnderTheEnvironmentContext() {
+        for (var environment : environments()) {
+            open(environment.routePrefix() + "/");
+            Object result = page.evaluate("""
+                    async url => {
+                        const response = await fetch(url);
+                        return {status: response.status, type: response.headers.get('content-type'),
+                                cache: response.headers.get('cache-control'), data: await response.json()};
+                    }
+                    """, url(environment.routePrefix() + "/reaction-graph.json"));
+            var response = (java.util.Map<String, Object>) result;
+            assertThat(response).containsEntry("status", 200);
+            assertThat(response.get("type").toString()).contains("application/json");
+            assertThat(response.get("cache").toString()).contains("no-cache");
+            var data = (java.util.Map<String, Object>) response.get("data");
+            assertThat(data).containsEntry("environment", environment.id());
+            assertThat(data).containsEntry("site", defaultSite().id());
+            assertThat((Boolean) data.get("available")).isTrue();
+            var graph = (java.util.Map<String, Object>) data.get("graph");
+            var nodes = (java.util.List<?>) graph.get("nodes");
+            var node = (java.util.Map<String, Object>) nodes.getFirst();
+            var identity = (java.util.Map<String, Object>) node.get("identity");
+            assertThat(identity).containsEntry("key", "9007199254740993");
+        }
+    }
+
+
     /**
      * <b>The numbers of the run, fetched by the page that cannot generate them.</b>
      * <p>

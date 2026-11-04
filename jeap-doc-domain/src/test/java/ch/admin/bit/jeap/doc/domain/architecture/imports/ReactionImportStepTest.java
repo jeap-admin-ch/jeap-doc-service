@@ -66,6 +66,7 @@ class ReactionImportStepTest {
 
     @BeforeEach
     void setUp() {
+        captureTheLog();
         observer = new FakeObserver();
         graphs = new InMemoryGraphs();
         imports = new InMemoryImports();
@@ -74,8 +75,7 @@ class ReactionImportStepTest {
         step = stepFor(SYSTEM_REACTIONS);
     }
 
-    @BeforeEach
-    void captureTheLog() {
+    private void captureTheLog() {
         Logger logger = (Logger) LoggerFactory.getLogger(ReactionImportStep.class);
         logged = new ListAppender<>();
         logged.start();
@@ -436,6 +436,11 @@ class ReactionImportStepTest {
     }
 
     private static final class FakeObserver implements ReactionGraphUpstream {
+        @Override
+        public ch.admin.bit.jeap.doc.domain.port.GraphFetch fullGraph(String environment, String etag, String knownFormat) {
+            throw new UnsupportedOperationException();
+        }
+
 
         private List<ReactionGraphRef> listed = List.of();
         private String indexEtag = "\"index-0\"";

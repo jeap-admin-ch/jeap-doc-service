@@ -12,17 +12,18 @@ import java.util.Objects;
  * what the observer called the same thing - which is the only way to explain a graph that turned up under a
  * name nobody expected.
  *
- * @param name         the system, component or message type as the <b>stored model</b> spells it
+ * @param name         the system, component or message type as the <b>stored model</b> spells it;
+ *                     empty for the complete environment graph
  * @param variant      the variant of a message type, or {@code ""}. Never null, because a unique index does not
  *                     constrain nulls
  * @param system       the system a component's reactions were published under, as the model spells it, or
  *                     {@code ""} for the other two kinds. <b>Part of what addresses the graph</b>: two systems
  *                     may each call a component {@code gateway}
- * @param upstreamName the observer's own spelling - a system name it lower-cased, a component name verbatim
+ * @param upstreamName the observer's own spelling; for the nameless full snapshot its source format instead
  * @param etag         the entity tag of the graph resource, verbatim. What the next run sends as
  *                     {@code If-None-Match}
  * @param fingerprint  the fingerprint the payload carried, or null if it carried none
- * @param data         the graph, as it arrived. Nothing in the import looks inside it
+ * @param data         the graph, as it arrived. The domain importer does not parse it
  * @param drawableNodes how many nodes of it this version draws, as the adapter counted them while reading the
  *                     envelope - see {@link ReactionGraph#drawableNodes()}
  * @param importedAt   when these bytes were last stored
@@ -59,18 +60,20 @@ public record StoredReactionGraph(
      */
     @Override
     public boolean equals(Object other) {
-        return other instanceof StoredReactionGraph graph
-               && Objects.equals(environment, graph.environment)
-               && kind == graph.kind
-               && Objects.equals(name, graph.name)
-               && Objects.equals(variant, graph.variant)
-               && Objects.equals(system, graph.system)
-               && Objects.equals(upstreamName, graph.upstreamName)
-               && Objects.equals(etag, graph.etag)
-               && Objects.equals(fingerprint, graph.fingerprint)
-               && Arrays.equals(data, graph.data)
-               && drawableNodes == graph.drawableNodes
-               && Objects.equals(importedAt, graph.importedAt);
+        return other instanceof StoredReactionGraph(var otherEnvironment, var otherKind, var otherName, var otherVariant,
+                var otherSystem, var otherUpstreamName, var otherEtag, var otherFingerprint, var otherData,
+                var otherDrawableNodes, var otherImportedAt)
+               && Objects.equals(environment, otherEnvironment)
+               && kind == otherKind
+               && Objects.equals(name, otherName)
+               && Objects.equals(variant, otherVariant)
+               && Objects.equals(system, otherSystem)
+               && Objects.equals(upstreamName, otherUpstreamName)
+               && Objects.equals(etag, otherEtag)
+               && Objects.equals(fingerprint, otherFingerprint)
+               && Arrays.equals(data, otherData)
+               && drawableNodes == otherDrawableNodes
+               && Objects.equals(importedAt, otherImportedAt);
     }
 
     @Override

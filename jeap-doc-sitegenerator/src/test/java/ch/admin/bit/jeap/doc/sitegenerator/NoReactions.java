@@ -17,6 +17,11 @@ import java.util.Optional;
  * are about. It answers no graph, which is a site with no runtime views in it.
  */
 class NoReactions implements ReactionGraphRepository, ReactionGraphContent {
+    @Override
+    public ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork readFull(byte[] data) {
+        throw new UnsupportedOperationException();
+    }
+
 
     static final NoReactions INSTANCE = new NoReactions();
 

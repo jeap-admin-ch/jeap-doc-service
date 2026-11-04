@@ -23,6 +23,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Stream;
 
+import static org.mockito.Mockito.mock;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -56,6 +58,8 @@ class PagefindSearchIndexBuilderIT {
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()), properties,
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(),
+                mock(ReactionNetworkFiles.class));
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
         builder = new PagefindSearchIndexBuilder(properties, new BuildWorkspaces(properties), sources,
                 new NodeProcess(properties), new NoCustomDocumentation(), new NoCustomStorage(), resources,

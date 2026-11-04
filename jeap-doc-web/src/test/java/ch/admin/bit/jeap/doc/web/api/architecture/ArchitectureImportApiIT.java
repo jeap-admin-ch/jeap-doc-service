@@ -106,12 +106,13 @@ class ArchitectureImportApiIT extends DocServiceIntegrationTestBase {
                 .andExpect(jsonPath(own + ".imports[1].kind").value(hasItem("OPENAPI_SPEC")))
                 .andExpect(jsonPath(own + ".imports[2].kind").value(hasItem("DATABASE_SCHEMA")))
                 .andExpect(jsonPath(own + ".imports[3].kind").value(hasItem("MESSAGE_SCHEMA")))
-                // And the three the reaction observer serves, which are steps of this same import and are
+                // And the graphs the reaction observer serves, which are steps of this same import and are
                 // reported here whether an observer is configured for the environment or not - a kind with no
                 // row reads as never imported, which is what it is.
                 .andExpect(jsonPath(own + ".imports[4].kind").value(hasItem("SYSTEM_REACTIONS")))
                 .andExpect(jsonPath(own + ".imports[5].kind").value(hasItem("COMPONENT_REACTIONS")))
-                .andExpect(jsonPath(own + ".imports[6].kind").value(hasItem("MESSAGE_REACTIONS")));
+                .andExpect(jsonPath(own + ".imports[6].kind").value(hasItem("MESSAGE_REACTIONS")))
+                .andExpect(jsonPath(own + ".imports[7].kind").value(hasItem("FULL_REACTIONS")));
     }
 
     /**

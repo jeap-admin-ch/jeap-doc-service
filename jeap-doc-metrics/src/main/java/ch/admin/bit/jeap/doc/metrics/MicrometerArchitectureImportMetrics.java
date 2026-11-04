@@ -95,7 +95,7 @@ public class MicrometerArchitectureImportMetrics implements ArchitectureImportMe
     private boolean isImported(ArchitectureImportKind kind, String environment) {
         return switch (kind) {
             case MODEL, OPENAPI_SPEC, DATABASE_SCHEMA, MESSAGE_SCHEMA -> true;
-            case SYSTEM_REACTIONS, COMPONENT_REACTIONS, MESSAGE_REACTIONS -> {
+            case SYSTEM_REACTIONS, COMPONENT_REACTIONS, MESSAGE_REACTIONS, FULL_REACTIONS -> {
                 ReactionGraphUpstream observer = reactions.getIfUnique();
                 yield observer != null && observer.isConfiguredFor(environment);
             }

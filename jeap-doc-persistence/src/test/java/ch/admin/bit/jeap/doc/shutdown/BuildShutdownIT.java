@@ -382,6 +382,11 @@ class BuildShutdownIT {
         @Bean
         ch.admin.bit.jeap.doc.domain.port.ReactionGraphUpstream reactionGraphUpstream() {
             return new ch.admin.bit.jeap.doc.domain.port.ReactionGraphUpstream() {
+                @Override
+                public ch.admin.bit.jeap.doc.domain.port.GraphFetch fullGraph(String environment, String etag, String knownFormat) {
+                    return ch.admin.bit.jeap.doc.domain.port.GraphFetch.skipped("nothing is served here");
+                }
+
 
                 @Override
                 public boolean isConfiguredFor(String environment) {
@@ -404,6 +409,11 @@ class BuildShutdownIT {
                     return ch.admin.bit.jeap.doc.domain.port.GraphFetch.skipped("nothing is served here");
                 }
             };
+        }
+
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.ReactionGraphContent reactionGraphContent() {
+            return org.mockito.Mockito.mock(ch.admin.bit.jeap.doc.domain.port.ReactionGraphContent.class);
         }
 
         @Bean
@@ -470,7 +480,7 @@ class BuildShutdownIT {
                 if (!aborted.await(60, TimeUnit.SECONDS)) {
                     return new BuiltSite(Path.of("build"), 1, 1, 1, java.util.Map.of());
                 }
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
             throw new SiteBuildException("The site generator was given up on: this instance is stopping.");

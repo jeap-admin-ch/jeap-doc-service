@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.port;
 
 import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
+import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.StoredReactionGraph;
 
 /**
@@ -10,7 +11,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.imports.StoredReactionGraph;
  * the domain nor a structure template may hold, and the format belongs to the reaction observer - so the
  * adapter sits in {@code jeap-doc-reactionobserver}, beside the client that fetched the bytes.
  * <p>
- * <b>It does not throw.</b> An unreadable graph answers {@link ObservedReactions#empty()} and is logged. There
+ * <b>The page-oriented read does not throw.</b> An unreadable graph answers {@link ObservedReactions#empty()} and is logged. There
  * is no {@code try} around the generation of a site, so one that threw would cost every system of the
  * environment its documentation instead of costing one page - and an empty answer is a page that is not
  * written, which is what a system with no observed reactions gets anyway.
@@ -18,4 +19,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.imports.StoredReactionGraph;
 public interface ReactionGraphContent {
 
     ObservedReactions read(StoredReactionGraph graph);
+
+    /** Reads a complete graph strictly; malformed data must not replace the last usable snapshot. */
+    ReactionNetwork readFull(byte[] data);
 }

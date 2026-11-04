@@ -754,3 +754,8 @@ curl -X DELETE -H "Authorization: Bearer $TOKEN" \
 - [Uploads](uploads.md)
 - [Architecture](architecture.md)
 - [Security](security.md)
+
+
+The static site also serves `reaction-graph.json` under each environment's root, subject to the site's access
+policy. This is generated data rather than an administration endpoint. See
+[Complete reaction graph data](generation.md#complete-reaction-graph-data) for the format and unavailable state.

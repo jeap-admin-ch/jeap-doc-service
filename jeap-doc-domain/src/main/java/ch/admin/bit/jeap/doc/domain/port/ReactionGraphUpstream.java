@@ -26,6 +26,9 @@ public interface ReactionGraphUpstream {
      */
     boolean isConfiguredFor(String environment);
 
+    /** Fetches one complete snapshot. A conditional tag is valid only for its stored source format. */
+    GraphFetch fullGraph(String environment, String knownEtag, String knownFormat);
+
     /**
      * What the observer holds for one environment and kind, without any content.
      *

@@ -121,6 +121,8 @@ public class SiteSources {
     /** Where the instance's title comes from, which every site shows beside its logo. */
     private final PublicationProperties publication;
 
+    private final ReactionNetworkFiles reactionNetworkFiles;
+
     /**
      * Writes one part of a site into the given content directory, and answers what it took to write.
      * <p>
@@ -136,9 +138,21 @@ public class SiteSources {
                                 Instant generatedAt) throws IOException {
         Files.createDirectories(contentDirectory);
         writeBranding(site, contentDirectory);
-        // The content source's pages first, so that the page about the documentation can print what each
-        // environment's model contributed.
-        Map<String, EnvironmentModel> models = writerOf(site).write(site, part, contentDirectory, generatedAt);
+        reactionNetworkFiles.write(site, part, contentDirectory);
+        Map<String, EnvironmentModel> models = new LinkedHashMap<>();
+        for (SiteEnvironment environment : site.environments()) {
+            if (!part.carries(environment.id())) {
+                continue;
+            }
+            Path directory = contentDirectory.resolve(environment.id());
+            // The systems first, so the root page can say whether there are any.
+            Optional<EnvironmentModel> model =
+                    systemPages.write(site, environment, part, directory, generatedAt);
+            if (part.carriesWholeEnvironments()) {
+                writeRootPage(site, environment, contentDirectory, generatedAt, model);
+            }
+            model.ifPresent(counts -> models.put(environment.id(), counts));
+        }
         if (part.carriesWholeEnvironments()) {
             // One page per tree - see AboutThisDocumentation.
             writeAboutThisDocumentation(buildId, site, part, contentDirectory, generatedAt, models);

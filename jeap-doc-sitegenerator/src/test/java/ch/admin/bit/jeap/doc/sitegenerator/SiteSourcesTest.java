@@ -41,6 +41,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -94,6 +96,8 @@ class SiteSourcesTest {
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
                 TestProvenance.of(siteProperties, NoArchitectureModel.INSTANCE,
                         new StructureTemplates(List.of())),
+                new AboutThisDocumentation(),
+                mock(ReactionNetworkFiles.class));
                 new AboutThisDocumentation(), publication);
     }
 
@@ -165,6 +169,8 @@ class SiteSourcesTest {
                 new DocumentationSites(siteProperties),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
                 TestProvenance.of(siteProperties, configured, new StructureTemplates(List.of()), imports),
+                new AboutThisDocumentation(),
+                mock(ReactionNetworkFiles.class));
                 new AboutThisDocumentation(), new PublicationProperties());
     }
 
@@ -225,6 +231,8 @@ class SiteSourcesTest {
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), new BuildProperties(),
+                TestProvenance.of(new OneSystemIn(modelled)), new AboutThisDocumentation(),
+                mock(ReactionNetworkFiles.class));
                 TestProvenance.of(new OneSystemIn(modelled)), new AboutThisDocumentation(), new PublicationProperties());
     }
 
@@ -243,6 +251,8 @@ class SiteSourcesTest {
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(landscape, new NoCustomDocumentation()), new BuildProperties(),
+                TestProvenance.of(landscape), new AboutThisDocumentation(),
+                mock(ReactionNetworkFiles.class));
                 TestProvenance.of(landscape), new AboutThisDocumentation(), new PublicationProperties());
     }
 

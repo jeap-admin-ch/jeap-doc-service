@@ -25,17 +25,18 @@ The point of it is that a documentation build no longer depends on a service tha
 architecture repository cannot be read, the site goes on being published from the landscape the last successful
 import stored, and every generated page names the import its content came from.
 
-## The seven kinds
+## The import kinds
 
-| Kind                  | What it is                                             | Read from               | How it is read                  |
-|-----------------------|--------------------------------------------------------|-------------------------|---------------------------------|
-| `MODEL`               | The systems, their components, relations and messages  | Architecture repository | Fetched whole, replaced whole   |
-| `OPENAPI_SPEC`        | The OpenAPI specification a component publishes        | Architecture repository | Only where its entity tag moved |
-| `DATABASE_SCHEMA`     | The database schema a component publishes              | Architecture repository | Only where its entity tag moved |
-| `MESSAGE_SCHEMA`      | The Avro schemas of a message type version             | Architecture repository | Only where its entity tag moved |
-| `SYSTEM_REACTIONS`    | The reaction graph of a system                         | Reaction observer       | Only where its entity tag moved |
-| `COMPONENT_REACTIONS` | The reaction graph of a component                      | Reaction observer       | Only where its entity tag moved |
-| `MESSAGE_REACTIONS`   | The reaction graphs of a message type, one per variant | Reaction observer       | Only where its entity tag moved |
+| Kind                    | What it is                                               | Read from                 | How it is read                    |
+|-------------------------|----------------------------------------------------------|---------------------------|-----------------------------------|
+| `MODEL`                 | The systems, their components, relations and messages    | Architecture repository   | Fetched whole, replaced whole     |
+| `OPENAPI_SPEC`          | The OpenAPI specification a component publishes          | Architecture repository   | Only where its entity tag moved   |
+| `DATABASE_SCHEMA`       | The database schema a component publishes                | Architecture repository   | Only where its entity tag moved   |
+| `MESSAGE_SCHEMA`        | The Avro schemas of a message type version               | Architecture repository   | Only where its entity tag moved   |
+| `SYSTEM_REACTIONS`      | The reaction graph of a system                           | Reaction observer         | Only where its entity tag moved   |
+| `COMPONENT_REACTIONS`   | The reaction graph of a component                        | Reaction observer         | Only where its entity tag moved   |
+| `MESSAGE_REACTIONS`     | The reaction graphs of a message type, one per variant   | Reaction observer         | Only where its entity tag moved   |
+| `FULL_REACTIONS`        | The complete graph of an environment                     | Reaction observer         | One conditional request           |
 
 **The difference is not a preference, it is what the upstream does.** The architecture repository computes the
 entity tag of a model resource by serializing the whole body and hashing it, so answering "not modified" costs
@@ -243,7 +244,7 @@ index and record the whole environment as failed, on every run, for as long as t
 <a id="the-reactions-a-second-upstream-under-the-same-job"></a>
 ## The reactions: a second upstream under the same job
 
-The three reaction kinds come from the **reaction observer** of the environment - a different service, on a
+The reaction graphs come from the **reaction observer** of the environment - a different service, on a
 schedule of its own, which watches what actually reacts to what at runtime. They are steps of this import
 rather than a job of their own because everything one needs is already here: a lock per step, a deadline, a
 state row, a staleness gauge and an administration API.
@@ -262,7 +263,7 @@ reactions name is never visited - and it could draw nothing anyway. That one fai
 environment with an architecture repository and no observer is the ordinary case and is not an error.
 
 **The observer has to be recent enough to serve the replication indexes.** One call per kind lists which graphs
-exist with the entity tag of each, so a round that finds nothing changed costs three requests per environment
+exist with the entity tag of each, so a round that finds nothing changed costs four requests per environment (three indexes and the full graph)
 instead of one per system, per component and per message type. An observer that answers `404` on an index is
 older than the release that serves them - which is also the release that requires a resource server - and the
 environment fails with a message saying so rather than being read the slow way.
@@ -290,8 +291,47 @@ Two things follow from resolving before comparing:
 - **There is no orphan sweep.** A system that leaves the model stops being resolvable, so it stops being
   listed, so the prune that exists for a graph the observer withdrew removes its graph too.
 
-A graph itself is **stored as it arrived**. Nothing in the import looks inside it: how a reaction graph is
-drawn is decided when a page is generated, so changing the drawing needs no re-import.
+The existing subgraphs are stored as they arrived. Their rendering is decided during generation.
+
+### The complete environment graph
+
+`FULL_REACTIONS` is a separate import step. It fetches `/api/graphs` (V1) once per environment.
+The API is selected in the observer adapter's code; there is no configuration property for it.
+Only an ETag belonging to that API is sent. It reuses the observer client, authentication, bounded reads and retry policy. It never
+joins the independently fetched subgraphs. The existing `max-graph-size` limit applies to this response too.
+
+The adapter validates the entire graph before storage: node identities must be unique, edge endpoints must
+exist, and every reaction must carry a nonnegative numeric daily median. Zero is valid; missing or null is
+not replaced with zero. Unsupported V1 node or edge kinds fail validation instead of disappearing silently.
+A valid graph replaces one `reaction_graph` row in one transaction, under the environment and `FULL_REACTIONS`
+with empty name, system and variant. No database migration is needed.
+
+A failed, oversized or invalid response leaves the previous row intact. An empty graph cannot replace a
+previously nonempty graph. A first empty graph is valid. A conditional `304` confirms the existing row without
+rewriting its bytes. The step participates in import locks, deadlines, status and metrics; a replacement
+triggers the normal documentation build.
+
+V1 numeric IDs become opaque string keys, preserving values larger than JavaScript's exact integer range.
+V2 IDs are strings, unique within the response. Its interface identity is independent of the node's specific
+representation. The adapter supports message, HTTP and generic interfaces, status, model version,
+unidentified-action ratio and predecessor edges. Future interface representations retain `interfaceType`
+and `fqn`; future statuses become `UNKNOWN`, and future edge kinds are ignored. Known edges must have valid
+directions. A malformed median, version or ratio rejects the entire replacement.
+
+Full graph bytes are stored in a local envelope with `sourceFormat` (`observer-v1` or `observer-v2`) and the
+original `graph`. Legacy unwrapped bytes remain readable as V1. For this nameless import kind, `upstreamName`
+stores the source format alongside the ETag, so the importer can decide a conditional fetch without reading
+the blob. An empty old value denotes V1. Switching in either direction starts unconditionally; a failed first
+fetch keeps the previous snapshot, which stays readable regardless of the API used for new imports. A successful switch
+replaces the snapshot and identity scheme; old viewer links need not survive.
+
+When adopting V2, change `FULL_GRAPH_PATH` to `/api/v2/graphs` and `FULL_GRAPH_FORMAT` to `observer-v2`
+together in `ReactionObserverUpstream`. The format selects the matching parser; the domain, persistence and
+browser publication already support V2. Existing per-system, component and message diagrams continue through V1,
+which the provider keeps available. They do not assemble or limit the complete snapshot. The V2 interface
+index is not needed for the complete-graph import; no interface URL is constructed from its FQN.
+
+See [Generation](generation.md#complete-reaction-graph-data) for the published browser format.
 
 ## Every name becomes a slug
 
@@ -382,7 +422,7 @@ jeap_doc_architecture_import_last_success_age_seconds > 4 * 3600
 Every configured environment and every kind it can import is bound at startup, before any of them has run, so
 a kind that is new in a deployment reads `NaN` rather than being missing - the `absent(...)` clause above is
 false as soon as any other pair reports, so a missing series would not be caught by it. **The four kinds the
-architecture repository serves are bound for every environment; the three reaction kinds only where that
+architecture repository serves are bound for every environment; the four reaction kinds only where that
 environment has a reaction observer configured**, because an environment without one imports no reactions and a
 series that could never move is a series nobody can alarm on. A pair that has been bound once keeps being
 reported.

@@ -816,8 +816,8 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
     token and nothing else. The observer offers HTTP Basic; this service does not use it, and an environment
     whose observer is too old to serve the replication indexes fails with a message saying so rather than
     being read a slower way.
-  - **A graph is stored as it arrived.** Nothing in the import looks inside it - how a reaction graph is drawn
-    is decided when a page is generated, and changing the drawing must not need a re-import.
+  - **A graph is stored as it arrived.** The adapter validates a complete graph before storage; the domain
+    importer does not parse it. Drawing is decided during generation and must not need a re-import.
   - **Names are resolved against the stored model before anything is compared**, aliases included, and what is
     stored is the model's spelling with the observer's kept beside it. That is also why there is no orphan
     sweep: a system that leaves the model stops being listed, so the prune takes its graph. A name the model
@@ -893,3 +893,21 @@ it touched and check them against what the code now does:
 
 Three statements in `docs/uploads.md` went stale within a single branch this way - each true when it was written,
 and false one commit later, without any name changing that a search would have found.
+
+
+## Complete reaction snapshots
+
+`FULL_REACTIONS` imports one complete environment graph. Never assemble it from the independently fetched
+system, component or message graphs. The adapter validates it before replacement; a failed or unexpectedly
+empty replacement keeps the stored snapshot. It occupies one row of `reaction_graph` with empty name,
+system and variant. `ReactionNetworkFiles` publishes one JSON file per environment through the shell, never
+through shared assets. Keep the graph in the content digest. V1 identities are opaque strings; a future V2
+switch may invalidate old viewer links. Unknown or ambiguous ownership is disclosed, never guessed or filtered.
+
+The full snapshot supports both APIs with the same domain and browser format. V2 identities use an
+`INTERFACE` namespace, independent of the representation's `nodeType`; retain unknown interface types and
+SUPERSEDED reactions, and never traverse PREDECESSOR as execution flow. V2 ownership is authoritative.
+The local stored envelope carries `sourceFormat`; for this nameless kind, `upstreamName` carries that format
+beside the ETag too. Never send a V1 tag to V2 or vice versa. Legacy unwrapped bytes and empty format mean V1.
+The API is fixed in `ReactionObserverUpstream`: change `FULL_GRAPH_PATH` and `FULL_GRAPH_FORMAT` together
+when adopting V2. This must not change how an already stored snapshot is read.

@@ -39,6 +39,11 @@ import java.util.function.Supplier;
 @RequiredArgsConstructor
 class ReactionObserverUpstream implements ReactionGraphUpstream {
 
+    // Switch path and format together when adopting V2. Stored snapshots keep their own format.
+    private static final String FULL_GRAPH_PATH = "/api/graphs";
+    private static final String LEGACY_GRAPH_FORMAT = "observer-v1";
+    private static final String FULL_GRAPH_FORMAT = LEGACY_GRAPH_FORMAT;
+
     private static final String SYSTEM_INDEX = "/api/graphs/systems";
     private static final String COMPONENT_INDEX = "/api/graphs/components";
     private static final String MESSAGE_INDEX = "/api/graphs/messages";
@@ -78,6 +83,20 @@ class ReactionObserverUpstream implements ReactionGraphUpstream {
         }
         return Optional.of(new Fetched<>(refsOf(environment, kind,
                 requireEntries(environment, kind, entriesOf(answer.getBody()))), entityTagOf(answer)));
+    }
+
+    @Override
+    public GraphFetch fullGraph(String environment, String knownEtag, String knownFormat) {
+        String url = urlOf(environment);
+        int end = url.length();
+        while (end > 0 && url.charAt(end - 1) == '/') {
+            end--;
+        }
+        String base = url.substring(0, end);
+        ReactionGraphRef ref = new ReactionGraphRef(environment, ArchitectureImportKind.FULL_REACTIONS,
+                "", "", "", "", null, base + FULL_GRAPH_PATH, null, true);
+        String previousFormat = knownFormat == null || knownFormat.isBlank() ? LEGACY_GRAPH_FORMAT : knownFormat;
+        return content(environment, ref, FULL_GRAPH_FORMAT.equals(previousFormat) ? knownEtag : null);
     }
 
     @Override
@@ -145,7 +164,8 @@ class ReactionObserverUpstream implements ReactionGraphUpstream {
      * <p>
      * What is stored is the bytes of the {@code graph} field and the fingerprint beside it - not the envelope,
      * which is the observer's way of answering rather than part of the graph. For a message type the envelope
-     * is a map of variant keys, and the one this reference names is picked out of it.
+     * is a map of variant keys, and the one this reference names is picked out of it. Full snapshots additionally
+     * carry a local source-format envelope, so changing APIs cannot reinterpret already stored bytes.
      */
     private GraphFetch graphOf(String environment, ReactionGraphRef ref, String etag, byte[] body) {
         JsonNode answer;
@@ -168,6 +188,21 @@ class ReactionObserverUpstream implements ReactionGraphUpstream {
             log.warn("The {} of {} in the environment {} carried no graph. It is not replicated.", ref.kind(),
                     describe(ref), environment);
             return GraphFetch.skipped("it carried no graph");
+        }
+        if (ref.kind() == ArchitectureImportKind.FULL_REACTIONS) {
+            try {
+                var network = FullReactionGraphReader.read(graph, FULL_GRAPH_FORMAT.equals("observer-v2"));
+                // Version belongs to stored content too: an old snapshot remains readable after a switch.
+                var stored = java.util.Map.of("sourceFormat", FULL_GRAPH_FORMAT, "graph", graph);
+                JsonNode fingerprint = envelope.path("fingerprint");
+                return GraphFetch.stored(new ReactionGraph(etag,
+                        fingerprint.isString() ? fingerprint.stringValue() : null, clients.writeBytes(stored),
+                        network.nodes().size(), FULL_GRAPH_FORMAT));
+            } catch (IllegalArgumentException e) {
+                log.warn("The complete reaction graph of {} is invalid: {}. The stored graph is kept.",
+                        environment, e.getMessage());
+                return GraphFetch.skipped(e.getMessage());
+            }
         }
         JsonNode fingerprint = envelope.path("fingerprint");
         return GraphFetch.stored(new ReactionGraph(etag,
@@ -293,7 +328,7 @@ class ReactionObserverUpstream implements ReactionGraphUpstream {
             case SYSTEM_REACTIONS -> SYSTEM_INDEX;
             case COMPONENT_REACTIONS -> COMPONENT_INDEX;
             case MESSAGE_REACTIONS -> MESSAGE_INDEX;
-            case MODEL, OPENAPI_SPEC, DATABASE_SCHEMA, MESSAGE_SCHEMA -> throw new IllegalArgumentException(
+            case MODEL, OPENAPI_SPEC, DATABASE_SCHEMA, MESSAGE_SCHEMA, FULL_REACTIONS -> throw new IllegalArgumentException(
                     "The reaction observer serves no index of " + kind + ".");
         };
     }

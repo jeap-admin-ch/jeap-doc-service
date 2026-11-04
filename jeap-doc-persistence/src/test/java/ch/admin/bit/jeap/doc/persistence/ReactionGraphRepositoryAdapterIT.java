@@ -41,6 +41,19 @@ class ReactionGraphRepositoryAdapterIT extends PostgresTestContainerBase {
     private EntityManagerFactory entityManagerFactory;
 
     @Test
+    void fullSnapshotIsReplacedAsOneRowAndIsolatedByEnvironment() {
+        var kind = ArchitectureImportKind.FULL_REACTIONS;
+        graphs.store(graph("full-dev", kind, "", "", "first"));
+        graphs.store(graph("full-prod", kind, "", "", "production"));
+        graphs.store(graph("full-dev", kind, "", "", "replacement"));
+        assertThat(graphs.findRefs("full-dev", kind)).hasSize(1);
+        assertThat(graphs.find("full-dev", kind, "", "", "")).get()
+                .satisfies(value -> assertThat(new String(value.data(), StandardCharsets.UTF_8)).isEqualTo("replacement"));
+        assertThat(graphs.find("full-prod", kind, "", "", "")).get()
+                .satisfies(value -> assertThat(new String(value.data(), StandardCharsets.UTF_8)).isEqualTo("production"));
+    }
+
+    @Test
     void storeAndFind_thenTheGraphComesBackAsItWasStored() {
         graphs.store(graph("round-trip", SYSTEM_REACTIONS, "Orders", NO_VARIANT,
                 "{\"nodes\":[],\"edges\":[]}"));

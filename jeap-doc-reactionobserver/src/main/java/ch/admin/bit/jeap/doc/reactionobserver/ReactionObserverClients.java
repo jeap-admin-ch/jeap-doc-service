@@ -98,7 +98,7 @@ public class ReactionObserverClients {
     }
 
     /** The bytes of one node of an answer, as they will be stored. */
-    byte[] writeBytes(JsonNode node) {
+    byte[] writeBytes(Object node) {
         return json.writeValueAsBytes(node);
     }
 }

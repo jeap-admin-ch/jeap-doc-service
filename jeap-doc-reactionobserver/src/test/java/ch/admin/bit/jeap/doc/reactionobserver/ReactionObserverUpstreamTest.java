@@ -53,6 +53,7 @@ class ReactionObserverUpstreamTest {
         // tag arriving verbatim. No retries: a test that asserts a failure should not wait one out.
         observer = new WireMockServer(options().dynamicPort().gzipDisabled(true));
         observer.start();
+        properties.getEnvironments().put(ENVIRONMENT, new ReactionObserverProperties.Environment());
         upstream = new ReactionObserverUpstream(
                 TestClients.of(ENVIRONMENT, observer.baseUrl(), client -> client.setRetries(0)),
                 properties);
@@ -61,6 +62,18 @@ class ReactionObserverUpstreamTest {
     @AfterEach
     void tearDown() {
         observer.stop();
+    }
+
+    @Test
+    void fullGraphNeverReusesATagFromAnotherApiVersion() {
+        stub("/api/graphs", 200, fullGraphPayload("0"), "\"v1-tag\"");
+        GraphFetch.Stored stored = (GraphFetch.Stored) upstream.fullGraph(ENVIRONMENT, "\"v2-tag\"", "observer-v2");
+        observer.verify(getRequestedFor(urlEqualTo("/api/graphs")).withoutHeader("If-None-Match"));
+        assertThat(stored.graph().sourceFormat()).isEqualTo("observer-v1");
+        var content = new ReactionObserverGraphContent(tools.jackson.databind.json.JsonMapper.builder().build());
+        assertThat(content.readFull(stored.graph().data()).identityScheme()).isEqualTo("observer-v1");
+        stub("/api/graphs", 304, "", null);
+        assertThat(upstream.fullGraph(ENVIRONMENT, "\"v2-tag\"", "observer-v2")).isInstanceOf(GraphFetch.Skipped.class);
     }
 
     @Test
@@ -372,6 +385,58 @@ class ReactionObserverUpstreamTest {
                                                 String variant, String path, String etag) {
         return new ReactionGraphRef(ENVIRONMENT, kind, name, upstreamName, variant, null, etag, path, null,
                 true);
+    }
+
+    @Test
+    void fullGraphPreservesCrossComponentEdgesVariantsAndZeroMedians() {
+        stub("/api/graphs", 200, fullGraphPayload("0"), "\"full-tag\"");
+        GraphFetch fetched = upstream.fullGraph(ENVIRONMENT, null, null);
+        assertThat(fetched).isInstanceOf(GraphFetch.Stored.class);
+        ReactionGraph graph = ((GraphFetch.Stored) fetched).graph();
+        var mapped = new ReactionObserverGraphContent(tools.jackson.databind.json.JsonMapper.builder().build())
+                .readFull(graph.data());
+        assertThat(mapped.nodes()).hasSize(3);
+        assertThat(mapped.nodes().get(0).identity().key()).isEqualTo("9007199254740993");
+        assertThat(mapped.nodes().get(0).interfaceDetails().message().variant()).isEqualTo("priority");
+        assertThat(mapped.nodes().get(1).reaction().median()).isEqualByComparingTo("0");
+        assertThat(mapped.edges()).hasSize(2);
+        assertThat(graph.etag()).isEqualTo("\"full-tag\"");
+        stub("/api/graphs", 304, "");
+        assertThat(upstream.fullGraph(ENVIRONMENT, graph.etag(), graph.sourceFormat())).isInstanceOf(GraphFetch.Unchanged.class);
+        observer.verify(getRequestedFor(urlEqualTo("/api/graphs"))
+                .withHeader("If-None-Match", equalTo("\"full-tag\"")));
+    }
+
+    @Test
+    void fullGraphRetainsTheObserversContextPath() {
+        upstream = new ReactionObserverUpstream(
+                TestClients.of(ENVIRONMENT, observer.baseUrl() + "/observer", client -> client.setRetries(0)), properties);
+        stub("/observer/api/graphs", 200, fullGraphPayload("1"), "tag");
+        assertThat(upstream.fullGraph(ENVIRONMENT, null, null)).isInstanceOf(GraphFetch.Stored.class);
+        observer.verify(getRequestedFor(urlEqualTo("/observer/api/graphs")));
+    }
+
+    @Test
+    void invalidFullGraphIsNotOfferedForStorage() {
+        for (String median : List.of("null", "-1", "\"unknown\"")) {
+            stub("/api/graphs", 200, fullGraphPayload(median), "tag");
+            assertThat(upstream.fullGraph(ENVIRONMENT, null, null)).isInstanceOf(GraphFetch.Skipped.class);
+        }
+        stub("/api/graphs", 200, fullGraphPayload("1").replace("targetReactionId\":3", "targetReactionId\":4"), "tag");
+        assertThat(upstream.fullGraph(ENVIRONMENT, null, null)).isInstanceOf(GraphFetch.Skipped.class);
+        stub("/api/graphs", 200, "{\"graph\":{}}", "tag");
+        assertThat(upstream.fullGraph(ENVIRONMENT, null, null)).isInstanceOf(GraphFetch.Skipped.class);
+    }
+
+    private static String fullGraphPayload(String median) {
+        return """
+                {"fingerprint":"full","graph":{"nodes":[
+                  {"nodeType":"MESSAGE","id":9007199254740993,"messageType":"OrderCreatedEvent","variant":"priority"},
+                  {"nodeType":"REACTION","id":2,"component":"orders","median":%s},
+                  {"nodeType":"REACTION","id":3,"component":"shipping","median":12}],
+                 "edges":[{"edgeType":"ACTION","sourceReactionId":2,"targetId":9007199254740993},
+                          {"edgeType":"TRIGGER","sourceId":9007199254740993,"targetReactionId":3}]}}
+                """.formatted(median);
     }
 
     private void stub(String path, int status, String body) {

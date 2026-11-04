@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.reactionobserver;
 
 import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
+import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.StoredReactionGraph;
 import ch.admin.bit.jeap.doc.domain.port.ReactionGraphContent;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,11 @@ import java.util.List;
 class ReactionObserverGraphContent implements ReactionGraphContent {
 
     private final JsonMapper json;
+
+    @Override
+    public ReactionNetwork readFull(byte[] data) {
+        return FullReactionGraphReader.read(json.readTree(data));
+    }
 
     @Override
     public ObservedReactions read(StoredReactionGraph graph) {

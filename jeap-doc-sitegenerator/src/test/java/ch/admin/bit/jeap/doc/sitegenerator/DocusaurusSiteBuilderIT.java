@@ -22,8 +22,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.regex.Pattern;
-import java.util.regex.Matcher;
 import java.time.Instant;
+
+import static org.mockito.Mockito.mock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,6 +66,8 @@ class DocusaurusSiteBuilderIT {
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(),
+                mock(ReactionNetworkFiles.class));
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
         builder = builderWriting(sources);
     }
@@ -124,10 +127,6 @@ class DocusaurusSiteBuilderIT {
         }
     }
 
-    /**
-     * A builder whose sources are the given ones, so that a test can add a page to what the doc service writes
-     * without the production code needing a hook for it.
-     */
     /**
      * The static generation from a pool of worker threads, which an instance with room in its container may
      * ask for. It is a real build because that is the only honest assertion about the template's configuration:
@@ -261,6 +260,8 @@ class DocusaurusSiteBuilderIT {
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(OneSystemEverywhere.INSTANCE, new NoCustomDocumentation()), properties,
+                TestProvenance.of(OneSystemEverywhere.INSTANCE), new AboutThisDocumentation(),
+                mock(ReactionNetworkFiles.class));
                 TestProvenance.of(OneSystemEverywhere.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
     }
 
@@ -301,6 +302,10 @@ class DocusaurusSiteBuilderIT {
         }
     }
 
+    /**
+     * A builder whose sources are the given ones, so that a test can add a page to what the doc service writes
+     * without the production code needing a hook for it.
+     */
     private DocusaurusSiteBuilder builderWriting(SiteSources writing) {
         return new DocusaurusSiteBuilder(properties, new BuildWorkspaces(properties), new SiteTemplate(),
                 new NodeProcess(properties), writing);
@@ -317,6 +322,8 @@ class DocusaurusSiteBuilderIT {
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties()) {
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(),
+                mock(ReactionNetworkFiles.class)) {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,
                                         Instant generatedAt) throws IOException {
@@ -532,12 +539,18 @@ class DocusaurusSiteBuilderIT {
                 .containsPattern("data-plantuml-diagram=\"?dot");
         // The site's own logo and favicon are images; a diagram is not - it is its source, rendered in the
         // browser, so the figure the plugin writes carries no image at all.
-        Matcher figures = Pattern.compile("<figure[^>]*data-plantuml-diagram.*?</figure>", Pattern.DOTALL)
-                .matcher(page);
         int seen = 0;
-        while (figures.find()) {
-            seen++;
-            assertThat(figures.group()).doesNotContain("<img").doesNotContain(".png").doesNotContain(".svg");
+        int start = page.indexOf("<figure");
+        while (start >= 0) {
+            int openingEnd = page.indexOf('>', start);
+            int end = page.indexOf("</figure>", openingEnd);
+            assertThat(openingEnd).isGreaterThan(start);
+            assertThat(end).isGreaterThan(openingEnd);
+            if (page.substring(start, openingEnd).contains("data-plantuml-diagram")) {
+                seen++;
+                assertThat(page.substring(start, end)).doesNotContain("<img").doesNotContain(".png").doesNotContain(".svg");
+            }
+            start = page.indexOf("<figure", end + "</figure>".length());
         }
         assertThat(seen).as("both fences became diagram figures").isEqualTo(2);
     }

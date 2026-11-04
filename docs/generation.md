@@ -1008,3 +1008,57 @@ What to alarm on, and the rest of the meters, is [Observability](observability.m
 - [The site image](site-image.md) - how an image with the site generator is built
 - [Operating the bucket](operating-the-bucket.md) - what has to expire and what must not
 - [Uploads](uploads.md) - what happens before a build
+
+
+## Complete reaction graph data
+
+The shell publishes `reaction-graph.json` at the root of each environment: at the site root for its main
+environment, and under `/<environment>/` for the others. A non-default site retains its `/site/<id>/` prefix,
+and deployment context paths apply as for every site file. Clients resolve the file against the site's base
+URL and the environment's route prefix, never against the host root.
+
+The file is a single JSON response, not a manifest pointing at separately changing chunks. It contains:
+
+- `formatVersion`: currently `1`. When available, `identityScheme`: `observer-v1` or `observer-v2`.
+- `site` and `environment`: the publication context.
+- `available`: whether a stored graph exists for a configured observer.
+- `snapshot`: SHA-256 of the serialized payload before this field is added.
+- When available, `importedAt`, `graph`, `ownership` and `ownershipComplete`.
+
+The same domain and JSON shape represents both APIs. `graph` carries its `identityScheme`, `nodes` and `edges`.
+Each node has `identity` (`{nodeType, key}`), its representation `nodeType`, and either `interfaceDetails` or
+`reaction`. The identity's `nodeType` names the identity namespace: V1 uses `MESSAGE` and `REACTION`, V2 uses
+`INTERFACE` and `REACTION`. Thus a V2 generic interface becoming a typed message or HTTP operation retains
+its identity. Keys are opaque strings even when V1 supplied integers; V2 IDs are not durable across database
+resets or environments.
+
+- `interfaceDetails`: `interfaceType`, `fqn`, optional `message` (`messageType`, `variant`) and optional `http`
+  (`provider`, `method`, `path`). Unknown V2 interface kinds retain their type, FQN and connections.
+- `reaction`: `system`, `component`, numeric `median`, `status` (`ACTIVE`, `SUPERSEDED`, `UNKNOWN`),
+  `reactionModelVersion`, `unidentifiedActionsRatio` and optional `groupKey`. V1 supplies only component and
+  median; its status is `UNKNOWN`, and missing metadata remains null. No event/command type is guessed.
+- `edges`: `edgeType` (`TRIGGER`, `ACTION`, `PREDECESSOR`) and `source`/`target` identities. A predecessor edge
+  goes from successor to predecessor; it is history, not execution flow. Unknown V2 edge kinds are ignored.
+
+The full graph remains intact, including superseded reactions and nodes the architecture model cannot place.
+Visibility filtering belongs to the viewer. The current V2 provider does not promise a group key; if a later
+provider supplies one it is retained. Otherwise the viewer can group by component and trigger. This publication
+does not invent an anchor or an observation window.
+
+V1 does not supply a system per reaction. `ownership` associates reaction identities with system and component
+names only where the architecture model has exactly one matching component, ignoring case. Ambiguous or
+unknown components have no ownership entry and make `ownershipComplete` false. Consumers must disclose this
+limitation instead of treating an unresolved owner as an absent reaction. V2 ownership comes directly from
+the observer; it is never overwritten or guessed from the architecture model. Labels are JSON data; a future
+viewer must render them as text.
+
+The file lives in the shell's ordinary publication, not in shared assets. The content digest includes it, so
+changed graph data rebuilds the shell. System parts do not publish copies. The existing successful-build
+switch publishes the whole file atomically; readers get one snapshot, never a mixture of revisions. Failed
+imports keep the stored graph, and failed builds keep the last successful publication. If no graph is stored,
+`available` is false and no `graph` is included. Existing reaction chapters and absence behaviour remain unchanged.
+Disabling an observer makes subsequent publications unavailable rather than republishing its old data.
+
+The file follows the site's existing access policy, cache revalidation and retention. The browser needs no
+observer access. There is no historical graph lookup or browser snapshot cache. A future V2 migration may
+invalidate links referencing V1 node identities. Rendering and interaction are separate work.

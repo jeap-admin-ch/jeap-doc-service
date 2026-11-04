@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Import and validate complete reaction snapshots per environment, using V1 with the model and stored-content reader prepared for V2.
+  Keep the last valid snapshot on failure and isolate conditional tags when switching API versions.
+- Publish site-scoped reaction graph JSON through the shell, with opaque identities, daily medians and explicit
+  ownership coverage. The model also carries HTTP and generic interfaces, reaction status, model version,
+  unidentified-action ratio and predecessor relationships. The interactive viewer follows separately.
+
 ## [4.4.0] - 2026-11-03
 
 ### Added

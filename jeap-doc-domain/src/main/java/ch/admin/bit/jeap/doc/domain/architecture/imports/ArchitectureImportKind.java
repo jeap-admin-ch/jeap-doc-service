@@ -4,7 +4,7 @@ package ch.admin.bit.jeap.doc.domain.architecture.imports;
  * What one step of an import reads from an upstream.
  * <p>
  * Most of it is the architecture repository's, and there the names are the architecture repository's own: two
- * services that replicate one thing between them should call it the same thing. The three reaction kinds are
+ * services that replicate one thing between them should call it the same thing. The reaction kinds are
  * the exception - they are read from the <b>reaction observer</b>, which is a different service on a schedule
  * of its own, and they are steps of this import because everything one needs is already here: a lock per step,
  * a deadline, a state row and a staleness gauge.
@@ -44,5 +44,8 @@ public enum ArchitectureImportKind {
      * Three kinds rather than one, although one upstream serves all three: they have three indexes, three
      * entity tags and three state rows, and one kind would hide two thirds of a failure.
      */
-    MESSAGE_REACTIONS
+    MESSAGE_REACTIONS,
+
+    /** One consistent graph of the entire environment. */
+    FULL_REACTIONS
 }

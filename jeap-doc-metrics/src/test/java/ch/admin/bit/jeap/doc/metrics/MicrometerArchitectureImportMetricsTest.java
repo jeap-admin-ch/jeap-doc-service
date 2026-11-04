@@ -198,7 +198,7 @@ class MicrometerArchitectureImportMetricsTest {
                 .counter().count()).isEqualTo(40d);
     }
 
-    /** The tag values of the seven kinds and the four outcomes, which dashboards and alerts are written on. */
+    /** The tag values of the import kinds and the four outcomes, which dashboards and alerts are written on. */
     @Test
     void tags_thenTheKindsAndOutcomesAreSpelledAsTheDocumentationSaysTheyAre() {
         metrics.bindTo(registry);
@@ -212,7 +212,7 @@ class MicrometerArchitectureImportMetricsTest {
 
         assertThat(tagValuesOf("jeap.doc.architecture.import", "kind"))
                 .containsExactlyInAnyOrder("model", "openapi_spec", "database_schema", "message_schema",
-                        "system_reactions", "component_reactions", "message_reactions");
+                        "system_reactions", "component_reactions", "message_reactions", "full_reactions");
         assertThat(tagValuesOf("jeap.doc.architecture.import", "result"))
                 .contains("replaced", "unchanged", "partial", "failed");
     }
@@ -221,7 +221,7 @@ class MicrometerArchitectureImportMetricsTest {
 
     /**
      * <b>A kind nothing imports must not be bound.</b> The reactions are the one kind that can be switched
-     * off, and the documented alert fires on a gauge that reads NaN - so binding the three of them on an
+     * off, and the documented alert fires on a gauge that reads NaN - so binding them on an
      * instance without a reaction observer would alarm every such instance for ever.
      */
     @Test
@@ -229,17 +229,22 @@ class MicrometerArchitectureImportMetricsTest {
         metrics.bindTo(registry);
 
         assertThat(tagValuesOf("jeap.doc.architecture.import.last.success.age", "kind"))
-                .doesNotContain("system_reactions", "component_reactions", "message_reactions");
+                .doesNotContain("system_reactions", "component_reactions", "message_reactions", "full_reactions");
     }
 
-    /** And where one is, the three kinds report before they have run, like every other kind. */
+    /** And where one is, the reaction kinds report before they have run, like every other kind. */
     @Test
-    void bindTo_whenAReactionObserverIsConfigured_thenTheThreeReactionKindsReportToo() {
+    void bindTo_whenAReactionObserverIsConfigured_thenTheReactionKindsReportToo() {
         MicrometerArchitectureImportMetrics withReactions = new MicrometerArchitectureImportMetrics(imports,
                 providerOf(new TwoEnvironments()), providerOf(reactionsIn("dev")),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         withReactions.bindTo(registry);
+
+        assertThat(registry.find("jeap.doc.architecture.import.last.success.age")
+                .tag("environment", "dev").tag("kind", "full_reactions").gauge().value()).isNaN();
+        assertThat(registry.find("jeap.doc.architecture.import.last.success.age")
+                .tag("environment", "prod").tag("kind", "full_reactions").gauges()).isEmpty();
 
         assertThat(registry.find("jeap.doc.architecture.import.last.success.age")
                 .tag("environment", "dev").tag("kind", "system_reactions").gauge().value())
@@ -253,6 +258,11 @@ class MicrometerArchitectureImportMetricsTest {
     private static ReactionGraphUpstream reactionsIn(String... environments) {
         Set<String> configured = Set.of(environments);
         return new ReactionGraphUpstream() {
+        @Override
+        public ch.admin.bit.jeap.doc.domain.port.GraphFetch fullGraph(String environment, String etag, String knownFormat) {
+            throw new UnsupportedOperationException();
+        }
+
 
             @Override
             public boolean isConfiguredFor(String environment) {

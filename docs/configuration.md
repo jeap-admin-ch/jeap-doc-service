@@ -605,3 +605,6 @@ sets any of these itself wins**; they are defaults, not decisions.
 - [The scheduled jobs](scheduled-jobs.md) - what runs when, and which of them may overlap
 - [Uploads](uploads.md)
 - [Security](security.md)
+
+The reaction graph size limit also applies to the complete `/api/graphs` response. Size it for the whole
+environment; an oversized replacement leaves the last valid snapshot available.
