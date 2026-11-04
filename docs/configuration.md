@@ -489,9 +489,9 @@ jeap:
 | `jeap.doc.reactions.client.retry-jitter`                            | `PT0.25S` | How much the delay is varied, so that instances whose schedules fire together do not retry in lockstep                                                                                                                                                                                                              |
 | `jeap.doc.reactions.client.max-retry-delay`                         | `PT2S`    | The longest a retry waits, however often the delay has been doubled                                                                                                                                                                                                                                                 |
 
-The reactions run on `jeap.doc.archrepo.import.cron`, because they are steps of that import - the model has to
-be there first, since it is what every observed name is resolved against. So an environment named here has to
-be named under `jeap.doc.archrepo.environments` as well, and the startup fails when it is not: the import runs
+The complete reaction snapshot is imported on `jeap.doc.archrepo.import.cron`, as one step of that import.
+An environment named here must also be named under `jeap.doc.archrepo.environments`, and the startup fails
+when it is not: the import runs
 the environments the architecture repository is configured for, and a runtime view is written onto the pages of
 a model. The other way round is a landscape - most stages have an architecture repository and no reaction
 observer.
@@ -606,5 +606,5 @@ sets any of these itself wins**; they are defaults, not decisions.
 - [Uploads](uploads.md)
 - [Security](security.md)
 
-The reaction graph size limit also applies to the complete `/api/graphs` response. Size it for the whole
+The reaction graph size limit applies to the complete `/api/graphs` response. Size it for the whole
 environment; an oversized replacement leaves the last valid snapshot available.

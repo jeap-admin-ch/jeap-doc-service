@@ -12,15 +12,7 @@ interface ReactionGraphRefView {
 
     String getEnvironment();
 
-    String getKind();
-
-    String getName();
-
     String getUpstreamName();
-
-    String getVariant();
-
-    String getSystemName();
 
     String getEtag();
 

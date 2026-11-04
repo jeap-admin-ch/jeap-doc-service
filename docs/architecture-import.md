@@ -33,9 +33,6 @@ import stored, and every generated page names the import its content came from.
 | `OPENAPI_SPEC`          | The OpenAPI specification a component publishes          | Architecture repository   | Only where its entity tag moved   |
 | `DATABASE_SCHEMA`       | The database schema a component publishes                | Architecture repository   | Only where its entity tag moved   |
 | `MESSAGE_SCHEMA`        | The Avro schemas of a message type version               | Architecture repository   | Only where its entity tag moved   |
-| `SYSTEM_REACTIONS`      | The reaction graph of a system                           | Reaction observer         | Only where its entity tag moved   |
-| `COMPONENT_REACTIONS`   | The reaction graph of a component                        | Reaction observer         | Only where its entity tag moved   |
-| `MESSAGE_REACTIONS`     | The reaction graphs of a message type, one per variant   | Reaction observer         | Only where its entity tag moved   |
 | `FULL_REACTIONS`        | The complete graph of an environment                     | Reaction observer         | One conditional request           |
 
 **The difference is not a preference, it is what the upstream does.** The architecture repository computes the
@@ -245,8 +242,8 @@ index and record the whole environment as failed, on every run, for as long as t
 ## The reactions: a second upstream under the same job
 
 The reaction graphs come from the **reaction observer** of the environment - a different service, on a
-schedule of its own, which watches what actually reacts to what at runtime. They are steps of this import
-rather than a job of their own because everything one needs is already here: a lock per step, a deadline, a
+schedule of its own, which watches what actually reacts to what at runtime. They use one step of this import
+because everything it needs is already here: a lock per step, a deadline, a
 state row, a staleness gauge and an administration API.
 
 **One observer per environment**, configured under `jeap.doc.reactions.environments.<environment>`, and read
@@ -257,54 +254,41 @@ server. The observer offers HTTP Basic as well and this service does not use it.
 what says whether this one does. Switched on with no environment configured, the service does not start - that
 way a platform without an observer and a property path with a typo do not look the same.
 
-**And an environment configured here has to have an architecture repository.** These are steps of that
+**And an environment configured here has to have an architecture repository.** The reaction step belongs to that
 import, which runs the environments `jeap.doc.archrepo.environments` names, so an environment only the
 reactions name is never visited - and it could draw nothing anyway. That one fails the startup too. An
 environment with an architecture repository and no observer is the ordinary case and is not an error.
 
-**The observer has to be recent enough to serve the replication indexes.** One call per kind lists which graphs
-exist with the entity tag of each, so a round that finds nothing changed costs four requests per environment (three indexes and the full graph)
-instead of one per system, per component and per message type. An observer that answers `404` on an index is
-older than the release that serves them - which is also the release that requires a resource server - and the
-environment fails with a message saying so rather than being read the slow way.
+**Only the complete environment graph is fetched.** An unchanged environment costs one conditional
+request to `/api/graphs`. The old system, component and message indexes are no longer requested.
 
-### The names are resolved against the model
+### Retiring the subject imports
 
-**The observer's names are not the model's.** It stores a system name lower-cased and a component name exactly
-as the publishing service sent it, while the model has its own spellings and its aliases. So every name an
-index offers is resolved against the stored model of that environment - a system by name or alias ignoring
-case, a component by name within the system the observer says its reactions were published under - and **what
-is stored is the model's spelling**, with the observer's kept beside it in `upstream_name`.
-
-The observer's spelling is not only kept for the record: a message type's resource answers every variant at
-once, keyed by the names the index carried, so it is `upstream_name` that addresses the answer. Picking the
-variant out of it by the resolved name would lose every graph of a type the two spell differently.
-
-Two things follow from resolving before comparing:
-
-- **A name the model does not have is not imported**, and the run says so once with the names rather than a
-  bare count. It is the normal case for a system that reacts on a platform whose model does not carry it, and
-  it is also what a genuine mismatch looks like - so it is worth reading after the first import of a
-  landscape. The line counts **names and graphs apart** and spells each name once with the number of graphs
-  under it: a message type is listed once per variant, so a single type the model does not have can be eighty
-  entries, and a warning repeating that name eighty times says nothing about how much of the index it is.
-- **There is no orphan sweep.** A system that leaves the model stops being resolvable, so it stops being
-  listed, so the prune that exists for a graph the observer withdrew removes its graph too.
-
-The existing subgraphs are stored as they arrived. Their rendering is decided during generation.
+Migration `V1_10_0` removes the old system, component and message rows from `reaction_graph` and their
+`architecture_import` state. Full snapshots and their successful-import timestamps, bytes and ETags remain
+unchanged. Legacy unwrapped full snapshots remain readable as V1. A deployment that has only subject graphs
+must fetch its first complete snapshot; those independent graphs are never combined into one. Until that
+snapshot is available, generation has no reaction observations to embed. The first successful full import
+triggers the normal build.
 
 ### The complete environment graph
 
-`FULL_REACTIONS` is a separate import step. It fetches `/api/graphs` (V1) once per environment.
+`FULL_REACTIONS` is the only reaction import step. It fetches `/api/graphs` (V1) once per environment.
 The API is selected in the observer adapter's code; there is no configuration property for it.
 Only an ETag belonging to that API is sent. It reuses the observer client, authentication, bounded reads and retry policy. It never
-joins the independently fetched subgraphs. The existing `max-graph-size` limit applies to this response too.
+joins the independently fetched subgraphs. The `max-graph-size` limit bounds this complete response.
+
+`ObservedReactions` is the domain model read from the stored snapshot. It retains the observed messages,
+reactions, triggers and actions, and adds typed HTTP operations, generic interfaces and separate predecessor
+relationships. Reaction identities are opaque strings; daily medians retain their decimal precision.
+`PublishedReactions` adds the import timestamp and resolved documentation ownership.
 
 The adapter validates the entire graph before storage: node identities must be unique, edge endpoints must
-exist, and every reaction must carry a nonnegative numeric daily median. Zero is valid; missing or null is
+exist, and each reaction may have at most one incoming trigger edge. Distinct triggers targeting the same
+reaction are rejected too, not just duplicate edges. Every reaction must carry a nonnegative numeric daily median. Zero is valid; missing or null is
 not replaced with zero. Unsupported V1 node or edge kinds fail validation instead of disappearing silently.
 A valid graph replaces one `reaction_graph` row in one transaction, under the environment and `FULL_REACTIONS`
-with empty name, system and variant. No database migration is needed.
+with empty name, system and variant. These legacy address columns remain for storage compatibility.
 
 A failed, oversized or invalid response leaves the previous row intact. An empty graph cannot replace a
 previously nonempty graph. A first empty graph is valid. A conditional `304` confirms the existing row without
@@ -319,7 +303,7 @@ and `fqn`; future statuses become `UNKNOWN`, and future edge kinds are ignored. 
 directions. A malformed median, version or ratio rejects the entire replacement.
 
 Full graph bytes are stored in a local envelope with `sourceFormat` (`observer-v1` or `observer-v2`) and the
-original `graph`. Legacy unwrapped bytes remain readable as V1. For this nameless import kind, `upstreamName`
+original `graph`. Legacy unwrapped bytes remain readable as V1. The domain field `sourceFormat`, stored in the legacy `upstream_name` column,
 stores the source format alongside the ETag, so the importer can decide a conditional fetch without reading
 the blob. An empty old value denotes V1. Switching in either direction starts unconditionally; a failed first
 fetch keeps the previous snapshot, which stays readable regardless of the API used for new imports. A successful switch
@@ -327,8 +311,7 @@ replaces the snapshot and identity scheme; old viewer links need not survive.
 
 When adopting V2, change `FULL_GRAPH_PATH` to `/api/v2/graphs` and `FULL_GRAPH_FORMAT` to `observer-v2`
 together in `ReactionObserverUpstream`. The format selects the matching parser; the domain, persistence and
-browser publication already support V2. Existing per-system, component and message diagrams continue through V1,
-which the provider keeps available. They do not assemble or limit the complete snapshot. The V2 interface
+browser publication and page projections already support V2. The V2 interface
 index is not needed for the complete-graph import; no interface URL is constructed from its FQN.
 
 See [Generation](generation.md#complete-reaction-graph-data) for the published browser format.
@@ -422,18 +405,17 @@ jeap_doc_architecture_import_last_success_age_seconds > 4 * 3600
 Every configured environment and every kind it can import is bound at startup, before any of them has run, so
 a kind that is new in a deployment reads `NaN` rather than being missing - the `absent(...)` clause above is
 false as soon as any other pair reports, so a missing series would not be caught by it. **The four kinds the
-architecture repository serves are bound for every environment; the four reaction kinds only where that
+architecture repository serves are bound for every environment; `FULL_REACTIONS` only where that
 environment has a reaction observer configured**, because an environment without one imports no reactions and a
 series that could never move is a series nobody can alarm on. A pair that has been bound once keeps being
 reported.
 
-Beside it: `jeap.doc.architecture.import` times one run and tags what it did, `.items` counts what was stored,
-confirmed unchanged, removed, skipped or - for the reactions - left unresolved, and
-`jeap.doc.architecture.artifacts` is how many are stored. `skipped` staying above zero is something an upstream
-serves and this service refuses, run after run; `unresolved` staying above zero is a name the reaction observer
-lists that the stored model does not have, so those graphs are never imported and the pages that would draw
-them are never written. A sudden drop in `artifacts` is an upstream that lost its data, which no failure counter
-catches because the run succeeded.
+Beside it: `jeap.doc.architecture.import` times one run and tags its outcome. For artifact imports, `.items`
+counts what was stored, confirmed unchanged, removed or skipped; `skipped` staying above zero is something
+an upstream serves and this service refuses, run after run. Full reaction snapshots report their outcome
+through the import timer and state row. Unknown owners stay in the snapshot and produce no `unresolved` counter.
+`jeap.doc.architecture.artifacts` is how many are stored: one for a successfully imported full snapshot.
+A sudden drop in artifact counts can indicate that an upstream lost its data, even when the run succeeded.
 
 **What each run did is on its row**, as `last_outcome` of `architecture_import` - `REPLACED`, `UNCHANGED`,
 `PARTIAL` or `FAILED`. An environment with no architecture repository writes no row at all, and no meter either:

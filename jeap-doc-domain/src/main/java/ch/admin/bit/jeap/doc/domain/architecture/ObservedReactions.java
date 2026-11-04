@@ -1,72 +1,79 @@
 package ch.admin.bit.jeap.doc.domain.architecture;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * One reaction graph, read: which messages were observed, what reacted to them, and what those reactions
- * published in answer.
- * <p>
- * The shape the reaction observer serves, in this service's own words. It is not what a page draws - that is
- * {@link ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView}, which decides labels, clusters and
- * links - and it is not what is stored either, which is the observer's bytes as they arrived.
- *
- * @param messages  the message nodes, each with the identifier the observer gave it
- * @param reactions the reaction nodes: one component reacting, identified by the observer's own row id
- * @param triggers  which message makes which reaction happen, and how often it was seen
- * @param actions   which message a reaction publishes in answer
+ * What was observed at runtime: interfaces, the reactions they trigger, and the actions those reactions take.
+ * One complete environment snapshot, independent of its JSON representation and of what a page draws.
+ * History is kept separately from execution flow.
  */
-public record ObservedReactions(
-        List<ObservedMessage> messages,
-        List<ObservedReaction> reactions,
-        List<ObservedTrigger> triggers,
-        List<ObservedAction> actions) {
-
+public record ObservedReactions(String identityScheme, List<ObservedInterface> interfaces,
+                                List<ObservedReaction> reactions, List<ObservedTrigger> triggers,
+                                List<ObservedAction> actions, List<ObservedPredecessor> predecessors) {
     public ObservedReactions {
-        messages = messages == null ? List.of() : List.copyOf(messages);
-        reactions = reactions == null ? List.of() : List.copyOf(reactions);
-        triggers = triggers == null ? List.of() : List.copyOf(triggers);
-        actions = actions == null ? List.of() : List.copyOf(actions);
+        interfaces = List.copyOf(interfaces);
+        reactions = List.copyOf(reactions);
+        triggers = List.copyOf(triggers);
+        actions = List.copyOf(actions);
+        predecessors = List.copyOf(predecessors);
+    }
+
+    public ObservedReactions(List<ObservedInterface> interfaces, List<ObservedReaction> reactions,
+                             List<ObservedTrigger> triggers, List<ObservedAction> actions) {
+        this("observer-v1", interfaces, reactions, triggers, actions, List.of());
     }
 
     public static ObservedReactions empty() {
         return new ObservedReactions(List.of(), List.of(), List.of(), List.of());
     }
 
-    /**
-     * Whether there is anything to draw. An empty graph is not content: a system nothing has been observed
-     * reacting to gets no runtime view at all rather than a page saying so.
-     */
     public boolean isEmpty() {
-        return messages.isEmpty() && reactions.isEmpty();
+        return interfaces.isEmpty() && reactions.isEmpty();
     }
 
-    /**
-     * A message the observer saw.
-     *
-     * @param messageType the message type name, as the publisher declared it
-     * @param variant     the variant, or null when it has none
-     */
-    public record ObservedMessage(long id, String messageType, String variant) {
+    public List<ObservedMessage> messages() {
+        return interfaces.stream().filter(ObservedMessage.class::isInstance).map(ObservedMessage.class::cast).toList();
     }
 
-    /**
-     * One component reacting. <b>The identifier is the observer's row id</b>, and it is what a deep link into
-     * a drawn graph addresses - the observer's graph carries no other name for a reaction.
-     *
-     * @param median how many times it was seen in the observer's statistics window, or null where the
-     *               observer sent none. It is counted per reaction, so it is on the node as well as on the
-     *               trigger edge - and on the node only, for a reaction that no message triggered
-     */
-    public record ObservedReaction(long id, String component, Integer median) {
+    /** Opaque, namespaced identity. An interface keeps its identity when its representation changes. */
+    public record Identity(String nodeType, String key) {}
+
+    public sealed interface ObservedInterface permits ObservedMessage, ObservedHttpOperation, ObservedGenericInterface {
+        Identity identity();
+        String interfaceType();
+        String fqn();
     }
 
-    /**
-     * @param median how many times it was seen in the observer's statistics window, or null when it kept no
-     *               number. It is what makes a busy trigger a thicker arrow
-     */
-    public record ObservedTrigger(long messageId, long reactionId, Integer median) {
+    public record ObservedMessage(Identity identity, String interfaceType, String fqn,
+                                  String messageType, String variant) implements ObservedInterface {
+        /** V1 supplies no interface type or FQN. */
+        public ObservedMessage(Identity identity, String messageType, String variant) {
+            this(identity, null, null, messageType, variant);
+        }
     }
 
-    public record ObservedAction(long reactionId, long messageId) {
+    public record ObservedHttpOperation(Identity identity, String interfaceType, String fqn,
+                                        String provider, String method, String path) implements ObservedInterface {}
+
+    /** Unknown interface representations retain their identity, semantics and connections. */
+    public record ObservedGenericInterface(Identity identity, String representation, String interfaceType,
+                                           String fqn) implements ObservedInterface {}
+
+    public enum ReactionStatus { ACTIVE, SUPERSEDED, UNKNOWN }
+
+    /** The median is the exact daily count statistic, shared by all trigger and action connections. */
+    public record ObservedReaction(Identity identity, String system, String component, BigDecimal median,
+                                   ReactionStatus status, Integer reactionModelVersion,
+                                   BigDecimal unidentifiedActionsRatio, String groupKey) {
+        /** V1 supplies only a component and a median. */
+        public ObservedReaction(Identity identity, String component, BigDecimal median) {
+            this(identity, null, component, median, ReactionStatus.UNKNOWN, null, null, null);
+        }
     }
+
+    public record ObservedTrigger(Identity interfaceId, Identity reactionId) {}
+    public record ObservedAction(Identity reactionId, Identity interfaceId) {}
+    /** History, never an observed execution-flow connection. */
+    public record ObservedPredecessor(Identity successor, Identity predecessor) {}
 }

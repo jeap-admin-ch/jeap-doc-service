@@ -393,21 +393,6 @@ class BuildShutdownIT {
                     return false;
                 }
 
-                @Override
-                public java.util.Optional<ch.admin.bit.jeap.doc.domain.port.Fetched<java.util.List<
-                        ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionGraphRef>>> index(
-                        String environment,
-                        ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind,
-                        String knownIndexEtag) {
-                    return java.util.Optional.empty();
-                }
-
-                @Override
-                public ch.admin.bit.jeap.doc.domain.port.GraphFetch content(String environment,
-                        ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionGraphRef ref,
-                        String knownEtag) {
-                    return ch.admin.bit.jeap.doc.domain.port.GraphFetch.skipped("nothing is served here");
-                }
             };
         }
 

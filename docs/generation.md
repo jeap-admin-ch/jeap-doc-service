@@ -663,7 +663,7 @@ Chapter 6 is written from what actually happened rather than from what the model
 | Where                                             | What it draws                                                                                                  |
 |---------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
 | A system's `runtime-view/system-reactions/`       | Which message makes one of the system's components react, and what it publishes in answer                      |
-| A component's `runtime-view/component-reactions/` | The same for one component. It is the page a reaction on a system's graph links into, focused on that reaction |
+| A component's `runtime-view/component-reactions/` | The same for one component, linked from its group menu on other pages |
 | A message's own page, in chapter 5                | A `## Reactions` section: what was observed reacting to that message, one diagram per variant                  |
 
 **No reactions, no chapter.** A system, component or message nothing has been observed reacting to gets no
@@ -671,28 +671,25 @@ page at all, and the landing page does not link one - an empty page would say *t
 which is not what an absence means. It is also the normal state of a platform whose reaction observer has just
 been switched on.
 
-**The diagram is GraphViz in a fence**, rendered in the reader's browser like every other diagram this service
-writes, and every node carries an id so that a link can address it: a reaction on a system's graph links into
-the component's own runtime view and lands on the same reaction, and a message links into its own page and
-lands on itself. The site raises the diagram plugin's source limit to 2 MB for these, because a system's
-reaction graph is the largest thing the site draws.
+**The diagram is the browser reaction viewer**, deriving its selection from the complete environment
+snapshot. The old generated DOT diagram is no longer emitted. Group and interface context menus link to
+component and message documentation; targeting a particular node or variant through a deep link is not yet
+supported by this viewer.
 
-**A node's id is `MESSAGE-<id>` or `REACTION-<id>`**, the observer's own ids, and on a message page - the one
-page that draws several graphs - the ids of a variant's diagram are prefixed with a slug of that variant
-(`express-MESSAGE-9`). The prefix is derived from the variant rather than counted, because the page writing a
-link holds the graphs of one system and has never seen the page it points at. Two variants whose slugs are
-equal are a corner case: the first diagram keeps the slug, the next takes an ordinal infix, and a link reaches
-the first.
+`FULL_REACTIONS` supplies chapter availability, message variants, reaction tables, documentation links and
+the viewer. During preparation of a part, each environment snapshot is read once and reused for its JSON
+and pages. Component ownership includes the system, so equally named components in different systems stay
+separate. Unknown ownership is retained in message views without inventing component destinations. The
+three subject import kinds and their indexes are retired.
 
 **And a table sits under every graph** with one row per reaction - what triggered it, which component reacted,
 what it published in answer and how often it was seen. It is the complete list, the one the browser's own
 find-in-page searches, and what the page still says if a graph is ever too large to draw.
 
-The last column is **Median per day**, and it says what the number is: the observer's median of the daily
-counts within its statistics window, which a column called *Times observed* was read as a total of. The
-observer counts it **per reaction**, and it is read off the reaction, so a reaction no message triggered shows
-its number like any other; a graph stored before the observer put one there falls back to the number its
-trigger carries, and a reaction with neither reads *unknown*.
+The last column is **Median per day**, the reaction's daily median within the observer's statistics window.
+Decimal values and zero are preserved; a missing median fails snapshot validation. The table describes the
+initially expanded entry selection, including HTTP operations and unknown interface types. Superseded
+reactions stay in the snapshot and are represented by the viewer's hidden-content markers rather than rows.
 
 The message pages are the one runtime view that is not in the runtime chapter. A message is a building block
 of the system that defines it, so its page is in chapter 5, and a reader who has the message in front of them
@@ -1040,6 +1037,10 @@ resets or environments.
 - `edges`: `edgeType` (`TRIGGER`, `ACTION`, `PREDECESSOR`) and `source`/`target` identities. A predecessor edge
   goes from successor to predecessor; it is history, not execution flow. Unknown V2 edge kinds are ignored.
 
+`ReactionGraphJson` translates the typed `ObservedReactions` domain model into this browser format.
+The domain keeps interfaces, reactions, triggers, actions and history in separate collections; it carries
+no JSON mapper or browser-node representation.
+
 The full graph remains intact, including superseded reactions and nodes the architecture model cannot place.
 Visibility filtering belongs to the viewer. The current V2 provider does not promise a group key; if a later
 provider supplies one it is retained. Otherwise the viewer can group by component and trigger. This publication
@@ -1049,8 +1050,7 @@ V1 does not supply a system per reaction. `ownership` associates reaction identi
 names only where the architecture model has exactly one matching component, ignoring case. Ambiguous or
 unknown components have no ownership entry and make `ownershipComplete` false. Consumers must disclose this
 limitation instead of treating an unresolved owner as an absent reaction. V2 ownership comes directly from
-the observer; it is never overwritten or guessed from the architecture model. Labels are JSON data; a future
-viewer must render them as text.
+the observer; it is never overwritten or guessed from the architecture model. Labels are JSON data; the viewer renders them as text.
 
 The file lives in the shell's ordinary publication, not in shared assets. The content digest includes it, so
 changed graph data rebuilds the shell. System parts do not publish copies. The existing successful-build
@@ -1061,4 +1061,82 @@ Disabling an observer makes subsequent publications unavailable rather than repu
 
 The file follows the site's existing access policy, cache revalidation and retention. The browser needs no
 observer access. There is no historical graph lookup or browser snapshot cache. A future V2 migration may
-invalidate links referencing V1 node identities. Rendering and interaction are separate work.
+invalidate links referencing V1 node identities. Further exploration actions are separate work.
+
+
+### Browser reaction viewer
+
+REST provider destinations are indexed once per environment and included only for HTTP interfaces in the
+entry view. Views without HTTP observations carry no REST destination metadata. Provider names shared by
+multiple components remain unlinked, even if only one of them exposes REST. Adding an unrelated provider
+does not change the generated reaction-viewer metadata.
+
+The existing system and component reaction chapters and each message variant section include a React viewer.
+It loads the complete `reaction-graph.json` of the current site and environment once per browser application,
+then derives independent entry states for each embedded viewer. All entries start with their selected
+reaction groups expanded and their adjacent interfaces visible. Message entries pin the selected message.
+Groups can be collapsed independently through their context menu. System entries exclude foreign reactions.
+Reaction tables remain below the viewer.
+
+Grouping uses system, component and the V2 group key, falling back to the known trigger. Triggerless or
+unresolved-owner reactions stay separate. Superseded reactions remain in the model but start hidden with a
+count. Predecessor relationships never become flow arrows. Circular markers count collapsed reactions or
+hidden reactions adjacent to a visible interface. Unknown ownership is disclosed.
+
+Messages are hexagons, HTTP operations capsules, generic interfaces ellipses, reactions rectangles and groups
+rounded containers. The graph uses Cytoscape with a Dagre layout. All labels are text. Individual and bundled
+arrows use `min(6, 1 + log10(1 + median))` pixels; bundles sum distinct contributing reactions and identify the
+sum as an approximation. Both trigger and action arrows connect to individual reactions when expanded;
+only hidden reactions contribute to arrows at the group frame. Hover tooltips show frequency details; the existing reaction table provides
+the textual representation. The viewport offers zoom, fit, a readable start
+view and full screen, with keyboard equivalents for zoom and pan. Groups can be collapsed and expanded
+without changing the selection. The legend stays visible, including in full screen. Toolbar buttons reuse
+the existing diagram plugin's icons, with tooltips and accessible names. Frequency details appear only
+when hovering over an arrow. This does not expand the selection across system boundaries
+or reveal superseded reactions.
+
+Right-click a group frame or one of its members for “Gruppe einklappen” and “Gruppe einblenden”.
+The menu disables actions that would not change the group. Collapsing preserves pinned members and changes
+only that group; the other groups and other viewers retain their state. Zoom and pan survive the redraw.
+After selecting a group, Shift+F10 opens its menu (the first group is the initial keyboard target);
+arrow keys navigate the enabled menu entries and Escape closes it. Toolbar controls apply only to the viewport.
+The minimap toggle opens an overview of the current diagram with its visible viewport marked. Clicking or
+dragging moves the main viewport without changing zoom; arrow keys pan and Home fits the diagram. The map
+updates after group changes, colour-mode changes and resizing, including full screen, and is independent
+for each viewer. Its image is rendered from the same positioned graph at a bounded thumbnail resolution.
+
+The source toggle shows a read-only JSON representation of the currently drawn groups, nodes, markers and
+edges, together with site, environment and entry information. It can be copied or selected manually when
+clipboard access is unavailable. This is the viewer's equivalent of the old DOT source, not an import or
+share-link format. Opening and closing it preserves group state, zoom and pan; the legend remains visible.
+
+A group's menu also offers “Zur Komponenten-Dokumentation” when its documented component has a
+runtime page. The destination is supplied by the structure template using the available documentation pages,
+stays within the current site and environment, and is omitted on that component's own page.
+Message context menus link to the event or command documentation. HTTP context menus link to the provider's
+REST API page when the model identifies one documented provider with a REST API. Unknown or ambiguous targets
+show a disabled “Dokumentation nicht verfügbar” entry. These links also keep the current site and environment.
+Only arrows show hover tooltips with their frequencies. The tooltip disappears when the pointer leaves
+the arrow, when a menu opens, or when the viewport changes. Nodes and groups have no hover tooltips.
+Clicking adds no detail text below the diagram.
+
+Diagram labels follow the original view: message names omit `Event` or `Command`, component names omit
+`-service` or `-scs`, variants appear in brackets and reactions show only their IDs. Group titles sit inside
+the frame above the reactions. The legend uses SVG symbols
+with the same shapes and colour definitions as the canvas, including in dark mode.
+It lists node types visible in the current diagram and updates when groups are collapsed or expanded;
+REST is always included. Reaction arrows arrive at the left box border and leave at the right border.
+The base symbols follow the [original viewer specification](https://confluence.bit.admin.ch/pages/viewpage.action?pageId=1806263354).
+The expanded individual trigger arrows follow the review decision of 2026-11-04; the original specification
+connected triggers to the group even while expanded.
+
+Group titles contain only the component name. Nodes of a known foreign system have a blue border,
+explained in the legend. Message ownership comes from unambiguous
+architecture-model assignments published with the snapshot, while reactions keep their resolved ownership.
+The reference is the system/component page's system or the selected message's documented system.
+Missing or ambiguous ownership is never inferred from neighbouring reactions or message names.
+
+A malformed, unavailable or wrong-context snapshot shows `Reaktionsgraph derzeit nicht verfügbar`; other page
+content remains usable. The viewer does not ask the observer directly. Existing omission of reaction pages
+without observations is unchanged. Entry metadata travels in an inert `reaction-view` code fence, written by
+`MarkdownWriter.reactionViewer`, not as raw HTML or executable MDX.

@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.reactionobserver;
 
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork;
+import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
+import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -33,35 +34,34 @@ class FullReactionGraphReaderTest {
     void retainsAllInterfaceKindsAndHistoryWithTheirMetadata() {
         var graph = read(V2);
         assertThat(graph.identityScheme()).isEqualTo("observer-v2");
-        assertThat(graph.nodes()).hasSize(6);
-        var message = graph.nodes().get(0);
-        assertThat(message.identity()).isEqualTo(new ReactionNetwork.Identity("INTERFACE", "I1"));
-        assertThat(message.interfaceDetails()).isEqualTo(new ReactionNetwork.InterfaceDetails("command", "orders.Place/priority",
-                new ReactionNetwork.Message("Place", "priority"), null));
-        assertThat(graph.nodes().get(1).interfaceDetails().http()).isEqualTo(new ReactionNetwork.HttpOperation("catalog", "GET", "/items"));
-        assertThat(graph.nodes().get(2).interfaceDetails().interfaceType()).isEqualTo("timer");
-        assertThat(graph.nodes().get(3).interfaceDetails().fqn()).isEqualTo("future.name");
-        var reaction = graph.nodes().get(4).reaction();
+        assertThat(graph.interfaces()).hasSize(4);
+        assertThat(graph.reactions()).hasSize(2);
+        assertThat(graph.messages()).containsExactly(new ObservedMessage(new Identity("INTERFACE", "I1"),
+                "command", "orders.Place/priority", "Place", "priority"));
+        assertThat(graph.interfaces().get(1)).isEqualTo(new ObservedHttpOperation(new Identity("INTERFACE", "I2"),
+                "http_request", "catalog.GET./items", "catalog", "GET", "/items"));
+        assertThat(graph.interfaces().get(2).interfaceType()).isEqualTo("timer");
+        assertThat(graph.interfaces().get(3)).isEqualTo(new ObservedGenericInterface(new Identity("INTERFACE", "opaque:/key"),
+                "FUTURE_INTERFACE", "future", "future.name"));
+        var reaction = graph.reactions().getFirst();
         assertThat(reaction.system()).isEqualTo("orders");
         assertThat(reaction.median()).isZero();
-        assertThat(reaction.status()).isEqualTo(ReactionNetwork.ReactionStatus.ACTIVE);
+        assertThat(reaction.status()).isEqualTo(ObservedReactions.ReactionStatus.ACTIVE);
         assertThat(reaction.reactionModelVersion()).isEqualTo(7);
         assertThat(reaction.unidentifiedActionsRatio()).isEqualByComparingTo("0.25");
         assertThat(reaction.groupKey()).isEqualTo("checkout");
-        assertThat(graph.nodes().get(5).reaction().status()).isEqualTo(ReactionNetwork.ReactionStatus.SUPERSEDED);
-        assertThat(graph.edges()).hasSize(5);
-        var predecessor = graph.edges().getLast();
-        assertThat(predecessor.edgeType()).isEqualTo("PREDECESSOR");
-        assertThat(predecessor.source().key()).isEqualTo("R1");
-        assertThat(predecessor.target().key()).isEqualTo("R2");
-        assertThat(predecessor.participatesInFlow()).isFalse();
-        assertThat(graph.edges().stream().filter(ReactionNetwork.Edge::participatesInFlow)).hasSize(4);
+        assertThat(graph.reactions().get(1).status()).isEqualTo(ReactionStatus.SUPERSEDED);
+        assertThat(graph.triggers()).hasSize(2);
+        assertThat(graph.actions()).hasSize(2);
+        assertThat(graph.predecessors()).containsExactly(new ObservedPredecessor(
+                new Identity("REACTION", "R1"), new Identity("REACTION", "R2")));
+
     }
 
     @Test
     void interfaceIdentityDoesNotChangeWhenItsRepresentationBecomesSpecific() {
-        var typed = read(V2).nodes().get(0).identity();
-        var generic = read(V2.replace("\"nodeType\":\"MESSAGE\"", "\"nodeType\":\"INTERFACE\"")).nodes().get(0).identity();
+        var typed = read(V2).interfaces().getFirst().identity();
+        var generic = read(V2.replace("\"nodeType\":\"MESSAGE\"", "\"nodeType\":\"INTERFACE\"")).interfaces().getFirst().identity();
         assertThat(generic).isEqualTo(typed);
     }
 
@@ -69,8 +69,8 @@ class FullReactionGraphReaderTest {
     void unknownStatusIsUnknownAndMissingMetadataIsNotInvented() {
         var graph = read(V2.replace("\"ACTIVE\"", "\"FUTURE_STATUS\"")
                 .replace(",\"reactionModelVersion\":7,\"unidentifiedActionsRatio\":0.25,\"groupKey\":\"checkout\"", ""));
-        assertThat(graph.nodes().get(4).reaction()).isEqualTo(new ReactionNetwork.ReactionDetails("orders", "gateway",
-                java.math.BigDecimal.ZERO, ReactionNetwork.ReactionStatus.UNKNOWN, null, null, null));
+        assertThat(graph.reactions().getFirst()).isEqualTo(new ObservedReaction(new Identity("REACTION", "R1"), "orders", "gateway",
+                java.math.BigDecimal.ZERO, ObservedReactions.ReactionStatus.UNKNOWN, null, null, null));
     }
 
     @ParameterizedTest
@@ -105,12 +105,45 @@ class FullReactionGraphReaderTest {
                 {"nodes":[{"nodeType":"REACTION","id":9007199254740993,"component":"gateway","median":0}],"edges":[]}
                 """));
         assertThat(graph.identityScheme()).isEqualTo("observer-v1");
-        assertThat(graph.nodes().getFirst().identity().key()).isEqualTo("9007199254740993");
-        assertThat(graph.nodes().getFirst().reaction()).isEqualTo(new ReactionNetwork.ReactionDetails(null, "gateway",
-                java.math.BigDecimal.ZERO, ReactionNetwork.ReactionStatus.UNKNOWN, null, null, null));
+        assertThat(graph.reactions().getFirst().identity().key()).isEqualTo("9007199254740993");
+        assertThat(graph.reactions().getFirst()).isEqualTo(new ObservedReaction(new Identity("REACTION", "9007199254740993"), null, "gateway",
+                java.math.BigDecimal.ZERO, ObservedReactions.ReactionStatus.UNKNOWN, null, null, null));
     }
 
-    private ReactionNetwork read(String source) {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rejectsTwoDistinctTriggersOfOneReaction(boolean v2) {
+        var graph = json.readTree(graphWithTwoTriggers(v2, false));
+        assertThatThrownBy(() -> FullReactionGraphReader.read(graph, v2))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("A reaction cannot have multiple triggers");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void allowsOneTriggerToTriggerDifferentReactions(boolean v2) {
+        var graph = FullReactionGraphReader.read(json.readTree(graphWithTwoTriggers(v2, true)), v2);
+        assertThat(graph.triggers()).hasSize(2);
+        assertThat(graph.triggers().get(0).interfaceId()).isEqualTo(graph.triggers().get(1).interfaceId());
+        assertThat(graph.triggers().get(0).reactionId()).isNotEqualTo(graph.triggers().get(1).reactionId());
+    }
+
+    private static String graphWithTwoTriggers(boolean v2, boolean differentReactions) {
+        String graph = """
+                {"nodes":[
+                  {"nodeType":"MESSAGE","id":1,"interfaceType":"event","fqn":"A","messageType":"A"},
+                  {"nodeType":"MESSAGE","id":2,"interfaceType":"event","fqn":"B","messageType":"B"},
+                  {"nodeType":"REACTION","id":3,"component":"service","median":1},
+                  {"nodeType":"REACTION","id":4,"component":"service","median":2}],
+                 "edges":[
+                  {"edgeType":"TRIGGER","sourceId":1,"targetReactionId":3},
+                  {"edgeType":"TRIGGER","sourceId":%d,"targetReactionId":%d}]}
+                """.formatted(differentReactions ? 1 : 2, differentReactions ? 4 : 3);
+        return v2 ? graph.replace("targetReactionId", "targetId")
+                .replaceAll("(\"(?:id|sourceId|targetId)\":)([0-9]+)", "$1\"$2\"") : graph;
+    }
+
+    private ObservedReactions read(String source) {
         return FullReactionGraphReader.read(json.readTree(source), true);
     }
 }

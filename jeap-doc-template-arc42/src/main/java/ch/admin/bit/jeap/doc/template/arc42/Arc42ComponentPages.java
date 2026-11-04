@@ -14,7 +14,6 @@ import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
 import ch.admin.bit.jeap.doc.domain.architecture.RestApiOperation;
 import ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview;
 import ch.admin.bit.jeap.doc.domain.architecture.SchemaColumn;
-import ch.admin.bit.jeap.doc.domain.architecture.SchemaForeignKey;
 import ch.admin.bit.jeap.doc.domain.architecture.SchemaTable;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ComponentContext;
@@ -26,6 +25,7 @@ import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
+import ch.admin.bit.jeap.doc.markdown.ReactionEntry;
 import ch.admin.bit.jeap.doc.markdown.Md;
 
 import java.io.IOException;
@@ -71,8 +71,9 @@ final class Arc42ComponentPages {
     private static final String VERSIONS_LABEL = "Versions";
     private static final String NONE = "None.";
 
-    /** The columns of the two contract tables on the messages page. */
     /**
+     * The columns of the two contract tables on the messages page.
+     * <p>
      * <b>The defining system is a column of its own.</b> A component contracts on the messages of other
      * systems as readily as on its own - consuming another system's event is the ordinary case - and the two
      * are indistinguishable in a table that names only the message.
@@ -111,12 +112,13 @@ final class Arc42ComponentPages {
         }
         boolean buildingBlockView =
                 writeBuildingBlockView(template, system, component, context, paths, structure);
-        boolean runtimeView = writeRuntimeView(template, component, context, paths, structure);
+        boolean runtimeView = writeRuntimeView(template, system, component, context, paths, structure);
 
         List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
                 documented.customChaptersOfComponent(component.slug()));
-        writeLandingPage(template, system, component, context, paths, structure, contextAndScope,
-                buildingBlockView, runtimeView, uploaded);
+        List<StructureChapter> chapters = Arc42CustomChapters.merged(template,
+                chaptersOf(contextAndScope, buildingBlockView, runtimeView), uploaded);
+        writeLandingPage(template, system, component, context, paths, structure, chapters);
 
         // The uploaded pages last, into the chapters this template named - a generated chapter included,
         // because the generator owns a chapter's index page and an upload owns the pages beside it.
@@ -135,8 +137,7 @@ final class Arc42ComponentPages {
     private static void writeLandingPage(Arc42Template template, DocumentedSystem system,
                                          DocumentedComponent component, GenerationContext context,
                                          DocumentationPaths.ComponentPaths paths, Path structure,
-                                         boolean contextAndScope, boolean buildingBlockView,
-                                         boolean runtimeView, List<StructureChapter> uploaded)
+                                         List<StructureChapter> chapters)
             throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(template.componentLabel(), 0, context))
@@ -150,14 +151,12 @@ final class Arc42ComponentPages {
                            + "numbering indicates that the corresponding section has not yet been authored or "
                            + "that no generated content is available to create it.");
 
-        List<List<Markdown>> rows = new ArrayList<>();
         // The generated chapters and the uploaded ones, in the template's order. A chapter that exists and is
         // not listed here is a chapter a reader finds only in the sidebar.
-        for (StructureChapter chapter : Arc42CustomChapters.merged(template,
-                chaptersOf(contextAndScope, buildingBlockView, runtimeView), uploaded)) {
-            rows.add(List.of(Md.link(paths.chapter(chapter), chapter.label()),
-                    Md.text(Arc42Chapters.componentSummaryOf(chapter))));
-        }
+        List<List<Markdown>> rows = chapters.stream()
+                .map(chapter -> List.of(Md.link(paths.chapter(chapter), chapter.label()),
+                        Md.text(Arc42Chapters.componentSummaryOf(chapter))))
+                .toList();
         page.table(List.of("Chapter", "What it answers"), rows);
         Arc42Pages.write(structure, Arc42Pages.INDEX, page);
     }
@@ -543,11 +542,10 @@ final class Arc42ComponentPages {
         if (table.isKeyColumn(column.name())) {
             keys.add(Md.text("PK"));
         }
-        for (SchemaForeignKey key : table.foreignKeys()) {
-            if (key.columnNames().stream().anyMatch(name -> name.equalsIgnoreCase(column.name()))) {
-                keys.add(Md.join(Md.text("FK to "), Md.code(key.referencedTableName())));
-            }
-        }
+        table.foreignKeys().stream()
+                .filter(key -> key.columnNames().stream().anyMatch(name -> name.equalsIgnoreCase(column.name())))
+                .map(key -> Md.join(Md.text("FK to "), Md.code(key.referencedTableName())))
+                .forEach(keys::add);
         return Md.joinWith(", ", keys);
     }
 
@@ -995,7 +993,7 @@ final class Arc42ComponentPages {
      * <b>No reactions, no chapter</b>, as on a system's tree: a component nothing has been observed reacting
      * to gets no page rather than an empty one, and the landing page links only the chapters this run wrote.
      */
-    private static boolean writeRuntimeView(Arc42Template template, DocumentedComponent component,
+    private static boolean writeRuntimeView(Arc42Template template, DocumentedSystem system, DocumentedComponent component,
                                             GenerationContext context,
                                             DocumentationPaths.ComponentPaths paths, Path structure)
             throws IOException {
@@ -1018,7 +1016,9 @@ final class Arc42ComponentPages {
                 .heading(1, COMPONENT_REACTIONS_LABEL)
                 .paragraph(Md.sentence("The messages that trigger a reaction in {} and the events or "
                                        + "commands it publishes in response.", Md.code(component.name())));
-        Arc42ReactionPages.write(page, reactions, context, component.name());
+        Arc42ReactionPages.writeViewer(page, new ReactionEntry(ReactionEntry.Kind.COMPONENT, system.name(), component.name(), null, null),
+                reactions, context, component.name());
+        Arc42ReactionPages.writeTableAndProvenance(page, reactions, context);
         Arc42Pages.write(directory, COMPONENT_REACTIONS_PAGE + ".md", page);
         return true;
     }

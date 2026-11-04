@@ -15,11 +15,8 @@ import java.util.Objects;
  *                    is the observer's own name for the graph and a graph is explained by it
  * @param sourceFormat optional format marker for a full snapshot, kept beside its conditional tag
  * @param data        the bytes, with a local format envelope for full snapshots
- * @param drawableNodes how many nodes of the payload this version would draw - counted by the adapter that
- *                    read the envelope, which is the one place that knows the shape. <b>Not the import
- *                    looking inside a graph</b>: what is stored is still the bytes as they arrived, and this
- *                    is a fact <i>about</i> them that the generator would otherwise have to be asked for, one
- *                    graph at a time, to know whether a page exists to link to
+ * @param drawableNodes how many validated nodes the snapshot contains, used to guard against an
+ *                      unexpectedly empty replacement without loading the previous snapshot
  */
 public record ReactionGraph(String etag, String fingerprint, byte[] data, int drawableNodes, String sourceFormat) {
 
@@ -27,7 +24,7 @@ public record ReactionGraph(String etag, String fingerprint, byte[] data, int dr
         this(etag, fingerprint, data, drawableNodes, null);
     }
 
-    /** Whether a page is written for this graph at all: an empty graph is a chapter that is not there. */
+    /** Whether this complete snapshot contains observations. */
     public boolean isDrawable() {
         return drawableNodes > 0;
     }

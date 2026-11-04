@@ -138,7 +138,7 @@ public class SiteSources {
                                 Instant generatedAt) throws IOException {
         Files.createDirectories(contentDirectory);
         writeBranding(site, contentDirectory);
-        reactionNetworkFiles.write(site, part, contentDirectory);
+        var reactions = reactionNetworkFiles.write(site, part, contentDirectory);
         Map<String, EnvironmentModel> models = new LinkedHashMap<>();
         for (SiteEnvironment environment : site.environments()) {
             if (!part.carries(environment.id())) {
@@ -147,7 +147,7 @@ public class SiteSources {
             Path directory = contentDirectory.resolve(environment.id());
             // The systems first, so the root page can say whether there are any.
             Optional<EnvironmentModel> model =
-                    systemPages.write(site, environment, part, directory, generatedAt);
+                    systemPages.write(site, environment, part, directory, generatedAt, reactions.getOrDefault(environment.id(), Optional.empty()));
             if (part.carriesWholeEnvironments()) {
                 writeRootPage(site, environment, contentDirectory, generatedAt, model);
             }

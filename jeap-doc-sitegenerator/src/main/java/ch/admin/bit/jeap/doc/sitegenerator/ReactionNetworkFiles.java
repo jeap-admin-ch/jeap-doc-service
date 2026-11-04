@@ -4,6 +4,8 @@ import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
+import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
@@ -25,32 +27,40 @@ public class ReactionNetworkFiles {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private final ReactionNetworkPublication networks;
 
-    public void write(Site site, SitePart part, Path contentDirectory) throws IOException {
-        if (!part.carriesWholeEnvironments()) {
-            return;
-        }
+    public Map<String, Optional<PublishedReactions>> write(Site site, SitePart part, Path contentDirectory) throws IOException {
+        Map<String, Optional<PublishedReactions>> snapshots = new LinkedHashMap<>();
         for (SiteEnvironment environment : site.environments()) {
             if (!part.carries(environment.id())) {
                 continue;
             }
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("formatVersion", 1);
-            payload.put("site", site.id());
-            payload.put("environment", environment.id());
             var snapshot = networks.read(environment.id());
-            payload.put("available", snapshot.isPresent());
-            snapshot.ifPresent(value -> {
-                payload.put("identityScheme", value.graph().identityScheme());
-                payload.put("importedAt", value.importedAt().toString());
-                payload.put("graph", value.graph());
-                payload.put("ownership", value.ownership());
-                payload.put("ownershipComplete", value.ownershipComplete());
-            });
-            payload.put("snapshot", digest(JSON.writeValueAsBytes(payload)));
-            Path directory = contentDirectory.resolve("static" + environment.routePrefix());
-            Files.createDirectories(directory);
-            Files.write(directory.resolve(FILE_NAME), JSON.writeValueAsBytes(payload));
+            snapshots.put(environment.id(), snapshot);
+            if (part.carriesWholeEnvironments()) {
+                writeSnapshot(site, environment, snapshot, contentDirectory);
+            }
         }
+        return Map.copyOf(snapshots);
+    }
+
+    private static void writeSnapshot(Site site, SiteEnvironment environment,
+                                      Optional<PublishedReactions> snapshot, Path contentDirectory) throws IOException {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("formatVersion", 1);
+        payload.put("site", site.id());
+        payload.put("environment", environment.id());
+        payload.put("available", snapshot.isPresent());
+        snapshot.ifPresent(value -> {
+            payload.put("identityScheme", value.observations().identityScheme());
+            payload.put("importedAt", value.importedAt().toString());
+            payload.put("graph", ReactionGraphJson.of(value.observations()));
+            payload.put("ownership", value.ownership());
+            payload.put("messageOwnership", value.messageOwnership());
+            payload.put("ownershipComplete", value.ownershipComplete());
+        });
+        payload.put("snapshot", digest(JSON.writeValueAsBytes(payload)));
+        Path directory = contentDirectory.resolve("static" + environment.routePrefix());
+        Files.createDirectories(directory);
+        Files.write(directory.resolve(FILE_NAME), JSON.writeValueAsBytes(payload));
     }
 
     private static String digest(byte[] bytes) {

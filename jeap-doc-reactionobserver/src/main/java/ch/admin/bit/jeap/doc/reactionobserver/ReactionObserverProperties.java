@@ -27,7 +27,7 @@ import java.util.Map;
 public class ReactionObserverProperties {
 
     /**
-     * Whether the reactions are imported. Off means no import step is registered, nothing is called and no
+     * Whether reactions are imported. Off leaves the registered step inert: nothing is called and no
      * state row is written.
      */
     private boolean enabled = false;

@@ -41,8 +41,8 @@ public class FullReactionImportStep implements ArchitectureImportStep {
             if (deadline.hasExpired()) {
                 return outcome(environment, before, startedAt, ImportOutcome.PARTIAL, deadline.reason(), before.itemCount());
             }
-            var known = graphs.findRefs(environment, kind()).stream().findFirst().orElse(null);
-            GraphFetch fetched = upstream.fullGraph(environment, known == null ? null : known.etag(), known == null ? null : known.upstreamName());
+            var known = graphs.findRef(environment).orElse(null);
+            GraphFetch fetched = upstream.fullGraph(environment, known == null ? null : known.etag(), known == null ? null : known.sourceFormat());
             if (deadline.hasExpired()) {
                 return outcome(environment, before, startedAt, ImportOutcome.PARTIAL, deadline.reason(), before.itemCount());
             }
@@ -51,7 +51,7 @@ public class FullReactionImportStep implements ArchitectureImportStep {
                     if (!graph.isDrawable() && known != null && known.drawable()) {
                         throw new ArchitectureModelUnavailableException("An empty full graph cannot replace observed reactions");
                     }
-                    graphs.store(new StoredReactionGraph(environment, kind(), "", "", "", graph.sourceFormat() == null ? "" : graph.sourceFormat(), graph.etag(),
+                    graphs.store(new StoredReactionGraph(environment, graph.sourceFormat() == null ? "" : graph.sourceFormat(), graph.etag(),
                             graph.fingerprint(), graph.data(), graph.drawableNodes(), clock.instant()));
                     log.info("Imported the complete reaction graph of {} ({} nodes).", environment, graph.drawableNodes());
                     yield outcome(environment, before, startedAt, ImportOutcome.REPLACED, null, 1);
@@ -60,7 +60,7 @@ public class FullReactionImportStep implements ArchitectureImportStep {
                     if (known == null) {
                         throw new ArchitectureModelUnavailableException("No stored full graph to confirm");
                     }
-                    graphs.confirm(environment, kind(), "", "", "", clock.instant());
+                    graphs.confirm(environment, clock.instant());
                     yield outcome(environment, before, startedAt, ImportOutcome.UNCHANGED, null, 1);
                 }
                 case GraphFetch.Skipped(String reason) -> throw new ArchitectureModelUnavailableException(reason);

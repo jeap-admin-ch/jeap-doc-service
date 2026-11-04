@@ -25,13 +25,9 @@ import ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactContent;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactRepository;
-import ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionGraphRef;
-import ch.admin.bit.jeap.doc.domain.architecture.imports.StoredReactionGraph;
-import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionModelIndex;
-import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.ReactionViews;
-import ch.admin.bit.jeap.doc.domain.port.ReactionGraphContent;
-import ch.admin.bit.jeap.doc.domain.port.ReactionGraphRepository;
+import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionDocumentation;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository;
@@ -55,15 +51,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Objects;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -96,8 +89,6 @@ public class SystemPages {
 
     /** What turns their bytes into what a page shows. */
     private final ArchitectureArtifactContent artifactContent;
-    private final ReactionGraphRepository reactionGraphs;
-    private final ReactionGraphContent reactionContent;
 
     /** What has been uploaded, and where its bundles are read from - the other half of what a page shows. */
     private final CustomDocumentationRepository documentation;
@@ -131,9 +122,10 @@ public class SystemPages {
      * would say the landscape is empty rather than that it was not read.
      */
     public Optional<EnvironmentModel> write(Site site, SiteEnvironment environment, SitePart part,
-                                           Path environmentDirectory, Instant generatedAt) throws IOException {
+                                           Path environmentDirectory, Instant generatedAt,
+                                           Optional<PublishedReactions> reactions) throws IOException {
         return write(site.id(), environment.id(), part, diagramLinkPrefixOf(site, environment),
-                environmentDirectory, generatedAt);
+                environmentDirectory, generatedAt, reactions);
     }
 
     /**
@@ -169,6 +161,12 @@ public class SystemPages {
 
     Optional<EnvironmentModel> write(String site, String environment, SitePart part, String diagramLinkPrefix,
                                      Path environmentDirectory, Instant generatedAt) throws IOException {
+        return write(site, environment, part, diagramLinkPrefix, environmentDirectory, generatedAt, Optional.empty());
+    }
+
+    Optional<EnvironmentModel> write(String site, String environment, SitePart part, String diagramLinkPrefix,
+                                     Path environmentDirectory, Instant generatedAt,
+                                     Optional<PublishedReactions> reactions) throws IOException {
         // What has been uploaded for this part, whatever the architecture model of this environment holds.
         // It is per site rather than per environment: an upload names no environment, so the same
         // documentation is written into every tree of the site.
@@ -188,8 +186,9 @@ public class SystemPages {
             log.debug("No architecture repository is configured for the environment {}; the {} documented "
                       + "system(s) of {} are written from what was uploaded.",
                     environment, documentedSlugs.size(), part.key());
-            return Optional.of(writeSystems(site, environment, part, diagramLinkPrefix, environmentDirectory,
-                    generatedAt, ArchitectureSnapshot.empty(), documentedSlugs));
+            ArchitectureSnapshot snapshot = ArchitectureSnapshot.empty();
+            return Optional.of(writeSystems(site, part, environmentDirectory, snapshot, documentedSlugs, reactions,
+                    generationContext(environment, diagramLinkPrefix, generatedAt, snapshot)));
         }
         long startedAt = System.nanoTime();
         // One call, so that the landscape and the import it came from are one moment. Reading them separately
@@ -206,8 +205,16 @@ public class SystemPages {
             return Optional.of(EnvironmentModel.empty(snapshot.importedAt()));
         }
         warnWhenTheImportIsBehind(environment, generatedAt);
-        return Optional.of(writeSystems(site, environment, part, diagramLinkPrefix, environmentDirectory,
-                generatedAt, snapshot, documentedSlugs));
+        return Optional.of(writeSystems(site, part, environmentDirectory, snapshot, documentedSlugs, reactions,
+                generationContext(environment, diagramLinkPrefix, generatedAt, snapshot)));
+    }
+
+    private GenerationContext generationContext(String environment, String diagramLinkPrefix,
+                                                 Instant generatedAt, ArchitectureSnapshot snapshot) {
+        return new GenerationContext(snapshot.model(), environment,
+                architectureModel.sourceUrlOf(environment).orElse(""), snapshot.importedAt(), generatedAt,
+                properties.limits(), diagramLinkPrefix, properties.apiPaths())
+                .withViewExclusions(properties.viewExclusions());
     }
 
     /**
@@ -217,16 +224,11 @@ public class SystemPages {
      * @param snapshot        what the import stored, which is empty for an environment that reads no model
      * @param documentedSlugs the systems of this part something has been uploaded for
      */
-    private EnvironmentModel writeSystems(String site, String environment, SitePart part,
-                                          String diagramLinkPrefix, Path environmentDirectory,
-                                          Instant generatedAt, ArchitectureSnapshot snapshot,
-                                          List<String> documentedSlugs) throws IOException {
+    private EnvironmentModel writeSystems(String site, SitePart part, Path environmentDirectory,
+                                          ArchitectureSnapshot snapshot, List<String> documentedSlugs,
+                                          Optional<PublishedReactions> reactions, GenerationContext context) throws IOException {
         ArchitectureModel model = snapshot.model();
-        GenerationContext context = new GenerationContext(model, environment,
-                architectureModel.sourceUrlOf(environment).orElse(""),
-                snapshot.importedAt(), generatedAt,
-                properties.limits(), diagramLinkPrefix, properties.apiPaths())
-                .withViewExclusions(properties.viewExclusions());
+        String environment = context.environment();
 
         // The site's own index of the systems belongs to the part that carries whole environment trees. A
         // part that carries one system writes that system and nothing above it: the directory above is another
@@ -250,7 +252,7 @@ public class SystemPages {
 
         // Once for the environment, ahead of the systems: what it answers is the same for every one of them,
         // and most landscapes run no reaction observer at all.
-        EnvironmentReactions reactions = reactionsOfEnvironment(environment, model);
+        Optional<ReactionDocumentation> reactionPages = reactions.map(graph -> new ReactionDocumentation(graph, model));
 
         List<String> slugs = slugsToWrite(model, part, documentedSlugs);
         for (String slug : slugs) {
@@ -262,7 +264,7 @@ public class SystemPages {
             // The reaction graphs of this system, and only this system's: they are handed to the templates
             // and let go when the system has been written, exactly as its artifacts are.
             GenerationContext systemContext = system
-                    .map(one -> context.withReactions(reactionsOf(one, environment, reactions)))
+                    .map(one -> context.withReactions(reactionPages.map(pages -> pages.ofSystem(one)).orElseGet(ReactionViews::none)))
                     .orElse(context);
             // Where this part mounts its content. A part carrying a whole environment writes the system
             // below the systems directory of that tree; a part carrying one system writes it at the tree it
@@ -330,10 +332,9 @@ public class SystemPages {
      * is written into every tree of the site.
      */
     private List<String> documentedSlugsOf(String site, SitePart part) {
-        SortedSet<String> slugs = new TreeSet<>();
-        for (CustomSubject subject : documentation.subjectsOf(site)) {
-            slugs.add(subject.system());
-        }
+        SortedSet<String> slugs = documentation.subjectsOf(site).stream()
+                .map(CustomSubject::system)
+                .collect(Collectors.toCollection(TreeSet::new));
         if (part.carriesWholeEnvironments()) {
             return List.copyOf(slugs);
         }
@@ -424,115 +425,6 @@ public class SystemPages {
     }
 
     /**
-     * The reaction graphs of one system, drawn-ready: its own, its components' and those of the message types
-     * it defines.
-     * <p>
-     * <b>Read one system at a time</b>, for the reason its artifacts are: what a build holds stays in memory
-     * until the site generator has finished, and a landscape's worth of graphs is a multiple of one system's.
-     * <p>
-     * The age a page names is the newest of these graphs rather than the state row's: the row says when the
-     * import last <i>ran</i>, and what a reader is being told is how old the picture in front of them is.
-     */
-    private ReactionViews reactionsOf(DocumentedSystem system, String environment,
-                                      EnvironmentReactions reactions) {
-        if (!reactions.any()) {
-            return ReactionViews.none();
-        }
-        List<StoredReactionGraph> stored = new ArrayList<>();
-        ReactionView systemView = reactionGraphs
-                .find(environment, ArchitectureImportKind.SYSTEM_REACTIONS, system.name(),
-                        ReactionGraphRef.NO_SYSTEM, ReactionGraphRef.NO_VARIANT)
-                .map(graph -> viewOf(graph, stored, reactions.names(), system))
-                .orElseGet(ReactionView::empty);
-        Map<String, ReactionView> components = new LinkedHashMap<>();
-        for (DocumentedComponent component : system.components()) {
-            // With the system, because two systems may each call a component gateway and one graph is not
-            // both of theirs.
-            reactionGraphs.find(environment, ArchitectureImportKind.COMPONENT_REACTIONS, component.name(),
-                            system.name(), ReactionGraphRef.NO_VARIANT)
-                    .map(graph -> viewOf(graph, stored, reactions.names(), system))
-                    .filter(view -> !view.isEmpty())
-                    .ifPresent(view -> components.put(component.name(), view));
-        }
-        Map<String, List<ReactionViews.VariantView>> messages = new LinkedHashMap<>();
-        for (DocumentedMessage message : system.messages()) {
-            List<ReactionViews.VariantView> variants = reactionGraphs
-                    .findVariants(environment, message.name()).stream()
-                    .map(graph -> new ReactionViews.VariantView(graph.variant(),
-                            viewOf(graph, stored, reactions.names(), system)))
-                    .filter(variant -> !variant.view().isEmpty())
-                    .toList();
-            if (!variants.isEmpty()) {
-                messages.put(message.name(), variants);
-            }
-        }
-        if (systemView.isEmpty() && components.isEmpty() && messages.isEmpty()) {
-            return ReactionViews.none();
-        }
-        return ReactionViews.of(newestOf(stored), systemView, components, messages,
-                reactions.componentsWithAGraph());
-    }
-
-    /**
-     * What the reaction graphs of one environment say before any of its systems is written: whether there are
-     * any at all, and which components have one.
-     * <p>
-     * <b>Three reads for the environment</b>, rather than one per component and per message of every system it
-     * carries. Most landscapes have no reaction observer, and this is the difference between three queries a
-     * build and some hundreds of them that all answer nothing.
-     * <p>
-     * The component names are read here and not per system because a reaction drawn on one system's graph is
-     * regularly a component of another - a link to it may only be written where that component's chapter 6 is
-     * written too, and a single system's graphs cannot answer that. It is the refs and not the graphs: a
-     * reference is a row without its bytes, and reading a landscape's worth of graphs is exactly what
-     * generating one system at a time avoids.
-     */
-    private EnvironmentReactions reactionsOfEnvironment(String environment, ArchitectureModel model) {
-        List<ReactionGraphRef> components =
-                reactionGraphs.findRefs(environment, ArchitectureImportKind.COMPONENT_REACTIONS);
-        boolean any = !components.isEmpty()
-                      || !reactionGraphs.findRefs(environment, ArchitectureImportKind.SYSTEM_REACTIONS)
-                              .isEmpty()
-                      || !reactionGraphs.findRefs(environment, ArchitectureImportKind.MESSAGE_REACTIONS)
-                              .isEmpty();
-        // Only the graphs that draw something. A stored graph is not a written page: the observer can serve
-        // one with no node in it, and so can a payload whose every node is of a kind this version does not
-        // know - and chapter 6 is not written for either, so a link into it would be a 404 the reader is
-        // offered. What counts a graph's drawable nodes is the adapter that read it, once, while storing it.
-        Set<String> drawable = components.stream()
-                .filter(ReactionGraphRef::drawable)
-                .map(ReactionGraphRef::name)
-                .collect(Collectors.toSet());
-        return new EnvironmentReactions(any, drawable, ReactionModelIndex.of(model));
-    }
-
-    /**
-     * What one environment's reaction graphs say, read once for all of its systems.
-     *
-     * @param any whether the environment has any reaction graph at all - which is what an environment whose
-     *            stage runs no reaction observer answers, and what every environment answered before the
-     *            observer was configured
-     * @param names the model, indexed by the names a graph carries. Built once per environment rather than
-     *            per graph: a landscape has a graph per system, per component and per message variant, and
-     *            every node of every one of them has to be looked up in the model
-     */
-    private record EnvironmentReactions(boolean any, Set<String> componentsWithAGraph,
-                                        ReactionModelIndex names) {
-    }
-
-    /** One stored graph as a view, remembering the row so that the pages can say how old the picture is. */
-    private ReactionView viewOf(StoredReactionGraph graph, List<StoredReactionGraph> stored,
-                                ReactionModelIndex names, DocumentedSystem system) {
-        stored.add(graph);
-        return ReactionView.of(reactionContent.read(graph), names, system);
-    }
-
-    private static Instant newestOf(List<StoredReactionGraph> graphs) {
-        return graphs.stream().map(StoredReactionGraph::importedAt).filter(Objects::nonNull)
-                .max(Instant::compareTo).orElse(null);
-    }
-
-    /**
      * The same system with the replicated artifacts of its components joined onto them.
      * <p>
      * <b>Read and parsed one component at a time</b>, and never held past the parsing. A specification is
@@ -614,16 +506,15 @@ public class SystemPages {
                                        + "documentation generated and published for each of them.",
                         Md.bold(context.environment())));
 
-        List<List<Markdown>> rows = new ArrayList<>();
-        for (DocumentedSystem system : model.systems()) {
-            rows.add(List.of(
+        List<List<Markdown>> rows = model.systems().stream()
+                .map(system -> List.of(
                     Md.link(DocumentationPaths.system(system.slug()), system.name()),
                     teamOf(system.team()),
                     Md.text(String.valueOf(system.components().size())),
                     Md.text(String.valueOf(system.events().size())),
                     Md.text(String.valueOf(system.commands().size())),
-                    Md.text(system.description())));
-        }
+                    Md.text(system.description())))
+                .collect(Collectors.toCollection(ArrayList::new));
         // The systems only the uploads know, which this tree publishes exactly as it does the others. No
         // counts: a system the model does not hold has no team, no components and no messages to count, and
         // zeros would read as a system that has none rather than as one nothing knows about.

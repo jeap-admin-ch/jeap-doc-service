@@ -216,10 +216,10 @@ a partial run leaves behind, which is what that alert is really about.
 
 | Meter                                             | Kind      | Tags                               | What it is                                                                                                                                                                                       |
 |---------------------------------------------------|-----------|------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `jeap.doc.architecture.import.last.success.age`   | Gauge     | `environment`, `kind`              | How long ago the last successful import was, `NaN` if there has never been one. **The one to alarm on**. The four reaction kinds are bound only where the environment has a reaction observer    |
+| `jeap.doc.architecture.import.last.success.age`   | Gauge     | `environment`, `kind`              | How long ago the last successful import was, `NaN` if there has never been one. **The one to alarm on**. `full_reactions` is bound only where the environment has a reaction observer    |
 | `jeap.doc.architecture.artifacts`                 | Gauge     | `environment`, `kind`              | How many things of that kind are stored, `NaN` before the first success. A drop is an arch repo that lost its data                                                                               |
 | `jeap.doc.architecture.import`                    | Timer     | `environment`, `kind`, `result`    | One run: how long it took and how it ended                                                                                                                                                       |
-| `jeap.doc.architecture.import.items`              | Counter   | `environment`, `kind`, `outcome`   | What a run did: `stored`, `unchanged`, `removed`, `skipped`, and `unresolved` for the reaction kinds                                                                                             |
+| `jeap.doc.architecture.import.items`              | Counter   | `environment`, `kind`, `outcome`   | Artifact outcomes: `stored`, `unchanged`, `removed`, `skipped`. Full reaction snapshots report their outcome through the import timer                                                                                             |
 
 ## What to alarm on
 

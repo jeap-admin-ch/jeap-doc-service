@@ -810,46 +810,27 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
   - **Nothing is ever skipped.** A name that is not a slug is converted into one. The only things that stop an
     import are a name that yields no slug at all and two names that yield the same one, and both abandon the
     run rather than leaving something quietly out.
-- **The reactions are a second upstream under the same job**, off by default (`jeap.doc.reactions.enabled`)
-  because a platform may run no reaction observer at all. Three rules about them:
-  - **One observer per environment**, like the architecture repository, and read with a client-credentials
-    token and nothing else. The observer offers HTTP Basic; this service does not use it, and an environment
-    whose observer is too old to serve the replication indexes fails with a message saying so rather than
-    being read a slower way.
-  - **A graph is stored as it arrived.** The adapter validates a complete graph before storage; the domain
-    importer does not parse it. Drawing is decided during generation and must not need a re-import.
-  - **Names are resolved against the stored model before anything is compared**, aliases included, and what is
-    stored is the model's spelling with the observer's kept beside it. That is also why there is no orphan
-    sweep: a system that leaves the model stops being listed, so the prune takes its graph. A name the model
-    does not have is not stored, and is reported once per run with the names.
-  - **But the upstream is addressed by the upstream's spelling.** A reference reaching the adapter carries the
-    model's name, and the observer's answer is keyed by its own: a message type's resource answers every
-    variant at once under the keys the index carried, so it is `upstreamName` that picks one out. Addressing
-    it by the resolved name loses every graph of a type the two spell differently - silently, and for ever,
-    because the skips also stop the index tag from being trusted.
-  - **An environment with a reaction observer has to have an architecture repository.** These are steps of
-    that import, which runs the environments `jeap.doc.archrepo.environments` names, and a runtime view is
-    drawn onto the pages of a model - so a reaction environment that is not also an archrepo environment
-    fails the startup. The other way round is the ordinary case.
-  - **No reactions, no runtime view.** A system, component or message with no stored graph gets no chapter 6
-    at all rather than an empty page - and an empty graph counts as none. A node the observer sent without a
-    name counts as none of a node: it is dropped with the edges that led to it, because a label of null
-    further down is a whole part's build failing on one bad node.
-  - **What a graph is asked of decides what may be linked.** Whether a component has a runtime view is a
-    question about the *environment* and not about the system being written - a reaction on a system's graph
-    is regularly a component of another system, whose pages another pass writes - so it is answered from the
-    refs of the environment, read once per build, and not from the graphs handed to a template. **And from
-    the refs that draw something**: a stored graph is not a written page, so a ref carries the count of nodes
-    the adapter saw while storing it, and a graph of none is linked from nowhere.
-  - **A component's graph is addressed with its system**, in the unique index, in the identity the step
-    compares and in every lookup. `ArchitectureModel.systemsOf` says two systems may each call a component
-    `gateway`, and the observer's index says which system it saw one under - one row for both would store
-    whichever came last and draw it on both pages. The kinds that are no component's carry `""`, never null,
-    for the reason the variant does: a unique index does not constrain nulls.
-  - **The model is indexed once per environment, not walked per node.** A graph names its nodes and nothing
-    else, so every node is a lookup, and a landscape has a graph per system, per component and per message
-    variant - `ReactionModelIndex` is built once and handed to every view, because the product of those two
-    numbers is what a build pays otherwise.
+- **The reactions are a second upstream under the same job**, off by default (`jeap.doc.reactions.enabled`).
+  - One observer per environment, using client credentials. A configured observer requires an architecture
+    repository for that environment. The only reaction import kind is `FULL_REACTIONS`.
+  - The adapter validates the complete snapshot before replacement. Unknown ownership is retained and
+    disclosed, never used to filter imported nodes or guessed from neighbours.
+  - `ReactionNetworkFiles` reads each environment snapshot once per part build and hands the same value to
+    `SystemPages`. JSON publication, chapter availability, variants, tables and navigation derive from that
+    snapshot. System parts derive pages but publish no additional copy of the JSON.
+  - `ObservedReactions` is the domain model: typed interfaces and reactions, separate triggers, actions and
+    predecessor relationships. Keep the `ObservedMessage` / `ObservedReaction` / `ObservedTrigger` /
+    `ObservedAction` vocabulary. The browser's nodes/edges format belongs to `ReactionGraphJson` in the
+    site generator, never to the domain or the observer's API DTOs.
+  - `ReactionDocumentation` indexes ownership, flow edges, message variants and documentation destinations
+    once per environment. REST destinations include only providers of the view's selected HTTP interfaces;
+    names shared by multiple components remain ambiguous even if only one exposes REST. Never embed the
+    whole landscape's REST catalog in every viewer. Components are identified by system and name; opaque
+    reaction/interface identities are never converted to numeric IDs. PREDECESSOR is not an execution edge.
+  - No observations means no reaction chapter/section. Superseded observations remain represented by the
+    viewer's hidden-content state; the table lists the initially visible reactions with exact daily medians.
+  - Retired subject graphs and their import state are removed by migration, never stitched into a complete
+    snapshot. Existing full snapshots retain their bytes, format and conditional tags.
 - **arc42 is CC BY-SA and the rest of this service is Apache-2.0.** The attribution is in `NOTICE`, in
   `jeap-doc-template-arc42`'s `README.md` and Javadoc, and **once in the generated site** at the foot of chapter
   1 of every system - not on every page. Keeping arc42 confined to its module is what keeps that a question
@@ -907,7 +888,17 @@ switch may invalidate old viewer links. Unknown or ambiguous ownership is disclo
 The full snapshot supports both APIs with the same domain and browser format. V2 identities use an
 `INTERFACE` namespace, independent of the representation's `nodeType`; retain unknown interface types and
 SUPERSEDED reactions, and never traverse PREDECESSOR as execution flow. V2 ownership is authoritative.
-The local stored envelope carries `sourceFormat`; for this nameless kind, `upstreamName` carries that format
+The local stored envelope carries `sourceFormat`; the stored `sourceFormat` (in the legacy `upstream_name` column) carries that format
 beside the ETag too. Never send a V1 tag to V2 or vice versa. Legacy unwrapped bytes and empty format mean V1.
 The API is fixed in `ReactionObserverUpstream`: change `FULL_GRAPH_PATH` and `FULL_GRAPH_FORMAT` together
 when adopting V2. This must not change how an already stored snapshot is read.
+
+
+## Reaction viewer
+
+`ReactionEntry` is inert entry metadata in a `reaction-view` fence. The CodeBlock theme renders only that
+known language as a React viewer; never turn it into raw MDX. Graph identity, grouping and projection live in
+`ReactionViewer/model.mjs`, separate from layout. Preserve opaque identity namespaces, system boundaries,
+unknown ownership and PREDECESSOR history. A missing median is an invalid snapshot, never zero. Deduplicate
+reaction contributions before summing bundles. Every instance uses the site's environment route and validates
+the JSON context. The viewer replaces the generated DOT reaction diagrams; the tables remain below it. Page selection, variants, tables and navigation metadata derive from the same full snapshot.

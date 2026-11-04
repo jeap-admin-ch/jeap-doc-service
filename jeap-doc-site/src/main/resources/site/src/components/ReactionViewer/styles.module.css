@@ -1,0 +1,36 @@
+.viewer { border: 1px solid var(--ifm-color-emphasis-300); border-radius: 10px; margin: 1.5rem 0; overflow: hidden; background: var(--ifm-background-color); }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--ifm-color-emphasis-200); }
+.caption { display: block; color: var(--ifm-color-emphasis-600); font-size: 0.8rem; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.actions button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 5px; background: var(--ifm-background-color); color: var(--ifm-font-color-base); cursor: pointer; padding: 6px; font: inherit; font-size: 1rem; width: 32px; height: 32px; }
+.actions button:hover { background: var(--ifm-color-emphasis-100); }
+.actions button:disabled { opacity: 0.45; cursor: default; }
+.actions button:focus-visible, .canvas:focus-visible { outline: 2px solid var(--ifm-color-primary); outline-offset: -2px; }
+.actions output { min-width: 3.3em; text-align: center; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.canvas { height: 620px; width: 100%; background-image: radial-gradient(var(--ifm-color-emphasis-200) 1px, transparent 1px); background-size: 20px 20px; }
+.graph { position: relative; }
+.coveredCanvas { visibility: hidden; }
+.minimap { position: absolute; left: 12px; bottom: 12px; z-index: 1; max-width: calc(100% - 24px); padding: 8px; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 6px; background: var(--ifm-background-color); box-shadow: 0 3px 12px #0003; }
+.minimapMap { position: relative; overflow: hidden; max-width: 100%; cursor: crosshair; touch-action: none; }
+.minimapMap:focus-visible { outline: 2px solid var(--ifm-color-primary); }
+.minimapMap img { display: block; width: 100%; height: 100%; pointer-events: none; user-select: none; }
+.minimapFrame { position: absolute; pointer-events: none; border: 2px solid var(--ifm-color-primary); background: #4a90d933; }
+.sourceView { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--ifm-background-color); }
+.sourceBar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.sourceBar button { padding: 5px 10px; font: inherit; font-size: 0.85rem; color: var(--ifm-font-color-base); background: var(--ifm-background-color); border: 1px solid var(--ifm-color-emphasis-300); border-radius: 4px; cursor: pointer; }
+.sourceView p { margin: 0; font-size: 0.8rem; }
+.sourceView textarea { flex: 1; min-height: 0; width: 100%; resize: none; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 4px; padding: 12px; font: 0.8rem var(--ifm-font-family-monospace); color: var(--ifm-font-color-base); background: var(--ifm-background-surface-color); white-space: pre; }
+.groupMenu { position: absolute; z-index: 2; min-width: 200px; max-width: calc(100% - 16px); padding: 6px; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 6px; background: var(--ifm-background-color); box-shadow: 0 4px 16px #0003; }
+.menuTitle { padding: 6px 10px; font-size: 0.85rem; font-weight: 600; overflow-wrap: anywhere; }
+.groupMenu a, .groupMenu button { text-decoration: none; display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 3px; background: transparent; color: var(--ifm-font-color-base); text-align: left; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.groupMenu a:hover, .groupMenu a:focus-visible, .groupMenu button:hover:not(:disabled), .groupMenu button:focus-visible { background: var(--ifm-color-emphasis-100); outline: 2px solid var(--ifm-color-primary); outline-offset: -2px; }
+.groupMenu button:disabled { color: var(--ifm-color-emphasis-500); cursor: default; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.75rem; color: var(--ifm-color-emphasis-700); padding: 12px 18px; border-top: 1px solid var(--ifm-color-emphasis-200); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { flex: none; }
+.tooltip { position: absolute; z-index: 3; pointer-events: none; white-space: pre-wrap; overflow-wrap: anywhere; max-width: min(360px, calc(100% - 16px)); max-height: calc(100% - 16px); overflow: hidden; padding: 8px 12px; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 5px; background: var(--ifm-background-color); color: var(--ifm-font-color-base); box-shadow: 0 3px 12px #0003; font-size: 0.85rem; }
+.viewer > p { margin: 12px 18px; }
+.viewer:fullscreen { border: 0; border-radius: 0; display: flex; flex-direction: column; overflow: auto; }
+.viewer:fullscreen .graph { flex: 1; min-height: 350px; display: flex; }
+.viewer:fullscreen .canvas { height: auto; min-height: 350px; }
+@media (max-width: 600px) { .canvas { height: 480px; } .toolbar { padding: 12px; } }

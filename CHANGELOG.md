@@ -7,12 +7,55 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Resolve static analysis findings in page generation and reaction snapshot handling, including nullable
+  system contexts and backtracking when trimming upstream URLs.
+- Wait for refreshed search results in the browser test that resets the search filters.
+- Limit reaction-viewer REST navigation metadata to providers in that view. Index provider destinations once
+  per environment so unrelated REST providers do not change other systems' reaction pages.
+- Attach reaction arrows to the left and right box borders. Always include REST in the legend and use
+  the capsule symbol from the original viewer specification for HTTP operations.
+- Draw a separate trigger arrow to each expanded reaction, bundling only hidden reactions at their group.
+  Collapse message-entry groups consistently and omit unused generic interfaces from the diagram's legend.
+- Honor both `-DskipTests` and `-Dmaven.test.skip=true` for the JavaScript model tests.
+- Reject multiple triggers of one reaction in V1 and V2 full snapshots before storage, preserving the last
+  usable snapshot instead of publishing data the viewer cannot process.
+
+### Changed
+- Evolve `ObservedReactions` with typed messages, HTTP operations and generic interfaces, enriched
+  `ObservedReaction` records and separate trigger, action and predecessor relationships. Keep the browser
+  graph format in the site generator.
+- Use the complete reaction snapshot for chapter availability, message variants, tables and documentation
+  links as well as the viewer. Preserve system-qualified component identities and decimal daily medians.
+- Retire the three subject reaction imports and their API/index handling. Migrate their stored rows and
+  import states away while preserving existing full snapshots and conditional tags.
+
 ### Added
+- Add a navigable minimap and copyable JSON source for the displayed reaction graph, preserving each
+  viewer's state and supporting full screen, keyboard navigation and manual copying without clipboard access.
+- Link event, command and REST context menus to their generated documentation pages. Show arrow frequencies
+  in hover tooltips; nodes and groups have no tooltips or detail text below the diagram on click.
+- Add “Zur Komponenten-Dokumentation” to group menus for available component runtime pages,
+  preserving the current site and environment and omitting self-links.
+- Replace the global reaction-group toggle with a context menu per group. Support independent collapse/reveal,
+  keyboard access and preserved zoom/pan; keep other groups and viewers unchanged.
+- Mark nodes belonging to documented foreign systems with a blue border and a legend entry. Publish
+  unambiguous message-to-system assignments and show only component names in reaction group titles.
+- Match the original reaction diagram labels: bracketed variants, shortened message and component names,
+  reaction IDs inside groups and group titles inside their frames. Draw matching legend symbols and colours.
+- Open reaction groups by default, keep the legend visible and reuse the existing diagram icons for controls.
+  Keep the existing table as the textual representation, without additional node and edge lists. Use the
+  same Shipping observations for all system, component and message views.
+- Improve reaction graph readability with a navigable viewport, zoom, fit, full screen and group expansion.
+  The local browser fixture covers all three entry views from one full snapshot.
+- Embed a React/Cytoscape-Dagre reaction viewer on system, component and message reaction pages, with
+  stable groups, collapsed and individual edges, daily-median widths and hidden-content counts.
+  Replace the old generated DOT diagrams and keep the tables. Loading failures leave the documentation usable.
 - Import and validate complete reaction snapshots per environment, using V1 with the model and stored-content reader prepared for V2.
   Keep the last valid snapshot on failure and isolate conditional tags when switching API versions.
 - Publish site-scoped reaction graph JSON through the shell, with opaque identities, daily medians and explicit
   ownership coverage. The model also carries HTTP and generic interfaces, reaction status, model version,
-  unidentified-action ratio and predecessor relationships. The interactive viewer follows separately.
+  unidentified-action ratio and predecessor relationships. The browser viewer uses this published snapshot.
 
 ## [4.4.0] - 2026-11-03
 

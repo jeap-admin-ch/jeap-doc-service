@@ -6,9 +6,6 @@ import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUnavailableException;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelUpstream;
-import ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionGraphRef;
-import ch.admin.bit.jeap.doc.domain.port.Fetched;
-import ch.admin.bit.jeap.doc.domain.port.GraphFetch;
 import ch.admin.bit.jeap.doc.domain.port.ReactionGraphUpstream;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemTopology;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
@@ -212,7 +209,7 @@ class MicrometerArchitectureImportMetricsTest {
 
         assertThat(tagValuesOf("jeap.doc.architecture.import", "kind"))
                 .containsExactlyInAnyOrder("model", "openapi_spec", "database_schema", "message_schema",
-                        "system_reactions", "component_reactions", "message_reactions", "full_reactions");
+                        "full_reactions");
         assertThat(tagValuesOf("jeap.doc.architecture.import", "result"))
                 .contains("replaced", "unchanged", "partial", "failed");
     }
@@ -229,7 +226,7 @@ class MicrometerArchitectureImportMetricsTest {
         metrics.bindTo(registry);
 
         assertThat(tagValuesOf("jeap.doc.architecture.import.last.success.age", "kind"))
-                .doesNotContain("system_reactions", "component_reactions", "message_reactions", "full_reactions");
+                .doesNotContain("full_reactions");
     }
 
     /** And where one is, the reaction kinds report before they have run, like every other kind. */
@@ -247,10 +244,10 @@ class MicrometerArchitectureImportMetricsTest {
                 .tag("environment", "prod").tag("kind", "full_reactions").gauges()).isEmpty();
 
         assertThat(registry.find("jeap.doc.architecture.import.last.success.age")
-                .tag("environment", "dev").tag("kind", "system_reactions").gauge().value())
+                .tag("environment", "dev").tag("kind", "full_reactions").gauge().value())
                 .describedAs("never imported reads NaN, not zero").isNaN();
         assertThat(registry.find("jeap.doc.architecture.import.last.success.age")
-                .tag("environment", "prod").tag("kind", "system_reactions").gauges())
+                .tag("environment", "prod").tag("kind", "full_reactions").gauges())
                 .describedAs("prod has no observer configured").isEmpty();
     }
 
@@ -269,17 +266,6 @@ class MicrometerArchitectureImportMetricsTest {
                 return configured.contains(environment);
             }
 
-            @Override
-            public Optional<Fetched<List<ReactionGraphRef>>> index(String environment,
-                                                                   ArchitectureImportKind kind,
-                                                                   String knownIndexEtag) {
-                throw new UnsupportedOperationException("This test binds meters and fetches nothing.");
-            }
-
-            @Override
-            public GraphFetch content(String environment, ReactionGraphRef ref, String knownEtag) {
-                throw new UnsupportedOperationException("This test binds meters and fetches nothing.");
-            }
         };
     }
 

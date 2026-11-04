@@ -124,8 +124,7 @@ class SystemPagesTest {
         GeneratorProperties properties = new GeneratorProperties();
         properties.setViewExcludedComponents(List.of("orders-mock"));
         SystemPages pages = new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE,
-                NoReactions.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE,
                 new CustomProperties(), new StructureTemplates(List.of(template)), properties,
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null);
 
@@ -148,8 +147,7 @@ class SystemPagesTest {
         entry.setPath("/api/dbschemas");
         properties.setViewExcludedRelations(List.of(entry));
         SystemPages pages = new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE,
-                NoReactions.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE,
+                NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE,
                 new CustomProperties(), new StructureTemplates(List.of(template)), properties,
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null);
 
@@ -279,8 +277,7 @@ class SystemPagesTest {
         RecordingTemplate template = new RecordingTemplate();
         RecordingSchemas schemas = new RecordingSchemas();
         new SystemPages(new OneSystem(), schemas, NoArchitectureArtifacts.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
-                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
+                NoArchitectureArtifacts.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
@@ -296,24 +293,32 @@ class SystemPagesTest {
                 }));
     }
 
-    /**
-     * <b>Three reads for the environment, whatever it carries.</b> Whether a landscape has any reaction graph
-     * at all is the same answer for every system of it, and most landscapes run no reaction observer - asked
-     * once per system it is three full index queries per system, on every build, all answering nothing.
-     */
     @Test
-    void write_thenWhetherTheEnvironmentHasReactionsIsAskedOncePerEnvironment() throws IOException {
-        CountingReactions reactions = new CountingReactions();
-        new SystemPages(new TwoSystems(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, reactions, reactions,
-                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
-                new StructureTemplates(List.of(new RecordingTemplate())),
-                new GeneratorProperties(), new ArchitectureImportProperties(),
-                BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+    void fullSnapshotAloneSuppliesReactionPagesTablesAndImportTime() throws IOException {
+        var template = new RecordingTemplate();
+        var event = new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.ObservedMessage(
+                new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.Identity("MESSAGE", "opaque:event"),
+                "OrdersPaidEvent", "express");
+        var reaction = new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.ObservedReaction(
+                new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.Identity("REACTION", "opaque:reaction"),
+                "orders-intake", new java.math.BigDecimal("1.5"));
+        var graph = new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions(List.of(event), List.of(reaction), List.of(
+                new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.ObservedTrigger(event.identity(), reaction.identity())), List.of());
+        var importedAt = GENERATED_AT.minusSeconds(1234);
+        var snapshot = new ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions(graph, importedAt, List.of(
+                new ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions.Ownership(reaction.identity(), "ORDERS", "orders-intake")), List.of(), true);
 
-        assertThat(reactions.refsAsked)
-                .describedAs("one read per reaction kind, not per system")
-                .isEqualTo(3);
+        pagesWith(template).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT, Optional.of(snapshot));
+
+        var reactions = template.context.reactions();
+        assertThat(reactions.importedAt()).isEqualTo(importedAt);
+        assertThat(reactions.hasReactionsOfTheSystem()).isTrue();
+        assertThat(reactions.ofComponent("orders-intake").rows()).singleElement().satisfies(row -> {
+            assertThat(row.reaction()).isEqualTo(reaction.identity());
+            assertThat(row.median()).isEqualByComparingTo("1.5");
+        });
+        assertThat(reactions.ofMessage("OrdersPaidEvent")).singleElement()
+                .satisfies(variant -> assertThat(variant.variant()).isEqualTo("express"));
     }
 
     /** A version nothing was replicated for is left exactly as the model had it. */
@@ -321,8 +326,7 @@ class SystemPagesTest {
     void write_whenNothingWasReplicated_thenTheVersionsAreLeftAsTheyAre() throws IOException {
         RecordingTemplate template = new RecordingTemplate();
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
-                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
+                NoArchitectureArtifacts.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
@@ -350,7 +354,6 @@ class SystemPagesTest {
         RecordingArtifacts artifacts = new RecordingArtifacts();
 
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, artifacts, artifacts,
-                NoReactions.INSTANCE, NoReactions.INSTANCE,
                 new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null)
@@ -398,7 +401,6 @@ class SystemPagesTest {
         unreadable.readable = false;
 
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, unreadable, unreadable,
-                NoReactions.INSTANCE, NoReactions.INSTANCE,
                 new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null)
@@ -422,7 +424,6 @@ class SystemPagesTest {
         other.stored = "orders-risk";
 
         new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, other, other,
-                NoReactions.INSTANCE, NoReactions.INSTANCE,
                 new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ArchitectureImportProperties(), BuildMetrics.NONE, null)
@@ -441,8 +442,7 @@ class SystemPagesTest {
     /** The same, with one system documented that the architecture model does not hold. */
     private SystemPages pagesWithDocumented(StructureTemplate template, String slug) {
         return new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
-                new OneDocumentedSystem(slug), NoCustomStorage.INSTANCE, new CustomProperties(),
+                NoArchitectureArtifacts.INSTANCE, new OneDocumentedSystem(slug), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null);
@@ -450,8 +450,7 @@ class SystemPagesTest {
 
     private SystemPages pagesWith(StructureTemplate template) {
         return new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
-                NoArchitectureArtifacts.INSTANCE, NoReactions.INSTANCE, NoReactions.INSTANCE,
-                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
+                NoArchitectureArtifacts.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
                 BuildMetrics.NONE, null);
@@ -537,20 +536,6 @@ class SystemPagesTest {
                                     .of("1.0.0")),
                             List.of()))))),
                     CONTENT_IMPORTED_AT);
-        }
-    }
-
-    /** An environment with no reaction graph, counting how often it was asked. */
-    private static final class CountingReactions extends NoReactions {
-
-        private int refsAsked;
-
-        @Override
-        public List<ch.admin.bit.jeap.doc.domain.architecture.imports.ReactionGraphRef> findRefs(
-                String environment,
-                ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind) {
-            refsAsked++;
-            return super.findRefs(environment, kind);
         }
     }
 

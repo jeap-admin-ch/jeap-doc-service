@@ -28,7 +28,7 @@ public final class MarkdownWriter {
      * The Docusaurus front matter, which has to be the very first thing on the page.
      */
     public MarkdownWriter frontMatter(FrontMatter frontMatter) {
-        if (page.length() > 0) {
+        if (!page.isEmpty()) {
             throw new IllegalStateException(
                     "The front matter has to be the first thing on a page, and something is already written.");
         }
@@ -129,6 +129,11 @@ public final class MarkdownWriter {
             table.append(row(cells, NOT_KNOWN));
         }
         return block(table.substring(0, table.length() - 1));
+    }
+
+    /** A browser viewer entry, encoded as inert text rather than executable MDX. */
+    public MarkdownWriter reactionViewer(ReactionEntry entry) {
+        return fence("reaction-view", entry.encoded());
     }
 
     /**
@@ -257,10 +262,10 @@ public final class MarkdownWriter {
     }
 
     private MarkdownWriter block(String content) {
-        if (page.length() > 0 && page.charAt(page.length() - 1) != '\n') {
+        if (!page.isEmpty() && page.charAt(page.length() - 1) != '\n') {
             page.append('\n');
         }
-        if (page.length() > 0) {
+        if (!page.isEmpty()) {
             page.append('\n');
         }
         page.append(content).append('\n');

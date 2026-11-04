@@ -9,10 +9,10 @@ import ch.admin.bit.jeap.doc.domain.architecture.MessageContract;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
-import ch.admin.bit.jeap.doc.domain.template.ReactionIds;
 import ch.admin.bit.jeap.doc.domain.template.ReactionViews;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
+import ch.admin.bit.jeap.doc.markdown.ReactionEntry;
 import ch.admin.bit.jeap.doc.markdown.Md;
 
 import java.io.IOException;
@@ -88,15 +88,14 @@ final class Arc42MessagePages {
                         Md.text(kind.plural().toLowerCase(Locale.ROOT)),
                         Md.code(system.name())));
 
-        List<List<Markdown>> rows = new ArrayList<>();
-        for (DocumentedMessage message : messages) {
-            rows.add(List.of(
+        List<List<Markdown>> rows = messages.stream()
+                .map(message -> List.of(
                     Md.link(DocumentationPaths.page(system.slug(), Arc42Template.SYSTEM_SEGMENT,
                             BUILDING_BLOCK_VIEW, group, message.slug()), message.name()),
                     componentsOf(message.producers(), context.model()),
                     componentsOf(message.consumers(), context.model()),
-                    Md.text(message.description())));
-        }
+                    Md.text(message.description())))
+                .toList();
         page.table(List.of(kind.label(), kind.producerRole(), kind.consumerRole(), "Description"), rows);
         Arc42Pages.write(directory, Arc42Pages.INDEX, page);
     }
@@ -227,18 +226,15 @@ final class Arc42MessagePages {
         page.heading(2, "Reactions");
         page.paragraph(Md.sentence("What was observed reacting to {} at runtime, and what those reactions "
                                    + "published in answer.", Md.code(message.name())));
-        // A prefix per diagram, derived from the variant rather than counted, so that a graph on another
-        // page can address a node on this one - see ReactionIds.
-        List<String> prefixes = ReactionIds.prefixesOf(
-                variants.stream().map(ReactionViews.VariantView::variant).toList());
-        for (int index = 0; index < variants.size(); index++) {
-            ReactionViews.VariantView variant = variants.get(index);
+        for (ReactionViews.VariantView variant : variants) {
             if (variant.hasVariant()) {
                 // A variant is a graph of its own upstream, so it is a heading of its own here: two diagrams
                 // with no way to tell which is which would be worse than one.
                 page.heading(3, "Variant " + variant.variant());
             }
-            Arc42ReactionPages.write(page, variant.view(), context, null, prefixes.get(index));
+            Arc42ReactionPages.writeViewer(page, new ReactionEntry(ReactionEntry.Kind.MESSAGE, null, null, message.name(), variant.variant()),
+                    variant.view(), context, null);
+            Arc42ReactionPages.writeTableAndProvenance(page, variant.view(), context);
         }
     }
 

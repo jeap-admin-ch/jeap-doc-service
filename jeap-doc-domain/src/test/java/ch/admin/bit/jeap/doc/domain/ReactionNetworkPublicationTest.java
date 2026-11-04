@@ -24,11 +24,11 @@ class ReactionNetworkPublicationTest {
     @Test
     void resolvesOnlyUnambiguousOwnersWithoutRemovingUnknownReactions() {
         byte[] data = {1};
-        var node = new ReactionNetwork.Node(new ReactionNetwork.Identity("REACTION", "123"), null, null, "gateway", BigDecimal.ZERO);
-        var network = new ReactionNetwork(List.of(node), List.of());
+        var node = new ObservedReactions.ObservedReaction(new ObservedReactions.Identity("REACTION", "123"), "gateway", BigDecimal.ZERO);
+        var network = new ObservedReactions(List.of(), List.of(node), List.of(), List.of());
         when(upstream.isConfiguredFor("dev")).thenReturn(true);
-        when(graphs.find("dev", ArchitectureImportKind.FULL_REACTIONS, "", "", "")).thenReturn(Optional.of(
-                new StoredReactionGraph("dev", ArchitectureImportKind.FULL_REACTIONS, "", "", "", "", "tag", "fp", data, 1, Instant.EPOCH)));
+        when(graphs.find("dev")).thenReturn(Optional.of(
+                new StoredReactionGraph("dev", "", "tag", "fp", data, 1, Instant.EPOCH)));
         when(content.readFull(data)).thenReturn(network);
         DocumentedComponent component = mock(DocumentedComponent.class);
         when(component.name()).thenReturn("Gateway");
@@ -37,12 +37,12 @@ class ReactionNetworkPublicationTest {
         when(models.read("dev")).thenReturn(new ArchitectureSnapshot(new ArchitectureModel(List.of(orders)), Instant.EPOCH));
         var unique = publication.read("dev").orElseThrow();
         assertThat(unique.ownershipComplete()).isTrue();
-        assertThat(unique.ownership()).containsExactly(new PublishedReactionNetwork.Ownership(node.identity(), "Orders", "Gateway"));
+        assertThat(unique.ownership()).containsExactly(new PublishedReactions.Ownership(node.identity(), "Orders", "Gateway"));
         when(models.read("dev")).thenReturn(new ArchitectureSnapshot(new ArchitectureModel(List.of(orders, shipping)), Instant.EPOCH));
         var ambiguous = publication.read("dev").orElseThrow();
         assertThat(ambiguous.ownershipComplete()).isFalse();
         assertThat(ambiguous.ownership()).isEmpty();
-        assertThat(ambiguous.graph()).isEqualTo(network);
+        assertThat(ambiguous.observations()).isEqualTo(network);
         when(models.read("dev")).thenReturn(ArchitectureSnapshot.empty());
         assertThat(publication.read("dev").orElseThrow().ownershipComplete()).isFalse();
     }
@@ -50,22 +50,51 @@ class ReactionNetworkPublicationTest {
     @Test
     void v2OwnershipComesFromTheObserverAndMissingOwnersStayUnknown() {
         byte[] data = {2};
-        var owned = new ReactionNetwork.Node(new ReactionNetwork.Identity("REACTION", "R1"), "REACTION", null,
-                new ReactionNetwork.ReactionDetails("observer-system", "gateway", BigDecimal.ZERO,
-                        ReactionNetwork.ReactionStatus.ACTIVE, 2, BigDecimal.ZERO, null));
-        var unknown = new ReactionNetwork.Node(new ReactionNetwork.Identity("REACTION", "R2"), "REACTION", null,
-                new ReactionNetwork.ReactionDetails(null, "gateway", BigDecimal.ONE,
-                        ReactionNetwork.ReactionStatus.SUPERSEDED, 1, BigDecimal.ONE, null));
-        var network = new ReactionNetwork("observer-v2", List.of(owned, unknown), List.of());
+        var owned = new ObservedReactions.ObservedReaction(new ObservedReactions.Identity("REACTION", "R1"), "observer-system", "gateway", BigDecimal.ZERO,
+                        ObservedReactions.ReactionStatus.ACTIVE, 2, BigDecimal.ZERO, null);
+        var unknown = new ObservedReactions.ObservedReaction(new ObservedReactions.Identity("REACTION", "R2"), null, "gateway", BigDecimal.ONE,
+                        ObservedReactions.ReactionStatus.SUPERSEDED, 1, BigDecimal.ONE, null);
+        var network = new ObservedReactions("observer-v2", List.of(), List.of(owned, unknown), List.of(), List.of(), List.of());
         when(upstream.isConfiguredFor("dev")).thenReturn(true);
-        when(graphs.find("dev", ArchitectureImportKind.FULL_REACTIONS, "", "", "")).thenReturn(Optional.of(
-                new StoredReactionGraph("dev", ArchitectureImportKind.FULL_REACTIONS, "", "", "", "observer-v2", "tag", "fp", data, 2, Instant.EPOCH)));
+        when(graphs.find("dev")).thenReturn(Optional.of(
+                new StoredReactionGraph("dev", "observer-v2", "tag", "fp", data, 2, Instant.EPOCH)));
         when(content.readFull(data)).thenReturn(network);
         var published = publication.read("dev").orElseThrow();
-        assertThat(published.ownership()).containsExactly(new PublishedReactionNetwork.Ownership(owned.identity(), "observer-system", "gateway"));
+        assertThat(published.ownership()).containsExactly(new PublishedReactions.Ownership(owned.identity(), "observer-system", "gateway"));
         assertThat(published.ownershipComplete()).isFalse();
-        assertThat(published.graph()).isEqualTo(network);
+        assertThat(published.observations()).isEqualTo(network);
         verifyNoInteractions(models);
+    }
+
+    @Test
+    void publishesOnlyUnambiguousDocumentedMessageSystemsForBothGraphVersions() {
+        byte[] data = {3};
+        var known = new ObservedReactions.ObservedMessage(new ObservedReactions.Identity("MESSAGE", "1"), "OrderAcceptedEvent", "");
+        var variant = new ObservedReactions.ObservedMessage(new ObservedReactions.Identity("MESSAGE", "2"), "OrderAcceptedEvent", "express");
+        var ambiguous = new ObservedReactions.ObservedMessage(new ObservedReactions.Identity("MESSAGE", "3"), "SharedEvent", "");
+        var unknown = new ObservedReactions.ObservedMessage(new ObservedReactions.Identity("MESSAGE", "4"), "UnknownEvent", "");
+        var orderMessage = mock(DocumentedMessage.class);
+        when(orderMessage.name()).thenReturn("orderacceptedevent");
+        var sharedMessage = mock(DocumentedMessage.class);
+        when(sharedMessage.name()).thenReturn("SharedEvent");
+        var orders = mock(DocumentedSystem.class);
+        when(orders.name()).thenReturn("Orders");
+        when(orders.messages()).thenReturn(List.of(orderMessage, sharedMessage));
+        var billing = mock(DocumentedSystem.class);
+        when(billing.name()).thenReturn("Billing");
+        when(billing.messages()).thenReturn(List.of(sharedMessage));
+        when(models.read("dev")).thenReturn(new ArchitectureSnapshot(new ArchitectureModel(List.of(orders, billing)), Instant.EPOCH));
+        when(upstream.isConfiguredFor("dev")).thenReturn(true);
+        when(graphs.find("dev")).thenReturn(Optional.of(
+                new StoredReactionGraph("dev", "", "tag", "fp", data, 4, Instant.EPOCH)));
+        for (String scheme : List.of("observer-v1", "observer-v2")) {
+            var network = new ObservedReactions(scheme, List.of(known, variant, ambiguous, unknown), List.of(), List.of(), List.of(), List.of());
+            when(content.readFull(data)).thenReturn(network);
+            var published = publication.read("dev").orElseThrow();
+            assertThat(published.messageOwnership()).containsExactly(
+                    new PublishedReactions.MessageOwnership("orderacceptedevent", "Orders"));
+            assertThat(published.observations()).isEqualTo(network);
+        }
     }
 
     @Test

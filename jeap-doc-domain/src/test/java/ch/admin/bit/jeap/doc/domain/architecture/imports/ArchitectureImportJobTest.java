@@ -445,7 +445,7 @@ class ArchitectureImportJobTest {
             case DATABASE_SCHEMA -> databaseSchema;
             // This test registers three steps and is about the order they run in, not about every kind there
             // is. A kind added later joins it by being registered here, not by being defaulted over.
-            case MESSAGE_SCHEMA, SYSTEM_REACTIONS, COMPONENT_REACTIONS, MESSAGE_REACTIONS, FULL_REACTIONS ->
+            case MESSAGE_SCHEMA, FULL_REACTIONS ->
                     throw new IllegalArgumentException("This test registers no " + kind + ".");
         };
     }

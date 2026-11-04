@@ -33,6 +33,30 @@
                 </excludes>
             </resource>
         </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <!-- This module packages the template; only its dependency-free model tests run here. -->
+                    <execution>
+                        <id>install-site-dependencies</id>
+                        <configuration><skip>true</skip></configuration>
+                    </execution>
+                    <execution>
+                        <id>test-reaction-view-model</id>
+                        <phase>test</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <!-- Covers both skipTests and maven.test.skip through the parent profile. -->
+                            <skip>${skipSiteInstall}</skip>
+                            <executable>node</executable>
+                            <arguments><argument>src/test/js/reaction-viewer.test.mjs</argument></arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 
 </project>

@@ -4,7 +4,6 @@ import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
 import ch.admin.bit.jeap.doc.domain.architecture.ContractRole;
-import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
@@ -827,7 +826,7 @@ class Arc42SystemTreeTest {
     @Test
     void theRuntimeView_whenTheGraphIsEmpty_thenTheChapterIsNotWritten() throws IOException {
         context = context.withReactions(ReactionViews.of(REACTIONS_IMPORTED_AT, ReactionView.empty(),
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of()));
 
         generate();
 
@@ -843,8 +842,7 @@ class Arc42SystemTreeTest {
         String page = read("system-architecture/6-runtime-view/system-reactions.md");
         assertThat(page)
                 .contains("# System Reactions")
-                .describedAs("the fence the site's diagram plugin renders").contains("```dot")
-                .contains("digraph \"reactions\"")
+                .contains("```reaction-view")
                 // The table is the complete list and the searchable one.
                 .contains("| Trigger | Component | Action | Median per day |")
                 .contains("`orders-intake`")
@@ -856,26 +854,19 @@ class Arc42SystemTreeTest {
         assertThat(read("system-architecture/index.md")).contains("Runtime View");
     }
 
-    /**
-     * <b>Every node carries an explicit id, and a reaction links into the component's own runtime view</b>,
-     * focused on the same reaction. The plugin resolves a deep link by SVG id first, so a link never lands on
-     * a node that merely happens to contain the same text.
-     */
     @Test
-    void theRuntimeView_thenEveryNodeCarriesAnIdAndALinkWhereThereIsAPage() throws IOException {
+    void theRuntimeView_linksToAvailableComponentDocumentationInTheCurrentEnvironment() throws IOException {
         context = context.withReactions(reactionsOfOrders());
 
         generate();
 
-        assertThat(read("system-architecture/6-runtime-view/system-reactions.md"))
-                .contains("\"REACTION-2\" [id=\"REACTION-2\"")
-                .contains("\"MESSAGE-1\" [id=\"MESSAGE-1\"")
-                .describedAs("the link carries the environment prefix, because nothing rewrites a fence")
-                // The route, not the path: the chapter numbers are on disk and Docusaurus serves without
-                // them, which is what DocumentationPaths writes.
-                .contains("URL=\"/docs/dev/systems/orders/system-architecture/building-block-view/"
-                          + "components/orders-intake/component-architecture/runtime-view/"
-                          + "component-reactions/#graph?highlight-node=REACTION-2\"");
+        String page = java.net.URLDecoder.decode(java.net.URLDecoder.decode(
+                read("system-architecture/6-runtime-view/system-reactions.md"), java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(page).contains("kind=SYSTEM&system=orders")
+                .contains("href=/docs/dev/systems/orders/system-architecture/building-block-view/"
+                        + "components/orders-intake/component-architecture/runtime-view/component-reactions/")
+                .doesNotContain("#graph?highlight-node=");
     }
 
     /** A message page is where a message's own reaction graph is drawn, and it names its own source there. */
@@ -887,7 +878,7 @@ class Arc42SystemTreeTest {
 
         assertThat(read("system-architecture/5-building-block-view/events/orders-payment-accepted-event.md"))
                 .contains("## Reactions")
-                .contains("```dot")
+                .contains("```reaction-view")
                 .contains("Observed at runtime by the reaction observer");
     }
 
@@ -903,42 +894,36 @@ class Arc42SystemTreeTest {
     /** Two variants of one message type are two graphs upstream, and two diagrams under two headings here. */
     @Test
     void aMessagePage_whenTheTypeHasVariants_thenEachIsItsOwnDiagram() throws IOException {
-        ReactionView view = ReactionView.of(observedReactions(), context.model(), orders);
+        ReactionView view = ReactionTestViews.orders();
         context = context.withReactions(ReactionViews.of(REACTIONS_IMPORTED_AT, ReactionView.empty(),
                 Map.of(), Map.of("OrdersPaymentAcceptedEvent",
                         List.of(new ReactionViews.VariantView("", view),
-                                new ReactionViews.VariantView("legacy", view))), Set.of()));
+                                new ReactionViews.VariantView("legacy", view)))));
 
         generate();
 
         assertThat(read("system-architecture/5-building-block-view/events/orders-payment-accepted-event.md"))
                 .contains("### Variant legacy")
-                .containsPattern("(?s)```dot.*```dot")
-                // A node id becomes a DOM id, so the two diagrams of one page name their nodes apart - a
-                // deep link into an id the page carries twice lands on whichever comes first. The prefix is
-                // the variant's own, so that a graph on another page can address a node on this one.
-                .contains("\"REACTION-2\" [id=\"REACTION-2\"")
-                .contains("\"legacy-REACTION-2\" [id=\"legacy-REACTION-2\"");
+                .containsPattern("(?s)```reaction-view.*```reaction-view")
+                .contains("message=OrdersPaymentAcceptedEvent&variant=&")
+                .contains("message=OrdersPaymentAcceptedEvent&variant=legacy&")
+                .doesNotContain("```dot");
     }
 
-    /**
-     * Two variants that slug alike are a corner case a reader could not tell apart either. The first diagram
-     * keeps the slug, the next takes an ordinal infix, and the page still carries no id twice - a link from
-     * elsewhere addresses the bare slug and so reaches the first.
-     */
+    /** Similar variant names remain distinct entry values. */
     @Test
-    void aMessagePage_whenTwoVariantsSlugAlike_thenTheFirstKeepsTheSlug() throws IOException {
-        ReactionView view = ReactionView.of(observedReactions(), context.model(), orders);
+    void aMessagePage_whenTwoVariantsSlugAlike_thenTheirEntryValuesRemainDistinct() throws IOException {
+        ReactionView view = ReactionTestViews.orders();
         context = context.withReactions(ReactionViews.of(REACTIONS_IMPORTED_AT, ReactionView.empty(),
                 Map.of(), Map.of("OrdersPaymentAcceptedEvent",
                         List.of(new ReactionViews.VariantView("a_b", view),
-                                new ReactionViews.VariantView("a-b", view))), Set.of()));
+                                new ReactionViews.VariantView("a-b", view)))));
 
         generate();
 
         assertThat(read("system-architecture/5-building-block-view/events/orders-payment-accepted-event.md"))
-                .contains("\"a-b-REACTION-2\" [id=\"a-b-REACTION-2\"")
-                .contains("\"a-b-2-REACTION-2\" [id=\"a-b-2-REACTION-2\"");
+                .contains("message=OrdersPaymentAcceptedEvent&variant=a_b&")
+                .contains("message=OrdersPaymentAcceptedEvent&variant=a-b&");
     }
 
     /**
@@ -946,22 +931,11 @@ class Arc42SystemTreeTest {
      * as the graph of the message that triggered it.
      */
     private ReactionViews reactionsOfOrders() {
-        ReactionView view = ReactionView.of(observedReactions(), context.model(), orders);
+        ReactionView view = ReactionTestViews.orders();
         // The component's own view is part of it, as it is in a real run: a reaction is only a link where
         // this run wrote the page it would point at.
         return ReactionViews.of(REACTIONS_IMPORTED_AT, view, Map.of("orders-intake", view),
-                Map.of("OrdersPaymentAcceptedEvent", List.of(new ReactionViews.VariantView("", view))),
-                Set.of("orders-intake"));
-    }
-
-    private static ObservedReactions observedReactions() {
-        return new ObservedReactions(
-                List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
-                // The second reaction is one no message triggered - a timer, say - which the observer counts
-                // like any other and can only report on the node itself.
-                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake", null),
-                        new ObservedReactions.ObservedReaction(3, "orders-intake", 9252)),
-                List.of(new ObservedReactions.ObservedTrigger(1, 2, 12)), List.of());
+                Map.of("OrdersPaymentAcceptedEvent", List.of(new ReactionViews.VariantView("", view))));
     }
 
     /**
@@ -1101,13 +1075,6 @@ class Arc42SystemTreeTest {
                 .contains("doc_generated_at_display: \"" + DisplayTime.of(GENERATED_AT) + "\"");
     }
 
-    /**
-     * One version as a run joins it in, with both schemas and a compatibility statement.
-     * <p>
-     * Everything about it carries the version, so two of them are told apart on the page: a test that asserted
-     * one version's row and section would otherwise pass on a page that wrote one section, or the same one
-     * twice.
-     */
     /**
      * <b>What jeap-doc-markdown exists for, asserted on a written page.</b>
      * <p>

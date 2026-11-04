@@ -88,14 +88,14 @@ public class MicrometerArchitectureImportMetrics implements ArchitectureImportMe
      * Whether this instance imports that kind for that environment at all.
      * <p>
      * The reactions are the only kind that can be switched off, and a gauge for a kind nothing imports would
-     * read NaN for ever - which is exactly what the documented alert fires on. So the three reaction kinds are
+     * read NaN for ever - which is exactly what the documented alert fires on. So the full reaction snapshot is
      * bound where a reaction observer is configured and nowhere else. A row that exists is still bound below,
      * so an environment whose observer has been taken away goes on being reported.
      */
     private boolean isImported(ArchitectureImportKind kind, String environment) {
         return switch (kind) {
             case MODEL, OPENAPI_SPEC, DATABASE_SCHEMA, MESSAGE_SCHEMA -> true;
-            case SYSTEM_REACTIONS, COMPONENT_REACTIONS, MESSAGE_REACTIONS, FULL_REACTIONS -> {
+            case FULL_REACTIONS -> {
                 ReactionGraphUpstream observer = reactions.getIfUnique();
                 yield observer != null && observer.isConfiguredFor(environment);
             }

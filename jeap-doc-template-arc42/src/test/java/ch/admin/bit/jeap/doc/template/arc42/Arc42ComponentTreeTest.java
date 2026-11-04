@@ -10,7 +10,6 @@ import ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchemaReference;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
-import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageContract;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
@@ -109,13 +108,8 @@ class Arc42ComponentTreeTest {
 
     /** One message triggering one reaction of this component, as its own graph. */
     private ReactionViews reactionsOfIntake() {
-        ObservedReactions observed = new ObservedReactions(
-                List.of(new ObservedReactions.ObservedMessage(1, "OrdersPaymentAcceptedEvent", null)),
-                List.of(new ObservedReactions.ObservedReaction(2, "orders-intake", null)),
-                List.of(new ObservedReactions.ObservedTrigger(1, 2, 12)), List.of());
         return ReactionViews.of(REACTIONS_IMPORTED_AT, ReactionView.empty(),
-                Map.of("orders-intake", ReactionView.of(observed, context.model(), orders)), Map.of(),
-                Set.of("orders-intake"));
+                Map.of("orders-intake", ReactionTestViews.orders()), Map.of());
     }
 
     private void generate(DocumentedComponent component) throws IOException {
@@ -968,26 +962,12 @@ class Arc42ComponentTreeTest {
 
         assertThat(read("component-architecture/6-runtime-view/component-reactions.md"))
                 .contains("# Component Reactions")
-                .contains("```dot")
-                .contains("digraph \"reactions\"")
-                .contains("\"REACTION-2\" [id=\"REACTION-2\"")
+                .contains("```reaction-view")
+                .contains("kind=COMPONENT&system=orders&component=orders-intake")
+                .doesNotContain("```dot")
                 .contains("| Trigger | Component | Action | Median per day |")
                 .contains("Observed at runtime by the reaction observer");
         assertThat(read("component-architecture/index.md")).contains("Runtime View");
-    }
-
-    /**
-     * The page a deep link from a system's graph lands on: the same reaction, addressed by the same id, so
-     * the plugin can highlight it.
-     */
-    @Test
-    void theRuntimeView_thenTheReactionCarriesTheIdASystemsGraphLinksTo() throws IOException {
-        context = context.withReactions(reactionsOfIntake());
-
-        generate();
-
-        assertThat(read("component-architecture/6-runtime-view/component-reactions.md"))
-                .contains("id=\"REACTION-2\"");
     }
 
     /** Every generated page says where it came from and when, and carries the machine-readable status. */

@@ -1,14 +1,7 @@
 package ch.admin.bit.jeap.doc.reactionobserver;
 
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork;
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork.Edge;
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork.Identity;
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork.Node;
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork.InterfaceDetails;
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork.HttpOperation;
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork.Message;
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork.ReactionDetails;
-import ch.admin.bit.jeap.doc.domain.architecture.ReactionNetwork.ReactionStatus;
+import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
+import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.*;
 import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
@@ -16,22 +9,24 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
 
-import static ch.admin.bit.jeap.doc.reactionobserver.ReactionObserverNodes.ACTION;
-import static ch.admin.bit.jeap.doc.reactionobserver.ReactionObserverNodes.TRIGGER;
-import static ch.admin.bit.jeap.doc.reactionobserver.ReactionObserverNodes.MESSAGE;
-import static ch.admin.bit.jeap.doc.reactionobserver.ReactionObserverNodes.REACTION;
 
 /** Validates either API before replacing a snapshot; reads legacy unwrapped V1 snapshots too. */
 final class FullReactionGraphReader {
+    private static final String ACTION = "ACTION";
+    private static final String TRIGGER = "TRIGGER";
+    private static final String MESSAGE = "MESSAGE";
+    private static final String REACTION = "REACTION";
+
     private static final String NODES = "nodes";
     private static final String EDGES = "edges";
     private static final String INTERFACE = "INTERFACE";
     private static final String V2_FORMAT = "observer-v2";
     private FullReactionGraphReader() {}
 
-    static ReactionNetwork read(JsonNode stored) {
+    static ObservedReactions read(JsonNode stored) {
         if (stored != null && stored.has("sourceFormat")) {
             String format = text(stored, "sourceFormat");
             require(format.equals("observer-v1") || format.equals(V2_FORMAT), "Unknown stored graph format");
@@ -40,13 +35,14 @@ final class FullReactionGraphReader {
         return read(stored, false);
     }
 
-    static ReactionNetwork read(JsonNode graph, boolean v2) {
+    static ObservedReactions read(JsonNode graph, boolean v2) {
         if (v2) {
             return readV2(graph);
         }
         require(graph != null && graph.path(NODES).isArray() && graph.path(EDGES).isArray(),
                 "A graph needs node and edge arrays");
-        var nodes = new ArrayList<Node>();
+        var interfaces = new ArrayList<ObservedInterface>();
+        var reactions = new ArrayList<ObservedReaction>();
         Set<Identity> identities = new HashSet<>();
         for (JsonNode node : graph.path(NODES)) {
             String type = text(node, "nodeType");
@@ -54,17 +50,18 @@ final class FullReactionGraphReader {
             Identity identity = new Identity(type, key(node, "id"));
             require(identities.add(identity), "Duplicate node identity");
             if (type.equals(MESSAGE)) {
-                nodes.add(new Node(identity, text(node, "messageType"), optionalText(node, "variant"), null, null));
+                interfaces.add(new ObservedMessage(identity, text(node, "messageType"), optionalText(node, "variant")));
             } else {
                 JsonNode median = node.path("median");
                 require(median.isNumber(), "A reaction needs a numeric daily median");
                 BigDecimal value = median.decimalValue();
                 require(value.signum() >= 0, "A daily median cannot be negative");
-                nodes.add(new Node(identity, null, null, text(node, "component"), value));
+                reactions.add(new ObservedReaction(identity, text(node, "component"), value));
             }
         }
         var edges = new ArrayList<Edge>();
         Set<Edge> distinct = new HashSet<>();
+        Set<Identity> triggeredReactions = new HashSet<>();
         for (JsonNode edge : graph.path(EDGES)) {
             String type = text(edge, "edgeType");
             Edge mapped = switch (type) {
@@ -77,15 +74,17 @@ final class FullReactionGraphReader {
             require(identities.contains(mapped.source()) && identities.contains(mapped.target()),
                     "An edge refers to a missing node");
             require(distinct.add(mapped), "Duplicate edge");
+            requireUniqueTrigger(mapped, triggeredReactions);
             edges.add(mapped);
         }
-        return new ReactionNetwork(nodes, edges);
+        return observations("observer-v1", interfaces, reactions, edges);
     }
 
-    private static ReactionNetwork readV2(JsonNode graph) {
+    private static ObservedReactions readV2(JsonNode graph) {
         require(graph != null && graph.path(NODES).isArray() && graph.path(EDGES).isArray(),
                 "A graph needs node and edge arrays");
-        var nodes = new ArrayList<Node>();
+        var interfaces = new ArrayList<ObservedInterface>();
+        var reactions = new ArrayList<ObservedReaction>();
         Map<String, Identity> identities = new HashMap<>();
         for (JsonNode node : graph.path(NODES)) {
             String type = text(node, "nodeType");
@@ -93,12 +92,15 @@ final class FullReactionGraphReader {
             boolean reaction = type.equals(REACTION);
             Identity identity = new Identity(reaction ? REACTION : INTERFACE, id);
             require(identities.putIfAbsent(id, identity) == null, "Duplicate V2 node id");
-            nodes.add(reaction
-                    ? new Node(identity, type, null, reactionDetails(node))
-                    : new Node(identity, type, interfaceDetails(node, type), null));
+            if (reaction) {
+                reactions.add(reaction(node, identity));
+            } else {
+                interfaces.add(observedInterface(node, identity, type));
+            }
         }
         var edges = new ArrayList<Edge>();
         Set<Edge> distinct = new HashSet<>();
+        Set<Identity> triggeredReactions = new HashSet<>();
         for (JsonNode edge : graph.path(EDGES)) {
             String type = text(edge, "edgeType");
             if (!Set.of(TRIGGER, ACTION, "PREDECESSOR").contains(type)) {
@@ -106,15 +108,22 @@ final class FullReactionGraphReader {
             }
             Edge mapped = v2Edge(edge, type, identities);
             require(distinct.add(mapped), "Duplicate edge");
+            requireUniqueTrigger(mapped, triggeredReactions);
             edges.add(mapped);
         }
-        return new ReactionNetwork(V2_FORMAT, nodes, edges);
+        return observations(V2_FORMAT, interfaces, reactions, edges);
     }
 
-    private static ReactionDetails reactionDetails(JsonNode node) {
+    private static void requireUniqueTrigger(Edge edge, Set<Identity> triggeredReactions) {
+        if (edge.edgeType().equals(TRIGGER)) {
+            require(triggeredReactions.add(edge.target()), "A reaction cannot have multiple triggers");
+        }
+    }
+
+    private static ObservedReaction reaction(JsonNode node, Identity identity) {
         BigDecimal median = number(node, "median");
         require(median.signum() >= 0, "A daily median cannot be negative");
-        return new ReactionDetails(owner(node), text(node, "component"), median, status(node),
+        return new ObservedReaction(identity, owner(node), text(node, "component"), median, status(node),
                 modelVersion(node), unidentifiedActionsRatio(node), optionalText(node, "groupKey"));
     }
 
@@ -146,16 +155,36 @@ final class FullReactionGraphReader {
         return ratio;
     }
 
-    private static InterfaceDetails interfaceDetails(JsonNode node, String type) {
-        // Unknown representations retain their common semantics and every connected edge.
+    private static ObservedInterface observedInterface(JsonNode node, Identity identity, String type) {
         String interfaceType = text(node, "interfaceType");
         String fqn = text(node, "fqn");
-        Message message = type.equals(MESSAGE)
-                ? new Message(text(node, "messageType"), optionalText(node, "variant")) : null;
-        HttpOperation http = type.equals("HTTP_OPERATION")
-                ? new HttpOperation(text(node, "provider"), text(node, "method"), text(node, "path")) : null;
-        return new InterfaceDetails(interfaceType, fqn, message, http);
+        return switch (type) {
+            case MESSAGE -> new ObservedMessage(identity, interfaceType, fqn,
+                    text(node, "messageType"), optionalText(node, "variant"));
+            case "HTTP_OPERATION" -> new ObservedHttpOperation(identity, interfaceType, fqn,
+                    text(node, "provider"), text(node, "method"), text(node, "path"));
+            default -> new ObservedGenericInterface(identity, type, interfaceType, fqn);
+        };
     }
+
+    private static ObservedReactions observations(String format, List<ObservedInterface> interfaces,
+                                                  List<ObservedReaction> reactions, List<Edge> edges) {
+        var triggers = new ArrayList<ObservedTrigger>();
+        var actions = new ArrayList<ObservedAction>();
+        var predecessors = new ArrayList<ObservedPredecessor>();
+        for (Edge edge : edges) {
+            switch (edge.edgeType()) {
+                case TRIGGER -> triggers.add(new ObservedTrigger(edge.source(), edge.target()));
+                case ACTION -> actions.add(new ObservedAction(edge.source(), edge.target()));
+                case "PREDECESSOR" -> predecessors.add(new ObservedPredecessor(edge.source(), edge.target()));
+                default -> throw new IllegalArgumentException("Unsupported edge type");
+            }
+        }
+        return new ObservedReactions(format, interfaces, reactions, triggers, actions, predecessors);
+    }
+
+    /** Only the adapter reads the upstream's edge names and endpoint fields. */
+    private record Edge(String edgeType, Identity source, Identity target) {}
 
     private static Edge v2Edge(JsonNode edge, String type, Map<String, Identity> identities) {
         Identity source = identities.get(text(edge, "sourceId"));

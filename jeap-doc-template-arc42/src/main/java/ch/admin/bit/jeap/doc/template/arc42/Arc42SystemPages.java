@@ -14,12 +14,14 @@ import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
+import ch.admin.bit.jeap.doc.markdown.ReactionEntry;
 import ch.admin.bit.jeap.doc.markdown.Md;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 import static ch.admin.bit.jeap.doc.markdown.MarkdownWriter.NOT_KNOWN;
@@ -73,11 +75,11 @@ final class Arc42SystemPages {
                       Path systemDirectory) throws IOException {
         Path structure = systemDirectory.resolve(SYSTEM_SEGMENT);
         Arc42Pages.writeOpenCategory(structure, template.systemLabel(), 1);
-        SystemContext systemContext = system.model()
+        Optional<SystemContext> systemContext = system.model()
                 .map(model -> SystemContext.of(context.model(), model, context.limits().maxDiagramNodes(),
-                        context.viewExclusions()))
-                .orElse(null);
-        List<StructureChapter> generated = generatedChaptersOf(system, systemContext, context);
+                        context.viewExclusions()));
+        boolean hasContextAndScope = systemContext.filter(view -> !view.isEmpty()).isPresent();
+        List<StructureChapter> generated = generatedChaptersOf(system, hasContextAndScope, context);
         List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
                 system.customChaptersOfTheSystem());
         writeStructureLandingPage(template, system, context, structure,
@@ -89,7 +91,7 @@ final class Arc42SystemPages {
             writeIntroduction(template, model, context, structure, buildingBlockView);
             // No content, no page: a chapter the model has nothing for is left out, like the runtime view.
             if (generated.contains(CONTEXT_AND_SCOPE)) {
-                writeContextAndScope(template, model, systemContext, context, structure);
+                writeContextAndScope(template, model, systemContext.orElseThrow(), context, structure);
             }
             if (buildingBlockView) {
                 writeBuildingBlockView(template, system, model, context, structure);
@@ -116,12 +118,12 @@ final class Arc42SystemPages {
      * that is where both are served.
      */
     private static List<StructureChapter> generatedChaptersOf(SystemDocumentation system,
-                                                              SystemContext systemContext,
+                                                              boolean hasContextAndScope,
                                                               GenerationContext context) {
         if (system.isInTheArchitectureModel()) {
             DocumentedSystem model = system.model().orElseThrow();
             return chaptersOf(context).stream()
-                    .filter(chapter -> chapter != CONTEXT_AND_SCOPE || !systemContext.isEmpty())
+                    .filter(chapter -> chapter != CONTEXT_AND_SCOPE || hasContextAndScope)
                     .filter(chapter -> chapter != BUILDING_BLOCK_VIEW || hasBuildingBlockView(system, model))
                     .toList();
         }
@@ -219,13 +221,12 @@ final class Arc42SystemPages {
 
         // Only the chapters this run wrote - generated or uploaded. A link to a missing page fails the
         // whole site build.
-        List<List<Markdown>> rows = new ArrayList<>();
-        for (StructureChapter chapter : chapters) {
-            rows.add(List.of(
+        List<List<Markdown>> rows = chapters.stream()
+                .map(chapter -> List.of(
                     Md.link(DocumentationPaths.chapter(system.slug(), SYSTEM_SEGMENT, chapter),
                             chapter.label()),
-                    Md.text(Arc42Chapters.summaryOf(chapter))));
-        }
+                    Md.text(Arc42Chapters.summaryOf(chapter))))
+                .toList();
         page.table(List.of("Chapter", "What it answers"), rows);
 
         // Beside the chapters, because a library is a building block of this system and its tree is inside
@@ -319,14 +320,11 @@ final class Arc42SystemPages {
         Arc42Pages.write(directory, CONTEXT_VIEW_PAGE + ".md", view);
     }
 
-    /**
-     * Chapter 5: the inside view, with the components, the events and the commands below it. A component is
-     * one of the building blocks, so its documentation lives where the decomposition is described.
-     */
     /** Inside chapter 5, after the components and the libraries: what the system publishes. */
     static final int EVENTS_POSITION = 4;
     static final int COMMANDS_POSITION = 5;
 
+    /** Chapter 5: the components, libraries, events and commands inside the system. */
     private static void writeBuildingBlockView(Arc42Template template, SystemDocumentation documented,
                                                DocumentedSystem system, GenerationContext context,
                                                Path structure)
@@ -707,7 +705,9 @@ final class Arc42SystemPages {
                 .paragraph(Md.sentence("Which message makes {} react, and what it does in answer. Every "
                                        + "reaction here belongs to one of its components; a message outlined "
                                        + "in blue is defined by another system.", Md.code(system.name())));
-        Arc42ReactionPages.write(page, reactions, context, null);
+        Arc42ReactionPages.writeViewer(page, new ReactionEntry(ReactionEntry.Kind.SYSTEM, system.name(), null, null, null),
+                reactions, context, null);
+        Arc42ReactionPages.writeTableAndProvenance(page, reactions, context);
         Arc42Pages.write(directory, SYSTEM_REACTIONS_PAGE + ".md", page);
     }
 

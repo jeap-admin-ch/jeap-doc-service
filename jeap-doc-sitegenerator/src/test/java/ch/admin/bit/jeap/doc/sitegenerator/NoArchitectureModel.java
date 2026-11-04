@@ -25,8 +25,7 @@ public class NoArchitectureModel implements ArchitectureModelSource {
     public static SystemPages systemPages(SiteUrls urls) {
         return new SystemPages(new NoArchitectureModel(), NoMessageSchemas.INSTANCE,
                 NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
-                        NoReactions.INSTANCE, NoReactions.INSTANCE,
-                new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
+                        new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of()), new GeneratorProperties(),
                 new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(), BuildMetrics.NONE, urls);
     }
@@ -39,7 +38,6 @@ public class NoArchitectureModel implements ArchitectureModelSource {
             ch.admin.bit.jeap.doc.domain.template.StructureTemplate template, String slug) {
         return new SystemPages(new NoArchitectureModel(), NoMessageSchemas.INSTANCE,
                 NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
-                NoReactions.INSTANCE, NoReactions.INSTANCE,
                 new OneDocumentedSystem(slug), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of(template)), new GeneratorProperties(),
                 new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(), BuildMetrics.NONE, null);

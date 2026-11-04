@@ -501,7 +501,9 @@ class SiteSearchBrowserIT extends SiteBrowserTestBase {
 
         page.waitForURL(url -> !url.contains("source="));
         assertThat(chip("Generated")).hasAttribute("aria-pressed", "true");
-        assertEquals(true, hitCount() > narrowed, "the reset brought the other results back");
+        // The URL changes before the asynchronous search returns its additional results.
+        Locator results = page.getByRole(AriaRole.LIST, new Page.GetByRoleOptions().setName("Search results"));
+        assertThat(results.locator("li a[href]").nth(narrowed)).isVisible();
         assertNothingWentWrongInTheBrowser();
     }
 
