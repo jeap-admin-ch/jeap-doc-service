@@ -18,8 +18,8 @@ export function interfaceDestination(entry, node, environmentPrefix) {
         : http && link.kind === 'REST' && fold(link.name) === fold(http.provider));
     const destinations = new Set(matches.map(link => link.href));
     const link = destinations.size === 1 ? matches[0] : null;
-    return {href: safeHref(link?.href, environmentPrefix), label: http ? 'Zur REST-Dokumentation'
-        : link?.kind === 'COMMAND' ? 'Zur Command-Dokumentation' : 'Zur Event-Dokumentation'};
+    return {href: safeHref(link?.href, environmentPrefix), label: http ? 'Go to REST documentation'
+        : link?.kind === 'COMMAND' ? 'Go to command documentation' : 'Go to event documentation'};
 }
 
 function safeHref(href, environmentPrefix) {

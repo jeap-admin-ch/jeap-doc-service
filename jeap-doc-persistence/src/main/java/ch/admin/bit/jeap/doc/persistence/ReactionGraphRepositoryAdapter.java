@@ -23,7 +23,7 @@ class ReactionGraphRepositoryAdapter implements ReactionGraphRepository {
     public Optional<ReactionGraphRef> findRef(String environment) {
         return graphs.findByEnvironmentAndKindAndNameAndSystemNameAndVariant(environment, KIND, "", "", "")
                 .map(view -> new ReactionGraphRef(view.getEnvironment(), view.getUpstreamName(),
-                        view.getEtag(), view.getCheckedAt(), view.getDrawableNodes() > 0));
+                        view.getEtag(), view.getImportedAt(), view.getCheckedAt(), view.getDrawableNodes() > 0));
     }
 
     @Override

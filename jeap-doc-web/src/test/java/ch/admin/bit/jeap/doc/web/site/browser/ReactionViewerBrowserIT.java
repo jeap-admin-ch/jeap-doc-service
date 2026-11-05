@@ -17,7 +17,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         });
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
         var entries = page.locator(".jeapReactionView");
-        var viewers = page.locator("section[aria-label='Reaktionsketten']");
+        var viewers = page.locator("section[aria-label='Reaction chains']");
         assertThat(viewers).hasCount(2);
 
         showReactionViewer(0);
@@ -43,10 +43,10 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (String route : java.util.List.of(SYSTEM_REACTIONS_ROUTE, COMPONENT_REACTIONS_ROUTE, MESSAGE_REACTIONS_ROUTE,
                 COMPONENT_REACTIONS_ROUTE.replace(REACTING_COMPONENT, BUSY_COMPONENT))) {
             open("/" + route + "/");
-            var viewer = page.getByRole(AriaRole.REGION, new com.microsoft.playwright.Page.GetByRoleOptions().setName("Reaktionsketten")).first();
+            var viewer = page.getByRole(AriaRole.REGION, new com.microsoft.playwright.Page.GetByRoleOptions().setName("Reaction chains")).first();
             assertThat(viewer).isVisible();
             showReactionViewer(0);
-            assertThat(viewer.getByLabel("Legende", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
+            assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
             assertThat(viewer.locator("details, ul")).hasCount(0);
             assertThat(page.locator("article table").first()).isVisible();
             assertThat(page.locator("article [data-plantuml-diagram]")).hasCount(0);
@@ -62,13 +62,13 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     response.text().replace("shipping-dispatch", "<script>alert(1)</script>")));
         });
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
-        var viewers = page.locator("section[aria-label='Reaktionsketten']");
+        var viewers = page.locator("section[aria-label='Reaction chains']");
         assertThat(viewers).hasCount(2);
         for (int index = 0; index < 2; index++) {
             showReactionViewer(index);
             viewers.nth(index).getByRole(AriaRole.BUTTON,
-                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).click();
-            var canvas = viewers.nth(index).locator("div[aria-label^='Reaktionsgraph.']");
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+            var canvas = viewers.nth(index).locator("div[aria-label^='Reaction graph.']");
             // Cytoscape owns the canvas; use its rendered node position for a real pointer selection.
             var position = (java.util.Map<?, ?>) canvas.evaluate("""
                     element => element._cyreg.cy.nodes().filter(node => node.data('kind') === 'reaction'
@@ -94,7 +94,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void largeGraph_hasUsableIconControlsAndAlwaysVisibleLegend() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-        var viewer = page.locator("section[aria-label='Reaktionsketten']");
+        var viewer = page.locator("section[aria-label='Reaction chains']");
         showReactionViewer(0);
         var buttons = viewer.getByRole(AriaRole.BUTTON);
         assertThat(buttons).hasCount(7);
@@ -106,23 +106,23 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         }
         String group = groupOfReaction(viewer, "4243");
         openGroupMenu(viewer, group);
-        assertThat(viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einblenden"))).isDisabled();
-        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen")).click();
+        assertThat(viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand group"))).isDisabled();
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group")).click();
         awaitGroupMembers(group, 0);
-        assertThat(viewer.getByLabel("Legende", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
+        assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
         openGroupMenu(viewer, group);
-        assertThat(viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen"))).isDisabled();
-        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einblenden")).click();
+        assertThat(viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group"))).isDisabled();
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand group")).click();
         awaitGroupMembers(group, 3);
         var zoom = viewer.getByLabel("Zoom", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true));
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).click();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
         String fitted = zoom.textContent();
-        viewer.getByLabel("Graph vergrössern", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true)).click();
+        viewer.getByLabel("Zoom in", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true)).click();
         assertThat(zoom).not().hasText(fitted);
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Vollbild").setExact(true)).click();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fullscreen").setExact(true)).click();
         assertThat(viewer.getByRole(AriaRole.BUTTON,
-                new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Vollbild verlassen"))).isVisible();
-        assertThat(viewer.getByLabel("Legende", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
+                new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Exit fullscreen"))).isVisible();
+        assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
         page.keyboard().press("Escape");
         assertNothingWentWrongInTheBrowser();
     }
@@ -130,10 +130,10 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void diagramLabels_followTheOriginalConventionsAndFitInsideGroups() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-        var viewer = page.locator("section[aria-label='Reaktionsketten']");
+        var viewer = page.locator("section[aria-label='Reaction chains']");
         showReactionViewer(0);
         @SuppressWarnings("unchecked")
-        var labels = (java.util.Map<String, Object>) viewer.locator("div[aria-label^='Reaktionsgraph.']").evaluate("""
+        var labels = (java.util.Map<String, Object>) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
                 element => {
                     const cy = element._cyreg.cy;
                     const groups = cy.nodes('[kind="group"]');
@@ -165,7 +165,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         org.assertj.core.api.Assertions.assertThat((Boolean) labels.get("titlesInside")).isTrue();
         org.assertj.core.api.Assertions.assertThat((java.util.List<?>) labels.get("titles"))
                 .isNotEmpty().allSatisfy(title -> org.assertj.core.api.Assertions.assertThat(title).hasToString("shipping-dispatch"));
-        assertThat(viewer.getByLabel("Legende", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))
+        assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))
                 .locator("svg")).hasCount(6);
         assertNothingWentWrongInTheBrowser();
     }
@@ -174,9 +174,9 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void triggerArrows_followIndividualReactionsAndCollapseToOneGroupArrow() {
         for (String route : java.util.List.of(SYSTEM_REACTIONS_ROUTE, MESSAGE_REACTIONS_ROUTE)) {
             open("/" + route + "/");
-            var viewer = page.locator("section[aria-label='Reaktionsketten']").first();
+            var viewer = page.locator("section[aria-label='Reaction chains']").first();
             showReactionViewer(0);
-            var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
+            var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
             var targets = (java.util.List<?>) canvas.evaluate("""
                     element => {
                         const cy = element._cyreg.cy;
@@ -202,13 +202,13 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     })
                     """);
             org.assertj.core.api.Assertions.assertThat(endpointsOnReactionBorders).isEqualTo(true);
-            var legend = viewer.getByLabel("Legende", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true));
+            var legend = viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true));
             assertThat(legend).not().containsText("Interface");
             assertThat(legend).containsText("REST");
             String group = groupOfReaction(viewer, "4243");
             openGroupMenu(viewer, group);
             String zoomBefore = viewer.getByLabel("Zoom", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true)).textContent();
-            viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen")).click();
+            viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group")).click();
             awaitGroupMembers(group, 0);
             assertThat(viewer.getByLabel("Zoom", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).hasText(zoomBefore);
             org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
@@ -221,8 +221,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                         .incomers('edge').map(edge => edge.data('tooltip'))
                     """);
             org.assertj.core.api.Assertions.assertThat(arrows).isEqualTo(java.util.List.of(
-                    "Summe der Einzelmediane – Näherung: 404\n4243: 400\n4244: 4\n4245: 0"));
-            assertThat(legend.locator("span")).hasText(new String[]{"Message", "REST", "Reaktion", "Gruppe", "2Ausgeblendete Reaktionen", "Fremdes System"});
+                    "Sum of individual medians – approximation: 404\n4243: 400\n4244: 4\n4245: 0"));
+            assertThat(legend.locator("span")).hasText(new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions", "Other system"});
             assertNothingWentWrongInTheBrowser();
         }
     }
@@ -230,30 +230,30 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void groupMenu_supportsKeyboardAndLeavesTheOtherViewerUnchanged() {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
-        var viewers = page.locator("section[aria-label='Reaktionsketten']");
+        var viewers = page.locator("section[aria-label='Reaction chains']");
         var first = viewers.first();
         showReactionViewer(0);
         showReactionViewer(1);
         String group = groupOfReaction(first, "4243");
-        var secondCanvas = viewers.nth(1).locator("div[aria-label^='Reaktionsgraph.']");
+        var secondCanvas = viewers.nth(1).locator("div[aria-label^='Reaction graph.']");
         Object otherNodes = secondCanvas.evaluate("element => element._cyreg.cy.elements().map(node => node.id())");
         openGroupMenu(first, group);
         page.keyboard().press("Escape");
         assertThat(first.getByRole(AriaRole.MENU)).hasCount(0);
-        assertThat(first.locator("div[aria-label^='Reaktionsgraph.']")).isFocused();
+        assertThat(first.locator("div[aria-label^='Reaction graph.']")).isFocused();
         page.keyboard().press("Shift+F10");
         var documentation = first.getByRole(AriaRole.MENUITEM,
-                new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Zur Komponenten-Dokumentation"));
+                new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Go to component documentation"));
         assertThat(documentation).isFocused();
         assertThat(documentation).hasAttribute("href", "/" + COMPONENT_REACTIONS_ROUTE.replace(REACTING_COMPONENT, BUSY_COMPONENT) + "/");
         page.keyboard().press("ArrowDown");
-        assertThat(first.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen"))).isFocused();
+        assertThat(first.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group"))).isFocused();
         page.keyboard().press("Enter");
         awaitGroupMembers(group, 0);
         page.keyboard().press("Shift+F10");
         assertThat(documentation).isFocused();
         page.keyboard().press("ArrowDown");
-        assertThat(first.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einblenden"))).isFocused();
+        assertThat(first.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand group"))).isFocused();
         page.keyboard().press("Enter");
         awaitGroupMembers(group, 3);
         org.assertj.core.api.Assertions.assertThat(secondCanvas.evaluate("element => element._cyreg.cy.elements().map(node => node.id())"))
@@ -265,7 +265,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void reactionTablesFollowTheirOwnViewerAndRetainFilteringAndSorting() {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
         var entries = page.locator(".jeapReactionView");
-        var viewer = entries.first().locator("section[aria-label='Reaktionsketten']");
+        var viewer = entries.first().locator("section[aria-label='Reaction chains']");
         var table = entries.first().locator("table[data-reaction-table='live']");
         var otherTable = entries.nth(1).locator("table[data-reaction-table='live']");
         showReactionViewer(0);
@@ -284,13 +284,13 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         table.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Sort by Median per day")).click();
         assertThat(table.locator("tbody tr td:last-child")).hasText(new String[]{"400", "4", "0"});
         openGroupMenu(viewer, group);
-        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen")).click();
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group")).click();
         awaitGroupMembers(group, 0);
         assertThat(table.locator("tbody tr")).hasCount(0);
         assertThat(filter).hasValue(BUSY_COMPONENT);
         assertThat(otherTable.locator("tbody")).hasText(otherRows);
         openGroupMenu(viewer, group);
-        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einblenden")).click();
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand group")).click();
         awaitGroupMembers(group, 3);
         assertThat(table.locator("tbody tr td:last-child")).hasText(new String[]{"400", "4", "0"});
         filter.press("Escape");
@@ -303,7 +303,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         String otherEnvironment = environments().stream().filter(environment -> !environment.main()).findFirst().orElseThrow().routePrefix();
         for (String prefix : java.util.List.of("", otherEnvironment)) {
             open(prefix + "/" + SYSTEM_REACTIONS_ROUTE + "/");
-            var viewer = page.locator("section[aria-label='Reaktionsketten']").first();
+            var viewer = page.locator("section[aria-label='Reaction chains']").first();
             showReactionViewer(0);
             openGroupMenu(viewer, groupOfReaction(viewer, "4246"));
             assertThat(viewer.getByRole(AriaRole.MENU).locator("a")).hasCount(0);
@@ -313,12 +313,12 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             page.keyboard().press("Escape");
             openGroupMenu(viewer, groupOfReaction(viewer, "4242"));
             var link = viewer.getByRole(AriaRole.MENUITEM,
-                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Zur Komponenten-Dokumentation"));
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Go to component documentation"));
             assertThat(link).hasAttribute("href", prefix + "/" + COMPONENT_REACTIONS_ROUTE + "/");
             assertThat(link).isFocused();
             page.keyboard().press("ArrowDown");
             assertThat(viewer.getByRole(AriaRole.MENUITEM,
-                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen"))).isFocused();
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group"))).isFocused();
             page.keyboard().press("Home");
             assertThat(link).isFocused();
             page.keyboard().press("Enter");
@@ -326,7 +326,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             showReactionViewer(0);
             assertThat(page.locator("article table").first()).isVisible();
             assertThat(page.locator("article [data-plantuml-diagram]")).hasCount(0);
-            var componentViewer = page.locator("section[aria-label='Reaktionsketten']").first();
+            var componentViewer = page.locator("section[aria-label='Reaction chains']").first();
             openGroupMenu(componentViewer, groupOfReaction(componentViewer, "4242"));
             assertThat(page.getByRole(AriaRole.MENU).locator("a")).hasCount(0);
             assertNothingWentWrongInTheBrowser();
@@ -340,14 +340,14 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         String restRoute = COMPONENT_REACTIONS_ROUTE.replace("runtime-view/component-reactions", "building-block-view/rest-api");
         for (String prefix : java.util.List.of("", otherEnvironment)) {
             open(prefix + "/" + SYSTEM_REACTIONS_ROUTE + "/");
-            var viewer = page.locator("section[aria-label='Reaktionsketten']").first();
+            var viewer = page.locator("section[aria-label='Reaction chains']").first();
             showReactionViewer(0);
             openInterfaceMenu(viewer, UNDOCUMENTED_MESSAGE);
             assertThat(viewer.getByRole(AriaRole.MENUITEM)).isDisabled();
             page.keyboard().press("Escape");
             openInterfaceMenu(viewer, "OrdersPaymentAcceptedEvent");
             var eventLink = viewer.getByRole(AriaRole.MENUITEM,
-                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Zur Event-Dokumentation"));
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Go to event documentation"));
             assertThat(eventLink).hasAttribute("href", prefix + "/" + MESSAGE_REACTIONS_ROUTE + "/");
             eventLink.click();
             page.waitForURL("**/" + MESSAGE_REACTIONS_ROUTE + "/");
@@ -357,7 +357,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             showReactionViewer(0);
             openInterfaceMenu(viewer, "shipping-dispatch\nGET /shipments");
             var restLink = viewer.getByRole(AriaRole.MENUITEM,
-                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Zur REST-Dokumentation"));
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Go to REST documentation"));
             assertThat(restLink).hasAttribute("href", prefix + "/" + restRoute + "/");
             page.keyboard().press("Enter");
             page.waitForURL("**/" + restRoute + "/");
@@ -367,15 +367,15 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     private void openInterfaceMenu(com.microsoft.playwright.Locator viewer, String label) {
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).click();
-        var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         var position = (java.util.Map<?, ?>) canvas.evaluate("""
                 (element, label) => element._cyreg.cy.nodes().filter(node => node.data('label') === label).first().renderedPosition()
                 """, label);
         double x = ((Number) position.get("x")).doubleValue(), y = ((Number) position.get("y")).doubleValue();
         canvas.hover(new com.microsoft.playwright.Locator.HoverOptions().setPosition(x, y));
         assertThat(viewer.getByRole(AriaRole.TOOLTIP)).hasCount(0);
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).hover();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).hover();
         assertThat(viewer.getByRole(AriaRole.TOOLTIP)).hasCount(0);
         canvas.click(new com.microsoft.playwright.Locator.ClickOptions().setButton(com.microsoft.playwright.options.MouseButton.RIGHT).setPosition(x, y));
         assertThat(viewer.getByRole(AriaRole.MENU)).isVisible();
@@ -386,18 +386,18 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void edgeDetailsAppearOnHoverAndDisappearWhenLeavingTheGraph() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-        var viewer = page.locator("section[aria-label='Reaktionsketten']").first();
+        var viewer = page.locator("section[aria-label='Reaction chains']").first();
         showReactionViewer(0);
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).click();
-        var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         var position = (java.util.Map<?, ?>) canvas.evaluate("""
                 element => element._cyreg.cy.edges().filter(edge => edge.source().data('displayLabel') === '4242'
                     && edge.target().data('kind') === 'message').first().renderedMidpoint()
                 """);
         canvas.hover(new com.microsoft.playwright.Locator.HoverOptions().setPosition(
                 ((Number) position.get("x")).doubleValue(), ((Number) position.get("y")).doubleValue()));
-        assertThat(viewer.getByRole(AriaRole.TOOLTIP)).containsText("Tagesmedian: 12");
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).hover();
+        assertThat(viewer.getByRole(AriaRole.TOOLTIP)).containsText("Median per day: 12");
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).hover();
         assertThat(viewer.getByRole(AriaRole.TOOLTIP)).hasCount(0);
         assertThat(viewer.locator(":scope > p")).hasCount(0);
         assertNothingWentWrongInTheBrowser();
@@ -416,18 +416,18 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     response.text().replace("shipping-dispatch", "<script>alert(1)</script>")));
         });
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
-        var viewers = page.locator("section[aria-label='Reaktionsketten']");
+        var viewers = page.locator("section[aria-label='Reaction chains']");
         var viewer = viewers.first();
         showReactionViewer(0);
         showReactionViewer(1);
         String group = groupOfReaction(viewer, "4243");
         openGroupMenu(viewer, group);
-        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen")).click();
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group")).click();
         awaitGroupMembers(group, 0);
-        var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         Object before = canvas.evaluate("el => ({zoom: el._cyreg.cy.zoom(), pan: el._cyreg.cy.pan(), ids: el._cyreg.cy.elements().map(n => n.id()).sort()})");
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Quelltext anzeigen")).click();
-        var source = viewer.getByRole(AriaRole.TEXTBOX, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Graph-Quelltext (JSON)"));
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Show source")).click();
+        var source = viewer.getByRole(AriaRole.TEXTBOX, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Graph source (JSON)"));
         assertThat(source).isVisible();
         assertThat(viewers.nth(1).getByRole(AriaRole.TEXTBOX)).hasCount(0);
         showReactionViewer(1);
@@ -435,43 +435,43 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(viewer.locator("script")).hasCount(0);
         Object sourceIds = source.evaluate("el => JSON.parse(el.value).elements.map(n => n.data.id).sort()");
         org.assertj.core.api.Assertions.assertThat(sourceIds).isEqualTo(((java.util.Map<?, ?>) before).get("ids"));
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Quelltext kopieren")).click();
-        assertThat(viewer.locator("section[aria-label='Graph-Quelltext'] [role='status']")).hasText("Kopiert.");
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Copy source")).click();
+        assertThat(viewer.locator("section[aria-label='Graph source'] [role='status']")).hasText("Copied.");
         org.assertj.core.api.Assertions.assertThat(page.evaluate("window.copiedGraphSource")).isEqualTo(source.inputValue());
         page.evaluate("() => { navigator.clipboard.writeText = async () => { throw new Error('denied'); }; }");
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Quelltext kopieren")).click();
-        assertThat(viewer.locator("section[aria-label='Graph-Quelltext'] [role='status']")).containsText("Den markierten Text");
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Copy source")).click();
+        assertThat(viewer.locator("section[aria-label='Graph source'] [role='status']")).containsText("Copy the selected text");
         org.assertj.core.api.Assertions.assertThat(source.evaluate("el => el.selectionStart === 0 && el.selectionEnd === el.value.length")).isEqualTo(true);
         source.press("Escape");
         assertThat(source).hasCount(0);
         assertThat(canvas).isVisible();
         org.assertj.core.api.Assertions.assertThat(canvas.evaluate("el => ({zoom: el._cyreg.cy.zoom(), pan: el._cyreg.cy.pan(), ids: el._cyreg.cy.elements().map(n => n.id()).sort()})"))
                 .isEqualTo(before);
-        assertThat(viewer.getByLabel("Legende", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
+        assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
         assertNothingWentWrongInTheBrowser();
     }
 
     @Test
     void minimap_tracksViewportAndSupportsClickDragKeyboardAndGroupChanges() {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
-        var viewers = page.locator("section[aria-label='Reaktionsketten']");
+        var viewers = page.locator("section[aria-label='Reaction chains']");
         var viewer = viewers.first();
         showReactionViewer(0);
         showReactionViewer(1);
-        var otherCanvas = viewers.nth(1).locator("div[aria-label^='Reaktionsgraph.']");
+        var otherCanvas = viewers.nth(1).locator("div[aria-label^='Reaction graph.']");
         Object otherView = otherCanvas.evaluate("el => ({zoom: el._cyreg.cy.zoom(), pan: el._cyreg.cy.pan()})");
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Minimap einblenden")).click();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Show minimap")).click();
         var minimap = viewer.getByRole(AriaRole.GROUP, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Minimap").setExact(true));
         assertThat(minimap).isVisible();
         assertThat(viewers.nth(1).getByRole(AriaRole.GROUP, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Minimap").setExact(true))).hasCount(0);
         org.assertj.core.api.Assertions.assertThat(minimap.locator("img").evaluate("img => img.complete && img.naturalWidth > 0")).isEqualTo(true);
         var frame = minimap.locator("[data-minimap-viewport]");
         String originalFrame = frame.getAttribute("style");
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Graph vergrössern")).click();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Zoom in")).click();
         assertThat(frame).not().hasAttribute("style", originalFrame);
         var map = minimap.locator("[tabindex='0']");
         var box = map.boundingBox();
-        var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         Object zoom = canvas.evaluate("el => el._cyreg.cy.zoom()");
         map.click(new com.microsoft.playwright.Locator.ClickOptions().setPosition(box.width * 0.75, box.height * 0.75));
         org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
@@ -493,19 +493,19 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         String originalImage = minimap.locator("img").getAttribute("src");
         String group = groupOfReaction(viewer, "4243");
         openGroupMenu(viewer, group);
-        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen")).click();
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group")).click();
         awaitGroupMembers(group, 0);
         assertThat(minimap.locator("img")).not().hasAttribute("src", originalImage);
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Vollbild").setExact(true)).click();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fullscreen").setExact(true)).click();
         assertThat(minimap).isVisible();
-        assertThat(viewer.getByLabel("Legende", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
+        assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
         org.assertj.core.api.Assertions.assertThat(otherCanvas.evaluate("el => ({zoom: el._cyreg.cy.zoom(), pan: el._cyreg.cy.pan()})")).isEqualTo(otherView);
         assertNothingWentWrongInTheBrowser();
     }
 
     private void openReactionMenu(com.microsoft.playwright.Locator viewer, String reaction) {
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).click();
-        var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         var position = (java.util.Map<?, ?>) canvas.evaluate("""
                 (element, reaction) => element._cyreg.cy.nodes('[kind="reaction"]')
                     .filter(node => node.data('displayLabel') === reaction).first().renderedPosition()
@@ -516,15 +516,15 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     private String groupOfReaction(com.microsoft.playwright.Locator viewer, String reaction) {
-        return (String) viewer.locator("div[aria-label^='Reaktionsgraph.']").evaluate("""
+        return (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
                 (element, reaction) => element._cyreg.cy.nodes('[kind="reaction"]')
                     .filter(node => node.data('displayLabel') === reaction).first().parent().id()
                 """, reaction);
     }
 
     private void openGroupMenu(com.microsoft.playwright.Locator viewer, String group) {
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).click();
-        var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         var position = (java.util.Map<?, ?>) canvas.evaluate("""
                 (element, id) => {
                     const cy = element._cyreg.cy;
@@ -540,7 +540,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     private void awaitGroupMembers(String group, int count) {
         page.waitForFunction("""
                 args => {
-                    const cy = document.querySelector('section[aria-label="Reaktionsketten"] div[aria-label^="Reaktionsgraph."]')?._cyreg?.cy;
+                    const cy = document.querySelector('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')?._cyreg?.cy;
                     return cy && cy.getElementById(args.group).children('[kind="reaction"]').length === args.count;
                 }
                 """, java.util.Map.of("group", group, "count", count));
@@ -578,7 +578,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         page.route("**/reaction-graph.json", route -> route.fulfill(new FulfillOptions()
                 .setContentType("application/json").setBody("{\"available\":false}")));
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-        assertThat(page.getByText("Reaktionsgraph derzeit nicht verfügbar", new com.microsoft.playwright.Page.GetByTextOptions().setExact(true))).isVisible();
+        assertThat(page.getByText("Reaction graph currently unavailable", new com.microsoft.playwright.Page.GetByTextOptions().setExact(true))).isVisible();
         assertThat(page.locator("article table").first()).isVisible();
         assertThat(page.locator(".jeapReactionTableFallback")).isVisible();
         assertThat(page.locator("table[data-reaction-table='live']")).hasCount(0);

@@ -18,5 +18,7 @@ interface ReactionGraphRefView {
 
     int getDrawableNodes();
 
+    Instant getImportedAt();
+
     Instant getCheckedAt();
 }

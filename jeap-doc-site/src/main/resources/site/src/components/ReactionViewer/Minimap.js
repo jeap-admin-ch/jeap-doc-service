@@ -20,7 +20,7 @@ export default function Minimap({id, renderer}) {
     };
     return <div id={id} className={styles.minimap} role="group" aria-label="Minimap">
         <div className={styles.minimapMap} style={size} tabIndex={0} role="group"
-            aria-label="Graph-Ausschnitt wählen. Klicken oder ziehen; Pfeiltasten verschieben, Pos1 passt alles ein."
+            aria-label="Select the graph viewport. Click or drag; use arrow keys to pan and Home to fit all."
             onKeyDown={onKeyDown}
             onPointerDown={event => {
                 if (event.button !== 0 || !event.isPrimary) return;

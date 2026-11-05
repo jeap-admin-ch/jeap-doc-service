@@ -23,11 +23,11 @@ export default function Legend({dark, elements}) {
     const appearance = nodeAppearance(dark);
     const kinds = new Set(elements.map(element => element.data.kind));
     kinds.add('http');
-    return <div className={styles.legend} aria-label="Legende">
-        {Object.entries({message: 'Message', http: 'REST', interface: 'Interface', reaction: 'Reaktion',
-            group: 'Gruppe', marker: 'Ausgeblendete Reaktionen'}).filter(([kind]) => kinds.has(kind)).map(([kind, label]) =>
+    return <div className={styles.legend} aria-label="Legend">
+        {Object.entries({message: 'Message', http: 'REST', interface: 'Interface', reaction: 'Reaction',
+            group: 'Group', marker: 'Hidden reactions'}).filter(([kind]) => kinds.has(kind)).map(([kind, label]) =>
             <span key={kind}><Symbol kind={kind} appearance={appearance[kind]}/>{label}</span>)}
         {elements.some(element => element.data.foreign) &&
-            <span><Symbol kind="message" appearance={{...appearance.message, ...foreignAppearance}}/>Fremdes System</span>}
+            <span><Symbol kind="message" appearance={{...appearance.message, ...foreignAppearance}}/>Other system</span>}
     </div>;
 }

@@ -98,7 +98,7 @@ class FullReactionImportStepTest {
     }
 
     private void stored() {
-        when(graphs.findRef("dev")).thenReturn(java.util.Optional.of(new ReactionGraphRef("dev", "", "old-tag", NOW.minusSeconds(60), true)));
+        when(graphs.findRef("dev")).thenReturn(java.util.Optional.of(new ReactionGraphRef("dev", "", "old-tag", NOW.minusSeconds(60), NOW.minusSeconds(60), true)));
         when(imports.state("dev", FULL_REACTIONS)).thenReturn(new ArchitectureImportState("dev", FULL_REACTIONS,
                 null, null, true, 1, NOW.minusSeconds(60), NOW.minusSeconds(60), ImportOutcome.REPLACED, null));
     }

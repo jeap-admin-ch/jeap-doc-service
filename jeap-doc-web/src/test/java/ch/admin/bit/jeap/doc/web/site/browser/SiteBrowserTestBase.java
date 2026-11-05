@@ -376,7 +376,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     protected void showReactionViewer(int index) {
         page.waitForFunction("""
                 index => {
-                    const viewer = document.querySelectorAll('section[aria-label="Reaktionsketten"]')[index];
+                    const viewer = document.querySelectorAll('section[aria-label="Reaction chains"]')[index];
                     if (!viewer) return false;
                     viewer.scrollIntoView({block: 'start'});
                     return Boolean(viewer.querySelector('canvas'));

@@ -117,9 +117,9 @@ test('interface navigation resolves messages and REST providers without guessing
         {kind: 'COMMAND', name: 'C', href: '/dev/systems/s/commands/c/'},
         {kind: 'REST', name: 'provider', href: '/dev/systems/s/components/provider/rest-api/'},
     ]};
-    assert.deepEqual(interfaceDestination(nav, event, '/dev/'), {href: nav.interfaceLinks[0].href, label: 'Zur Event-Dokumentation'});
-    assert.equal(interfaceDestination(nav, command, '/dev/').label, 'Zur Command-Dokumentation');
-    assert.deepEqual(interfaceDestination(nav, http, '/dev/'), {href: nav.interfaceLinks[2].href, label: 'Zur REST-Dokumentation'});
+    assert.deepEqual(interfaceDestination(nav, event, '/dev/'), {href: nav.interfaceLinks[0].href, label: 'Go to event documentation'});
+    assert.equal(interfaceDestination(nav, command, '/dev/').label, 'Go to command documentation');
+    assert.deepEqual(interfaceDestination(nav, http, '/dev/'), {href: nav.interfaceLinks[2].href, label: 'Go to REST documentation'});
     assert.equal(interfaceDestination(nav, message('unknown'), '/dev/').href, null);
     assert.equal(interfaceDestination(nav, http, '/prod/').href, null);
     assert.equal(interfaceDestination({interfaceLinks: [{kind: 'EVENT', name: 'A', href: 'javascript:alert(1)'}]}, event, '/dev/').href, null);
@@ -149,7 +149,7 @@ test('system boundary, stable grouping, collapsed contributions and deduplicatio
     const arrows = result.elements.filter(e => e.data.source);
     assert.equal(arrows.length, 2);
     assert.equal(arrows[0].data.width, widthOf(90));
-    assert.match(arrows[0].data.tooltip, /Näherung: 90/);
+    assert.match(arrows[0].data.tooltip, /approximation: 90/);
     assert.equal(result.superseded, 1);
     assert.equal(result.elements.filter(e=>e.data.kind==='reaction').length, 0);
     assert.equal(result.elements.filter(e=>e.data.id.startsWith('boundary:'))[0].data.label, '1');
@@ -201,7 +201,7 @@ test('partial group keeps one visible action and bundles hidden contributions se
     assert.equal(result.elements.filter(e=>e.data.kind==='reaction').length,1);
     const hiddenAction=result.elements.find(e=>e.data.target===identity(key('C')));
     assert.ok(hiddenAction.data.source.startsWith('group:'));
-    assert.equal(hiddenAction.data.tooltip,'Tagesmedian: 80');
+    assert.equal(hiddenAction.data.tooltip,'Median per day: 80');
 });
 test('internal cycles terminate and preserve both directed paths',()=>{
     const data=payload(); data.graph.nodes.push(reaction('cycle'));
@@ -241,9 +241,9 @@ test('three expanded triggers keep individual medians; only hidden reactions sha
     const expanded = expandGroups(graph, collapsed);
     const triggers = state => project(graph, state).elements.filter(e => e.data.source === identity(key('A'))).map(e => e.data);
     assert.deepEqual(triggers(expanded).map(e => [e.target, e.width, e.tooltip]), [
-        [identity(key('r1', 'REACTION')), widthOf(10), 'Tagesmedian: 10'],
-        [identity(key('r2', 'REACTION')), widthOf(80), 'Tagesmedian: 80'],
-        [identity(key('r3', 'REACTION')), widthOf(0), 'Tagesmedian: 0'],
+        [identity(key('r1', 'REACTION')), widthOf(10), 'Median per day: 10'],
+        [identity(key('r2', 'REACTION')), widthOf(80), 'Median per day: 80'],
+        [identity(key('r3', 'REACTION')), widthOf(0), 'Median per day: 0'],
     ]);
     assert.equal(triggers(collapsed).length, 1);
     assert.equal(triggers(collapsed)[0].width, widthOf(90));

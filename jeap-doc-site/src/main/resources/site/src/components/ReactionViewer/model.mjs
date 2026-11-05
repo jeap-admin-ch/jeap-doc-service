@@ -225,8 +225,8 @@ export function project(graph, state) {
         const values = [...bundle.contributions.values()];
         const sum = values.reduce((a, b) => a + b, 0);
         if (!Number.isFinite(sum)) throw new Error('Invalid frequency sum');
-        const tooltip = values.length === 1 ? `Tagesmedian: ${sum}`
-            : `Summe der Einzelmediane – Näherung: ${sum}\n` + [...bundle.contributions].map(([key, value]) => `${graph.nodes.get(key).identity.key}: ${value}`).join('\n');
+        const tooltip = values.length === 1 ? `Median per day: ${sum}`
+            : `Sum of individual medians – approximation: ${sum}\n` + [...bundle.contributions].map(([key, value]) => `${graph.nodes.get(key).identity.key}: ${value}`).join('\n');
         elements.push({data: {id: 'edge:' + id, source: bundle.source, target: bundle.target, width: widthOf(sum), tooltip}});
     }
     // Counts are scoped to the displayed interfaces, not to every unrelated node in the environment.

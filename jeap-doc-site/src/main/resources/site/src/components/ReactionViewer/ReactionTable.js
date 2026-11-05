@@ -30,9 +30,9 @@ export default function ReactionTable({rows}) {
                 onKeyDown={event => { if (event.key === 'Escape') setQuery(''); }}/>
             {query && <button type="button" className="jeapTableFilterClear" aria-label="Clear the filter"
                 onClick={() => setQuery('')}>×</button>}</span>
-            <span className="jeapTableFilterCount" role="status">{shown.length} / {rows.length} sichtbare Reaktionen</span>
+            <span className="jeapTableFilterCount" role="status">{shown.length} / {rows.length} visible reactions</span>
         </div>
-        <table data-reaction-table="live" aria-label="Eingeblendete Reaktionen">
+        <table data-reaction-table="live" aria-label="Visible reactions">
             <thead><tr>{columns.map((title, column) => <th key={title} scope="col"
                 className={column === 3 ? 'jeapTableSortable jeapTableNumeric' : 'jeapTableSortable'}
                 aria-sort={sort.column === column ? sort.direction : 'none'}>
@@ -48,7 +48,7 @@ export default function ReactionTable({rows}) {
                 <td className="jeapTableNumeric">{row.median}</td>
             </tr>)}</tbody>
         </table>
-        {!rows.length && <p>Keine einzelnen Reaktionen eingeblendet. Klappe eine Gruppe auf, um ihre Reaktionen zu sehen.</p>}
-        {rows.length > 0 && !shown.length && <p>Keine eingeblendete Reaktion passt zum Filter.</p>}
+        {!rows.length && <p>No individual reactions are visible. Expand a group to see its reactions.</p>}
+        {rows.length > 0 && !shown.length && <p>No visible reaction matches the filter.</p>}
     </div>;
 }

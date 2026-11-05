@@ -680,8 +680,11 @@ component and message documentation; targeting a particular node or variant thro
 supported by this viewer.
 
 `FULL_REACTIONS` supplies chapter availability, message variants, reaction tables, documentation links and
-the viewer. During preparation of a part, each environment snapshot is read once and reused for its JSON
-and pages. Component ownership includes the system, so equally named components in different systems stay
+the viewer. Each service instance holds the parsed snapshot per environment, keyed on the stored graph's
+import timestamp, checked through a projection without graph bytes. Parallel parts share the snapshot
+and documentation index. A graph replacement reloads the bytes; an architecture model change rebuilds
+ownership and documentation links. An unchanged graph confirmation does not reload the bytes.
+Within a part the same snapshot supplies its JSON and pages. Component ownership includes the system, so equally named components in different systems stay
 separate. Unknown ownership is retained in message views without inventing component destinations. The
 three subject import kinds and their indexes are retired.
 
@@ -1112,7 +1115,7 @@ the existing diagram plugin's icons, with tooltips and accessible names. Frequen
 when hovering over an arrow. This does not expand the selection across system boundaries
 or reveal superseded reactions.
 
-Right-click a group frame or one of its members for “Gruppe einklappen” and “Gruppe einblenden”.
+Right-click a group frame or one of its members for “Collapse group” and “Expand group”.
 The menu disables actions that would not change the group. Collapsing preserves pinned members and changes
 only that group; the other groups and other viewers retain their state. Zoom and pan survive the redraw.
 After selecting a group, Shift+F10 opens its menu (the first group is the initial keyboard target);
@@ -1127,12 +1130,12 @@ edges, together with site, environment and entry information. It can be copied o
 clipboard access is unavailable. This is the viewer's equivalent of the old DOT source, not an import or
 share-link format. Opening and closing it preserves group state, zoom and pan; the legend remains visible.
 
-A group's menu also offers “Zur Komponenten-Dokumentation” when its documented component has a
+A group's menu also offers “Go to component documentation” when its documented component has a
 runtime page. The destination is supplied by the structure template using the available documentation pages,
 stays within the current site and environment, and is omitted on that component's own page.
 Message context menus link to the event or command documentation. HTTP context menus link to the provider's
 REST API page when the model identifies one documented provider with a REST API. Unknown or ambiguous targets
-show a disabled “Dokumentation nicht verfügbar” entry. These links also keep the current site and environment.
+show a disabled “Documentation unavailable” entry. These links also keep the current site and environment.
 Only arrows show hover tooltips with their frequencies. The tooltip disappears when the pointer leaves
 the arrow, when a menu opens, or when the viewport changes. Nodes and groups have no hover tooltips.
 Clicking adds no detail text below the diagram.
@@ -1153,7 +1156,7 @@ architecture-model assignments published with the snapshot, while reactions keep
 The reference is the system/component page's system or the selected message's documented system.
 Missing or ambiguous ownership is never inferred from neighbouring reactions or message names.
 
-A malformed, unavailable or wrong-context snapshot shows `Reaktionsgraph derzeit nicht verfügbar`; other page
+A malformed, unavailable or wrong-context snapshot shows `Reaction graph currently unavailable`; other page
 content remains usable. The viewer does not ask the observer directly. Existing omission of reaction pages
 without observations is unchanged. Entry metadata travels in an inert `reaction-view` code fence, written by
 `MarkdownWriter.reactionViewer`, not as raw HTML or executable MDX.

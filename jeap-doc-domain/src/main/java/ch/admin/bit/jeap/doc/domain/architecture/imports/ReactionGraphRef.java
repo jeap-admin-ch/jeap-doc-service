@@ -11,4 +11,4 @@ import java.time.Instant;
  * @param drawable whether it contains observations, used to refuse an unexpectedly empty replacement
  */
 public record ReactionGraphRef(String environment, String sourceFormat, String etag,
-                               Instant checkedAt, boolean drawable) {}
+                               Instant importedAt, Instant checkedAt, boolean drawable) {}

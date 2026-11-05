@@ -148,9 +148,9 @@ class SiteWithoutEnvironmentsBrowserIT extends BrowserTestBase {
         Response served = open(ROOT + "/reactions/");
 
         assertThat(served.status()).isEqualTo(200);
-        assertThat(served.text()).contains("Reaktionsgraph derzeit nicht verfügbar", "orders-api");
+        assertThat(served.text()).contains("Reaction graph currently unavailable", "orders-api");
         PlaywrightAssertions.assertThat(page.locator(".jeapReactionView [role='status']"))
-                .hasText("Reaktionsgraph derzeit nicht verfügbar");
+                .hasText("Reaction graph currently unavailable");
         PlaywrightAssertions.assertThat(page.locator(".jeapReactionTableFallback table"))
                 .containsText("orders-api");
         PlaywrightAssertions.assertThat(page.locator(".jeapReactionView canvas, table[data-reaction-table='live']"))

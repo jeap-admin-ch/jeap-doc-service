@@ -32,17 +32,51 @@ public class ReactionNetworkPublication {
     private final ArchitectureModelSource models;
     private final ReactionGraphUpstream upstream;
 
+    // One immutable snapshot per environment. compute serializes competing part builds;
+    // metadata is read inside it so a waiting reader cannot restore an older cache key.
+    private final Map<String, HeldGraph> held = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record HeldGraph(java.time.Instant importedAt, ObservedReactions graph,
+                             ArchitectureModel model, PublishedReactions published) {}
+
     public Optional<PublishedReactions> read(String environment) {
         if (!upstream.isConfiguredFor(environment)) {
             return Optional.empty();
         }
-        return graphs.find(environment)
-                .map(stored -> publish(environment, content.readFull(stored.data()), stored.importedAt()));
+        return Optional.ofNullable(held.compute(environment, this::refresh)).map(HeldGraph::published);
     }
 
-    private PublishedReactions publish(String environment, ObservedReactions graph, java.time.Instant importedAt) {
+    private HeldGraph refresh(String id, HeldGraph previous) {
+        var ref = graphs.findRef(id);
+        if (ref.isEmpty()) {
+            return null;
+        }
+        java.time.Instant importedAt = ref.orElseThrow().importedAt();
+        ObservedReactions graph;
+        if (previous != null && java.util.Objects.equals(previous.importedAt(), importedAt)) {
+            graph = previous.graph();
+        } else {
+            var stored = graphs.find(id);
+            if (stored.isEmpty()) {
+                return null;
+            }
+            // Use the version of the bytes actually read if an import raced the projection.
+            importedAt = stored.orElseThrow().importedAt();
+            graph = content.readFull(stored.orElseThrow().data());
+        }
         boolean needsModel = graph.identityScheme().equals("observer-v1") || !graph.messages().isEmpty();
-        ArchitectureModel model = needsModel ? models.read(environment).model() : ArchitectureModel.empty();
+        // StoredArchitectureModel shares the model until its import key changes. Identity
+        // avoids walking the entire landscape to compare it on every part build.
+        ArchitectureModel model = needsModel ? models.read(id).model() : null;
+        if (previous != null && previous.graph() == graph && previous.model() == model
+                && java.util.Objects.equals(previous.importedAt(), importedAt)) {
+            return previous;
+        }
+        return new HeldGraph(importedAt, graph, model,
+                publish(graph, importedAt, model == null ? ArchitectureModel.empty() : model));
+    }
+
+    private PublishedReactions publish(ObservedReactions graph, java.time.Instant importedAt, ArchitectureModel model) {
         Map<String, List<Owner>> owners = ownersOf(model, graph);
         List<PublishedReactions.Ownership> ownership = new ArrayList<>();
         boolean complete = true;

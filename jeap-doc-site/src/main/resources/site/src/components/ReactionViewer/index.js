@@ -32,7 +32,7 @@ function load(url, site, environment) {
 
 export default function ReactionViewer({entry}) {
     const environment = useEnvironment();
-    if (!environment) return <p role="status">Reaktionsgraph derzeit nicht verfügbar</p>;
+    if (!environment) return <p role="status">Reaction graph currently unavailable</p>;
     return <EnvironmentReactionViewer entry={entry} environment={environment}/>;
 }
 
@@ -68,7 +68,7 @@ function EnvironmentReactionViewer({entry, environment}) {
         try {
             if (document.fullscreenElement === panel.current) await document.exitFullscreen();
             else await panel.current.requestFullscreen();
-        } catch { setNotice('Vollbild ist in diesem Browser nicht verfügbar.'); }
+        } catch { setNotice('Fullscreen is unavailable in this browser.'); }
     };
     const onKeyDown = event => {
         if (event.key === 'Escape') { setHover(null); return; }
@@ -155,43 +155,43 @@ function EnvironmentReactionViewer({entry, environment}) {
     const menuGroup = menu && snapshot?.graph.groups.get(menu.group);
     const environmentPrefix = url.slice(0, -'reaction-graph.json'.length);
     const destination = !menu ? null : menu.kind === 'group'
-        ? {href: componentHref(entry, menuGroup?.owner, environmentPrefix), label: 'Zur Komponenten-Dokumentation'}
+        ? {href: componentHref(entry, menuGroup?.owner, environmentPrefix), label: 'Go to component documentation'}
         : interfaceDestination(entry, snapshot?.graph.nodes.get(menu.id), environmentPrefix);
-    if (failed || view?.invalid) return <p role="status">Reaktionsgraph derzeit nicht verfügbar</p>;
-    if (!view) return <p role="status">Reaktionsgraph wird geladen …</p>;
+    if (failed || view?.invalid) return <p role="status">Reaction graph currently unavailable</p>;
+    if (!view) return <p role="status">Loading reaction graph …</p>;
     if (!view.elements.length && !view.superseded && snapshot.graph.ownershipComplete) return null;
     let focus = `${entry.system} (System)`;
     if (entry.kind === 'COMPONENT') focus = entry.component;
     if (entry.kind === 'MESSAGE') focus = entry.message + (entry.variant ? ` [${entry.variant}]` : '');
     const count = view.reactionCount;
-    const summary = `${count} ${entry.kind === 'MESSAGE' ? 'direkt verbundene ' : ''}${count === 1 ? 'Reaktion' : 'Reaktionen'}`;
-    return <><section ref={panel} className={styles.viewer} aria-label="Reaktionsketten">
+    const summary = `${count} ${entry.kind === 'MESSAGE' ? 'directly connected ' : ''}${count === 1 ? 'reaction' : 'reactions'}`;
+    return <><section ref={panel} className={styles.viewer} aria-label="Reaction chains">
         <div className={styles.toolbar}>
             <div><strong>{focus}</strong><span className={styles.caption}>{summary}</span></div>
-            <div className={styles.actions} role="group" aria-label="Graphansicht">
-                <button type="button" disabled={sourceOpen} aria-label="Graph verkleinern" title="Graph verkleinern" onClick={() => controls.current?.zoom(0.8)}><ZoomOutIcon/></button>
+            <div className={styles.actions} role="group" aria-label="Graph view">
+                <button type="button" disabled={sourceOpen} aria-label="Zoom out" title="Zoom out" onClick={() => controls.current?.zoom(0.8)}><ZoomOutIcon/></button>
                 <output aria-label="Zoom">{zoom}%</output>
-                <button type="button" disabled={sourceOpen} aria-label="Graph vergrössern" title="Graph vergrössern" onClick={() => controls.current?.zoom(1.25)}><ZoomInIcon/></button>
-                <button type="button" disabled={sourceOpen} aria-label="Alles einpassen" title="Alles einpassen" onClick={() => controls.current?.fit()}><FitIcon/></button>
-                <button type="button" disabled={sourceOpen} aria-label="Startansicht" title="Startansicht" onClick={() => controls.current?.reset()}><ResetZoomIcon/></button>
+                <button type="button" disabled={sourceOpen} aria-label="Zoom in" title="Zoom in" onClick={() => controls.current?.zoom(1.25)}><ZoomInIcon/></button>
+                <button type="button" disabled={sourceOpen} aria-label="Fit all" title="Fit all" onClick={() => controls.current?.fit()}><FitIcon/></button>
+                <button type="button" disabled={sourceOpen} aria-label="Reset view" title="Reset view" onClick={() => controls.current?.reset()}><ResetZoomIcon/></button>
                 <button type="button" disabled={sourceOpen} aria-expanded={minimapOpen} aria-controls={minimapId}
-                    aria-label={minimapOpen ? 'Minimap ausblenden' : 'Minimap einblenden'} title={minimapOpen ? 'Minimap ausblenden' : 'Minimap einblenden'}
+                    aria-label={minimapOpen ? 'Hide minimap' : 'Show minimap'} title={minimapOpen ? 'Hide minimap' : 'Show minimap'}
                     onClick={() => setMinimapOpen(open => !open)}><MinimapIcon/></button>
                 <button ref={sourceToggle} type="button" aria-expanded={sourceOpen} aria-controls={sourceId}
-                    aria-label={sourceOpen ? 'Quelltext ausblenden' : 'Quelltext anzeigen'} title={sourceOpen ? 'Quelltext ausblenden' : 'Quelltext anzeigen'}
+                    aria-label={sourceOpen ? 'Hide source' : 'Show source'} title={sourceOpen ? 'Hide source' : 'Show source'}
                     onClick={() => { setSourceOpen(open => !open); setMenu(null); setHover(null); }}><SourceIcon/></button>
                 <button type="button" aria-pressed={fullscreen} onClick={toggleFullscreen}
-                    aria-label={fullscreen ? 'Vollbild verlassen' : 'Vollbild'} title={fullscreen ? 'Vollbild verlassen' : 'Vollbild'}>
+                    aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
                     {fullscreen ? <CloseIcon/> : <MaximizeIcon/>}
                 </button>
             </div>
         </div>
-        {!snapshot.graph.ownershipComplete && <p role="status">Unvollständige Zuordnung: Nicht alle Reaktionen können einem System zugeordnet werden.</p>}
-        {view.superseded > 0 && <p>{view.superseded} abgelöste Reaktionen ausgeblendet.</p>}
+        {!snapshot.graph.ownershipComplete && <p role="status">Incomplete ownership: Not all reactions can be assigned to a system.</p>}
+        {view.superseded > 0 && <p>{view.superseded} superseded reactions hidden.</p>}
         <div className={styles.graph}>
             <div ref={container} className={`${styles.canvas} ${sourceOpen ? styles.coveredCanvas : ''}`} tabIndex={sourceOpen ? -1 : 0} role="group"
                 aria-hidden={sourceOpen || undefined}
-                aria-label="Reaktionsgraph. Pfeiltasten verschieben, Plus und Minus zoomen, Null passt alles ein. Rechtsklick oder Umschalt-F10 öffnet das Kontextmenü."
+                aria-label="Reaction graph. Use arrow keys to pan, plus and minus to zoom, and zero to fit all. Right-click or press Shift+F10 to open the context menu."
                 aria-describedby={hover && !menu ? tooltipId : undefined}
                 onMouseLeave={() => setHover(null)} onKeyDown={onKeyDown} onContextMenu={event => event.preventDefault()}/>
             {minimapOpen && !sourceOpen && renderer && <Minimap id={minimapId} renderer={renderer}/>}

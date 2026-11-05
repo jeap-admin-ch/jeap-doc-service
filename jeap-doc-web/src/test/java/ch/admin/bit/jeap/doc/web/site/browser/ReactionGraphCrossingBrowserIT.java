@@ -24,11 +24,11 @@ class ReactionGraphCrossingBrowserIT extends SiteBrowserTestBase {
         for (String each : pages) {
             open("/" + each + "/");
             showReactionViewer(0);
-            var viewers = page.locator("section[aria-label='Reaktionsketten']");
+            var viewers = page.locator("section[aria-label='Reaction chains']");
             for (int index = 0; index < viewers.count(); index++) {
                 showReactionViewer(index);
                 var viewer = viewers.nth(index);
-                var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
+                var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
                 // Pointer and keyboard menu interaction is covered in ReactionViewerBrowserIT. Here we
                 // enumerate every rendered target, including those initially outside the viewport.
                 var ids = (List<?>) canvas.evaluate("""

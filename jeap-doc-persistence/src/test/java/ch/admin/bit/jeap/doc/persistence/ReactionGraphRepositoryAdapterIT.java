@@ -41,6 +41,7 @@ class ReactionGraphRepositoryAdapterIT extends PostgresTestContainerBase {
             assertThat(ref.etag()).isEqualTo("tag-content");
             assertThat(ref.sourceFormat()).isEqualTo("observer-v1");
             assertThat(ref.drawable()).isTrue();
+            assertThat(ref.importedAt()).isEqualTo(IMPORTED_AT);
         });
         assertThat(stats.getEntityLoadCount()).isZero();
         graphs.confirm("full-confirm", IMPORTED_AT.plusSeconds(60));

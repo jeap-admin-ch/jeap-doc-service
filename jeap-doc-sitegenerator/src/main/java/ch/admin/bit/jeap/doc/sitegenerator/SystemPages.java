@@ -75,6 +75,11 @@ import static ch.admin.bit.jeap.doc.markdown.FrontMatter.frontMatter;
 @Component
 @RequiredArgsConstructor
 public class SystemPages {
+    private final java.util.concurrent.ConcurrentMap<String, HeldReactions> heldReactions =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record HeldReactions(PublishedReactions snapshot, ArchitectureModel model, ReactionDocumentation index) {}
+
 
     private final ArchitectureModelSource architectureModel;
 
@@ -252,7 +257,10 @@ public class SystemPages {
 
         // Once for the environment, ahead of the systems: what it answers is the same for every one of them,
         // and most landscapes run no reaction observer at all.
-        Optional<ReactionDocumentation> reactionPages = reactions.map(graph -> new ReactionDocumentation(graph, model));
+        Optional<ReactionDocumentation> reactionPages = reactions.map(graph ->
+                heldReactions.compute(environment, (id, previous) ->
+                        previous != null && previous.snapshot() == graph && previous.model() == model
+                                ? previous : new HeldReactions(graph, model, new ReactionDocumentation(graph, model))).index());
 
         List<String> slugs = slugsToWrite(model, part, documentedSlugs);
         for (String slug : slugs) {

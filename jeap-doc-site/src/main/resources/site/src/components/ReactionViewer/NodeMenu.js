@@ -24,10 +24,10 @@ export default function NodeMenu({menu, href, linkLabel, canExpand, canCollapse,
         onKeyDown={onKeyDown} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) onClose(false); }}>
         <div className={styles.menuTitle}>{menu.label}</div>
         {href && <a role="menuitem" href={href}>{linkLabel}</a>}
-        {!menu.group && !href && <button type="button" role="menuitem" disabled>Dokumentation nicht verfügbar</button>}
+        {!menu.group && !href && <button type="button" role="menuitem" disabled>Documentation unavailable</button>}
         {menu.group && <>
-        <button type="button" role="menuitem" disabled={!canCollapse} onClick={() => onChange(false)}>Gruppe einklappen</button>
-        <button type="button" role="menuitem" disabled={!canExpand} onClick={() => onChange(true)}>Gruppe einblenden</button>
+        <button type="button" role="menuitem" disabled={!canCollapse} onClick={() => onChange(false)}>Collapse group</button>
+        <button type="button" role="menuitem" disabled={!canExpand} onClick={() => onChange(true)}>Expand group</button>
         </>}
     </div>;
 }
