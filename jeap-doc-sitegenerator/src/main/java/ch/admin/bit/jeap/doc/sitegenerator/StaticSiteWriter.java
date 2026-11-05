@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
+import java.util.LinkedHashSet;
 import java.util.Optional;
 
 /**
@@ -54,7 +55,7 @@ public class StaticSiteWriter implements ContentWriter {
     }
 
     @Override
-    public Map<String, EnvironmentModel> write(Site site, SitePart part, Path contentDirectory,
+    public WrittenContent write(Site site, SitePart part, Path contentDirectory,
                                                Instant generatedAt) throws IOException {
         Path tree = contentDirectory.resolve(SiteSources.SINGLE_TREE);
         Files.createDirectories(tree);
@@ -63,7 +64,7 @@ public class StaticSiteWriter implements ContentWriter {
         if (!written.rootPage()) {
             RootPage.write(site, null, tree, generatedAt, rootPageText(set.isPresent(), written), "");
         }
-        return Map.of();
+        return new WrittenContent(Map.of(), new LinkedHashSet<>());
     }
 
     /** What the generated root page says about the tree it stands in for. */
@@ -206,7 +207,7 @@ public class StaticSiteWriter implements ContentWriter {
             if (page.asset()) {
                 return Optional.of(uploaded);
             }
-            return textOf(page, uploaded).map(text -> utf8(stamped(set, text)));
+            return textOf(page, uploaded).map(text -> utf8(stamped(text)));
         }
 
         /** The page as text, or nothing where it is not UTF-8 - refused rather than repaired, as every upload is. */
@@ -217,7 +218,7 @@ public class StaticSiteWriter implements ContentWriter {
                         .onUnmappableCharacter(CodingErrorAction.REPORT)
                         .decode(ByteBuffer.wrap(bytes))
                         .toString());
-            } catch (CharacterCodingException e) {
+            } catch (CharacterCodingException _) {
                 log.warn("The uploaded page {} of the static site {} is not UTF-8, and is not published.",
                         page.path(), site());
                 return Optional.empty();
@@ -227,20 +228,20 @@ public class StaticSiteWriter implements ContentWriter {
         private String site() {
             return set.key().site();
         }
-    }
 
-    /** The page with what it may say about itself, and where it came from. */
-    private static String stamped(CustomSet set, String page) {
-        CustomProvenance provenance = set.provenance();
-        Map<String, Object> generated = UploadedFrontMatter.keys();
-        generated.put("doc_status", CustomPagesWriter.DOC_STATUS);
-        generated.put("doc_source", "upload");
-        generated.put("doc_source_repository", provenance.sourceRepository());
-        generated.put("doc_source_ref", provenance.sourceRef());
-        generated.put("doc_source_revision", provenance.sourceRevision());
-        generated.put("doc_uploaded_at", provenance.uploadedAt().toString());
-        generated.put("doc_uploaded_at_display", DisplayTime.of(provenance.uploadedAt()));
-        return UploadedFrontMatter.rewritten(page, generated);
+        /** The page with what it may say about itself, and where it came from. */
+        private String stamped(String page) {
+            CustomProvenance provenance = set.provenance();
+            Map<String, Object> generated = UploadedFrontMatter.keys();
+            generated.put("doc_status", CustomPagesWriter.DOC_STATUS);
+            generated.put("doc_source", "upload");
+            generated.put("doc_source_repository", provenance.sourceRepository());
+            generated.put("doc_source_ref", provenance.sourceRef());
+            generated.put("doc_source_revision", provenance.sourceRevision());
+            generated.put("doc_uploaded_at", provenance.uploadedAt().toString());
+            generated.put("doc_uploaded_at_display", DisplayTime.of(provenance.uploadedAt()));
+            return UploadedFrontMatter.rewritten(page, generated);
+        }
     }
 
     private static byte[] utf8(String text) {

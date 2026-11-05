@@ -35,6 +35,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static ch.admin.bit.jeap.doc.markdown.FrontMatter.frontMatter;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /** A newer environment snapshot must only rebuild the parts whose content changed. */
@@ -64,11 +66,12 @@ class ReactionContentDigestTest {
         });
         PublicationProperties publication = new PublicationProperties();
         publication.setUrl("https://doc.example.ch");
-        sources = new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(), pages,
+        sources = new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
+                List.of(new SystemDocumentationWriter(pages, new ReactionNetworkFiles(networks))),
                 new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()),
                 new BuildProperties(), TestProvenance.of(NoArchitectureModel.INSTANCE),
-                new AboutThisDocumentation(), new ReactionNetworkFiles(networks));
+                new AboutThisDocumentation(), publication);
     }
 
     @ParameterizedTest
@@ -99,6 +102,26 @@ class ReactionContentDigestTest {
         String after = digestOf("after", part, snapshot(IMPORTED_AT, 8, 2));
 
         assertThat(after).isNotEqualTo(before);
+    }
+
+    @Test
+    void pagesAndGraphUseOneSnapshotEvenWhenAnotherImportArrives() throws IOException {
+        PublishedReactions first = snapshot(IMPORTED_AT, 1, 2);
+        when(networks.read("prod")).thenReturn(Optional.of(first))
+                .thenReturn(Optional.of(snapshot(IMPORTED_LATER, 8, 9)));
+        SitePart wholeEnvironment = new SitePart(PartKey.shellOf(site.id()), "the site", "", true,
+                List.of("prod"), List.of());
+
+        WrittenContent written = sources.write(1, site, wholeEnvironment, directory, GENERATED_AT);
+
+        assertThat(Files.readString(directory.resolve("prod/reactions.md")))
+                .contains(IMPORTED_AT.toString(), "| `orders-api` | 1 |");
+        var graph = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(directory.resolve("static/reaction-graph.json").toFile());
+        assertThat(graph.path("importedAt").asString()).isEqualTo(IMPORTED_AT.toString());
+        assertThat(written.volatileTimestamps()).contains(IMPORTED_AT.toString(), DisplayTime.of(IMPORTED_AT));
+        verify(networks).read("prod");
+        verifyNoMoreInteractions(networks);
     }
 
     @Test

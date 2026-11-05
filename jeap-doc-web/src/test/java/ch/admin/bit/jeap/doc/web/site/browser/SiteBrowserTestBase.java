@@ -380,13 +380,12 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * over a fixture that merely looked like the site would prove nothing about the site.
      */
     protected SiteSources fixtureSources(SiteUrls urls, BuildProperties properties) {
-        return new SiteSources(urls, new DefaultResourceLoader(), java.util.List.of(new SystemDocumentationWriter(withoutSystemPages()),
+        return new SiteSources(urls, new DefaultResourceLoader(), java.util.List.of(new SystemDocumentationWriter(withoutSystemPages(), reactionNetworkFiles()),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties, provenance(),
                 new AboutThisDocumentation(), new PublicationProperties()) {
-                new AboutThisDocumentation(), reactionNetworkFiles()) {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,
                                         Instant generatedAt) throws IOException {

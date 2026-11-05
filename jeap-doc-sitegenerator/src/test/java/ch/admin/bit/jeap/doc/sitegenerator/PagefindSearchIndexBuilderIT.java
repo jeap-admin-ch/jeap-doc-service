@@ -23,9 +23,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Stream;
 
-import static org.mockito.Mockito.mock;
-
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * Builds a real search index with the real Pagefind.
@@ -54,12 +53,10 @@ class PagefindSearchIndexBuilderIT {
         SiteUrls urls = new SiteUrls(publication, "/docs");
         DefaultResourceLoader resources = new DefaultResourceLoader();
         SiteSources sources = new SiteSources(urls, resources,
-                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()), properties,
-                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(),
-                mock(ReactionNetworkFiles.class));
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
         builder = new PagefindSearchIndexBuilder(properties, new BuildWorkspaces(properties), sources,
                 new NodeProcess(properties), new NoCustomDocumentation(), new NoCustomStorage(), resources,
@@ -146,7 +143,7 @@ class PagefindSearchIndexBuilderIT {
         publication.setUrl("https://doc.example.ch");
         SiteUrls urls = new SiteUrls(publication, "/docs");
         DefaultResourceLoader resources = new DefaultResourceLoader();
-        SiteSources sources = new SiteSources(urls, resources, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+        SiteSources sources = new SiteSources(urls, resources, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), sites,
                 new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()), properties,

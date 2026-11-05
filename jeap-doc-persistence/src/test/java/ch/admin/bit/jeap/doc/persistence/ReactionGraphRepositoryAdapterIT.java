@@ -64,7 +64,7 @@ class ReactionGraphRepositoryAdapterIT extends PostgresTestContainerBase {
             jdbc.update("insert into architecture_import (environment, kind, complete) values ('full-migration', ?, true)", kind);
         }
         jdbc.update("insert into architecture_import (environment, kind, complete, item_count, last_success_at) values ('full-migration', 'FULL_REACTIONS', true, 1, ?)", java.sql.Timestamp.from(IMPORTED_AT));
-        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V1_10_0__retire-partial-reaction-imports.sql"))
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V1_11_0__retire-partial-reaction-imports.sql"))
                 .execute(jdbc.getDataSource());
         assertThat(graphs.find("full-migration")).contains(stored);
         assertThat(jdbc.queryForList("select kind from reaction_graph where environment = 'full-migration'", String.class))

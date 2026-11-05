@@ -6,7 +6,6 @@ import ch.admin.bit.jeap.doc.domain.SitePart;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.Map;
 
 /**
  * Writes what one content source puts into a part: its pages, into the content directory of a build. The
@@ -26,9 +25,9 @@ public interface ContentWriter {
      *
      * @param contentDirectory the content directory of the build: one directory per environment tree below it,
      *                         or {@link SiteSources#SINGLE_TREE} for a site without environments
-     * @return per environment that reads an architecture model, what it contributed; empty for a source that
-     *         reads none
+     * @return what each environment's model contributed, and the source's provenance timestamps that the
+     *         content digest must ignore; both may be empty for a source that reads no model
      */
-    Map<String, EnvironmentModel> write(Site site, SitePart part, Path contentDirectory, Instant generatedAt)
+    WrittenContent write(Site site, SitePart part, Path contentDirectory, Instant generatedAt)
             throws IOException;
 }

@@ -41,7 +41,7 @@ class StaticSiteWriterTest {
                 .page("working-agreements/reviews.md", "# Reviews\n\nTwo pairs of eyes.\n")
                 .file("working-agreements/img/flow.png", new byte[]{1, 2, 3});
 
-        assertThat(tree.writer().write(HANDBOOK, shell(), content, GENERATED_AT)).isEmpty();
+        assertThat(tree.writer().write(HANDBOOK, shell(), content, GENERATED_AT).models()).isEmpty();
 
         Path written = content.resolve(SiteSources.SINGLE_TREE);
         assertThat(filesBelow(written)).containsExactlyInAnyOrder("index.md", "intro/_category_.json",

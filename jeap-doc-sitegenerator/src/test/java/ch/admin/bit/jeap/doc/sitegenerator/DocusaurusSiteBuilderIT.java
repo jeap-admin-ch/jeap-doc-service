@@ -24,9 +24,8 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.time.Instant;
 
-import static org.mockito.Mockito.mock;
-
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * Builds a real documentation site with the real site generator.
@@ -61,13 +60,11 @@ class DocusaurusSiteBuilderIT {
         publication.setUrl("https://doc.example.ch");
         urls = new SiteUrls(publication, "/docs");
         resourceLoader = new org.springframework.core.io.DefaultResourceLoader();
-        sources = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+        sources = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
-                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(),
-                mock(ReactionNetworkFiles.class));
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
         builder = builderWriting(sources);
     }
@@ -254,13 +251,11 @@ class DocusaurusSiteBuilderIT {
                         new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
                         new GeneratorProperties(),
                         new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
-                        ch.admin.bit.jeap.doc.domain.port.BuildMetrics.NONE, urls)),
+                        ch.admin.bit.jeap.doc.domain.port.BuildMetrics.NONE, urls), mock(ReactionNetworkFiles.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(OneSystemEverywhere.INSTANCE, new NoCustomDocumentation()), properties,
-                TestProvenance.of(OneSystemEverywhere.INSTANCE), new AboutThisDocumentation(),
-                mock(ReactionNetworkFiles.class));
                 TestProvenance.of(OneSystemEverywhere.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
     }
 
@@ -315,14 +310,12 @@ class DocusaurusSiteBuilderIT {
      * generator exactly the way a page of real documentation does.
      */
     private SiteSources sourcesAlsoWriting(ExtraPages extra) {
-        return new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+        return new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties()) {
-                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(),
-                mock(ReactionNetworkFiles.class)) {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,
                                         Instant generatedAt) throws IOException {
@@ -380,7 +373,7 @@ class DocusaurusSiteBuilderIT {
         SiteProperties configured = handbookWithoutEnvironments();
         DocumentationSites sites = new DocumentationSites(configured);
         Site site = sites.find(HANDBOOK).orElseThrow();
-        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), sites,
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
@@ -422,7 +415,7 @@ class DocusaurusSiteBuilderIT {
         publication.setTitle("Example Documentation");
         DocumentationSites sites = new DocumentationSites(configured);
         Site site = sites.find(Site.DEFAULT_SITE).orElseThrow();
-        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls)),
+        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), sites,
                 new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
@@ -434,10 +427,10 @@ class DocusaurusSiteBuilderIT {
         BuiltSite built = twoSiteBuilder.generate(twoSiteBuilder.prepare(6, site, wholeSiteOf(site), GENERATED_AT));
 
         String page = Files.readString(built.directory().resolve("index.html"), StandardCharsets.UTF_8);
-        assertThat(page).containsPattern("class=\"?navbar__title[^>]*>Example Documentation<");
-        assertThat(page).containsPattern("<title[^>]*>[^<]*System Documentation</title>");
-        assertThat(page).containsPattern("href=\"?/docs/\"?[^>]*aria-current=\"?page\"?[^>]*>Architecture<");
-        assertThat(page).containsPattern("href=\"?/docs/site/deployments/\"?[^>]*>Deployments<");
+        assertThat(page).containsPattern("class=\"?navbar__title[^>]*>Example Documentation<")
+                .containsPattern("<title[^>]*>[^<]*System Documentation</title>")
+                .containsPattern("href=\"?/docs/\"?[^>]*aria-current=\"?page\"?[^>]*>Architecture<")
+                .containsPattern("href=\"?/docs/site/deployments/\"?[^>]*>Deployments<");
         assertThat(page.indexOf(">Architecture<")).isLessThan(page.indexOf(">Deployments<"));
     }
 

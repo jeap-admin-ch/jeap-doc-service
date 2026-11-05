@@ -1,6 +1,8 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
+import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.content.SystemDocumentationContent;
@@ -11,6 +13,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Objects;
 import java.util.Map;
 import java.util.Optional;
 
@@ -23,6 +27,7 @@ import java.util.Optional;
 public class SystemDocumentationWriter implements ContentWriter {
 
     private final SystemPages systemPages;
+    private final ReactionNetworkFiles reactionNetworkFiles;
 
     @Override
     public String contentSource() {
@@ -30,8 +35,10 @@ public class SystemDocumentationWriter implements ContentWriter {
     }
 
     @Override
-    public Map<String, EnvironmentModel> write(Site site, SitePart part, Path contentDirectory,
+    public WrittenContent write(Site site, SitePart part, Path contentDirectory,
                                                Instant generatedAt) throws IOException {
+        // The graph file and the pages must describe the same snapshot even if an import lands mid-build.
+        var reactions = reactionNetworkFiles.write(site, part, contentDirectory);
         Map<String, EnvironmentModel> models = new LinkedHashMap<>();
         for (SiteEnvironment environment : site.environments()) {
             if (!part.carries(environment.id())) {
@@ -39,13 +46,21 @@ public class SystemDocumentationWriter implements ContentWriter {
             }
             Path directory = contentDirectory.resolve(environment.id());
             // The systems first, so the root page can say whether there are any.
-            Optional<EnvironmentModel> model = systemPages.write(site, environment, part, directory, generatedAt);
+            Optional<EnvironmentModel> model = systemPages.write(site, environment, part, directory, generatedAt,
+                    reactions.getOrDefault(environment.id(), Optional.empty()));
             if (part.carriesWholeEnvironments()) {
                 RootPage.write(site, environment, directory, generatedAt, contentsOf(model), systemsRowOf(model));
             }
             model.ifPresent(counts -> models.put(environment.id(), counts));
         }
-        return models;
+        var timestamps = new LinkedHashSet<String>();
+        reactions.values().stream().flatMap(Optional::stream)
+                .map(PublishedReactions::importedAt).filter(Objects::nonNull)
+                .forEach(importedAt -> {
+                    timestamps.add(importedAt.toString());
+                    timestamps.add(DisplayTime.of(importedAt));
+                });
+        return new WrittenContent(models, timestamps);
     }
 
     /** What the root page says about this tree: where to start, or that nothing has been published yet. */

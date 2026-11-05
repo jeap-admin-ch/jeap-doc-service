@@ -817,9 +817,11 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
     repository for that environment. The only reaction import kind is `FULL_REACTIONS`.
   - The adapter validates the complete snapshot before replacement. Unknown ownership is retained and
     disclosed, never used to filter imported nodes or guessed from neighbours.
-  - `ReactionNetworkFiles` reads each environment snapshot once per part build and hands the same value to
-    `SystemPages`. JSON publication, chapter availability, variants, tables and navigation derive from that
-    snapshot. System parts derive pages but publish no additional copy of the JSON.
+  - `SystemDocumentationWriter` uses `ReactionNetworkFiles` to read each environment snapshot once per part
+    build and hands the same value to `SystemPages`. The writer returns reaction provenance timestamps in
+    `WrittenContent`, so `SiteSources` can exclude them from the digest without knowing the content source.
+    JSON publication, chapter availability, variants, tables and navigation derive from that snapshot.
+    System parts derive pages but publish no additional copy of the JSON.
   - `ObservedReactions` is the domain model: typed interfaces and reactions, separate triggers, actions and
     predecessor relationships. Keep the `ObservedMessage` / `ObservedReaction` / `ObservedTrigger` /
     `ObservedAction` vocabulary. The browser's nodes/edges format belongs to `ReactionGraphJson` in the

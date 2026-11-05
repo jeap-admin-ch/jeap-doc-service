@@ -264,7 +264,7 @@ request to `/api/graphs`. The old system, component and message indexes are no l
 
 ### Retiring the subject imports
 
-Migration `V1_10_0` removes the old system, component and message rows from `reaction_graph` and their
+Migration `V1_11_0` removes the old system, component and message rows from `reaction_graph` and their
 `architecture_import` state. Full snapshots and their successful-import timestamps, bytes and ETags remain
 unchanged. Legacy unwrapped full snapshots remain readable as V1. A deployment that has only subject graphs
 must fetch its first complete snapshot; those independent graphs are never combined into one. Until that

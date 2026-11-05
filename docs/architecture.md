@@ -131,8 +131,9 @@ because nothing outside the replication has any use for them.
   ask for them, whether a tree is uploaded for its site itself, and which configuration it refuses at
   startup. What a source writes into a part is its
   `ContentWriter`'s, in the site generator, which picks the writer by the site's `content` and writes the
-  site-level files around it. Two sources ship: `system-documentation`, the documentation of the systems as it
-  has always been generated, and `static-site`, a tree uploaded for the site.
+  site-level files around it. Writers return `WrittenContent` with model contributions and source-specific
+  provenance timestamps to exclude from the content digest. Two sources ship: `system-documentation`, the
+  documentation of the systems as it has always been generated, and `static-site`, a tree uploaded for the site.
 
   As for a template, **nothing outside a source names it**: the partition everything else asks dispatches each
   site to its source's partition, and the generator injects every writer it finds. A further source - the

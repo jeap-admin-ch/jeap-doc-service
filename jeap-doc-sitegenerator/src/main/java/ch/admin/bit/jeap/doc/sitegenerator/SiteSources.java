@@ -1,7 +1,6 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
-import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationFacts;
@@ -29,7 +28,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -37,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.SequencedSet;
 
 /**
@@ -122,8 +121,6 @@ public class SiteSources {
     /** Where the instance's title comes from, which every site shows beside its logo. */
     private final PublicationProperties publication;
 
-    private final ReactionNetworkFiles reactionNetworkFiles;
-
     /**
      * Writes one part of a site into the given content directory, and answers what it took to write.
      * <p>
@@ -139,21 +136,10 @@ public class SiteSources {
                                 Instant generatedAt) throws IOException {
         Files.createDirectories(contentDirectory);
         writeBranding(site, contentDirectory);
-        var reactions = reactionNetworkFiles.write(site, part, contentDirectory);
-        Map<String, EnvironmentModel> models = new LinkedHashMap<>();
-        for (SiteEnvironment environment : site.environments()) {
-            if (!part.carries(environment.id())) {
-                continue;
-            }
-            Path directory = contentDirectory.resolve(environment.id());
-            // The systems first, so the root page can say whether there are any.
-            Optional<EnvironmentModel> model =
-                    systemPages.write(site, environment, part, directory, generatedAt, reactions.getOrDefault(environment.id(), Optional.empty()));
-            if (part.carriesWholeEnvironments()) {
-                writeRootPage(site, environment, contentDirectory, generatedAt, model);
-            }
-            model.ifPresent(counts -> models.put(environment.id(), counts));
-        }
+        // The content source's pages first, so that the page about the documentation can print what each
+        // environment's model contributed.
+        WrittenContent written = writerOf(site).write(site, part, contentDirectory, generatedAt);
+        Map<String, EnvironmentModel> models = written.models();
         if (part.carriesWholeEnvironments()) {
             // One page per tree - see AboutThisDocumentation.
             writeAboutThisDocumentation(buildId, site, part, contentDirectory, generatedAt, models);
@@ -167,7 +153,9 @@ public class SiteSources {
                         .anyMatch(environment -> environment.main() && hasSystems(models, environment.id()))));
         CrossPartLinks.rewrite(contentDirectory, part, otherPartsOf(site, part, models), linkPrefixesOf(site));
         log.debug("Wrote the content of {} - {} - into {}.", part.key(), part.documents(), contentDirectory);
-        return new WrittenContent(models, volatileTextOf(buildId, generatedAt, models, reactions));
+        SequencedSet<String> timestamps = volatileTextOf(buildId, generatedAt, models);
+        timestamps.addAll(written.volatileTimestamps());
+        return new WrittenContent(models, timestamps);
     }
 
     /**
@@ -192,8 +180,8 @@ public class SiteSources {
 
     /**
      * What this run wrote that says <i>this run</i> rather than what the documentation contains, and that the
-     * digest of the content therefore has to ignore: when the build ran, when each environment's model and
-     * reactions were imported, and which build it was.
+     * digest of the content therefore has to ignore: when the build ran, when each environment's model
+     * was imported, and which build it was. Each content writer adds its own provenance timestamps.
      * <p>
      * Each in the form it was written in - an instant in the front matter, a readable time in the provenance of
      * every page, and the build's identifier as the page about the documentation prints it. Two runs over
@@ -205,8 +193,7 @@ public class SiteSources {
      * schedule has to be replaced before hashing. See {@code DocumentationLiveStatus}.
      */
     private static SequencedSet<String> volatileTextOf(long buildId, Instant generatedAt,
-                                                       Map<String, EnvironmentModel> models,
-                                                       Map<String, Optional<PublishedReactions>> reactions) {
+                                                       Map<String, EnvironmentModel> models) {
         SequencedSet<String> written = new LinkedHashSet<>();
         written.add(generatedAt.toString());
         written.add(DisplayTime.of(generatedAt));
@@ -221,12 +208,6 @@ public class SiteSources {
                 written.add(DisplayTime.of(model.importedAt()));
             }
         }
-        reactions.values().stream().flatMap(Optional::stream)
-                .map(PublishedReactions::importedAt).filter(Objects::nonNull)
-                .forEach(importedAt -> {
-                    written.add(importedAt.toString());
-                    written.add(DisplayTime.of(importedAt));
-                });
         return written;
     }
 
