@@ -18,7 +18,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             var payload = json.readTree(response.text());
             if (visit > 1) {
                 for (var node : payload.path("graph").path("nodes")) {
-                    if (node.has("reaction")) {
+                    if (node.path("reaction").isObject()) {
                         ((tools.jackson.databind.node.ObjectNode) node.path("reaction")).put("median", 9876);
                     }
                 }
