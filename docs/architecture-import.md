@@ -290,8 +290,11 @@ not replaced with zero. Unsupported V1 node or edge kinds fail validation instea
 A valid graph replaces one `reaction_graph` row in one transaction, under the environment and `FULL_REACTIONS`
 with empty name, system and variant. These legacy address columns remain for storage compatibility.
 
-A failed, oversized or invalid response leaves the previous row intact. An empty graph cannot replace a
-previously nonempty graph. A first empty graph is valid. A conditional `304` confirms the existing row without
+A failed, oversized or invalid response leaves the previous row intact. A fully validated empty graph
+replaces a previously nonempty graph on the first successful response, just like any other snapshot.
+The observer is authoritative: an empty graph after a reset or an expired statistics window clears the
+old observations and advances the last-success timestamp. No retry threshold or operator override is
+needed; the next publication reflects the empty snapshot. A conditional `304` confirms the existing row without
 rewriting its bytes. The step participates in import locks, deadlines, status and metrics; a replacement
 triggers the normal documentation build.
 

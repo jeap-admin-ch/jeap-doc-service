@@ -884,8 +884,9 @@ and false one commit later, without any name changing that a search would have f
 ## Complete reaction snapshots
 
 `FULL_REACTIONS` imports one complete environment graph. Never assemble it from the independently fetched
-system, component or message graphs. The adapter validates it before replacement; a failed or unexpectedly
-empty replacement keeps the stored snapshot. It occupies one row of `reaction_graph` with empty name,
+system, component or message graphs. The adapter validates it before replacement; a failed or invalid
+response keeps the stored snapshot. A valid empty graph replaces previous observations immediately,
+because the observer is authoritative. It occupies one row of `reaction_graph` with empty name,
 system and variant. `ReactionNetworkFiles` publishes one JSON file per environment through the shell, never
 through shared assets. Keep the graph in the content digest. V1 identities are opaque strings; a future V2
 switch may invalidate old viewer links. Unknown or ambiguous ownership is disclosed, never guessed or filtered.

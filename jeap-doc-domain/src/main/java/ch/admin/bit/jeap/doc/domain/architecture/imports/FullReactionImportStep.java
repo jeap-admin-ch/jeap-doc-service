@@ -48,9 +48,6 @@ public class FullReactionImportStep implements ArchitectureImportStep {
             }
             return switch (fetched) {
                 case GraphFetch.Stored(ReactionGraph graph) -> {
-                    if (!graph.isDrawable() && known != null && known.drawable()) {
-                        throw new ArchitectureModelUnavailableException("An empty full graph cannot replace observed reactions");
-                    }
                     graphs.store(new StoredReactionGraph(environment, graph.sourceFormat() == null ? "" : graph.sourceFormat(), graph.etag(),
                             graph.fingerprint(), graph.data(), graph.drawableNodes(), clock.instant()));
                     log.info("Imported the complete reaction graph of {} ({} nodes).", environment, graph.drawableNodes());

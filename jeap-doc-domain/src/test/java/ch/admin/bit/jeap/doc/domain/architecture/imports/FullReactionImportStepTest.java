@@ -58,11 +58,15 @@ class FullReactionImportStepTest {
     }
 
     @Test
-    void emptyReplacementDoesNotEraseObservations() {
+    void firstValidEmptyReplacementClearsObservationsAndAdvancesLastSuccess() {
         stored();
-        when(upstream.fullGraph("dev", "old-tag", "")).thenReturn(GraphFetch.stored(new ReactionGraph("new", "new", new byte[0], 0)));
-        assertThat(step.run("dev", Deadline.none())).isEqualTo(ImportOutcome.FAILED);
-        verify(graphs, never()).store(any());
+        byte[] bytes = {1};
+        when(upstream.fullGraph("dev", "old-tag", "")).thenReturn(
+                GraphFetch.stored(new ReactionGraph("empty", "empty", bytes, 0)));
+        assertThat(step.run("dev", Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
+        verify(graphs).store(new StoredReactionGraph("dev", "", "empty", "empty", bytes, 0, NOW));
+        verify(imports).save(argThat(state -> NOW.equals(state.lastSuccessAt())
+                && state.lastOutcome() == ImportOutcome.REPLACED));
     }
 
     @Test

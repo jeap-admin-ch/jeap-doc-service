@@ -14,8 +14,7 @@ import java.util.Objects;
  *                    is the observer's own name for the graph and a graph is explained by it
  * @param sourceFormat optional format marker for a full snapshot, kept beside its conditional tag
  * @param data        the bytes, with a local format envelope for full snapshots
- * @param drawableNodes how many validated nodes the snapshot contains, used to guard against an
- *                      unexpectedly empty replacement without loading the previous snapshot
+ * @param drawableNodes how many validated nodes the snapshot contains, including zero for an empty snapshot
  */
 public record ReactionGraph(String etag, String fingerprint, byte[] data, int drawableNodes, String sourceFormat) {
 
