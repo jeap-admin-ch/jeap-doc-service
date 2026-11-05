@@ -63,11 +63,11 @@ class ReactionNetworkPublicationIT extends DocServiceIntegrationTestBase {
         when(upstream.isConfiguredFor(ENVIRONMENT)).thenReturn(true);
         when(upstream.isConfiguredFor(OTHER_ENVIRONMENT)).thenReturn(true);
         byte[] data = """
-                {"nodes":[{"nodeType":"MESSAGE","id":1,"messageType":"OrderCreatedEvent","variant":"priority"},
+                {"sourceFormat":"observer-v1","graph":{"nodes":[{"nodeType":"MESSAGE","id":1,"messageType":"OrderCreatedEvent","variant":"priority"},
                           {"nodeType":"REACTION","id":2,"component":"orders-intake","median":0}],
-                 "edges":[{"edgeType":"TRIGGER","sourceId":1,"targetReactionId":2}]}
+                 "edges":[{"edgeType":"TRIGGER","sourceId":1,"targetReactionId":2}]}}
                 """.getBytes(StandardCharsets.UTF_8);
-        when(upstream.fullGraph(eq(ENVIRONMENT), any(), any())).thenReturn(GraphFetch.stored(new ReactionGraph("first-tag", "first", data, 2)));
+        when(upstream.fullGraph(eq(ENVIRONMENT), any(), any())).thenReturn(GraphFetch.stored(new ReactionGraph("first-tag", "first", data, 2, "observer-v1")));
         assertThat(importer.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
         publish(workspace.resolve("first"));
         String first = mvc.perform(get("/site/" + SITE + "/reaction-graph.json"))
@@ -75,6 +75,7 @@ class ReactionNetworkPublicationIT extends DocServiceIntegrationTestBase {
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
                 .andExpect(jsonPath("$.site").value(SITE))
                 .andExpect(jsonPath("$.environment").value(ENVIRONMENT))
+                .andExpect(jsonPath("$.identityScheme").value("observer-v1"))
                 .andExpect(jsonPath("$.graph.nodes[1].reaction.median").value(0))
                 .andExpect(jsonPath("$.graph.nodes[0].identity.key").value("1"))
                 .andReturn().getResponse().getContentAsString();
@@ -83,7 +84,7 @@ class ReactionNetworkPublicationIT extends DocServiceIntegrationTestBase {
                 .andExpect(jsonPath("$.environment").value(OTHER_ENVIRONMENT))
                 .andExpect(jsonPath("$.available").value(false))
                 .andExpect(jsonPath("$.graph").doesNotExist());
-        when(upstream.fullGraph(ENVIRONMENT, "first-tag", "")).thenReturn(GraphFetch.skipped("Invalid replacement"));
+        when(upstream.fullGraph(ENVIRONMENT, "first-tag", "observer-v1")).thenReturn(GraphFetch.skipped("Invalid replacement"));
         assertThat(importer.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.FAILED);
         publish(workspace.resolve("after-failure"));
         mvc.perform(get("/site/" + SITE + "/reaction-graph.json"))
@@ -96,7 +97,7 @@ class ReactionNetworkPublicationIT extends DocServiceIntegrationTestBase {
                   {"nodeType":"REACTION","id":"R0","system":"orders","component":"intake","median":1,"status":"SUPERSEDED","reactionModelVersion":2,"unidentifiedActionsRatio":1}],
                   "edges":[{"edgeType":"ACTION","sourceId":"R1","targetId":"I1"},{"edgeType":"PREDECESSOR","sourceId":"R1","targetId":"R0"}]}}
                 """.getBytes(StandardCharsets.UTF_8);
-        when(upstream.fullGraph(ENVIRONMENT, "first-tag", ""))
+        when(upstream.fullGraph(ENVIRONMENT, "first-tag", "observer-v1"))
                 .thenReturn(GraphFetch.stored(new ReactionGraph("v2-tag", "v2", v2, 3, "observer-v2")));
         assertThat(importer.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
         publish(workspace.resolve("v2"));
