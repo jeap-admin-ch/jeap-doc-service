@@ -894,8 +894,8 @@ switch may invalidate old viewer links. Unknown or ambiguous ownership is disclo
 The full snapshot supports both APIs with the same domain and browser format. V2 identities use an
 `INTERFACE` namespace, independent of the representation's `nodeType`; retain unknown interface types and
 SUPERSEDED reactions, and never traverse PREDECESSOR as execution flow. V2 ownership is authoritative.
-The local stored envelope carries `sourceFormat`; the stored `sourceFormat` (in the legacy `upstream_name` column) carries that format
-beside the ETag too. Never send a V1 tag to V2 or vice versa. Legacy unwrapped bytes and empty format mean V1.
+The local stored envelope carries `sourceFormat`; the stored `sourceFormat` (in the `source_format` column) carries that format
+beside the ETag too. Never send a V1 tag to V2 or vice versa. Stored full snapshots require a format envelope; missing format metadata never authorizes reuse of an ETag.
 The API is fixed in `ReactionObserverUpstream`: change `FULL_GRAPH_PATH` and `FULL_GRAPH_FORMAT` together
 when adopting V2. This must not change how an already stored snapshot is read.
 

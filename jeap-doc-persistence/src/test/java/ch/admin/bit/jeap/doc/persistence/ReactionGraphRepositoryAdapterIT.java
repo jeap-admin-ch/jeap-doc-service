@@ -22,11 +22,11 @@ class ReactionGraphRepositoryAdapterIT extends PostgresTestContainerBase {
     @Test
     void snapshotsRoundTripAndReplaceOnlyTheirOwnEnvironment() {
         graphs.store(graph("full-dev", "observer-v2", "first"));
-        graphs.store(graph("full-prod", "", "legacy-unwrapped"));
+        graphs.store(graph("full-prod", "observer-v1", "v1-envelope"));
         var replacement = graph("full-dev", "observer-v2", "replacement");
         graphs.store(replacement);
         assertThat(graphs.find("full-dev")).contains(replacement);
-        assertThat(graphs.find("full-prod")).contains(graph("full-prod", "", "legacy-unwrapped"));
+        assertThat(graphs.find("full-prod")).contains(graph("full-prod", "observer-v1", "v1-envelope"));
         assertThat(jdbc.queryForObject("select count(*) from reaction_graph where environment = 'full-dev'", Integer.class)).isEqualTo(1);
     }
 
@@ -51,29 +51,30 @@ class ReactionGraphRepositoryAdapterIT extends PostgresTestContainerBase {
     }
 
     @Test
-    void retirementMigrationRemovesOnlySubjectSnapshotsAndTheirStates() {
-        var stored = graph("full-migration", "observer-v2", "keep-full-bytes");
-        graphs.store(stored);
-        for (String kind : java.util.List.of("SYSTEM_REACTIONS", "COMPONENT_REACTIONS", "MESSAGE_REACTIONS")) {
-            jdbc.update("""
-                    insert into reaction_graph (id, environment, kind, name, variant, system_name, upstream_name,
-                        etag, fingerprint, graph_data, drawable_nodes, size_in_bytes, imported_at, checked_at)
-                    select nextval('reaction_graph_id_seq'), environment, ?, 'old-subject', '', '', 'old-upstream',
-                        'old-tag', fingerprint, graph_data, drawable_nodes, size_in_bytes, imported_at, checked_at
-                    from reaction_graph where environment = 'full-migration' and kind = 'FULL_REACTIONS'
-                    """, kind);
-            jdbc.update("insert into architecture_import (environment, kind, complete) values ('full-migration', ?, true)", kind);
+    void migrationFrom44RetiresSubjectSnapshotsAndNamesTheFormatColumn() throws Exception {
+        try (var connection = jdbc.getDataSource().getConnection()) {
+            var migrationJdbc = new JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection, true));
+            migrationJdbc.execute("create schema reaction_migration_test");
+            try {
+                migrationJdbc.execute("set search_path to reaction_migration_test");
+                migrationJdbc.execute("create table reaction_graph (kind varchar, upstream_name varchar not null)");
+                migrationJdbc.execute("create table architecture_import (kind varchar)");
+                for (String kind : java.util.List.of("SYSTEM_REACTIONS", "COMPONENT_REACTIONS", "MESSAGE_REACTIONS")) {
+                    migrationJdbc.update("insert into reaction_graph values (?, 'subject')", kind);
+                    migrationJdbc.update("insert into architecture_import values (?)", kind);
+                }
+                migrationJdbc.update("insert into architecture_import values ('MODEL')");
+                new ResourceDatabasePopulator(new ClassPathResource("db/migration/V1_11_0__retire-partial-reaction-imports.sql"))
+                        .populate(connection);
+                assertThat(migrationJdbc.queryForObject("select count(*) from reaction_graph", Integer.class)).isZero();
+                assertThat(migrationJdbc.queryForList("select kind from architecture_import", String.class)).containsExactly("MODEL");
+                migrationJdbc.update("insert into reaction_graph (kind, source_format) values ('FULL_REACTIONS', 'observer-v1')");
+                assertThat(migrationJdbc.queryForObject("select source_format from reaction_graph", String.class)).isEqualTo("observer-v1");
+            } finally {
+                migrationJdbc.execute("set search_path to public");
+                migrationJdbc.execute("drop schema reaction_migration_test cascade");
+            }
         }
-        jdbc.update("insert into architecture_import (environment, kind, complete, item_count, last_success_at) values ('full-migration', 'FULL_REACTIONS', true, 1, ?)", java.sql.Timestamp.from(IMPORTED_AT));
-        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V1_11_0__retire-partial-reaction-imports.sql"))
-                .execute(jdbc.getDataSource());
-        assertThat(graphs.find("full-migration")).contains(stored);
-        assertThat(jdbc.queryForList("select kind from reaction_graph where environment = 'full-migration'", String.class))
-                .containsExactly("FULL_REACTIONS");
-        assertThat(jdbc.queryForList("select kind from architecture_import where environment = 'full-migration'", String.class))
-                .containsExactly("FULL_REACTIONS");
-        assertThat(jdbc.queryForObject("select last_success_at from architecture_import where environment = 'full-migration'", java.sql.Timestamp.class).toInstant())
-                .isEqualTo(IMPORTED_AT);
     }
 
     private static StoredReactionGraph graph(String environment, String format, String content) {

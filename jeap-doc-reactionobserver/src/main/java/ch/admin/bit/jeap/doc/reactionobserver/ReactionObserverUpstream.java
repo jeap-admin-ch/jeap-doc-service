@@ -18,8 +18,7 @@ class ReactionObserverUpstream implements ReactionGraphUpstream {
     private static final String GRAPH = "graph";
     // Switch path and format together when adopting V2. Stored snapshots keep their own format.
     private static final String FULL_GRAPH_PATH = "/api/graphs";
-    private static final String LEGACY_GRAPH_FORMAT = "observer-v1";
-    private static final String FULL_GRAPH_FORMAT = LEGACY_GRAPH_FORMAT;
+    private static final String FULL_GRAPH_FORMAT = "observer-v1";
     private final ReactionObserverClients clients;
     private final ReactionObserverProperties properties;
 
@@ -35,8 +34,7 @@ class ReactionObserverUpstream implements ReactionGraphUpstream {
         String base = withoutTrailingSlashes(urlOf(environment));
         var uri = clients.resolve(environment, base + FULL_GRAPH_PATH);
         if (uri.isEmpty()) return GraphFetch.skipped("its URL cannot be fetched");
-        String previousFormat = knownFormat == null || knownFormat.isBlank() ? LEGACY_GRAPH_FORMAT : knownFormat;
-        String tag = FULL_GRAPH_FORMAT.equals(previousFormat) ? knownEtag : null;
+        String tag = FULL_GRAPH_FORMAT.equals(knownFormat) ? knownEtag : null;
         UpstreamHttp.Answer answer;
         try {
             answer = clients.retrying(() -> clients.getBounded(client, uri.orElseThrow(), tag,

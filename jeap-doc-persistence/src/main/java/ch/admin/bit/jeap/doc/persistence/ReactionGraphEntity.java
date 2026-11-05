@@ -51,8 +51,8 @@ class ReactionGraphEntity {
     @Column(name = "system_name", nullable = false, updatable = false)
     private String systemName;
 
-    @Column(name = "upstream_name", nullable = false)
-    private String upstreamName;
+    @Column(name = "source_format", nullable = false)
+    private String sourceFormat;
 
     @Column(nullable = false)
     private String etag;

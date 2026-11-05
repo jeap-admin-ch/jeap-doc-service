@@ -5,7 +5,7 @@ import java.time.Instant;
 /**
  * Snapshot metadata, without loading its bytes to decide whether to fetch it again.
  *
- * @param sourceFormat the format the entity tag belongs to; empty for legacy V1 snapshots
+ * @param sourceFormat the format the entity tag belongs to
  * @param etag the upstream entity tag verbatim, including quotes
  * @param checkedAt when the snapshot was last stored or confirmed unchanged
  * @param drawable whether the stored snapshot contains observations

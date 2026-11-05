@@ -22,7 +22,7 @@ class ReactionGraphRepositoryAdapter implements ReactionGraphRepository {
     @Transactional(readOnly = true)
     public Optional<ReactionGraphRef> findRef(String environment) {
         return graphs.findByEnvironmentAndKindAndNameAndSystemNameAndVariant(environment, KIND, "", "", "")
-                .map(view -> new ReactionGraphRef(view.getEnvironment(), view.getUpstreamName(),
+                .map(view -> new ReactionGraphRef(view.getEnvironment(), view.getSourceFormat(),
                         view.getEtag(), view.getImportedAt(), view.getCheckedAt(), view.getDrawableNodes() > 0));
     }
 
@@ -42,7 +42,7 @@ class ReactionGraphRepositoryAdapter implements ReactionGraphRepository {
         entity.setName("");
         entity.setVariant("");
         entity.setSystemName("");
-        entity.setUpstreamName(graph.sourceFormat() == null ? "" : graph.sourceFormat());
+        entity.setSourceFormat(graph.sourceFormat() == null ? "" : graph.sourceFormat());
         entity.setEtag(graph.etag());
         entity.setFingerprint(graph.fingerprint());
         entity.setGraphData(graph.data());
@@ -60,7 +60,7 @@ class ReactionGraphRepositoryAdapter implements ReactionGraphRepository {
     }
 
     private static StoredReactionGraph graph(ReactionGraphEntity entity) {
-        return new StoredReactionGraph(entity.getEnvironment(), entity.getUpstreamName(), entity.getEtag(),
+        return new StoredReactionGraph(entity.getEnvironment(), entity.getSourceFormat(), entity.getEtag(),
                 entity.getFingerprint(), entity.getGraphData(), entity.getDrawableNodes(), entity.getImportedAt());
     }
 }

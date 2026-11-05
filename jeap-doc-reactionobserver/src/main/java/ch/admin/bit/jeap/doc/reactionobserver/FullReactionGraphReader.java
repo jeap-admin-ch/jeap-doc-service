@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Set;
 
 
-/** Validates either API before replacing a snapshot; reads legacy unwrapped V1 snapshots too. */
+/** Validates either API and reads stored snapshots with an explicit format envelope. */
 final class FullReactionGraphReader {
     private static final String ACTION = "ACTION";
     private static final String TRIGGER = "TRIGGER";
@@ -27,12 +27,10 @@ final class FullReactionGraphReader {
     private FullReactionGraphReader() {}
 
     static ObservedReactions read(JsonNode stored) {
-        if (stored != null && stored.has("sourceFormat")) {
-            String format = text(stored, "sourceFormat");
-            require(format.equals("observer-v1") || format.equals(V2_FORMAT), "Unknown stored graph format");
-            return read(stored.path("graph"), format.equals(V2_FORMAT));
-        }
-        return read(stored, false);
+        require(stored != null && stored.isObject(), "A stored graph needs a format envelope");
+        String format = text(stored, "sourceFormat");
+        require(format.equals("observer-v1") || format.equals(V2_FORMAT), "Unknown stored graph format");
+        return read(stored.path("graph"), format.equals(V2_FORMAT));
     }
 
     static ObservedReactions read(JsonNode graph, boolean v2) {

@@ -264,12 +264,11 @@ request to `/api/graphs`. The old system, component and message indexes are no l
 
 ### Retiring the subject imports
 
-Migration `V1_11_0` removes the old system, component and message rows from `reaction_graph` and their
-`architecture_import` state. Full snapshots and their successful-import timestamps, bytes and ETags remain
-unchanged. Legacy unwrapped full snapshots remain readable as V1. A deployment that has only subject graphs
-must fetch its first complete snapshot; those independent graphs are never combined into one. Until that
-snapshot is available, generation has no reaction observations to embed. The first successful full import
-triggers the normal build.
+The upgrade from 4.4.0 to 4.5.0 introduces `FULL_REACTIONS`. Migration `V1_11_0` removes
+the old system, component and message rows from `reaction_graph` and their `architecture_import`
+state, and renames `upstream_name` to `source_format`. Each environment fetches its first complete
+snapshot; independent subject graphs are never combined into one. Until that snapshot is available,
+generation has no reaction observations to embed. The first successful full import triggers the normal build.
 
 ### The complete environment graph
 
@@ -306,9 +305,9 @@ and `fqn`; future statuses become `UNKNOWN`, and future edge kinds are ignored. 
 directions. A malformed median, version or ratio rejects the entire replacement.
 
 Full graph bytes are stored in a local envelope with `sourceFormat` (`observer-v1` or `observer-v2`) and the
-original `graph`. Legacy unwrapped bytes remain readable as V1. The domain field `sourceFormat`, stored in the legacy `upstream_name` column,
+original `graph`. The domain field `sourceFormat`, stored in the `source_format` column,
 stores the source format alongside the ETag, so the importer can decide a conditional fetch without reading
-the blob. An empty old value denotes V1. Switching in either direction starts unconditionally; a failed first
+the blob. A missing or different format causes an unconditional fetch. Switching in either direction starts unconditionally; a failed first
 fetch keeps the previous snapshot, which stays readable regardless of the API used for new imports. A successful switch
 replaces the snapshot and identity scheme; old viewer links need not survive.
 

@@ -21,7 +21,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Derive reaction pages, variants, tables and links from the same snapshot. Preserve opaque identities,
   system-qualified ownership, HTTP and unknown interfaces, superseded reactions and predecessor history.
   Keep domain records separate from the browser graph format.
-- Retire subject-specific reaction imports with migration `V1_11_0`, preserving existing full snapshots.
+- Replace the subject-specific reaction imports of 4.4.0 with full snapshots in 4.5.0. Migration `V1_11_0` removes subject snapshots and renames `upstream_name` to `source_format`; the next import fetches the first full snapshot.
 
 ## [4.4.0] - 2026-11-03
 

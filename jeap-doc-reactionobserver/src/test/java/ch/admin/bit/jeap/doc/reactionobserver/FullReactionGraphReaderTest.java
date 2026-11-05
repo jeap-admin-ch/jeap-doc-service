@@ -73,6 +73,17 @@ class FullReactionGraphReaderTest {
                 java.math.BigDecimal.ZERO, ObservedReactions.ReactionStatus.UNKNOWN, null, null, null));
     }
 
+    @Test
+    void storedSnapshotsRequireAnExplicitSupportedFormatEnvelope() {
+        for (String source : java.util.List.of(
+                "{\"nodes\":[],\"edges\":[]}",
+                "{\"sourceFormat\":\"unknown\",\"graph\":{\"nodes\":[],\"edges\":[]}}")) {
+            var stored = json.readTree(source);
+            assertThatThrownBy(() -> FullReactionGraphReader.read(stored))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"null", "-1", "\"0\""})
     void rejectsInvalidMedian(String median) {
@@ -97,17 +108,6 @@ class FullReactionGraphReaderTest {
         assertThatThrownBy(() -> read(missingTarget)).isInstanceOf(IllegalArgumentException.class);
         String wrongDirection = V2.replace("\"targetId\":\"I2\"", "\"targetId\":\"R2\"");
         assertThatThrownBy(() -> read(wrongDirection)).isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void oldUnwrappedSnapshotsRemainReadableWithUnknownV2Metadata() {
-        var graph = FullReactionGraphReader.read(json.readTree("""
-                {"nodes":[{"nodeType":"REACTION","id":9007199254740993,"component":"gateway","median":0}],"edges":[]}
-                """));
-        assertThat(graph.identityScheme()).isEqualTo("observer-v1");
-        assertThat(graph.reactions().getFirst().identity().key()).isEqualTo("9007199254740993");
-        assertThat(graph.reactions().getFirst()).isEqualTo(new ObservedReaction(new Identity("REACTION", "9007199254740993"), null, "gateway",
-                java.math.BigDecimal.ZERO, ObservedReactions.ReactionStatus.UNKNOWN, null, null, null));
     }
 
     @ParameterizedTest

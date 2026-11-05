@@ -12,7 +12,7 @@ interface ReactionGraphRefView {
 
     String getEnvironment();
 
-    String getUpstreamName();
+    String getSourceFormat();
 
     String getEtag();
 
