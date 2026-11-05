@@ -8,6 +8,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- Ignore reaction import timestamps when comparing generated content, so unchanged system parts are not rebuilt
+  when another system's reactions change. Keep graph content changes in the shell's digest.
 - Resolve static analysis findings in page generation and reaction snapshot handling, including nullable
   system contexts and backtracking when trimming upstream URLs.
 - Wait for refreshed search results in the browser test that resets the search filters.

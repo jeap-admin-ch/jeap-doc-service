@@ -52,10 +52,13 @@ flowchart TB
 generating its site is minutes, so the cheap half decides whether the expensive half runs at all. What is
 hashed is the content itself - not the model it came from - so whatever a page is made of is covered: the
 architecture model, a replicated artifact, an uploaded document, a generator that writes something differently,
-a new version of the doc service. What is taken out of the hash first is the run's own timestamps and its build
-identifier, or two runs over documentation nobody changed would differ.
+a new version of the doc service. What is taken out of the hash first is the build identifier and the timestamps
+of generation, architecture import and reaction import, or two runs over documentation nobody changed would differ.
+An environment-wide reaction import can advance because another system changed. That timestamp alone does not
+rebuild an unchanged system part. The shell still hashes the complete reaction graph file, so changed graph
+data is published.
 
-Those three are **provenance**: they say *this content is as of then*, which stays true for a part that is not
+These values are **provenance**: they say *this content is as of then*, which stays true for a part that is not
 built again. Nothing else about a run is written into a page. Anything that would go stale in a page nobody
 rebuilds - when the architecture repository was last read, whether the import is behind, when the schedule
 fires next - is not generated at all but answered live, and fetched by the page that shows it. That is the rule
@@ -690,6 +693,8 @@ The last column is **Median per day**, the reaction's daily median within the ob
 Decimal values and zero are preserved; a missing median fails snapshot validation. The table describes the
 initially expanded entry selection, including HTTP operations and unknown interface types. Superseded
 reactions stay in the snapshot and are represented by the viewer's hidden-content markers rather than rows.
+The table is generated with the page. Collapsing or expanding groups in the browser changes only the graph;
+it does not update the table.
 
 The message pages are the one runtime view that is not in the runtime chapter. A message is a building block
 of the system that defines it, so its page is in chapter 5, and a reader who has the message in front of them

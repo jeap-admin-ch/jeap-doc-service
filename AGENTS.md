@@ -473,6 +473,8 @@ are what keep that working. The plan behind it is the enabler's `MODULARIZATION.
   runs over the same documentation has to be in the volatile set of `SiteSources` - the build's timestamps and
   its identifier are there already. Add a new one and forget this, and every part rebuilds every hour; hash
   something that is not volatile, and a change never gets published. `ContentDigest` explains both directions.
+  This includes the reaction snapshot's import time: another system's reactions can advance it without changing
+  this part's pages. Keep the shell's complete reaction graph file in the digest so graph changes are published.
 - **Provenance goes in the page; status is served beside the site.** The volatile set is for values that say
   *this content is as of then* and stay true in a page nobody rebuilds. A value that says what is true *now* -
   when the architecture repository was last read, whether the import is behind, when a schedule fires next -

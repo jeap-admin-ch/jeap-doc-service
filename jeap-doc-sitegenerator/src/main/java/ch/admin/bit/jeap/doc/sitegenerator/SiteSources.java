@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
+import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
 import ch.admin.bit.jeap.doc.domain.port.SiteBuildException;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationFacts;
@@ -166,7 +167,7 @@ public class SiteSources {
                         .anyMatch(environment -> environment.main() && hasSystems(models, environment.id()))));
         CrossPartLinks.rewrite(contentDirectory, part, otherPartsOf(site, part, models), linkPrefixesOf(site));
         log.debug("Wrote the content of {} - {} - into {}.", part.key(), part.documents(), contentDirectory);
-        return new WrittenContent(models, volatileTextOf(buildId, generatedAt, models));
+        return new WrittenContent(models, volatileTextOf(buildId, generatedAt, models, reactions));
     }
 
     /**
@@ -191,20 +192,21 @@ public class SiteSources {
 
     /**
      * What this run wrote that says <i>this run</i> rather than what the documentation contains, and that the
-     * digest of the content therefore has to ignore: when the build ran, when the model of each environment
-     * was imported, and which build it was.
+     * digest of the content therefore has to ignore: when the build ran, when each environment's model and
+     * reactions were imported, and which build it was.
      * <p>
      * Each in the form it was written in - an instant in the front matter, a readable time in the provenance of
      * every page, and the build's identifier as the page about the documentation prints it. Two runs over
      * documentation nobody changed differ in exactly these, and in nothing else.
      * <p>
-     * <b>These three are provenance, and they are all that is left here.</b> Anything that moves with the
+     * <b>These values are provenance, and they are all that is left here.</b> Anything that moves with the
      * clock rather than with the documentation is not written into a page at all - it is answered live and
      * fetched by the site template, which is why nothing about the last read or the next occurrence of a
      * schedule has to be replaced before hashing. See {@code DocumentationLiveStatus}.
      */
     private static SequencedSet<String> volatileTextOf(long buildId, Instant generatedAt,
-                                                       Map<String, EnvironmentModel> models) {
+                                                       Map<String, EnvironmentModel> models,
+                                                       Map<String, Optional<PublishedReactions>> reactions) {
         SequencedSet<String> written = new LinkedHashSet<>();
         written.add(generatedAt.toString());
         written.add(DisplayTime.of(generatedAt));
@@ -219,6 +221,12 @@ public class SiteSources {
                 written.add(DisplayTime.of(model.importedAt()));
             }
         }
+        reactions.values().stream().flatMap(Optional::stream)
+                .map(PublishedReactions::importedAt).filter(Objects::nonNull)
+                .forEach(importedAt -> {
+                    written.add(importedAt.toString());
+                    written.add(DisplayTime.of(importedAt));
+                });
         return written;
     }
 
