@@ -9,6 +9,39 @@ import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertTha
 /** The React viewer consumes the real published JSON under the service's CSP. */
 class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
+    void returningToAPageFetchesTheNewSnapshotWithoutReloadingTheDocument() {
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        page.route("**/reaction-graph.json", route -> {
+            var response = route.fetch();
+            int visit = requests.incrementAndGet();
+            var json = tools.jackson.databind.json.JsonMapper.builder().build();
+            var payload = json.readTree(response.text());
+            if (visit > 1) {
+                for (var node : payload.path("graph").path("nodes")) {
+                    if (node.has("reaction")) {
+                        ((tools.jackson.databind.node.ObjectNode) node.path("reaction")).put("median", 9876);
+                    }
+                }
+            }
+            route.fulfill(new FulfillOptions().setResponse(response).setBody(json.writeValueAsString(payload)));
+        });
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        showReactionViewer(1);
+        org.assertj.core.api.Assertions.assertThat(requests.get()).isEqualTo(1);
+        page.evaluate("window.reactionVisitMarker = 'same-document'");
+        page.locator("a.navbar__brand").click();
+        page.waitForURL(url -> !url.contains(MESSAGE_REACTIONS_ROUTE));
+        page.goBack();
+        showReactionViewer(0);
+        showReactionViewer(1);
+        assertThat(page.locator("table[data-reaction-table='live']").first()).containsText("9876");
+        org.assertj.core.api.Assertions.assertThat(requests.get()).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(page.evaluate("window.reactionVisitMarker")).isEqualTo("same-document");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
     void offscreenVariants_waitForTheViewportAndShareOneSnapshotRequest() {
         page.setViewportSize(1280, 500);
         var graphRequests = new java.util.concurrent.atomic.AtomicInteger();

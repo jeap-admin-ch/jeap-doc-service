@@ -1,4 +1,4 @@
-import React, {useEffect, useId, useMemo, useRef, useState} from 'react';
+import React, {useContext, useEffect, useId, useMemo, useRef, useState} from 'react';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {useColorMode} from '@docusaurus/theme-common';
 import {
@@ -7,6 +7,7 @@ import {
 import {useEnvironment, routePrefixOf} from '../../data/environments';
 import {readGraph, entryView, expandGroups, setGroupExpanded, project, focusedReactionCount, visibleReactionRows} from './model.mjs';
 import styles from './styles.module.css';
+import {SnapshotRequests} from './SnapshotProvider';
 import Legend from './Legend';
 import NodeMenu from './NodeMenu';
 import Tooltip from './Tooltip';
@@ -17,10 +18,9 @@ import {viewSource} from './source.mjs';
 import {componentHref, interfaceDestination} from './navigation.mjs';
 
 // A page with many variants fetches and validates one snapshot, with independent view states.
-const pending = new Map();
-function load(url, site, environment) {
+function load(pending, url, site, environment) {
     if (!pending.has(url)) {
-        const request = fetch(url, {credentials: 'same-origin'}).then(response => {
+        const request = fetch(url, {credentials: 'same-origin', cache: 'no-cache'}).then(response => {
             if (!response.ok) throw new Error('Graph unavailable');
             return response.json();
         }).then(payload => readGraph(payload, site, environment));
@@ -39,6 +39,7 @@ export default function ReactionViewer({entry}) {
 function EnvironmentReactionViewer({entry, environment}) {
     const {siteConfig: {baseUrl, customFields: {docSite}}} = useDocusaurusContext();
     const {colorMode} = useColorMode();
+    const requests = useContext(SnapshotRequests);
     const url = baseUrl + routePrefixOf(environment).replace(/^\//, '') + (environment.main ? '' : '/') + 'reaction-graph.json';
     const [snapshot, setSnapshot] = useState(null), [failed, setFailed] = useState(false);
     const [notice, setNotice] = useState('');
@@ -86,11 +87,11 @@ function EnvironmentReactionViewer({entry, environment}) {
     useEffect(() => {
         let disposed = false;
         setSnapshot(null); setFailed(false);
-        load(url, docSite, environment.id).then(graph => {
+        load(requests, url, docSite, environment.id).then(graph => {
             if (!disposed) setSnapshot({url, graph});
         }).catch(() => { if (!disposed) setFailed(true); });
         return () => { disposed = true; };
-    }, [url, docSite, environment.id]);
+    }, [requests, url, docSite, environment.id]);
     const view = useMemo(() => {
         if (!snapshot || snapshot.url !== url) return null;
         try {

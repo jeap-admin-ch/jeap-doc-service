@@ -1165,3 +1165,7 @@ A malformed, unavailable or wrong-context snapshot shows `Reaction graph current
 content remains usable. The viewer does not ask the observer directly. Existing omission of reaction pages
 without observations is unchanged. Entry metadata travels in an inert `reaction-view` code fence, written by
 `MarkdownWriter.reactionViewer`, not as raw HTML or executable MDX.
+
+Reaction viewers share one snapshot request per URL within a page visit. Navigating to another page
+and returning creates a fresh request with HTTP cache revalidation; the server supplies an ETag and
+`Cache-Control: no-cache`. Completed requests are not retained across page visits.
