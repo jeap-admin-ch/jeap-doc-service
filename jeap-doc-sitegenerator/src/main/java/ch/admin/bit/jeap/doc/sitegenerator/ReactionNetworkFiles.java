@@ -51,13 +51,15 @@ public class ReactionNetworkFiles {
         payload.put("available", snapshot.isPresent());
         snapshot.ifPresent(value -> {
             payload.put("identityScheme", value.observations().identityScheme());
-            payload.put("importedAt", value.importedAt().toString());
             payload.put("graph", ReactionGraphJson.of(value.observations()));
             payload.put("ownership", value.ownership());
             payload.put("messageOwnership", value.messageOwnership());
             payload.put("ownershipComplete", value.ownershipComplete());
         });
+        // Hash content before adding provenance: an identical graph fetched again must not
+        // change the snapshot hash, which ContentDigest cannot normalize like a timestamp.
         payload.put("snapshot", digest(JSON.writeValueAsBytes(payload)));
+        snapshot.ifPresent(value -> payload.put("importedAt", value.importedAt().toString()));
         Path directory = contentDirectory.resolve("static" + environment.routePrefix());
         Files.createDirectories(directory);
         Files.write(directory.resolve(FILE_NAME), JSON.writeValueAsBytes(payload));

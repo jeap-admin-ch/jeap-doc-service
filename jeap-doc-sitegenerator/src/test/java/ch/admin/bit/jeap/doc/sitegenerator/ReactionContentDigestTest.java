@@ -124,9 +124,27 @@ class ReactionContentDigestTest {
         verifyNoMoreInteractions(networks);
     }
 
-    @Test
-    void graphContentChangesAtTheSameImportTime_thenTheShellDigestChanges() throws IOException {
-        SitePart shell = new SitePart(PartKey.shellOf(site.id()), "the site", "", false,
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void onlyTheImportTimeChanges_thenShellAndUnpartitionedDigestsStayTheSame(boolean carriesSystems) throws IOException {
+        SitePart part = new SitePart(PartKey.shellOf(site.id()), "the site", "", carriesSystems,
+                List.of("prod"), List.of());
+        String before = digestOf("before", part, snapshot(IMPORTED_AT, 1, 2));
+        String after = digestOf("after", part, snapshot(IMPORTED_LATER, 1, 2));
+
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        var first = json.readTree(directory.resolve("before/static/reaction-graph.json").toFile());
+        var next = json.readTree(directory.resolve("after/static/reaction-graph.json").toFile());
+        assertThat(first.path("importedAt").asString()).isEqualTo(IMPORTED_AT.toString());
+        assertThat(next.path("importedAt").asString()).isEqualTo(IMPORTED_LATER.toString());
+        assertThat(next.path("snapshot")).isEqualTo(first.path("snapshot"));
+        assertThat(after).isEqualTo(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void graphContentChangesAtTheSameImportTime_thenTheShellDigestChanges(boolean carriesSystems) throws IOException {
+        SitePart shell = new SitePart(PartKey.shellOf(site.id()), "the site", "", carriesSystems,
                 List.of("prod"), List.of());
         String before = digestOf("before", shell, snapshot(IMPORTED_AT, 1, 2));
         String after = digestOf("after", shell, snapshot(IMPORTED_AT, 1, 9));

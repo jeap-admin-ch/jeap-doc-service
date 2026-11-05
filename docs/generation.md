@@ -684,6 +684,9 @@ the viewer. Each service instance holds the parsed snapshot per environment, key
 import timestamp, checked through a projection without graph bytes. Parallel parts share the snapshot
 and documentation index. A graph replacement reloads the bytes; an architecture model change rebuilds
 ownership and documentation links. An unchanged graph confirmation does not reload the bytes.
+The browser snapshot hash covers content and ownership, excluding the import timestamp. An identical
+graph imported again therefore leaves the shell and unpartitioned-site content digests unchanged,
+while graph or ownership changes still invalidate them. The JSON retains the import timestamp as provenance.
 Within a part the same snapshot supplies its JSON and pages. Component ownership includes the system, so equally named components in different systems stay
 separate. Unknown ownership is retained in message views without inventing component destinations. The
 three subject import kinds and their indexes are retired.
