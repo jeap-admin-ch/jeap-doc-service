@@ -10,6 +10,7 @@ import ch.admin.bit.jeap.doc.markdown.ReactionEntry;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -69,11 +70,49 @@ class Arc42ReactionPagesTest {
         }
     }
 
+    @Test
+    void reorderedSnapshotProducesIdenticalViewerAndTable() {
+        var accepted = new ObservedMessage(new Identity("INTERFACE", "accepted"), "AcceptedEvent", "");
+        var shipped = new ObservedMessage(new Identity("INTERFACE", "shipped"), "ShippedEvent", "");
+        var first = new ObservedReaction(new Identity("REACTION", "first"), "first", BigDecimal.ONE);
+        var second = new ObservedReaction(new Identity("REACTION", "second"), "second", BigDecimal.TEN);
+        var firstHttp = new ObservedHttpOperation(new Identity("INTERFACE", "first-http"),
+                "HTTP", "GET /items", "first", "GET", "/items");
+        var secondHttp = new ObservedHttpOperation(new Identity("INTERFACE", "second-http"),
+                "HTTP", "GET /items", "second", "GET", "/items");
+        var system = new DocumentedSystem("s", "s", null, List.of(), null,
+                List.of(component("first", true), component("second", true)), List.of(), List.of(
+                new DocumentedMessage("AcceptedEvent", "accepted", MessageKind.EVENT, null, null, null, null, null, List.of(), List.of()),
+                new DocumentedMessage("ShippedEvent", "shipped", MessageKind.EVENT, null, null, null, null, null, List.of(), List.of())));
+        var model = ArchitectureModel.of(List.of(system));
+        var observations = new ObservedReactions("observer-v2", List.of(accepted, shipped, firstHttp, secondHttp),
+                List.of(first, second),
+                List.of(new ObservedTrigger(accepted.identity(), first.identity()), new ObservedTrigger(shipped.identity(), second.identity())),
+                List.of(new ObservedAction(first.identity(), firstHttp.identity()), new ObservedAction(second.identity(), secondHttp.identity())),
+                List.of());
+        var ownership = List.of(new PublishedReactions.Ownership(first.identity(), "s", "first"),
+                new PublishedReactions.Ownership(second.identity(), "s", "second"));
+        var snapshot = new PublishedReactions(observations, Instant.EPOCH, ownership, List.of(), true);
+        var reordered = new PublishedReactions(new ObservedReactions("observer-v2",
+                observations.interfaces().reversed(), observations.reactions().reversed(),
+                observations.triggers().reversed(), observations.actions().reversed(), List.of()),
+                Instant.EPOCH, ownership.reversed(), List.of(), true);
+        var before = new ReactionDocumentation(snapshot, model).ofSystem(system).system();
+        var after = new ReactionDocumentation(reordered, model).ofSystem(system).system();
+
+        assertThat(before.components()).hasSize(2);
+        assertThat(before.messages()).hasSize(2);
+        assertThat(before.restProviders()).hasSize(2);
+        assertThat(after.rows()).isEqualTo(before.rows());
+        assertThat(render(after, model)).isEqualTo(render(before, model));
+    }
+
     private static String render(ReactionView view, ArchitectureModel model) {
         var context = new GenerationContext(model, "dev", null, Instant.EPOCH, Instant.EPOCH,
                 new DiagramLimits(100, 4, 40, 100, 200, 40, 20), "/site/docs/dev/");
         var page = new MarkdownWriter();
         Arc42ReactionPages.writeViewer(page, new ReactionEntry(ReactionEntry.Kind.SYSTEM, "s", null, null, null), view, context, null);
+        Arc42ReactionPages.writeTableAndProvenance(page, view, context);
         return page.text();
     }
 

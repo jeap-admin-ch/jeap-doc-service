@@ -31,6 +31,11 @@ final class Arc42ReactionPages {
     private Arc42ReactionPages() {
     }
 
+    /**
+     * Writes inert viewer metadata with documentation links for this entry.
+     *
+     * @param componentOnItsOwnPage the current component, or null, used to omit links back to the same page
+     */
     static void writeViewer(MarkdownWriter page, ReactionEntry entry, ReactionView view,
                             GenerationContext context, String componentOnItsOwnPage) {
         var links = view.components().stream()
@@ -74,7 +79,7 @@ final class Arc42ReactionPages {
         return Optional.of(context.diagramLink(page));
     }
 
-    /** The searchable table and provenance remain below the interactive viewer. */
+    /** Writes the static fallback table; the browser replaces it with live rows after the graph renders. */
     static void writeTableAndProvenance(MarkdownWriter page, ReactionView view, GenerationContext context) {
         table(page, view);
         provenance(page, context);

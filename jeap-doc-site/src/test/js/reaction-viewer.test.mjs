@@ -1,9 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import remarkReactionView from '../../main/resources/site/plugins/remark-reaction-view/index.js';
 import {overviewFrame, overviewPoint, overviewSize} from '../../main/resources/site/src/components/ReactionViewer/overview.mjs';
 import {viewSource} from '../../main/resources/site/src/components/ReactionViewer/source.mjs';
 import {componentHref, interfaceDestination} from '../../main/resources/site/src/components/ReactionViewer/navigation.mjs';
-import {readGraph, entryView, expandGroups, setGroupExpanded, project, widthOf, identity, labelOf} from '../../main/resources/site/src/components/ReactionViewer/model.mjs';
+import {readGraph, entryView, expandGroups, setGroupExpanded, project, widthOf, identity, labelOf, focusedReactionCount, visibleReactionRows} from '../../main/resources/site/src/components/ReactionViewer/model.mjs';
 const key = (key, nodeType = 'INTERFACE') => ({nodeType, key});
 const message = name => ({identity: key(name), nodeType: 'MESSAGE', interfaceDetails: {message: {messageType: name, variant: ''}}});
 const reaction = (name, system = 's', median = 10, extra = {}) => ({identity: key(name, 'REACTION'), nodeType: 'REACTION', reaction: {system, component: 'c', median, status: 'ACTIVE', ...extra}});
@@ -14,6 +15,80 @@ function payload() {
         edges: [edge('A','r1','TRIGGER'), edge('A','r2','TRIGGER'), edge('r1','B','ACTION'), edge('r2','B','ACTION'), edge('A','foreign','TRIGGER'), edge('A','old','TRIGGER')]}};
 }
 const entry = {kind: 'SYSTEM', system: 's'};
+test('each reaction fence owns only its adjacent fallback table, including nested and tableless entries', () => {
+    const fence = {type: 'code', lang: 'reaction-view', value: 'kind=SYSTEM&system=s'};
+    const table = {type: 'table', children: []};
+    const heading = {type: 'heading', children: []};
+    const root = {type: 'root', children: [fence, table, heading, fence, heading, table,
+        {type: 'blockquote', children: [fence, table]}, {type: 'code', lang: 'java'}, table]};
+    remarkReactionView()(root);
+    assert.equal(root.children[0].data.hProperties.className[0], 'jeapReactionView');
+    assert.equal(root.children[0].children[1].data.hProperties.className[0], 'jeapReactionTableFallback');
+    assert.equal(root.children[0].children[1].children[0], table);
+    assert.equal(root.children[2].children.length, 1);
+    assert.equal(root.children[4], table);
+    assert.equal(root.children[5].children[0].children[1].children[0], table);
+    assert.equal(root.children[6].lang, 'java');
+    assert.equal(root.children[7], table);
+});
+test('live rows follow visible reactions with exact medians and deduplicated typed interface labels', () => {
+    const data = payload();
+    data.graph.nodes.find(node => node.identity.key === 'r1').reaction.median = 1.25;
+    data.graph.nodes.find(node => node.identity.key === 'alone').reaction.median = 0;
+    data.graph.nodes.find(node => node.identity.key === 'A').interfaceDetails.message.variant = 'express';
+    data.graph.nodes.push({identity: key('http'), nodeType: 'HTTP_OPERATION',
+        interfaceDetails: {http: {provider: 'api', method: 'GET', path: '/items'}}},
+    {identity: key('future'), nodeType: 'UNKNOWN', interfaceDetails: {interfaceType: 'FUTURE', fqn: '<queue>'}});
+    data.graph.edges.push(edge('r1', 'http', 'ACTION'), edge('r1', 'future', 'ACTION'), edge('r1', 'B', 'ACTION'),
+        {source: key('r1', 'REACTION'), target: key('old', 'REACTION'), edgeType: 'PREDECESSOR'});
+    const graph = readGraph(data, 'site', 'dev');
+    const state = expandGroups(graph, entryView(graph, entry));
+    const before = visibleReactionRows(graph, state);
+    assert.deepEqual(before, [
+        {id: identity(key('alone', 'REACTION')), component: 'c', trigger: null, answers: [], median: 0},
+        {id: identity(key('r1', 'REACTION')), component: 'c', trigger: 'A [express]',
+            answers: ['B', 'FUTURE <queue>', 'api GET /items'], median: 1.25},
+        {id: identity(key('r2', 'REACTION')), component: 'c', trigger: 'A [express]', answers: ['B'], median: 80},
+    ]);
+    const group = graph.groupOf.get(identity(key('r1', 'REACTION')));
+    const collapsed = setGroupExpanded(graph, state, group, false);
+    assert.deepEqual(visibleReactionRows(graph, collapsed), [before[0]]);
+    assert.deepEqual(visibleReactionRows(graph, setGroupExpanded(graph, collapsed, group, true)), before);
+    assert.deepEqual(visibleReactionRows(graph, {...state, visible: new Set()}), []);
+    // A second viewer derives its rows from its own selection, independently of the collapsed group.
+    const other = expandGroups(graph, entryView(graph, {kind: 'MESSAGE', message: 'B', variant: ''}));
+    assert.deepEqual(visibleReactionRows(graph, other).map(row => row.id), before.slice(1).map(row => row.id));
+});
+test('focus counts stay within system and component ownership and exclude superseded reactions', () => {
+    const data = payload();
+    data.graph.nodes.push(reaction('other-component', 's', 1, {component: 'other'}));
+    const graph = readGraph(data, 'site', 'dev');
+    for (const [focus, count] of [
+        [entry, 4],
+        [{kind: 'COMPONENT', system: 's', component: 'c'}, 3],
+        [{kind: 'COMPONENT', system: 'other', component: 'c'}, 1],
+        [{kind: 'COMPONENT', system: 's', component: 'missing'}, 0],
+    ]) {
+        const state = entryView(graph, focus);
+        assert.equal(focusedReactionCount(graph, state), count);
+        assert.equal(focusedReactionCount(graph, expandGroups(graph, state)), count);
+    }
+});
+test('message focus counts direct consumers and producers once, not other members of their groups', () => {
+    const data = payload();
+    data.graph.nodes.push(reaction('sibling'));
+    for (const node of data.graph.nodes.filter(node => node.reaction)) node.reaction.groupKey = 'shared';
+    data.graph.edges.push(edge('B', 'sibling', 'TRIGGER'), edge('r1', 'A', 'ACTION'), edge('A', 'r1', 'TRIGGER'));
+    const graph = readGraph(data, 'site', 'dev');
+    const focus = {kind: 'MESSAGE', message: 'A', variant: ''};
+    const state = expandGroups(graph, entryView(graph, focus));
+    assert.ok(state.visible.has(identity(key('sibling', 'REACTION'))));
+    assert.equal(focusedReactionCount(graph, state), 3);
+    const collapsed = setGroupExpanded(graph, state, graph.groupOf.get(identity(key('r1', 'REACTION'))), false);
+    assert.equal(focusedReactionCount(graph, collapsed), 3);
+    assert.equal(focusedReactionCount(graph, entryView(graph, {...focus, message: 'B'})), 3);
+    assert.equal(focusedReactionCount(graph, entryView(graph, {...focus, variant: 'unobserved'})), 0);
+});
 test('minimap maps negative graph coordinates and clips the visible frame without changing its scale', () => {
     const bounds = {x1: -200, y1: -100, w: 1000, h: 500};
     assert.deepEqual(overviewSize(bounds), {width: 220, height: 110});

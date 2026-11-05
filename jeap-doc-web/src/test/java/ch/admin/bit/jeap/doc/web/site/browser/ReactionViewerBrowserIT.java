@@ -55,6 +55,9 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             openGroupMenu(viewers.nth(index), group);
             assertThat(viewers.nth(index).getByRole(AriaRole.MENU)).containsText("<script>alert(1)</script>");
             assertThat(viewers.nth(index).locator("script")).hasCount(0);
+            var liveTable = page.locator(".jeapReactionView").nth(index).locator("table[data-reaction-table='live']");
+            assertThat(liveTable).containsText("<script>alert(1)</script>");
+            assertThat(liveTable.locator("script")).hasCount(0);
         }
         assertNothingWentWrongInTheBrowser();
     }
@@ -226,6 +229,41 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         awaitGroupMembers(group, 3);
         org.assertj.core.api.Assertions.assertThat(secondCanvas.evaluate("element => element._cyreg.cy.elements().map(node => node.id())"))
                 .isEqualTo(otherNodes);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void reactionTablesFollowTheirOwnViewerAndRetainFilteringAndSorting() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        var entries = page.locator(".jeapReactionView");
+        var viewer = entries.first().locator("section[aria-label='Reaktionsketten']");
+        var table = entries.first().locator("table[data-reaction-table='live']");
+        var otherTable = entries.nth(1).locator("table[data-reaction-table='live']");
+        assertThat(table).isVisible();
+        assertThat(otherTable).isVisible();
+        assertThat(entries.first().locator(".jeapReactionTableFallback")).isHidden();
+        int initialRows = table.locator("tbody tr").count();
+        String otherRows = otherTable.locator("tbody").textContent();
+        String group = groupOfReaction(viewer, "4243");
+        var filter = entries.first().getByRole(AriaRole.SEARCHBOX,
+                new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Filter the rows of this table"));
+        filter.fill(BUSY_COMPONENT);
+        assertThat(table.locator("tbody tr")).hasCount(3);
+        table.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Sort by Median per day")).click();
+        table.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Sort by Median per day")).click();
+        assertThat(table.locator("tbody tr td:last-child")).hasText(new String[]{"400", "4", "0"});
+        openGroupMenu(viewer, group);
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen")).click();
+        awaitGroupMembers(group, 0);
+        assertThat(table.locator("tbody tr")).hasCount(0);
+        assertThat(filter).hasValue(BUSY_COMPONENT);
+        assertThat(otherTable.locator("tbody")).hasText(otherRows);
+        openGroupMenu(viewer, group);
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einblenden")).click();
+        awaitGroupMembers(group, 3);
+        assertThat(table.locator("tbody tr td:last-child")).hasText(new String[]{"400", "4", "0"});
+        filter.press("Escape");
+        assertThat(table.locator("tbody tr")).hasCount(initialRows);
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -480,6 +518,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void systemFixture_usesTheSameReactionsAndMediansAsTheDocumentationTable() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        assertThat(page.locator("table[data-reaction-table='live']")).isVisible();
         Object comparison = page.evaluate("""
                 async () => {
                     const payload = await (await fetch('/reaction-graph.json')).json();
@@ -487,14 +526,18 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     const published = payload.graph.nodes.filter(node => node.reaction
                         && owners.get(JSON.stringify(node.identity))?.system === 'shipping')
                         .map(node => `${node.reaction.component}:${node.reaction.median}`).sort();
-                    const table = [...document.querySelectorAll('article table tbody tr')]
+                    const table = [...document.querySelectorAll('table[data-reaction-table="live"] tbody tr')]
                         .map(row => `${row.cells[1].textContent.trim()}:${row.cells[3].textContent.trim()}`).sort();
-                    return {published, table};
+                    const fallback = [...document.querySelectorAll('.jeapReactionTableFallback table tbody tr')]
+                        .map(row => `${row.cells[1].textContent.trim()}:${row.cells[3].textContent.trim()}`).sort();
+                    return {published, table, fallback};
                 }
                 """);
         @SuppressWarnings("unchecked")
         var result = (java.util.Map<String, Object>) comparison;
-        org.assertj.core.api.Assertions.assertThat(result).containsEntry("published", result.get("table"));
+        org.assertj.core.api.Assertions.assertThat(result)
+                .containsEntry("published", result.get("table"))
+                .containsEntry("published", result.get("fallback"));
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -505,7 +548,21 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         assertThat(page.getByText("Reaktionsgraph derzeit nicht verfügbar", new com.microsoft.playwright.Page.GetByTextOptions().setExact(true))).isVisible();
         assertThat(page.locator("article table").first()).isVisible();
+        assertThat(page.locator(".jeapReactionTableFallback")).isVisible();
+        assertThat(page.locator("table[data-reaction-table='live']")).hasCount(0);
         assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void withoutJavaScriptTheStaticReactionTableRemainsReadable() {
+        try (var noScript = context.browser().newContext(new com.microsoft.playwright.Browser.NewContextOptions()
+                .setJavaScriptEnabled(false))) {
+            var document = noScript.newPage();
+            document.navigate(url("/" + SYSTEM_REACTIONS_ROUTE + "/"));
+            assertThat(document.locator(".jeapReactionTableFallback table")).isVisible();
+            assertThat(document.locator(".jeapReactionTableFallback table")).containsText(REACTING_COMPONENT);
+            assertThat(document.locator("table[data-reaction-table='live']")).hasCount(0);
+        }
     }
 
     @Test

@@ -5,7 +5,12 @@ import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.Identity;
 import java.math.BigDecimal;
 import java.util.List;
 
-/** Text and documentation destinations for one entry into the complete reaction snapshot. */
+/**
+ * Text and documentation destinations for one entry into the complete reaction snapshot.
+ * Rows describe the initially expanded selection and exclude superseded reactions. They remain available
+ * as a static fallback when the browser cannot render its live table. Links name only unambiguous
+ * documented destinations.
+ */
 public record ReactionView(List<MessageLink> messages, List<ComponentLink> components, List<RestLink> restProviders, List<Row> rows,
                            boolean hasObservations) {
     public ReactionView {
@@ -19,6 +24,7 @@ public record ReactionView(List<MessageLink> messages, List<ComponentLink> compo
         return new ReactionView(List.of(), List.of(), List.of(), List.of(), false);
     }
 
+    /** Superseded-only observations still need a viewer to disclose their hidden content. */
     public boolean isEmpty() { return !hasObservations; }
 
     public record MessageLink(String name, String systemSlug, String messageSlug, MessageKind kind) {}

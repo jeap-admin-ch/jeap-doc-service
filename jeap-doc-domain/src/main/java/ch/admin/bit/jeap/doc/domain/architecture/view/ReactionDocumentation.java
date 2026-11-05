@@ -146,11 +146,19 @@ public final class ReactionDocumentation {
         List<ReactionView.MessageLink> links = selectedInterfaces.stream().map(interfaces::get)
                 .filter(ObservedMessage.class::isInstance).map(ObservedMessage.class::cast)
                 .map(ObservedMessage::messageType).distinct()
-                .flatMap(name -> messageLink(name).stream()).distinct().toList();
+                .flatMap(name -> messageLink(name).stream()).distinct()
+                .sorted(Comparator.comparing(ReactionView.MessageLink::systemSlug)
+                        .thenComparing(ReactionView.MessageLink::kind).thenComparing(ReactionView.MessageLink::name))
+                .toList();
         List<ReactionView.RestLink> restProviders = selectedInterfaces.stream().map(interfaces::get)
                 .filter(ObservedHttpOperation.class::isInstance).map(ObservedHttpOperation.class::cast)
-                .map(http -> restLinks.get(fold(http.provider()))).filter(Objects::nonNull).distinct().toList();
-        return new ReactionView(links, List.copyOf(components), restProviders, rows, !selectedReactions.isEmpty() || !pinned.isEmpty());
+                .map(http -> restLinks.get(fold(http.provider()))).filter(Objects::nonNull).distinct()
+                .sorted(Comparator.comparing(ReactionView.RestLink::systemSlug).thenComparing(ReactionView.RestLink::provider))
+                .toList();
+        List<ReactionView.ComponentLink> sortedComponents = components.stream()
+                .sorted(Comparator.comparing(ReactionView.ComponentLink::system).thenComparing(ReactionView.ComponentLink::component))
+                .toList();
+        return new ReactionView(links, sortedComponents, restProviders, rows, !selectedReactions.isEmpty() || !pinned.isEmpty());
     }
 
     private Optional<ReactionView.ComponentLink> componentLink(PublishedReactions.Ownership owner) {

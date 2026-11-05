@@ -686,15 +686,15 @@ separate. Unknown ownership is retained in message views without inventing compo
 three subject import kinds and their indexes are retired.
 
 **And a table sits under every graph** with one row per reaction - what triggered it, which component reacted,
-what it published in answer and how often it was seen. It is the complete list, the one the browser's own
-find-in-page searches, and what the page still says if a graph is ever too large to draw.
+what it published in answer and how often it was seen. Its text is searchable with the browser's own
+find-in-page. A generated table of the initial selection remains available if the graph cannot be drawn.
 
 The last column is **Median per day**, the reaction's daily median within the observer's statistics window.
-Decimal values and zero are preserved; a missing median fails snapshot validation. The table describes the
-initially expanded entry selection, including HTTP operations and unknown interface types. Superseded
+Decimal values and zero are preserved; a missing median fails snapshot validation. The live table describes
+the individually visible reactions, including HTTP operations and unknown interface types. Superseded
 reactions stay in the snapshot and are represented by the viewer's hidden-content markers rather than rows.
-The table is generated with the page. Collapsing or expanding groups in the browser changes only the graph;
-it does not update the table.
+The browser derives live rows from the same JSON and state as the graph, so collapsing or expanding a group
+updates its rows too. Filtering and sorting affect only the table and persist across graph changes.
 
 The message pages are the one runtime view that is not in the runtime chapter. A message is a building block
 of the system that defines it, so its page is in chapter 5, and a reader who has the message in front of them
@@ -1074,14 +1074,24 @@ invalidate links referencing V1 node identities. Further exploration actions are
 REST provider destinations are indexed once per environment and included only for HTTP interfaces in the
 entry view. Views without HTTP observations carry no REST destination metadata. Provider names shared by
 multiple components remain unlinked, even if only one of them exposes REST. Adding an unrelated provider
-does not change the generated reaction-viewer metadata.
+does not change the generated reaction-viewer metadata. Component, message and REST links use a stable order,
+so reordering a snapshot does not change the generated pages or rebuild unchanged system parts.
 
 The existing system and component reaction chapters and each message variant section include a React viewer.
+The viewer title shows the system name followed by `(System)`, the component name, or the message and its variant.
+Its subtitle counts reactions belonging to that system or component. For messages, it counts only reactions
+directly triggering on or publishing the selected message variant, once each. Superseded reactions are excluded,
+and collapsing a group does not change the count.
 It loads the complete `reaction-graph.json` of the current site and environment once per browser application,
 then derives independent entry states for each embedded viewer. All entries start with their selected
 reaction groups expanded and their adjacent interfaces visible. Message entries pin the selected message.
 Groups can be collapsed independently through their context menu. System entries exclude foreign reactions.
-Reaction tables remain below the viewer.
+Reaction tables remain below the viewer. Once the graph loads, each table uses the same JSON and shows the
+individual reactions currently visible in its viewer. Collapsing a group removes its rows; expanding it
+restores them. Search and sorting remain available and keep their settings as the graph changes. Other
+variants' tables are independent. When all groups are collapsed, the table explains why it has no rows.
+The generated table of the initial selection remains the fallback when JavaScript is disabled or the viewer
+cannot load. The live table replaces it only after the graph has rendered successfully.
 
 Grouping uses system, component and the V2 group key, falling back to the known trigger. Triggerless or
 unresolved-owner reactions stay separate. Superseded reactions remain in the model but start hidden with a

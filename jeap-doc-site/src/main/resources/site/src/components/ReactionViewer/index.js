@@ -5,13 +5,14 @@ import {
     CloseIcon, FitIcon, MaximizeIcon, MinimapIcon, ResetZoomIcon, SourceIcon, ZoomInIcon, ZoomOutIcon,
 } from '@matfsw/docusaurus-plantuml-plugin/theme/PlantUmlDiagram/icons.js';
 import {useEnvironment, routePrefixOf} from '../../data/environments';
-import {readGraph, entryView, expandGroups, setGroupExpanded, project} from './model.mjs';
+import {readGraph, entryView, expandGroups, setGroupExpanded, project, focusedReactionCount, visibleReactionRows} from './model.mjs';
 import styles from './styles.module.css';
 import Legend from './Legend';
 import NodeMenu from './NodeMenu';
 import Tooltip from './Tooltip';
 import Minimap from './Minimap';
 import SourceView from './SourceView';
+import ReactionTable from './ReactionTable';
 import {viewSource} from './source.mjs';
 import {componentHref, interfaceDestination} from './navigation.mjs';
 
@@ -41,11 +42,12 @@ export default function ReactionViewer({entry}) {
     const minimapId = useId(), sourceId = useId();
     const [minimapOpen, setMinimapOpen] = useState(false), [sourceOpen, setSourceOpen] = useState(false);
     const [renderer, setRenderer] = useState(null);
+    const [tableReady, setTableReady] = useState(false);
     const sourceToggle = useRef(null);
     const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
     const [menu, setMenu] = useState(null);
     useEffect(() => { setCollapsedGroups(new Set()); setMenu(null); setHover(null); setNotice('');
-        setMinimapOpen(false); setSourceOpen(false); }, [entry, url]);
+        setMinimapOpen(false); setSourceOpen(false); setTableReady(false); }, [entry, url]);
     const container = useRef(null), panel = useRef(null), controls = useRef(null);
     const viewport = useRef(null);
     const viewKey = JSON.stringify([url, entry]);
@@ -90,7 +92,8 @@ export default function ReactionViewer({entry}) {
             for (const group of collapsedGroups) {
                 if (state.selected.has(group)) state = setGroupExpanded(snapshot.graph, state, group, false);
             }
-            return {...project(snapshot.graph, state), state};
+            return {...project(snapshot.graph, state), state, reactionCount: focusedReactionCount(snapshot.graph, state),
+                rows: visibleReactionRows(snapshot.graph, state)};
         }
         catch { return {invalid: true}; }
     }, [snapshot, url, entry, collapsedGroups]);
@@ -109,6 +112,7 @@ export default function ReactionViewer({entry}) {
                 });
                 controls.current = instance;
                 setRenderer(instance);
+                setTableReady(true);
                 destroy = () => {
                     viewport.current = {key: viewKey, value: instance.viewport()};
                     instance.destroy(); controls.current = null;
@@ -134,9 +138,14 @@ export default function ReactionViewer({entry}) {
     if (failed || view?.invalid) return <p role="status">Reaktionsgraph derzeit nicht verfügbar</p>;
     if (!view) return <p role="status">Reaktionsgraph wird geladen …</p>;
     if (!view.elements.length && !view.superseded && snapshot.graph.ownershipComplete) return null;
-    return <section ref={panel} className={styles.viewer} aria-label="Reaktionsketten">
+    let focus = `${entry.system} (System)`;
+    if (entry.kind === 'COMPONENT') focus = entry.component;
+    if (entry.kind === 'MESSAGE') focus = entry.message + (entry.variant ? ` [${entry.variant}]` : '');
+    const count = view.reactionCount;
+    const summary = `${count} ${entry.kind === 'MESSAGE' ? 'direkt verbundene ' : ''}${count === 1 ? 'Reaktion' : 'Reaktionen'}`;
+    return <><section ref={panel} className={styles.viewer} aria-label="Reaktionsketten">
         <div className={styles.toolbar}>
-            <div><strong>Reaktionsketten</strong><span className={styles.caption}>Beobachtete Abläufe</span></div>
+            <div><strong>{focus}</strong><span className={styles.caption}>{summary}</span></div>
             <div className={styles.actions} role="group" aria-label="Graphansicht">
                 <button type="button" disabled={sourceOpen} aria-label="Graph verkleinern" title="Graph verkleinern" onClick={() => controls.current?.zoom(0.8)}><ZoomOutIcon/></button>
                 <output aria-label="Zoom">{zoom}%</output>
@@ -176,5 +185,7 @@ export default function ReactionViewer({entry}) {
         </div>
         {notice && <p role="status">{notice}</p>}
         <Legend dark={colorMode === 'dark'} elements={view.elements}/>
-    </section>;
+    </section>
+        {tableReady && <ReactionTable key={viewKey} rows={view.rows}/>}
+    </>;
 }

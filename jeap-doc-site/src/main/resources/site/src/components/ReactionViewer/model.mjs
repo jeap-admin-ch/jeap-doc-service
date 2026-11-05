@@ -97,6 +97,49 @@ export function entryView(graph, entry) {
     return {selected, visible, pins, hiddenSuperseded, system};
 }
 
+/** Count the entry's reactions independently of group expansion, excluding superseded history. */
+export function focusedReactionCount(graph, state) {
+    const reactions = new Set();
+    if (state.pins.size) {
+        for (const id of state.pins) {
+            for (const reaction of graph.adjacent.get(id) ?? []) reactions.add(reaction);
+        }
+    } else {
+        for (const id of state.selected) {
+            for (const reaction of graph.groups.get(id).members) reactions.add(reaction);
+        }
+    }
+    return [...reactions].filter(id => graph.nodes.get(id).reaction.status !== 'SUPERSEDED').length;
+}
+
+/** The table follows individual visible reactions, never bundles, markers or predecessor history. */
+export function visibleReactionRows(graph, state) {
+    const rows = new Map();
+    for (const id of state.visible) {
+        const reaction = graph.nodes.get(id).reaction;
+        if (reaction && reaction.status !== 'SUPERSEDED' && state.selected.has(graph.groupOf.get(id))) {
+            rows.set(id, {id, component: reaction.component, trigger: null, answers: new Set(), median: reaction.median});
+        }
+    }
+    for (const edge of graph.edges) {
+        if (edge.edgeType === 'TRIGGER' && rows.has(edge.target)) {
+            rows.get(edge.target).trigger = tableInterfaceLabel(graph.nodes.get(edge.source));
+        } else if (edge.edgeType === 'ACTION' && rows.has(edge.source)) {
+            rows.get(edge.source).answers.add(tableInterfaceLabel(graph.nodes.get(edge.target)));
+        }
+    }
+    const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+    return [...rows.values()].map(row => ({...row, answers: [...row.answers].sort()}))
+        .sort((left, right) => compare(left.component, right.component)
+            || compare(left.trigger ?? '', right.trigger ?? '') || compare(left.id, right.id));
+}
+
+function tableInterfaceLabel(node) {
+    const message = node.interfaceDetails?.message;
+    if (message) return message.messageType + (message.variant ? ` [${message.variant}]` : '');
+    return labelOf(node).replaceAll('\n', ' ');
+}
+
 /** Expand only the selected groups; never pull foreign or superseded reactions into an entry view. */
 export function expandGroups(graph, state) {
     const visible = new Set(state.visible);

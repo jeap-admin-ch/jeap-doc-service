@@ -4,11 +4,10 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * One reaction graph as the observer served it: the bytes, and the two names for them.
+ * One validated observer snapshot, its storage bytes and upstream identifiers.
  * <p>
- * The bytes are stored as they arrived. The domain importer does not parse them - what a graph is drawn as is
- * decided when a page is generated, so the shape of the payload is the observer's business and the generator's
- * and not the replication's.
+ * The adapter validates the payload and wraps its graph in a local format envelope. The domain importer
+ * stores those bytes without parsing them; the observer adapter owns the payload format.
  *
  * @param etag        the entity tag verbatim, quotes and all. What the next run sends as {@code If-None-Match}
  * @param fingerprint the fingerprint the payload carries. The same value the tag is built from, kept because it

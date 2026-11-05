@@ -242,6 +242,7 @@ function docsOptions(environment) {
             require('./plugins/remark-details'),
             // A table whose first cell spans rows and whose cells may hold folds - see the plugin.
             require('./plugins/remark-grouped-table'),
+            require('./plugins/remark-reaction-view'),
             // A note raised above the line, such as the pact beside a caller - see the plugin.
             require('./plugins/remark-superscript'),
         ],

@@ -830,7 +830,8 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
     whole landscape's REST catalog in every viewer. Components are identified by system and name; opaque
     reaction/interface identities are never converted to numeric IDs. PREDECESSOR is not an execution edge.
   - No observations means no reaction chapter/section. Superseded observations remain represented by the
-    viewer's hidden-content state; the table lists the initially visible reactions with exact daily medians.
+    viewer's hidden-content state. The generated table lists the initial selection with exact daily medians;
+    the browser's live table follows individually visible reactions from the same JSON and viewer state.
   - Retired subject graphs and their import state are removed by migration, never stitched into a complete
     snapshot. Existing full snapshots retain their bytes, format and conditional tags.
 - **arc42 is CC BY-SA and the rest of this service is Apache-2.0.** The attribution is in `NOTICE`, in
@@ -904,3 +905,9 @@ known language as a React viewer; never turn it into raw MDX. Graph identity, gr
 unknown ownership and PREDECESSOR history. A missing median is an invalid snapshot, never zero. Deduplicate
 reaction contributions before summing bundles. Every instance uses the site's environment route and validates
 the JSON context. The viewer replaces the generated DOT reaction diagrams; the tables remain below it. Page selection, variants, tables and navigation metadata derive from the same full snapshot.
+
+`remark-reaction-view` pairs each viewer fence with its adjacent generated fallback table. It accepts no HTML
+or attributes from the page. Hide that fallback only while the corresponding live table is present after a
+successful render. React owns the live rows, search and sorting; `tableControls.js` must not mutate them.
+Collapsing one viewer's groups must not change another viewer's table. Keep the fallback readable without
+JavaScript and when the graph fails to load.

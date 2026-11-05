@@ -45,6 +45,11 @@ public record ObservedReactions(String identityScheme, List<ObservedInterface> i
         String fqn();
     }
 
+    /**
+     * A message type as named by its publisher.
+     *
+     * @param variant the observer's exact variant, or null or empty when unqualified
+     */
     public record ObservedMessage(Identity identity, String interfaceType, String fqn,
                                   String messageType, String variant) implements ObservedInterface {
         /** V1 supplies no interface type or FQN. */
@@ -62,7 +67,12 @@ public record ObservedReactions(String identityScheme, List<ObservedInterface> i
 
     public enum ReactionStatus { ACTIVE, SUPERSEDED, UNKNOWN }
 
-    /** The median is the exact daily count statistic, shared by all trigger and action connections. */
+    /**
+     * One component reacting, identified by the observer's opaque identity.
+     *
+     * @param median the daily median within the observer's statistics window, shared by all trigger and
+     *               action connections; missing values are invalid, never interpreted as zero
+     */
     public record ObservedReaction(Identity identity, String system, String component, BigDecimal median,
                                    ReactionStatus status, Integer reactionModelVersion,
                                    BigDecimal unidentifiedActionsRatio, String groupKey) {

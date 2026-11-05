@@ -359,6 +359,8 @@ export default {
     onRouteDidUpdate() {
         try {
             document.querySelectorAll('.theme-doc-markdown table').forEach((table) => {
+                // React owns the viewer's live rows, including their sorting and filtering.
+                if (table.hasAttribute('data-reaction-table')) return;
                 if (isCandidate(table)) {
                     enhance(table);
                 }
