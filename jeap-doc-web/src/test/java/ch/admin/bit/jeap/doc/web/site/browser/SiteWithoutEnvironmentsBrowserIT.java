@@ -96,7 +96,18 @@ class SiteWithoutEnvironmentsBrowserIT extends BrowserTestBase {
         byte[] bundle = zipOf(Map.of(
                 "intro/_category_.json", "{\"label\": \"Introduction\", \"position\": 1}",
                 "intro/why.md", "---\ntitle: Why We Fly\n---\n\nA " + ONLY_ON_THE_UPLOADED_PAGE
-                                + " is slow, and that is the point.\n"));
+                                + " is slow, and that is the point.\n",
+                "reactions.md", """
+                        # Observations
+
+                        ```reaction-view
+                        kind=SYSTEM&system=orders
+                        ```
+
+                        | Component | Median per day |
+                        | --- | --- |
+                        | orders-api | 12 |
+                        """));
         DocumentationUploadDescriptor descriptor = DocumentationUploadDescriptor.builder()
                 .site(SITE)
                 .type(DocumentationType.SITE_DOCS)
@@ -125,6 +136,27 @@ class SiteWithoutEnvironmentsBrowserIT extends BrowserTestBase {
 
     private boolean isOwedABuild() {
         return requests.pending().stream().anyMatch(request -> request.site().equals(SITE));
+    }
+
+    @Test
+    void reactionFenceWithoutAnEnvironment_keepsTheFallbackAndDoesNotFetchAGraph() {
+        var graphRequests = new java.util.concurrent.atomic.AtomicInteger();
+        page.onRequest(request -> {
+            if (request.url().endsWith("/reaction-graph.json")) graphRequests.incrementAndGet();
+        });
+
+        Response served = open(ROOT + "/reactions/");
+
+        assertThat(served.status()).isEqualTo(200);
+        assertThat(served.text()).contains("Reaktionsgraph derzeit nicht verfügbar", "orders-api");
+        PlaywrightAssertions.assertThat(page.locator(".jeapReactionView [role='status']"))
+                .hasText("Reaktionsgraph derzeit nicht verfügbar");
+        PlaywrightAssertions.assertThat(page.locator(".jeapReactionTableFallback table"))
+                .containsText("orders-api");
+        PlaywrightAssertions.assertThat(page.locator(".jeapReactionView canvas, table[data-reaction-table='live']"))
+                .hasCount(0);
+        assertThat(graphRequests.get()).isZero();
+        assertNothingWentWrongInTheBrowser();
     }
 
     @Test

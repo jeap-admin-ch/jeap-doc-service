@@ -11,7 +11,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add an interactive reaction viewer for systems, components and message variants, with zoom, full screen,
   minimap, JSON source and independently collapsible groups. Show the current focus and reaction count,
   daily medians, hidden reactions and foreign systems. Tables follow visible reactions, retain search and
-  sorting, and fall back to generated content if the viewer is unavailable.
+  sorting, and fall back to generated content if the viewer is unavailable, including on sites without
+  environments. Defer diagram rendering until the viewer approaches the viewport.
 - Link viewer context menus to component, event, command and REST documentation.
 - Import and validate one complete reaction snapshot per environment and publish it through the site shell.
   Use V1 with V2-ready storage and readers; retain the last valid snapshot on failure and isolate API-version tags.

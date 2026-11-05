@@ -908,6 +908,11 @@ unknown ownership and PREDECESSOR history. A missing median is an invalid snapsh
 reaction contributions before summing bundles. Every instance uses the site's environment route and validates
 the JSON context. The viewer replaces the generated DOT reaction diagrams; the tables remain below it. Page selection, variants, tables and navigation metadata derive from the same full snapshot.
 
+Sites without environments must not mount the environment-dependent viewer or fetch a graph; keep an
+unavailable message and the generated table readable during server rendering and hydration. Variants share
+one snapshot request, but each viewer starts layout and canvas allocation only near the viewport. Disconnect
+the observer after activation and on unmount; scrolling away must preserve an activated viewer's state.
+
 `remark-reaction-view` pairs each viewer fence with its adjacent generated fallback table. It accepts no HTML
 or attributes from the page. Hide that fallback only while the corresponding live table is present after a
 successful render. React owns the live rows, search and sorting; `tableControls.js` must not mutate them.

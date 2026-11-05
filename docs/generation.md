@@ -1085,8 +1085,10 @@ and collapsing a group does not change the count.
 It loads the complete `reaction-graph.json` of the current site and environment once per browser application,
 then derives independent entry states for each embedded viewer. All entries start with their selected
 reaction groups expanded and their adjacent interfaces visible. Message entries pin the selected message.
+Layout and canvas creation wait until the viewer approaches the viewport; scrolling away retains its state.
+Sites without environments show an unavailable message and keep the generated table without fetching a graph.
 Groups can be collapsed independently through their context menu. System entries exclude foreign reactions.
-Reaction tables remain below the viewer. Once the graph loads, each table uses the same JSON and shows the
+Reaction tables remain below the viewer. Once the graph renders, each table uses the same JSON and shows the
 individual reactions currently visible in its viewer. Collapsing a group removes its rows; expanding it
 restores them. Search and sorting remain available and keep their settings as the graph changes. Other
 variants' tables are independent. When all groups are collapsed, the table explains why it has no rows.

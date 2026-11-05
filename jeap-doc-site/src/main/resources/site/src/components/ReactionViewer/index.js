@@ -31,8 +31,13 @@ function load(url, site, environment) {
 }
 
 export default function ReactionViewer({entry}) {
-    const {siteConfig: {baseUrl, customFields: {docSite}}} = useDocusaurusContext();
     const environment = useEnvironment();
+    if (!environment) return <p role="status">Reaktionsgraph derzeit nicht verfügbar</p>;
+    return <EnvironmentReactionViewer entry={entry} environment={environment}/>;
+}
+
+function EnvironmentReactionViewer({entry, environment}) {
+    const {siteConfig: {baseUrl, customFields: {docSite}}} = useDocusaurusContext();
     const {colorMode} = useColorMode();
     const url = baseUrl + routePrefixOf(environment).replace(/^\//, '') + (environment.main ? '' : '/') + 'reaction-graph.json';
     const [snapshot, setSnapshot] = useState(null), [failed, setFailed] = useState(false);
@@ -51,6 +56,7 @@ export default function ReactionViewer({entry}) {
     const container = useRef(null), panel = useRef(null), controls = useRef(null);
     const viewport = useRef(null);
     const viewKey = JSON.stringify([url, entry]);
+    const [activatedView, setActivatedView] = useState(null);
     const [zoom, setZoom] = useState(100);
     const [fullscreen, setFullscreen] = useState(false);
     useEffect(() => {
@@ -100,8 +106,24 @@ export default function ReactionViewer({entry}) {
     const source = useMemo(() => sourceOpen && view && !view.invalid
         ? viewSource(view.elements, entry, docSite, environment.id) : '', [sourceOpen, view, entry, docSite, environment.id]);
     useEffect(() => {
+        if (activatedView === viewKey || !panel.current) return;
+        if (typeof IntersectionObserver === 'undefined') {
+            setActivatedView(viewKey);
+            return;
+        }
+        // Variants share the snapshot, but only nearby diagrams allocate canvases and run their layout.
+        const observer = new IntersectionObserver(entries => {
+            if (entries.some(entry => entry.isIntersecting)) {
+                setActivatedView(viewKey);
+                observer.disconnect();
+            }
+        }, {rootMargin: '300px'});
+        observer.observe(panel.current);
+        return () => observer.disconnect();
+    }, [view, viewKey, activatedView]);
+    useEffect(() => {
         setRenderer(null);
-        if (!view || view.invalid || !view.elements.length) return;
+        if (activatedView !== viewKey || !view || view.invalid || !view.elements.length) return;
         setMenu(null); setHover(null);
         let disposed = false, destroy;
         import('./renderer').then(({render}) => {
@@ -120,7 +142,7 @@ export default function ReactionViewer({entry}) {
             }
         }).catch(() => { if (!disposed) setFailed(true); });
         return () => { disposed = true; destroy?.(); };
-    }, [view, colorMode, viewKey]);
+    }, [view, colorMode, viewKey, activatedView]);
     const closeMenu = (restoreFocus = true) => { setMenu(null); if (restoreFocus) container.current?.focus(); };
     const changeGroup = expanded => {
         setCollapsedGroups(previous => {

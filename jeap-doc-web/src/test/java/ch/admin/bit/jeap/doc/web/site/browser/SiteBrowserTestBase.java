@@ -372,6 +372,18 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         source.actions().forEach(action -> actions.add(new ObservedAction(action.reactionId(), messageIds.get(action.interfaceId()))));
     }
 
+    /** Scroll and wait together: rendering may replace the diagram while it enters the viewport. */
+    protected void showReactionViewer(int index) {
+        page.waitForFunction("""
+                index => {
+                    const viewer = document.querySelectorAll('section[aria-label="Reaktionsketten"]')[index];
+                    if (!viewer) return false;
+                    viewer.scrollIntoView({block: 'start'});
+                    return Boolean(viewer.querySelector('canvas'));
+                }
+                """, index);
+    }
+
     /**
      * What this suite's fixture site is made of: the pages the generator writes, plus a guide page in every
      * environment tree that says which tree it is.

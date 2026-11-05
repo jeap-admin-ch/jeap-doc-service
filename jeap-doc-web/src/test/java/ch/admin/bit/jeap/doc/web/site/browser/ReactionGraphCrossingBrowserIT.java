@@ -23,8 +23,11 @@ class ReactionGraphCrossingBrowserIT extends SiteBrowserTestBase {
         Set<String> checked = new LinkedHashSet<>();
         for (String each : pages) {
             open("/" + each + "/");
-            for (var viewer : page.locator("section[aria-label='Reaktionsketten']").all()) {
-                assertThat(viewer.locator("canvas").first()).isVisible();
+            showReactionViewer(0);
+            var viewers = page.locator("section[aria-label='Reaktionsketten']");
+            for (int index = 0; index < viewers.count(); index++) {
+                showReactionViewer(index);
+                var viewer = viewers.nth(index);
                 var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
                 // Pointer and keyboard menu interaction is covered in ReactionViewerBrowserIT. Here we
                 // enumerate every rendered target, including those initially outside the viewport.

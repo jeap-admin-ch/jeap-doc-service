@@ -9,6 +9,35 @@ import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertTha
 /** The React viewer consumes the real published JSON under the service's CSP. */
 class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
+    void offscreenVariants_waitForTheViewportAndShareOneSnapshotRequest() {
+        page.setViewportSize(1280, 500);
+        var graphRequests = new java.util.concurrent.atomic.AtomicInteger();
+        page.onRequest(request -> {
+            if (request.url().endsWith("/reaction-graph.json")) graphRequests.incrementAndGet();
+        });
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        var entries = page.locator(".jeapReactionView");
+        var viewers = page.locator("section[aria-label='Reaktionsketten']");
+        assertThat(viewers).hasCount(2);
+
+        showReactionViewer(0);
+
+        org.assertj.core.api.Assertions.assertThat(viewers.nth(1).evaluate(
+                "element => element.getBoundingClientRect().top > innerHeight + 300")).isEqualTo(true);
+        assertThat(viewers.nth(1).locator("canvas")).hasCount(0);
+        assertThat(entries.nth(1).locator("table[data-reaction-table='live']")).hasCount(0);
+        assertThat(entries.nth(1).locator(".jeapReactionTableFallback table")).isVisible();
+
+        showReactionViewer(1);
+
+        assertThat(entries.nth(1).locator("table[data-reaction-table='live']")).isVisible();
+        assertThat(entries.nth(1).locator(".jeapReactionTableFallback")).isHidden();
+        assertThat(viewers.first().locator("canvas").first()).isVisible();
+        org.assertj.core.api.Assertions.assertThat(graphRequests.get()).isEqualTo(1);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
     void allEntryPages_renderThePublishedSnapshot() {
         // The busy component previously had no separate component snapshot. Its page now comes from the full graph.
         for (String route : java.util.List.of(SYSTEM_REACTIONS_ROUTE, COMPONENT_REACTIONS_ROUTE, MESSAGE_REACTIONS_ROUTE,
@@ -16,7 +45,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             open("/" + route + "/");
             var viewer = page.getByRole(AriaRole.REGION, new com.microsoft.playwright.Page.GetByRoleOptions().setName("Reaktionsketten")).first();
             assertThat(viewer).isVisible();
-            assertThat(viewer.locator("canvas").first()).isVisible();
+            showReactionViewer(0);
             assertThat(viewer.getByLabel("Legende", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
             assertThat(viewer.locator("details, ul")).hasCount(0);
             assertThat(page.locator("article table").first()).isVisible();
@@ -36,7 +65,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var viewers = page.locator("section[aria-label='Reaktionsketten']");
         assertThat(viewers).hasCount(2);
         for (int index = 0; index < 2; index++) {
-            assertThat(viewers.nth(index).locator("canvas").first()).isVisible();
+            showReactionViewer(index);
             viewers.nth(index).getByRole(AriaRole.BUTTON,
                     new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).click();
             var canvas = viewers.nth(index).locator("div[aria-label^='Reaktionsgraph.']");
@@ -66,7 +95,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void largeGraph_hasUsableIconControlsAndAlwaysVisibleLegend() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         var viewer = page.locator("section[aria-label='Reaktionsketten']");
-        assertThat(viewer.locator("canvas").first()).isVisible();
+        showReactionViewer(0);
         var buttons = viewer.getByRole(AriaRole.BUTTON);
         assertThat(buttons).hasCount(7);
         for (var button : buttons.all()) {
@@ -102,7 +131,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void diagramLabels_followTheOriginalConventionsAndFitInsideGroups() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         var viewer = page.locator("section[aria-label='Reaktionsketten']");
-        assertThat(viewer.locator("canvas").first()).isVisible();
+        showReactionViewer(0);
         @SuppressWarnings("unchecked")
         var labels = (java.util.Map<String, Object>) viewer.locator("div[aria-label^='Reaktionsgraph.']").evaluate("""
                 element => {
@@ -146,7 +175,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (String route : java.util.List.of(SYSTEM_REACTIONS_ROUTE, MESSAGE_REACTIONS_ROUTE)) {
             open("/" + route + "/");
             var viewer = page.locator("section[aria-label='Reaktionsketten']").first();
-            assertThat(viewer.locator("canvas").first()).isVisible();
+            showReactionViewer(0);
             var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
             var targets = (java.util.List<?>) canvas.evaluate("""
                     element => {
@@ -203,8 +232,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
         var viewers = page.locator("section[aria-label='Reaktionsketten']");
         var first = viewers.first();
-        assertThat(first.locator("canvas").first()).isVisible();
-        assertThat(viewers.nth(1).locator("canvas").first()).isVisible();
+        showReactionViewer(0);
+        showReactionViewer(1);
         String group = groupOfReaction(first, "4243");
         var secondCanvas = viewers.nth(1).locator("div[aria-label^='Reaktionsgraph.']");
         Object otherNodes = secondCanvas.evaluate("element => element._cyreg.cy.elements().map(node => node.id())");
@@ -239,6 +268,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var viewer = entries.first().locator("section[aria-label='Reaktionsketten']");
         var table = entries.first().locator("table[data-reaction-table='live']");
         var otherTable = entries.nth(1).locator("table[data-reaction-table='live']");
+        showReactionViewer(0);
+        showReactionViewer(1);
         assertThat(table).isVisible();
         assertThat(otherTable).isVisible();
         assertThat(entries.first().locator(".jeapReactionTableFallback")).isHidden();
@@ -273,7 +304,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (String prefix : java.util.List.of("", otherEnvironment)) {
             open(prefix + "/" + SYSTEM_REACTIONS_ROUTE + "/");
             var viewer = page.locator("section[aria-label='Reaktionsketten']").first();
-            assertThat(viewer.locator("canvas").first()).isVisible();
+            showReactionViewer(0);
             openGroupMenu(viewer, groupOfReaction(viewer, "4246"));
             assertThat(viewer.getByRole(AriaRole.MENU).locator("a")).hasCount(0);
             page.keyboard().press("Escape");
@@ -292,7 +323,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             assertThat(link).isFocused();
             page.keyboard().press("Enter");
             page.waitForURL("**/" + COMPONENT_REACTIONS_ROUTE + "/");
-            assertThat(page.locator("section[aria-label='Reaktionsketten'] canvas").first()).isVisible();
+            showReactionViewer(0);
             assertThat(page.locator("article table").first()).isVisible();
             assertThat(page.locator("article [data-plantuml-diagram]")).hasCount(0);
             var componentViewer = page.locator("section[aria-label='Reaktionsketten']").first();
@@ -310,7 +341,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (String prefix : java.util.List.of("", otherEnvironment)) {
             open(prefix + "/" + SYSTEM_REACTIONS_ROUTE + "/");
             var viewer = page.locator("section[aria-label='Reaktionsketten']").first();
-            assertThat(viewer.locator("canvas").first()).isVisible();
+            showReactionViewer(0);
             openInterfaceMenu(viewer, UNDOCUMENTED_MESSAGE);
             assertThat(viewer.getByRole(AriaRole.MENUITEM)).isDisabled();
             page.keyboard().press("Escape");
@@ -320,10 +351,10 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             assertThat(eventLink).hasAttribute("href", prefix + "/" + MESSAGE_REACTIONS_ROUTE + "/");
             eventLink.click();
             page.waitForURL("**/" + MESSAGE_REACTIONS_ROUTE + "/");
-            assertThat(page.locator("section[aria-label='Reaktionsketten'] canvas").first()).isVisible();
+            showReactionViewer(0);
 
             open(prefix + "/" + SYSTEM_REACTIONS_ROUTE + "/");
-            assertThat(viewer.locator("canvas").first()).isVisible();
+            showReactionViewer(0);
             openInterfaceMenu(viewer, "shipping-dispatch\nGET /shipments");
             var restLink = viewer.getByRole(AriaRole.MENUITEM,
                     new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Zur REST-Dokumentation"));
@@ -356,7 +387,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void edgeDetailsAppearOnHoverAndDisappearWhenLeavingTheGraph() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         var viewer = page.locator("section[aria-label='Reaktionsketten']").first();
-        assertThat(viewer.locator("canvas").first()).isVisible();
+        showReactionViewer(0);
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Alles einpassen")).click();
         var canvas = viewer.locator("div[aria-label^='Reaktionsgraph.']");
         var position = (java.util.Map<?, ?>) canvas.evaluate("""
@@ -387,8 +418,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
         var viewers = page.locator("section[aria-label='Reaktionsketten']");
         var viewer = viewers.first();
-        assertThat(viewer.locator("canvas").first()).isVisible();
-        assertThat(viewers.nth(1).locator("canvas").first()).isVisible();
+        showReactionViewer(0);
+        showReactionViewer(1);
         String group = groupOfReaction(viewer, "4243");
         openGroupMenu(viewer, group);
         viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Gruppe einklappen")).click();
@@ -399,7 +430,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var source = viewer.getByRole(AriaRole.TEXTBOX, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Graph-Quelltext (JSON)"));
         assertThat(source).isVisible();
         assertThat(viewers.nth(1).getByRole(AriaRole.TEXTBOX)).hasCount(0);
-        assertThat(viewers.nth(1).locator("canvas").first()).isVisible();
+        showReactionViewer(1);
         org.assertj.core.api.Assertions.assertThat(source.inputValue()).contains("<script>alert(1)</script>");
         assertThat(viewer.locator("script")).hasCount(0);
         Object sourceIds = source.evaluate("el => JSON.parse(el.value).elements.map(n => n.data.id).sort()");
@@ -425,8 +456,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
         var viewers = page.locator("section[aria-label='Reaktionsketten']");
         var viewer = viewers.first();
-        assertThat(viewer.locator("canvas").first()).isVisible();
-        assertThat(viewers.nth(1).locator("canvas").first()).isVisible();
+        showReactionViewer(0);
+        showReactionViewer(1);
         var otherCanvas = viewers.nth(1).locator("div[aria-label^='Reaktionsgraph.']");
         Object otherView = otherCanvas.evaluate("el => ({zoom: el._cyreg.cy.zoom(), pan: el._cyreg.cy.pan()})");
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Minimap einblenden")).click();
@@ -518,6 +549,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void systemFixture_usesTheSameReactionsAndMediansAsTheDocumentationTable() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
         assertThat(page.locator("table[data-reaction-table='live']")).isVisible();
         Object comparison = page.evaluate("""
                 async () => {
@@ -569,7 +601,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void anotherEnvironment_loadsItsOwnGraph() {
         open(environments().stream().filter(environment -> !environment.main()).findFirst().orElseThrow().routePrefix()
                 + "/" + COMPONENT_REACTIONS_ROUTE + "/");
-        assertThat(page.locator("section[aria-label='Reaktionsketten'] canvas").first()).isVisible();
+        showReactionViewer(0);
         assertNothingWentWrongInTheBrowser();
     }
 }
