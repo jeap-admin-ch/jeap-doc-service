@@ -46,6 +46,12 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             var viewer = page.getByRole(AriaRole.REGION, new com.microsoft.playwright.Page.GetByRoleOptions().setName("Reaction chains")).first();
             assertThat(viewer).isVisible();
             showReactionViewer(0);
+            assertReactionCentered(viewer);
+            viewer.getByRole(AriaRole.BUTTON,
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+            viewer.getByRole(AriaRole.BUTTON,
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Reset view")).click();
+            assertReactionCentered(viewer);
             assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
             assertThat(viewer.locator("details, ul")).hasCount(0);
             assertThat(page.locator("article table").first()).isVisible();
@@ -501,6 +507,19 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
         org.assertj.core.api.Assertions.assertThat(otherCanvas.evaluate("el => ({zoom: el._cyreg.cy.zoom(), pan: el._cyreg.cy.pan()})")).isEqualTo(otherView);
         assertNothingWentWrongInTheBrowser();
+    }
+
+    private void assertReactionCentered(com.microsoft.playwright.Locator viewer) {
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+        org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
+                element => {
+                    const cy = element._cyreg.cy;
+                    return cy.nodes('[kind="reaction"]').some(node => {
+                        const p = node.renderedPosition();
+                        return Math.abs(p.x - cy.width() / 2) < 1 && Math.abs(p.y - cy.height() / 2) < 1;
+                    });
+                }
+                """)).isEqualTo(true);
     }
 
     private void openReactionMenu(com.microsoft.playwright.Locator viewer, String reaction) {

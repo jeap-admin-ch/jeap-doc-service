@@ -108,11 +108,15 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     const fit = () => { cy.resize(); cy.fit(undefined, 45); onZoom(Math.round(cy.zoom() * 100)); };
     const reset = () => {
         fit();
-        if (cy.zoom() < 0.8) {
-            cy.zoom(0.8);
-            const bounds = cy.elements().boundingBox();
-            cy.pan({x: 45 - bounds.x1 * cy.zoom(), y: 65 - bounds.y1 * cy.zoom()});
-        }
+        if (cy.zoom() < 0.8) cy.zoom(0.8);
+        // Bounds can start in empty space between disconnected chains. Anchor the readable
+        // start view on an actual reaction, preferring the entry's own system.
+        const reactions = cy.nodes('[kind="reaction"]');
+        const local = reactions.filter(node => !node.data('foreign'));
+        const target = local.length ? local.first() : reactions.length ? reactions.first()
+            : cy.nodes('[kind="group"]').length ? cy.nodes('[kind="group"]').first() : cy.nodes().first();
+        if (target.length) cy.center(target);
+
     };
     if (viewport) { cy.zoom(viewport.zoom); cy.pan(viewport.pan); }
     else reset();

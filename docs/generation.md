@@ -1108,7 +1108,10 @@ rounded containers. The graph uses Cytoscape with a Dagre layout. All labels are
 arrows use `min(6, 1 + log10(1 + median))` pixels; bundles sum distinct contributing reactions and identify the
 sum as an approximation. Both trigger and action arrows connect to individual reactions when expanded;
 only hidden reactions contribute to arrows at the group frame. Hover tooltips show frequency details; the existing reaction table provides
-the textual representation. The viewport offers zoom, fit, a readable start
+the textual representation. The initial view and Reset view center an available reaction, preferring one
+from the entry's own system. If all reactions are collapsed, they center a group instead.
+Fit all continues to show the complete graph; manual pan and zoom survive redraws.
+The viewport offers zoom, fit, a readable start
 view and full screen, with keyboard equivalents for zoom and pan. Groups can be collapsed and expanded
 without changing the selection. The legend stays visible, including in full screen. Toolbar buttons reuse
 the existing diagram plugin's icons, with tooltips and accessible names. Frequency details appear only
@@ -1146,9 +1149,8 @@ the frame above the reactions. The legend uses SVG symbols
 with the same shapes and colour definitions as the canvas, including in dark mode.
 It lists node types visible in the current diagram and updates when groups are collapsed or expanded;
 REST is always included. Reaction arrows arrive at the left box border and leave at the right border.
-The base symbols follow the [original viewer specification](https://confluence.bit.admin.ch/pages/viewpage.action?pageId=1806263354).
-The expanded individual trigger arrows follow the review decision of 2026-11-04; the original specification
-connected triggers to the group even while expanded.
+Trigger arrows connect to the individual reactions while a group is expanded, and to the group frame
+while it is collapsed.
 
 Group titles contain only the component name. Nodes of a known foreign system have a blue border,
 explained in the legend. Message ownership comes from unambiguous
