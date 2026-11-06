@@ -32,6 +32,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         page.evaluate("window.reactionVisitMarker = 'same-document'");
         page.locator("a.navbar__brand").click();
         page.waitForURL(url -> !url.contains(MESSAGE_REACTIONS_ROUTE));
+        // Docusaurus changes the URL before it replaces the page while loading the next route.
+        assertThat(page.locator(".jeapReactionView")).hasCount(0);
         page.goBack();
         showReactionViewer(0);
         showReactionViewer(1);
