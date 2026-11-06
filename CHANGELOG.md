@@ -18,6 +18,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Use V1 with V2-ready storage and readers; retain the last valid snapshot on failure and isolate API-version tags.
 
 ### Changed
+- Include readable node identities and group ownership and grouping metadata in the graph JSON source.
 - Derive reaction pages, variants, tables and links from the same snapshot. Preserve opaque identities,
   system-qualified ownership, HTTP and unknown interfaces, superseded reactions and predecessor history.
   Keep domain records separate from the browser graph format.

@@ -1135,7 +1135,10 @@ updates after group changes, colour-mode changes and resizing, including full sc
 for each viewer. Its image is rendered from the same positioned graph at a bounded thumbnail resolution.
 
 The source toggle shows a read-only JSON representation of the currently drawn groups, nodes, markers and
-edges, together with site, environment and entry information. It can be copied or selected manually when
+edges, together with site, environment and entry information. Node identities are also shown as structured
+`nodeType` and `key` fields. Groups include `system`, `component` and `grouping`: the explicit group key,
+the trigger identity and full label, or the individual reaction identity for a standalone group.
+The opaque IDs remain unchanged; these fields explain them without decoding nested JSON strings. It can be copied or selected manually when
 clipboard access is unavailable. This is the viewer's equivalent of the old DOT source, not an import or
 share-link format. Opening and closing it preserves group state, zoom and pan; the legend remains visible.
 

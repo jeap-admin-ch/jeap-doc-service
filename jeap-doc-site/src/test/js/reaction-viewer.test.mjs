@@ -369,3 +369,38 @@ test('group layout balances incoming and outgoing crossings and keeps ties stabl
     assert.deepEqual(orderGroupChildren(children, parents, edges, positions), children);
     assert.deepEqual(orderGroupChildren(children, parents, [], positions), children);
 });
+
+test('JSON source explains opaque group ids with ownership and structured grouping metadata', () => {
+    const data = payload();
+    const trigger = data.graph.nodes.find(node => node.identity.key === 'A');
+    trigger.interfaceDetails.message = {messageType: 'OrderAcceptedEvent', variant: 'express'};
+    const graph = readGraph(data, 'site', 'dev');
+    const state = entryView(graph, entry);
+    const source = JSON.parse(viewSource(project(graph, state).elements, entry, 'site', 'dev'));
+    const group = source.elements.find(element => element.data.id === graph.groupOf.get(identity(key('r1', 'REACTION')))).data;
+    assert.equal(group.system, 's');
+    assert.equal(group.component, 'c');
+    assert.deepEqual(group.grouping, {trigger: {nodeType: 'INTERFACE', key: 'A', label: 'OrderAcceptedEvent\nexpress'}});
+    const standalone = source.elements.find(element => element.data.id === graph.groupOf.get(identity(key('alone', 'REACTION')))).data;
+    assert.deepEqual(standalone.grouping, {reaction: key('alone', 'REACTION')});
+    const node = source.elements.find(element => element.data.id === identity(key('A'))).data;
+    assert.deepEqual(node.identity, key('A'));
+    assert.equal(node.label, 'OrderAcceptedEvent\nexpress');
+});
+
+test('explicit group keys do not imply one shared trigger and unknown owners remain unknown', () => {
+    const data = payload();
+    for (const node of data.graph.nodes.filter(node => node.reaction)) node.reaction.groupKey = 'checkout/"express"';
+    data.graph.edges = data.graph.edges.filter(edge => !(edge.edgeType === 'TRIGGER' && edge.target.key === 'r2'));
+    data.graph.edges.push(edge('B', 'r2', 'TRIGGER'));
+    const graph = readGraph(data, 'site', 'dev');
+    const group = project(graph, entryView(graph, entry)).elements.find(element =>
+        element.data.id === graph.groupOf.get(identity(key('r1', 'REACTION')))).data;
+    assert.deepEqual(group.grouping, {groupKey: 'checkout/"express"'});
+    data.graph.nodes.find(node => node.identity.key === 'r1').reaction.system = null;
+    const unknown = readGraph(data, 'site', 'dev');
+    const unknownGroup = project(unknown, entryView(unknown, {kind: 'MESSAGE', message: 'A', variant: ''})).elements
+        .find(element => element.data.id === unknown.groupOf.get(identity(key('r1', 'REACTION')))).data;
+    assert.equal(unknownGroup.system, null);
+    assert.deepEqual(unknownGroup.grouping, {reaction: key('r1', 'REACTION')});
+});

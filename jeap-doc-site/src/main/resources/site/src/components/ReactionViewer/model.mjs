@@ -49,10 +49,17 @@ export function readGraph(payload, site, environment) {
         const owner = owners.get(node.id) ?? node.reaction;
         const trigger = triggers.get(node.id);
         // Unknown ownership cannot merge unrelated reactions; triggerless reactions always stand alone.
-        const key = !trigger || !owner.system || !owner.component ? ['single', node.id]
+        const single = !trigger || !owner.system || !owner.component;
+        const key = single ? ['single', node.id]
             : [owner.system, owner.component, node.reaction.groupKey ?? trigger];
         const id = 'group:' + JSON.stringify(key);
-        if (!groups.has(id)) groups.set(id, {id, owner, trigger, members: []});
+        if (!groups.has(id)) {
+            const triggerNode = nodes.get(trigger);
+            const grouping = single ? {reaction: node.identity}
+                : node.reaction.groupKey != null ? {groupKey: node.reaction.groupKey}
+                    : {trigger: {...triggerNode.identity, label: labelOf(triggerNode)}};
+            groups.set(id, {id, owner, trigger, grouping, members: []});
+        }
         groups.get(id).members.push(node.id);
         groupOf.set(node.id, id);
     }
@@ -200,7 +207,8 @@ export function project(graph, state) {
         const active = members.filter(member => graph.nodes.get(member).reaction.status !== 'SUPERSEDED');
         members.filter(member => graph.nodes.get(member).reaction.status === 'SUPERSEDED').forEach(member => superseded.add(member));
         if (!active.length) continue;
-        elements.push({data: {id, kind: 'group', label: `${group.owner.system ?? '?'} / ${group.owner.component ?? '?'}`,
+        elements.push({data: {id, kind: 'group', system: group.owner.system ?? null,
+            component: group.owner.component ?? null, grouping: group.grouping, label: `${group.owner.system ?? '?'} / ${group.owner.component ?? '?'}`,
             displayLabel: withoutSuffix(group.owner.component ?? '?', ['-service', '-scs']), foreign: foreign(group.owner.system)}});
         const hidden = active.filter(member => !state.visible.has(member)).length;
         if (hidden) elements.push({data: {id: 'hidden:' + id, parent: id, kind: 'marker', label: String(hidden)}});
@@ -209,7 +217,7 @@ export function project(graph, state) {
         const node = graph.nodes.get(id);
         const system = node.reaction ? graph.groups.get(graph.groupOf.get(id))?.owner.system
             : graph.messageSystems.get(fold(node.interfaceDetails?.message?.messageType));
-        elements.push({data: {id, parent: graph.groupOf.get(id), label: labelOf(node), displayLabel: diagramLabelOf(node),
+        elements.push({data: {id, identity: node.identity, parent: graph.groupOf.get(id), label: labelOf(node), displayLabel: diagramLabelOf(node),
             foreign: foreign(system), system,
             tooltip: node.reaction ? `Median per day: ${node.reaction.median}` : undefined,
             kind: node.reaction ? 'reaction' : node.nodeType === 'MESSAGE' ? 'message'
