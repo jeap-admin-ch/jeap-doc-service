@@ -1,4 +1,5 @@
 import {test} from 'node:test';
+import {orderGroupChildren} from '../../main/resources/site/src/components/ReactionViewer/layout.mjs';
 import assert from 'node:assert/strict';
 import remarkReactionView from '../../main/resources/site/plugins/remark-reaction-view/index.js';
 import {overviewFrame, overviewPoint, overviewSize} from '../../main/resources/site/src/components/ReactionViewer/overview.mjs';
@@ -338,4 +339,33 @@ test('event view keeps only direct producers and consumers through collapse and 
     let collapsed = state;
     for (const group of state.selected) collapsed = setGroupExpanded(graph, collapsed, group, false);
     assert.deepEqual(project(graph, expandGroups(graph, collapsed)), project(graph, state));
+});
+
+
+test('group layout removes avoidable crossings without changing graph membership or input order', () => {
+    const children = new Map([['group', ['lower', 'upper', 'middle']]]);
+    const parents = new Map(children.get('group').map(id => [id, 'group']));
+    const positions = new Map([['group', {x: 100, y: 0}], ['top', {x: 200, y: -100}],
+        ['center', {x: 200, y: 0}], ['bottom', {x: 200, y: 100}], ['trigger', {x: 0, y: 0}]]);
+    const edges = [['lower', 'bottom'], ['upper', 'top'], ['middle', 'center'],
+        ['trigger', 'lower'], ['trigger', 'upper'], ['trigger', 'middle']]
+        .map(([source, target]) => ({data: {source, target}}));
+    const ordered = orderGroupChildren(children, parents, edges, positions);
+    assert.deepEqual(ordered.get('group'), ['upper', 'middle', 'lower']);
+    assert.deepEqual(children.get('group'), ['lower', 'upper', 'middle']);
+    assert.deepEqual(orderGroupChildren(ordered, parents, edges, positions), ordered);
+    // Reversing flow does not change where the neighbouring endpoints are drawn.
+    assert.deepEqual(orderGroupChildren(children, parents, edges.map(({data}) =>
+        ({data: {source: data.target, target: data.source}})), positions), ordered);
+});
+
+test('group layout balances incoming and outgoing crossings and keeps ties stable', () => {
+    const children = new Map([['group', ['a', 'b', 'unconnected']]]);
+    const parents = new Map(children.get('group').map(id => [id, 'group']));
+    const positions = new Map([['group', {x: 100, y: 0}], ['leftTop', {x: 0, y: -100}],
+        ['leftBottom', {x: 0, y: 100}], ['rightTop', {x: 200, y: -100}], ['rightBottom', {x: 200, y: 100}]]);
+    const edges = [['leftTop', 'a'], ['leftBottom', 'b'], ['a', 'rightBottom'], ['b', 'rightTop']]
+        .map(([source, target]) => ({data: {source, target}}));
+    assert.deepEqual(orderGroupChildren(children, parents, edges, positions), children);
+    assert.deepEqual(orderGroupChildren(children, parents, [], positions), children);
 });

@@ -1,5 +1,6 @@
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
+import {orderGroupChildren} from './layout.mjs';
 import {nodeAppearance, foreignAppearance} from './appearance.mjs';
 cytoscape.use(dagre);
 
@@ -50,12 +51,14 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
         x += bounds.w + 70;
         rowHeight = Math.max(rowHeight, bounds.h);
     }
+    const orderedChildren = orderGroupChildren(children, parents, elements,
+        new Map(layout.nodes().map(node => [node.id(), node.position()])));
     const positioned = elements.map(element => {
         const data = {...element.data, displayLabel: wrap(element.data.displayLabel ?? element.data.label ?? '', element.data.kind)};
         let position;
         if (!data.source) {
             position = {...layout.getElementById(data.parent ?? data.anchor ?? data.id).position()};
-            if (data.parent) position.y += (children.get(data.parent).indexOf(data.id) - (children.get(data.parent).length - 1) / 2) * 54;
+            if (data.parent) position.y += (orderedChildren.get(data.parent).indexOf(data.id) - (children.get(data.parent).length - 1) / 2) * 54;
             if (data.anchor) { position.x += 118; position.y -= 38; }
         }
         return {...element, data, position};

@@ -1110,7 +1110,8 @@ count. Predecessor relationships never become flow arrows. Circular markers coun
 hidden reactions adjacent to a visible interface. Unknown ownership is disclosed.
 
 Messages are compact hexagons with short tips, HTTP operations compact rounded rectangles with height adapted to their labels, generic interfaces ellipses, reactions rectangles and groups
-rounded containers. The graph uses Cytoscape with a Dagre layout. All labels are text. Individual and bundled
+rounded containers. The graph uses Cytoscape with a Dagre layout. Within each group, reactions are reordered when a swap
+reduces crossings between their incoming and outgoing connections. Ties keep the existing order. All labels are text. Individual and bundled
 arrows use `min(6, 1 + log10(1 + median))` pixels; bundles sum distinct contributing reactions and identify the
 sum as an approximation. Both trigger and action arrows connect to individual reactions when expanded;
 only hidden reactions contribute to arrows at the group frame. Hover tooltips show frequency details; the existing reaction table provides
