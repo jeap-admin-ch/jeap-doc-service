@@ -82,7 +82,7 @@ test('message focus counts direct consumers and producers once, not other member
     const graph = readGraph(data, 'site', 'dev');
     const focus = {kind: 'MESSAGE', message: 'A', variant: ''};
     const state = expandGroups(graph, entryView(graph, focus));
-    assert.ok(state.visible.has(identity(key('sibling', 'REACTION'))));
+    assert.ok(!state.visible.has(identity(key('sibling', 'REACTION'))));
     assert.equal(focusedReactionCount(graph, state), 3);
     const collapsed = setGroupExpanded(graph, state, graph.groupOf.get(identity(key('r1', 'REACTION'))), false);
     assert.equal(focusedReactionCount(graph, collapsed), 3);
@@ -191,7 +191,7 @@ test('invalid replacement and foreign context are rejected, zero is valid', () =
     assert.throws(()=>readGraph(payload(),'site','prod'));
     assert.equal(widthOf(0),1); assert.equal(widthOf(1e10),6);
 });
-test('partial group keeps one visible action and bundles hidden contributions separately', () => {
+test('message view excludes sibling reactions and every edge not touching the selected event', () => {
     const data=payload(); data.graph.nodes.push(message('C'));
     data.graph.edges=data.graph.edges.filter(e=>!(e.edgeType==='ACTION' && e.source.key==='r2'));
     data.graph.edges.push(edge('r2','C','ACTION'));
@@ -199,9 +199,12 @@ test('partial group keeps one visible action and bundles hidden contributions se
     const state=entryView(graph,{kind:'MESSAGE',message:'B',variant:''});
     const result=project(graph,state);
     assert.equal(result.elements.filter(e=>e.data.kind==='reaction').length,1);
-    const hiddenAction=result.elements.find(e=>e.data.target===identity(key('C')));
-    assert.ok(hiddenAction.data.source.startsWith('group:'));
-    assert.equal(hiddenAction.data.tooltip,'Median per day: 80');
+    assert.deepEqual(result.elements.filter(e => e.data.source).map(e => [e.data.source, e.data.target]),
+        [[identity(key('r1', 'REACTION')), identity(key('B'))]]);
+    assert.deepEqual([...expandGroups(graph, state).visible].sort(),
+        [identity(key('B')), identity(key('r1', 'REACTION'))].sort());
+    assert.deepEqual(visibleReactionRows(graph, state), [{id: identity(key('r1', 'REACTION')),
+        component: 'c', trigger: null, answers: ['B'], median: 10}]);
 });
 test('internal cycles terminate and preserve both directed paths',()=>{
     const data=payload(); data.graph.nodes.push(reaction('cycle'));
@@ -262,7 +265,7 @@ test('collapsing a message entry preserves its selection and pin but hides all i
     for (const group of expanded.selected) collapsed = setGroupExpanded(graph, collapsed, group, false);
     assert.deepEqual(collapsed.selected, initial.selected);
     assert.deepEqual(collapsed.pins, initial.pins);
-    assert.deepEqual(collapsed.visible, new Set([identity(key('A')), identity(key('B'))]));
+    assert.deepEqual(collapsed.visible, new Set([identity(key('A'))]));
     assert.deepEqual(expandGroups(graph, collapsed), expanded);
 });
 
@@ -293,7 +296,8 @@ test('diagram labels match legacy suffix and variant conventions without changin
             assert.equal(find(identity(key('A'))).displayLabel, expected + '\n[express]');
             assert.equal(find(identity(key('A'))).label, name + '\nexpress');
             const reaction = find(identity(key('r1', 'REACTION')));
-            assert.equal(reaction.displayLabel, 'r1');
+            assert.equal(reaction.displayLabel, '10');
+            assert.equal(reaction.tooltip, 'Median per day: 10');
             assert.equal(reaction.label, component + '\nr1');
             assert.equal(find(reaction.parent).displayLabel, 'orders');
         }
@@ -311,10 +315,27 @@ test('foreign colours use documented message ownership and the entry system, wit
     assert.equal(node(systemView, identity(key('r1', 'REACTION'))).foreign, false);
     const messageView = project(graph, expandGroups(graph, entryView(graph, {kind: 'MESSAGE', message: 'B', variant: ''})));
     assert.equal(node(messageView, identity(key('B'))).foreign, false);
-    assert.equal(node(messageView, identity(key('A'))).foreign, true);
     assert.equal(node(messageView, identity(key('r1', 'REACTION'))).foreign, true);
     assert.equal(node(messageView, graph.groupOf.get(identity(key('r1', 'REACTION')))).foreign, true);
     const unknownGraph = readGraph(payload(), 'site', 'dev');
     const unknownView = project(unknownGraph, entryView(unknownGraph, entry));
     assert.equal(node(unknownView, identity(key('B'))).foreign, false);
+});
+
+test('event view keeps only direct producers and consumers through collapse and expansion', () => {
+    const data = payload();
+    data.graph.nodes = [message('A'), message('B'), message('C'), reaction('r1', 's', 0), reaction('r2', 's', 1.25)];
+    data.graph.edges = [edge('A', 'r1', 'TRIGGER'), edge('r1', 'B', 'ACTION'),
+        edge('B', 'r2', 'TRIGGER'), edge('r2', 'C', 'ACTION')];
+    const graph = readGraph(data, 'site', 'dev');
+    const state = expandGroups(graph, entryView(graph, {kind: 'MESSAGE', message: 'B', variant: ''}));
+    const projected = project(graph, state).elements.map(element => element.data);
+    assert.deepEqual(projected.filter(node => node.kind === 'message').map(node => node.id), [identity(key('B'))]);
+    assert.deepEqual(projected.filter(node => node.kind === 'reaction').map(node => node.displayLabel), ['0', '1.25']);
+    assert.deepEqual(projected.filter(edge => edge.source).map(edge => [edge.source, edge.target]), [
+        [identity(key('r1', 'REACTION')), identity(key('B'))], [identity(key('B')), identity(key('r2', 'REACTION'))],
+    ]);
+    let collapsed = state;
+    for (const group of state.selected) collapsed = setGroupExpanded(graph, collapsed, group, false);
+    assert.deepEqual(project(graph, expandGroups(graph, collapsed)), project(graph, state));
 });

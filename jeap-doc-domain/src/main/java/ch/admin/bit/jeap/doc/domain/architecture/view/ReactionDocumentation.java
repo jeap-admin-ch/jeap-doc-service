@@ -15,8 +15,6 @@ public final class ReactionDocumentation {
     private final Map<Identity, Identity> triggers = new HashMap<>();
     private final Map<Identity, Set<Identity>> actions = new HashMap<>();
     private final Map<Identity, Set<Identity>> neighbours = new HashMap<>();
-    private final Map<Identity, Group> groupOf = new HashMap<>();
-    private final Map<Group, Set<Identity>> groups = new LinkedHashMap<>();
 
     private final Map<String, Map<String, Set<Identity>>> variantsByMessage = new HashMap<>();
     private final Map<String, Set<Identity>> reactionsBySystem = new HashMap<>();
@@ -30,7 +28,7 @@ public final class ReactionDocumentation {
         indexObservations();
         indexDocumentation(model);
         indexVariants();
-        indexReactionGroups();
+        indexReactionOwnership();
     }
 
     private void indexObservations() {
@@ -78,7 +76,7 @@ public final class ReactionDocumentation {
         }
     }
 
-    private void indexReactionGroups() {
+    private void indexReactionOwnership() {
         for (ObservedReaction reaction : reactions.values()) {
             var owner = owners.get(reaction.identity());
             if (owner != null) {
@@ -86,13 +84,6 @@ public final class ReactionDocumentation {
                 reactionsByComponent.computeIfAbsent(new Owner(fold(owner.system()), fold(owner.component())),
                         ignored -> new LinkedHashSet<>()).add(reaction.identity());
             }
-            Identity trigger = triggers.get(reaction.identity());
-            Object key = reaction.groupKey() == null ? trigger : reaction.groupKey();
-            Group group = owner == null || trigger == null || owner.system() == null || owner.component() == null
-                    ? new Group(null, null, null, reaction.identity())
-                    : new Group(owner.system(), owner.component(), key, null);
-            groups.computeIfAbsent(group, ignored -> new LinkedHashSet<>()).add(reaction.identity());
-            groupOf.put(reaction.identity(), group);
         }
     }
 
@@ -107,11 +98,9 @@ public final class ReactionDocumentation {
             Map<String, Set<Identity>> variants = variantsByMessage.getOrDefault(fold(message.name()), Map.of());
             List<ReactionViews.VariantView> views = new ArrayList<>();
             for (var variant : variants.entrySet()) {
-                Set<Group> selectedGroups = new LinkedHashSet<>();
-                variant.getValue().forEach(id -> neighbours.getOrDefault(id, Set.of()).stream().filter(this::active)
-                        .map(groupOf::get).forEach(selectedGroups::add));
                 Set<Identity> selected = new LinkedHashSet<>();
-                selectedGroups.forEach(group -> selected.addAll(groups.get(group)));
+                variant.getValue().forEach(id -> neighbours.getOrDefault(id, Set.of()).stream().filter(this::active)
+                        .forEach(selected::add));
                 // A message with only superseded neighbours still shows the viewer's hidden-content marker.
                 views.add(new ReactionViews.VariantView(variant.getKey(), view(selected, variant.getValue())));
             }
@@ -135,8 +124,10 @@ public final class ReactionDocumentation {
             componentLink(owners.get(id)).ifPresent(components::add);
             if (!active(id)) continue;
             Identity trigger = triggers.get(id);
+            if (!pinned.isEmpty() && !pinned.contains(trigger)) trigger = null;
             if (trigger != null) selectedInterfaces.add(trigger);
-            Set<Identity> answers = actions.getOrDefault(id, Set.of());
+            Set<Identity> answers = new LinkedHashSet<>(actions.getOrDefault(id, Set.of()));
+            if (!pinned.isEmpty()) answers.retainAll(pinned);
             selectedInterfaces.addAll(answers);
             rows.add(new ReactionView.Row(id, trigger == null ? null : label(trigger), reactions.get(id).component(),
                     answers.stream().map(this::label).sorted().toList(), reactions.get(id).median()));
@@ -182,5 +173,4 @@ public final class ReactionDocumentation {
     }
 
     private record Owner(String system, String component) {}
-    private record Group(String system, String component, Object key, Identity single) {}
 }

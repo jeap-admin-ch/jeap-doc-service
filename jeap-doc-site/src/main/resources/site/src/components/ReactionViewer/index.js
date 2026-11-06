@@ -201,7 +201,8 @@ function EnvironmentReactionViewer({entry, environment}) {
             }
             {hover && !menu && !sourceOpen && <Tooltip id={tooltipId} hover={hover}/>}
             {menu && <NodeMenu menu={menu} href={destination.href} linkLabel={destination.label}
-                canExpand={menuGroup?.members.some(id => !view.state.visible.has(id)
+                canExpand={menuGroup?.members.some(id => (!view.state.focusedReactions || view.state.focusedReactions.has(id))
+                    && !view.state.visible.has(id)
                     && snapshot.graph.nodes.get(id).reaction.status !== 'SUPERSEDED')}
                 canCollapse={menuGroup?.members.some(id => view.state.visible.has(id) && !view.state.pins.has(id))}
                 onChange={changeGroup} onClose={closeMenu}/>}

@@ -4,10 +4,12 @@ import styles from './styles.module.css';
 
 function Symbol({kind, appearance}) {
     const shapes = {
-        hexagon: <polygon points="2,12 10,4 26,4 34,12 26,20 10,20"/>,
+        polygon: appearance.shape === 'polygon' ? <polygon points={appearance['shape-polygon-points'].split(' ').map(Number)
+            .reduce((points, value, index, values) => index % 2 ? points
+                : [...points, `${18 + value * 16},${12 + values[index + 1] * 8}`], []).join(' ')}/> : null,
         ellipse: kind === 'marker' ? <circle cx="18" cy="12" r="10"/> : <ellipse cx="18" cy="12" rx="16" ry="8"/>,
         rectangle: <rect x="2" y="4" width="32" height="16"/>,
-        'round-rectangle': <rect x="2" y="3" width="32" height="18" rx={kind === 'http' ? 9 : 4}/>,
+        'round-rectangle': <rect x="2" y="3" width="32" height="18" rx={kind === 'http' ? 5 : 4}/>,
     };
     return <svg viewBox="0 0 36 24" width="36" height="24" aria-hidden="true" focusable="false">
         <g fill={appearance['background-color']} fillOpacity={appearance['background-opacity'] ?? 1}

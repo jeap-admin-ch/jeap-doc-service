@@ -17,6 +17,9 @@ function wrap(label, kind) {
     }).join('\n');
 }
 
+const httpHeight = node => Math.max(60, node.data('displayLabel').split('\n')
+    .reduce((lines, line) => lines + Math.max(1, Math.ceil(line.length / 22)), 0) * 20 + 20);
+
 const groupPadding = node => node.data('displayLabel').split('\n').length * 18 + 18;
 
 export function render(container, elements, dark, onZoom, {onNodeMenu, onDismissMenu, onHover, viewport} = {}) {
@@ -32,8 +35,10 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
         ...(e.data.source ? {source: parents.get(e.data.source) ?? e.data.source,
             target: parents.get(e.data.target) ?? e.data.target} : {})}}));
     const layout = cytoscape({headless: true, styleEnabled: true, elements: flat,
-        style: [{selector: 'node', style: {width: 280,
-            height: node => Math.max(120, (children.get(node.id())?.length ?? 0) * 54 + groupPadding(node) * 2)}}]});
+        style: [{selector: 'node', style: {width: node => node.data('kind') === 'message' ? 190 : node.data('kind') === 'http' ? 200 : 280,
+            height: node => node.data('kind') === 'http'
+                ? httpHeight(node)
+                : Math.max(120, (children.get(node.id())?.length ?? 0) * 54 + groupPadding(node) * 2)}}]});
     // Pack disconnected chains instead of letting dagre make one very tall column of unrelated nodes.
     const components = layout.elements().components().sort((a, b) => b.nodes().length - a.nodes().length);
     let x = 0, y = 0, rowHeight = 0;
@@ -66,8 +71,10 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
                 'font-size': 15, 'text-wrap': 'wrap', 'text-max-width': 180, 'text-valign': 'center',
                 'text-overflow-wrap': 'anywhere', width: 210, height: 72,
                 'background-color': dark ? '#25354d' : '#edf3fa', 'border-color': dark ? '#8296af' : '#8c9eb5', 'border-width': 1.5}},
-            {selector: '[kind="message"]', style: appearance.message},
-            {selector: '[kind="http"]', style: {...appearance.http, width: 240, height: 120}},
+            {selector: '[kind="message"]', style: {...appearance.message, 'text-max-width': 160,
+                height: node => Math.max(72, node.data('displayLabel').split('\n')
+                    .reduce((lines, line) => lines + Math.max(1, Math.ceil(line.length / 18)), 0) * 20 + 24)}},
+            {selector: '[kind="http"]', style: {...appearance.http, width: 200, height: httpHeight}},
             {selector: '[kind="interface"]', style: appearance.interface},
             {selector: '[kind="reaction"]', style: {...appearance.reaction, width: 130, height: 36}},
             {selector: '[kind="group"]', style: {...appearance.group, 'text-valign': 'top',
@@ -100,23 +107,16 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     cy.on('tap', 'node', event => {
         activeGroup = groupOf(event.target).id(); activeNode = event.target.id();
     });
-    cy.on('mouseover mousemove', 'edge', event => {
+    cy.on('mouseover mousemove', 'edge, node[kind="reaction"]', event => {
         onHover?.({text: event.target.data('tooltip'), x: event.renderedPosition.x, y: event.renderedPosition.y});
     });
-    cy.on('mouseout', 'edge', () => onHover?.(null));
+    cy.on('mouseout', 'edge, node[kind="reaction"]', () => onHover?.(null));
     cy.on('zoom', () => onZoom(Math.round(cy.zoom() * 100)));
     const fit = () => { cy.resize(); cy.fit(undefined, 45); onZoom(Math.round(cy.zoom() * 100)); };
     const reset = () => {
         fit();
-        if (cy.zoom() < 0.8) cy.zoom(0.8);
-        // Bounds can start in empty space between disconnected chains. Anchor the readable
-        // start view on an actual reaction, preferring the entry's own system.
-        const reactions = cy.nodes('[kind="reaction"]');
-        const local = reactions.filter(node => !node.data('foreign'));
-        const target = local.length ? local.first() : reactions.length ? reactions.first()
-            : cy.nodes('[kind="group"]').length ? cy.nodes('[kind="group"]').first() : cy.nodes().first();
-        if (target.length) cy.center(target);
-
+        if (cy.zoom() > 1) cy.zoom(1);
+        cy.center();
     };
     if (viewport) { cy.zoom(viewport.zoom); cy.pan(viewport.pan); }
     else reset();

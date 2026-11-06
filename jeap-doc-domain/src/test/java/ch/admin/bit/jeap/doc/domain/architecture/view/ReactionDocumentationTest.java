@@ -34,12 +34,12 @@ class ReactionDocumentationTest {
     }
 
     @Test
-    void variantsKeepTheirExactNamesAndMessageEntriesExpandTheirGroupsAcrossSystems() {
+    void variantsKeepTheirExactNamesAndOnlyDirectReactionsAcrossSystems() {
         var views = documentation().ofSystem(A).ofMessage("ACCEPTEDEVENT");
         assertThat(views).extracting(ReactionViews.VariantView::variant).containsExactly("", "a-b", "a_b");
-        assertThat(ids(views.getFirst().view())).containsExactlyInAnyOrder("opaque/a#1", "opaque/a#2", "opaque/b#1");
-        // V2 groupKey groups the two reactions even though their trigger interfaces differ.
-        assertThat(ids(views.getLast().view())).containsExactlyInAnyOrder("opaque/a#1", "opaque/a#2");
+        assertThat(ids(views.getFirst().view())).containsExactlyInAnyOrder("opaque/a#1", "opaque/b#1");
+        // A shared group key must not pull another variant into the view.
+        assertThat(ids(views.getLast().view())).containsExactly("opaque/a#2");
         var unresolved = views.get(1).view();
         assertThat(ids(unresolved)).containsExactly("unresolved");
         assertThat(unresolved.components()).isEmpty();
@@ -74,7 +74,8 @@ class ReactionDocumentationTest {
                 List.of(new ObservedAction(reaction.identity(), output.identity())), List.of());
         var view = new ReactionDocumentation(snapshot, MODEL).ofSystem(A).ofMessage("AcceptedEvent").getFirst().view();
         assertThat(ids(view)).containsExactly("producer");
-        assertThat(view.rows().getFirst().trigger()).isEqualTo("InputEvent");
+        assertThat(view.rows().getFirst().trigger()).isNull();
+        assertThat(view.rows().getFirst().answers()).containsExactly("AcceptedEvent");
     }
 
     @Test
@@ -90,8 +91,8 @@ class ReactionDocumentationTest {
         assertThat(views.ofComponent("first").restProviders()).containsExactly(first);
         assertThat(views.ofComponent("second").restProviders()).containsExactly(second);
         assertThat(views.ofComponent("old").restProviders()).isEmpty();
-        assertThat(views.ofMessage("PaidEvent").getFirst().view().restProviders()).containsExactly(first);
-        assertThat(views.ofMessage("PaidEvent").getLast().view().restProviders()).containsExactly(second);
+        assertThat(views.ofMessage("PaidEvent").getFirst().view().restProviders()).isEmpty();
+        assertThat(views.ofMessage("PaidEvent").getLast().view().restProviders()).isEmpty();
     }
 
     @Test

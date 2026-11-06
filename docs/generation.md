@@ -1089,8 +1089,11 @@ Its subtitle counts reactions belonging to that system or component. For message
 directly triggering on or publishing the selected message variant, once each. Superseded reactions are excluded,
 and collapsing a group does not change the count.
 It loads the complete `reaction-graph.json` of the current site and environment once per browser application,
-then derives independent entry states for each embedded viewer. All entries start with their selected
-reaction groups expanded and their adjacent interfaces visible. Message entries pin the selected message.
+then derives independent entry states for each embedded viewer. System and component entries start with their
+selected reaction groups expanded and their adjacent interfaces visible. Message entries show only the selected
+variant, its incoming and outgoing edges, and the reactions at their other ends. Other members of the same
+group and other interfaces of those reactions stay outside the selection, including after expanding a group.
+Their tables follow the same restriction.
 Layout and canvas creation wait until the viewer approaches the viewport; scrolling away retains its state.
 Sites without environments show an unavailable message and keep the generated table without fetching a graph.
 Groups can be collapsed independently through their context menu. System entries exclude foreign reactions.
@@ -1106,19 +1109,18 @@ unresolved-owner reactions stay separate. Superseded reactions remain in the mod
 count. Predecessor relationships never become flow arrows. Circular markers count collapsed reactions or
 hidden reactions adjacent to a visible interface. Unknown ownership is disclosed.
 
-Messages are hexagons, HTTP operations capsules, generic interfaces ellipses, reactions rectangles and groups
+Messages are compact hexagons with short tips, HTTP operations compact rounded rectangles with height adapted to their labels, generic interfaces ellipses, reactions rectangles and groups
 rounded containers. The graph uses Cytoscape with a Dagre layout. All labels are text. Individual and bundled
 arrows use `min(6, 1 + log10(1 + median))` pixels; bundles sum distinct contributing reactions and identify the
 sum as an approximation. Both trigger and action arrows connect to individual reactions when expanded;
 only hidden reactions contribute to arrows at the group frame. Hover tooltips show frequency details; the existing reaction table provides
-the textual representation. The initial view and Reset view center an available reaction, preferring one
-from the entry's own system. If all reactions are collapsed, they center a group instead.
+the textual representation. The initial view and Reset view fit the complete graph with a margin and cap
+the zoom at 100%, so small graphs are not enlarged.
 Fit all continues to show the complete graph; manual pan and zoom survive redraws.
-The viewport offers zoom, fit, a readable start
-view and full screen, with keyboard equivalents for zoom and pan. Groups can be collapsed and expanded
+The viewport offers zoom, fit, reset and full screen, with keyboard equivalents for zoom and pan. Groups can be collapsed and expanded
 without changing the selection. The legend stays visible, including in full screen. Toolbar buttons reuse
-the existing diagram plugin's icons, with tooltips and accessible names. Frequency details appear only
-when hovering over an arrow. This does not expand the selection across system boundaries
+the existing diagram plugin's icons, with tooltips and accessible names. Frequency details appear
+when hovering over an arrow or a reaction. This does not expand the selection across system boundaries
 or reveal superseded reactions.
 
 Right-click a group frame or one of its members for “Collapse group” and “Expand group”.
@@ -1142,12 +1144,13 @@ stays within the current site and environment, and is omitted on that component'
 Message context menus link to the event or command documentation. HTTP context menus link to the provider's
 REST API page when the model identifies one documented provider with a REST API. Unknown or ambiguous targets
 show a disabled “Documentation unavailable” entry. These links also keep the current site and environment.
-Only arrows show hover tooltips with their frequencies. The tooltip disappears when the pointer leaves
-the arrow, when a menu opens, or when the viewport changes. Nodes and groups have no hover tooltips.
+Arrows and reaction nodes show hover tooltips with their frequencies. The tooltip disappears when the pointer
+leaves, when a menu opens, or when the viewport changes. Other nodes and groups have no hover tooltips.
 Clicking adds no detail text below the diagram.
 
 Diagram labels follow the original view: message names omit `Event` or `Command`, component names omit
-`-service` or `-scs`, variants appear in brackets and reactions show only their IDs. Group titles sit inside
+`-service` or `-scs`, variants appear in brackets and reactions show their daily median as `12`.
+Reaction IDs remain in the JSON source; the tooltip identifies the value as `Median per day`. Group titles sit inside
 the frame above the reactions. The legend uses SVG symbols
 with the same shapes and colour definitions as the canvas, including in dark mode.
 It lists node types visible in the current diagram and updates when groups are collapsed or expanded;

@@ -919,3 +919,7 @@ or attributes from the page. Hide that fallback only while the corresponding liv
 successful render. React owns the live rows, search and sorting; `tableControls.js` must not mutate them.
 Collapsing one viewer's groups must not change another viewer's table. Keep the fallback readable without
 JavaScript and when the graph fails to load.
+
+Message entry views contain only the selected variant, its incident flow edges and their reaction endpoints.
+Group expansion must not add sibling reactions or other interfaces. The generated and live tables use the
+same selection. Reaction labels show daily medians; IDs remain opaque identities in the source.

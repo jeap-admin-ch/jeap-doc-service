@@ -88,13 +88,14 @@ export function entryView(graph, entry) {
                 && (entry.kind === 'SYSTEM' || fold(group.owner.component) === fold(entry.component))) selected.add(group.id);
         }
     }
+    const focusedReactions = entry.kind === 'MESSAGE' ? new Set([...visible].filter(id => graph.nodes.get(id).reaction)) : null;
     // Every selected group supplies its adjacent interfaces, including hidden members' actions.
-    for (const edge of graph.edges) {
+    for (const edge of focusedReactions ? [] : graph.edges) {
         if (edge.edgeType === 'TRIGGER' && selected.has(graph.groupOf.get(edge.target)) && active(edge.target)) visible.add(edge.source);
         if (edge.edgeType === 'ACTION' && selected.has(graph.groupOf.get(edge.source)) && active(edge.source)) visible.add(edge.target);
     }
     const system = entry.kind === 'MESSAGE' ? graph.messageSystems.get(fold(entry.message)) : entry.system;
-    return {selected, visible, pins, hiddenSuperseded, system};
+    return {selected, visible, pins, hiddenSuperseded, system, focusedReactions};
 }
 
 /** Count the entry's reactions independently of group expansion, excluding superseded history. */
@@ -122,6 +123,7 @@ export function visibleReactionRows(graph, state) {
         }
     }
     for (const edge of graph.edges) {
+        if (state.focusedReactions && !state.pins.has(edge.source) && !state.pins.has(edge.target)) continue;
         if (edge.edgeType === 'TRIGGER' && rows.has(edge.target)) {
             rows.get(edge.target).trigger = tableInterfaceLabel(graph.nodes.get(edge.source));
         } else if (edge.edgeType === 'ACTION' && rows.has(edge.source)) {
@@ -144,7 +146,7 @@ function tableInterfaceLabel(node) {
 export function expandGroups(graph, state) {
     const visible = new Set(state.visible);
     for (const id of state.selected) {
-        for (const member of graph.groups.get(id).members) {
+        for (const member of membersOf(graph, state, id)) {
             if (graph.nodes.get(member).reaction.status !== 'SUPERSEDED') visible.add(member);
         }
     }
@@ -155,11 +157,15 @@ export function expandGroups(graph, state) {
 export function setGroupExpanded(graph, state, groupId, expanded) {
     if (!state.selected.has(groupId)) throw new Error('Group outside this view');
     const visible = new Set(state.visible);
-    for (const member of graph.groups.get(groupId).members) {
+    for (const member of membersOf(graph, state, groupId)) {
         if (expanded && graph.nodes.get(member).reaction.status !== 'SUPERSEDED') visible.add(member);
         else if (!expanded && !state.pins.has(member)) visible.delete(member);
     }
     return {...state, visible};
+}
+
+function membersOf(graph, state, groupId) {
+    return graph.groups.get(groupId).members.filter(id => !state.focusedReactions || state.focusedReactions.has(id));
 }
 
 export function labelOf(node) {
@@ -177,7 +183,7 @@ function withoutSuffix(name, suffixes) {
 }
 
 function diagramLabelOf(node) {
-    if (node.reaction) return node.identity.key;
+    if (node.reaction) return String(node.reaction.median);
     const message = node.interfaceDetails?.message;
     if (message) return withoutSuffix(message.messageType ?? node.identity.key, ['Event', 'Command'])
         + (message.variant ? `\n[${message.variant}]` : '');
@@ -190,8 +196,9 @@ export function project(graph, state) {
     const superseded = new Set(state.hiddenSuperseded);
     for (const id of state.selected) {
         const group = graph.groups.get(id);
-        const active = group.members.filter(member => graph.nodes.get(member).reaction.status !== 'SUPERSEDED');
-        group.members.filter(member => graph.nodes.get(member).reaction.status === 'SUPERSEDED').forEach(member => superseded.add(member));
+        const members = membersOf(graph, state, id);
+        const active = members.filter(member => graph.nodes.get(member).reaction.status !== 'SUPERSEDED');
+        members.filter(member => graph.nodes.get(member).reaction.status === 'SUPERSEDED').forEach(member => superseded.add(member));
         if (!active.length) continue;
         elements.push({data: {id, kind: 'group', label: `${group.owner.system ?? '?'} / ${group.owner.component ?? '?'}`,
             displayLabel: withoutSuffix(group.owner.component ?? '?', ['-service', '-scs']), foreign: foreign(group.owner.system)}});
@@ -204,6 +211,7 @@ export function project(graph, state) {
             : graph.messageSystems.get(fold(node.interfaceDetails?.message?.messageType));
         elements.push({data: {id, parent: graph.groupOf.get(id), label: labelOf(node), displayLabel: diagramLabelOf(node),
             foreign: foreign(system), system,
+            tooltip: node.reaction ? `Median per day: ${node.reaction.median}` : undefined,
             kind: node.reaction ? 'reaction' : node.nodeType === 'MESSAGE' ? 'message'
                 : node.nodeType === 'HTTP_OPERATION' ? 'http' : 'interface', pinned: state.pins.has(id)}});
     }
@@ -215,6 +223,8 @@ export function project(graph, state) {
     for (const edge of graph.edges) {
         const reactionId = edge.edgeType === 'TRIGGER' ? edge.target : edge.edgeType === 'ACTION' ? edge.source : null;
         if (!reactionId || !state.selected.has(graph.groupOf.get(reactionId))) continue;
+        if (state.focusedReactions && (!state.focusedReactions.has(reactionId)
+            || !state.pins.has(edge.source) && !state.pins.has(edge.target))) continue;
         const reaction = graph.nodes.get(reactionId);
         if (reaction.reaction.status === 'SUPERSEDED') continue;
         const group = graph.groupOf.get(reactionId);

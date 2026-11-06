@@ -79,12 +79,12 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             var viewer = page.getByRole(AriaRole.REGION, new com.microsoft.playwright.Page.GetByRoleOptions().setName("Reaction chains")).first();
             assertThat(viewer).isVisible();
             showReactionViewer(0);
-            assertReactionCentered(viewer);
+            assertGraphFitted(viewer);
             viewer.getByRole(AriaRole.BUTTON,
                     new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
             viewer.getByRole(AriaRole.BUTTON,
                     new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Reset view")).click();
-            assertReactionCentered(viewer);
+            assertGraphFitted(viewer);
             assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
             assertThat(viewer.locator("details, ul")).hasCount(0);
             assertThat(page.locator("article table").first()).isVisible();
@@ -115,7 +115,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     """);
             canvas.hover(new com.microsoft.playwright.Locator.HoverOptions().setPosition(
                     ((Number) position.get("x")).doubleValue(), ((Number) position.get("y")).doubleValue()));
-            assertThat(viewers.nth(index).getByRole(AriaRole.TOOLTIP)).hasCount(0);
+            assertThat(viewers.nth(index).getByRole(AriaRole.TOOLTIP)).containsText("Median per day:");
             String group = (String) canvas.evaluate("""
                     element => element._cyreg.cy.nodes().filter(node => node.data('kind') === 'reaction'
                         && node.data('label').includes('<script>alert(1)</script>')).first().parent().id()
@@ -167,6 +167,28 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     @Test
+    void initialViewAndResetFitTheWholeGraphWithoutEnlargingSmallGraphs() {
+        for (String route : java.util.List.of(SYSTEM_REACTIONS_ROUTE, MESSAGE_REACTIONS_ROUTE)) {
+            open("/" + route + "/");
+            showReactionViewer(0);
+            var viewer = page.locator("section[aria-label='Reaction chains']").first();
+            var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+            String fits = """
+                    element => {
+                        const cy = element._cyreg.cy, box = cy.elements().renderedBoundingBox();
+                        return cy.zoom() <= 1 && box.x1 >= 0 && box.y1 >= 0
+                            && box.x2 <= cy.width() && box.y2 <= cy.height();
+                    }
+                    """;
+            org.assertj.core.api.Assertions.assertThat(canvas.evaluate(fits)).isEqualTo(true);
+            viewer.getByLabel("Zoom in", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true)).click();
+            viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Reset view")).click();
+            org.assertj.core.api.Assertions.assertThat(canvas.evaluate(fits)).isEqualTo(true);
+        }
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
     void diagramLabels_followTheOriginalConventionsAndFitInsideGroups() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         var viewer = page.locator("section[aria-label='Reaction chains']");
@@ -198,7 +220,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                 """);
         org.assertj.core.api.Assertions.assertThat(labels)
                 .containsEntry("variant", "OrdersPayment\nAccepted\n[express]")
-                .containsEntry("reaction", "4242")
+                .containsEntry("reaction", "12")
                 .containsEntry("foreignBorder", "rgb(74,144,217)")
                 .doesNotContainEntry("ownBorder", labels.get("foreignBorder"));
         org.assertj.core.api.Assertions.assertThat((Boolean) labels.get("titlesInside")).isTrue();
@@ -219,8 +241,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             var targets = (java.util.List<?>) canvas.evaluate("""
                     element => {
                         const cy = element._cyreg.cy;
-                        const reaction = cy.nodes('[kind="reaction"]').filter(node => node.data('displayLabel') === '4243').first();
-                        return reaction.parent().children().incomers('edge').map(edge => edge.target().data('displayLabel')).sort();
+                        const reaction = cy.nodes('[kind="reaction"]').filter(node => JSON.parse(node.id())[1] === '4243').first();
+                        return reaction.parent().children().incomers('edge').map(edge => JSON.parse(edge.target().id())[1]).sort();
                     }
                     """);
             org.assertj.core.api.Assertions.assertThat(targets).isEqualTo(java.util.List.of("4243", "4244", "4245"));
@@ -251,7 +273,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             awaitGroupMembers(group, 0);
             assertThat(viewer.getByLabel("Zoom", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).hasText(zoomBefore);
             org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
-                    element => element._cyreg.cy.nodes('[kind="reaction"]').some(node => node.data('displayLabel') === '4242')
+                    element => element._cyreg.cy.nodes('[kind="reaction"]').some(node => JSON.parse(node.id())[1] === '4242')
                     """)).isEqualTo(true);
             var arrows = (java.util.List<?>) canvas.evaluate("""
                     element => element._cyreg.cy.nodes('[kind="group"]')
@@ -261,7 +283,9 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     """);
             org.assertj.core.api.Assertions.assertThat(arrows).isEqualTo(java.util.List.of(
                     "Sum of individual medians – approximation: 404\n4243: 400\n4244: 4\n4245: 0"));
-            assertThat(legend.locator("span")).hasText(new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions", "Other system"});
+            assertThat(legend.locator("span")).hasText(route.equals(MESSAGE_REACTIONS_ROUTE)
+                    ? new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions"}
+                    : new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions", "Other system"});
             assertNothingWentWrongInTheBrowser();
         }
     }
@@ -391,9 +415,24 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             eventLink.click();
             page.waitForURL("**/" + MESSAGE_REACTIONS_ROUTE + "/");
             showReactionViewer(0);
+            org.assertj.core.api.Assertions.assertThat(page.locator("section[aria-label='Reaction chains']").first()
+                    .locator("div[aria-label^='Reaction graph.']").evaluate("""
+                    element => {
+                        const cy = element._cyreg.cy;
+                        return cy.nodes('[kind="message"]').length === 1
+                            && cy.edges().every(edge => edge.source().data('pinned') || edge.target().data('pinned'));
+                    }
+                    """)).isEqualTo(true);
 
             open(prefix + "/" + SYSTEM_REACTIONS_ROUTE + "/");
             showReactionViewer(0);
+            org.assertj.core.api.Assertions.assertThat(viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
+                    element => {
+                        const rest = element._cyreg.cy.nodes('[kind="http"]').first();
+                        return rest.visible() && rest.width() > 0 && rest.width() <= 200
+                            && rest.height() >= 60 && rest.height() < 120;
+                    }
+                    """)).isEqualTo(true);
             openInterfaceMenu(viewer, "shipping-dispatch\nGET /shipments");
             var restLink = viewer.getByRole(AriaRole.MENUITEM,
                     new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Go to REST documentation"));
@@ -430,7 +469,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         var position = (java.util.Map<?, ?>) canvas.evaluate("""
-                element => element._cyreg.cy.edges().filter(edge => edge.source().data('displayLabel') === '4242'
+                element => element._cyreg.cy.edges().filter(edge => JSON.parse(edge.source().id())[1] === '4242'
                     && edge.target().data('kind') === 'message').first().renderedMidpoint()
                 """);
         canvas.hover(new com.microsoft.playwright.Locator.HoverOptions().setPosition(
@@ -542,15 +581,13 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertNothingWentWrongInTheBrowser();
     }
 
-    private void assertReactionCentered(com.microsoft.playwright.Locator viewer) {
+    private void assertGraphFitted(com.microsoft.playwright.Locator viewer) {
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
                 element => {
-                    const cy = element._cyreg.cy;
-                    return cy.nodes('[kind="reaction"]').some(node => {
-                        const p = node.renderedPosition();
-                        return Math.abs(p.x - cy.width() / 2) < 1 && Math.abs(p.y - cy.height() / 2) < 1;
-                    });
+                    const cy = element._cyreg.cy, box = cy.elements().renderedBoundingBox();
+                    return cy.zoom() <= 1 && box.x1 >= 0 && box.y1 >= 0
+                        && box.x2 <= cy.width() && box.y2 <= cy.height();
                 }
                 """)).isEqualTo(true);
     }
@@ -560,7 +597,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         var position = (java.util.Map<?, ?>) canvas.evaluate("""
                 (element, reaction) => element._cyreg.cy.nodes('[kind="reaction"]')
-                    .filter(node => node.data('displayLabel') === reaction).first().renderedPosition()
+                    .filter(node => JSON.parse(node.id())[1] === reaction).first().renderedPosition()
                 """, reaction);
         canvas.click(new com.microsoft.playwright.Locator.ClickOptions().setButton(com.microsoft.playwright.options.MouseButton.RIGHT)
                 .setPosition(((Number) position.get("x")).doubleValue(), ((Number) position.get("y")).doubleValue()));
@@ -570,7 +607,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     private String groupOfReaction(com.microsoft.playwright.Locator viewer, String reaction) {
         return (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
                 (element, reaction) => element._cyreg.cy.nodes('[kind="reaction"]')
-                    .filter(node => node.data('displayLabel') === reaction).first().parent().id()
+                    .filter(node => JSON.parse(node.id())[1] === reaction).first().parent().id()
                 """, reaction);
     }
 
