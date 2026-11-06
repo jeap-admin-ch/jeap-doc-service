@@ -27,13 +27,15 @@ import java.util.Optional;
  * <b>A version is asked about conditionally</b>, exactly like an artifact. It rarely moves - a changed schema is
  * normally published as a new version - but it does: {@code compatibleVersion} is derived upstream from the
  * version list, so publishing an intermediate version changes what an already published version answers, and an
- * import re-renders the schemas. The upstream tags a version over the <b>serialized body</b> - unlike an artifact,
- * whose tag is the hash of its stored bytes - so revalidating costs it a read and a hash, and saves the payload
- * rather than the work. It is done because its docs API says a consumer must not store a version once and never
- * ask again, not because it is free.
+ * import re-renders the schemas. An architecture repository that stores a hash per version lists the version's
+ * tag in the index, byte-identical to the tag of the version resource, so a run asks only about what moved. One
+ * that does not tags a version over the <b>serialized body</b> - unlike an artifact, whose tag is the hash of its
+ * stored bytes - so revalidating costs it a read and a hash, and saves the payload rather than the work. It is
+ * done because its docs API says a consumer must not store a version once and never ask again, not because it is
+ * free.
  * <p>
- * The <b>index</b> is fetched plainly. Its tag covers the list of versions, which is not the question this step
- * asks - a version can move without the list changing - so a {@code 304} on it would say nothing useful.
+ * The <b>index</b> is fetched plainly. Its tag covers the whole index, which is not the question this step asks -
+ * whether one version moved - and an index without per-version tags can stay the same while a version moves.
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -211,7 +213,7 @@ class ArchRepoMessageSchemaUpstream implements MessageSchemaUpstream {
                     continue;
                 }
                 MessageVersionRef ref = MessageVersionRef.listed(environment, messageType.system(),
-                        messageType.message(), version.version(), version.contentUrl());
+                        messageType.message(), version.version(), version.contentUrl(), version.etag());
                 refs.putIfAbsent(ref.identity(), ref);
             }
         }

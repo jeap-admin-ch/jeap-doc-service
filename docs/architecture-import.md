@@ -39,9 +39,11 @@ import stored, and every generated page names the import its content came from.
 entity tag of a model resource by serializing the whole body and hashing it, so answering "not modified" costs
 it exactly what answering with the body costs - a conditional request there would save this service some bytes
 and the architecture repository nothing. The tag of an artifact comes from a stored hash, so there a conditional request
-costs the upstream nothing and saves a blob on the wire. A message type version's tag is computed over the
-serialized body like a model's - so revalidating one is not free, and it is done because the upstream's contract
-requires it rather than because it costs nothing.
+costs the upstream nothing and saves a blob on the wire. A message type version is tagged from a stored hash too
+by an architecture repository that keeps one per version, and its index then lists the tag of every version, so
+an unchanged version costs no request at all. One that keeps no hash per version computes the tag over the
+serialized body like a model's - so revalidating a version there is not free, and it is done because the
+upstream's contract requires it rather than because it costs nothing.
 
 ## The model: fetched whole, written whole
 
@@ -186,7 +188,7 @@ either take every blob down with the model on each import - the exact cost the e
 stop the model from being replaceable at all. Instead the model import sweeps the artifacts whose system or
 component the fresh landscape does not have.
 
-## The message schemas: asked about every run, fetched only when they move
+## The message schemas: looked at every run, fetched only when they move
 
 A message type version is **nearly** fixed, and the word that matters is nearly. A changed schema is normally
 published as a new version - but `compatibleVersion` is derived upstream from the version list, so publishing an
@@ -194,28 +196,40 @@ intermediate version changes what an *already published* version answers, and ev
 repository re-renders the schemas from the registry. Its docs API says so in as many words: a consumer must not
 store a version once and never ask again.
 
-So a version is revalidated rather than trusted. That costs a request per version per run and no payload - every resource
-carries a strong `ETag` and `Cache-Control: no-cache`. **It is not free for the architecture repository**,
-though: a version's tag is computed over the serialized body, not read from stored bytes the way an artifact's
-is, so a `304` there saves the payload on the wire and not the work behind it. It is done because its docs API
-says a consumer must not store a version once and never ask again.
+So a version is revalidated rather than trusted - **from the index where it can be**. An architecture repository
+that keeps a hash per version lists, for every version, the tag its version resource answers with, byte-identical
+like an artifact index entry's; that hash is recomputed whenever the architecture repository re-imports the
+version, so a version whose compatibility moved gets a new tag. A version whose listed tag is the stored one is
+confirmed without a request, and only the new and the moved ones are fetched.
+
+An architecture repository that lists no tag per version - one released before it kept the hash, or a version it
+stored before then - is asked about every version, which costs a request per version per run and no payload:
+every resource carries a strong `ETag` and `Cache-Control: no-cache`. **That is not free for the architecture
+repository**: such a version's tag is computed over the serialized body, not read from a stored hash, so a `304`
+there saves the payload on the wire and not the work behind it. It is done because its docs API says a consumer
+must not store a version once and never ask again.
 One run of one environment:
 
 1. `GET /docs-api/message-types` - the index, unconditionally. It lists every message type with its versions,
-   and carries no schemas. Its own tag is not used: it covers the *list*, and a version can move without the
-   list changing, so a `304` on it would not answer the question this step asks.
+   and carries no schemas, but the tag of each version where the architecture repository keeps one. Its own tag
+   is not used: it covers the whole index, and whether one version moved is what the tags of its entries say.
 2. **Prune** the stored versions the index no longer lists, right after the index rather than at the end, so
    that a run which later runs out of its deadline has still pruned correctly. **Only within the message types
    the index actually reports on**: the index is served from the architecture repository's own store, so a run
    of *its* import that was itself partial lists fewer message types than exist, and treating an absent one as
    a deletion would throw away every schema of it and fetch them all back on the next run.
-3. Every listed version, while the deadline holds, sending `If-None-Match` where this service holds one.
-   A `304` confirms the row and rewrites nothing but its `checked_at`; anything else replaces the row.
+3. Every listed version, while the deadline holds. One whose listed tag is the stored tag is confirmed without a
+   request; every other one is fetched, sending `If-None-Match` where this service holds a tag. A confirmation -
+   from the index or from a `304` - rewrites nothing but the row's `checked_at`; anything else replaces the row.
 
-**The order is what makes a truncated run useful**: what is not stored at all first, then what only has to be
-confirmed, oldest confirmation first. A run that keeps hitting its deadline therefore spends its time on the
-versions that carry no schemas yet, and rotates through the confirmations instead of reconfirming the same first
-twenty for ever.
+**The order is what makes a truncated run useful**: what is not stored at all first, then what moved, then what
+only has to be confirmed, oldest confirmation first. A run that keeps hitting its deadline therefore spends its
+time on the versions that carry no schemas yet or moved, and rotates through the confirmations instead of
+reconfirming the same first twenty for ever. Against an index without tags nothing shows as moved, and the order
+is the one by confirmation alone.
+
+When an architecture repository starts to keep a hash per version, the tag of every version changes once, so the
+first run after that fetches every version again - once per environment.
 
 The first run after a deployment is the expensive one: every version is missing, so every version is fetched,
 and a landscape large enough that this does not fit in one deadline records `PARTIAL`, keeps what it stored, and

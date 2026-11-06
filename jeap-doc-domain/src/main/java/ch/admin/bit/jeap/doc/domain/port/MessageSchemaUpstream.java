@@ -15,9 +15,10 @@ import java.util.List;
  * <b>A version is revalidated, not fetched once and trusted for ever.</b> It rarely moves - a changed schema is
  * normally published as a new version - but it does: the compatibility a version declares is derived upstream
  * from the version list, so publishing an intermediate version changes what an already published version
- * answers, and an import re-renders the schemas. The upstream tags a version over the serialized body, so asking
- * costs it a read and a hash and saves the payload; that is a weaker trade than
- * {@link ArchitectureArtifactUpstream}'s, whose tags come from stored bytes, and it is made because the
+ * answers, and an import re-renders the schemas. An upstream that lists the tag of every version in its index
+ * lets a run confirm the unchanged ones without a request, the way {@link ArchitectureArtifactUpstream}'s index
+ * does for the artifacts. One that lists none is asked about every version, with the stored tag, and a version
+ * tagged over its serialized body costs it a read and a hash per ask; that weaker trade is made because the
  * upstream's own contract forbids storing a version once and never asking again.
  */
 public interface MessageSchemaUpstream {
@@ -25,8 +26,9 @@ public interface MessageSchemaUpstream {
     /**
      * Every message type version the upstream of this environment knows, without the schemas.
      * <p>
-     * Asked unconditionally, and it is what the run diffs against the store. Its entries carry no entity tag -
-     * the index does not list one per version, so what a run revalidates with comes from the store.
+     * Asked unconditionally, and it is what the run diffs against the store. An entry carries the tag of its
+     * version resource where the upstream lists one per version, and null where it does not - a run then
+     * revalidates with the tag from the store.
      *
      * @throws ArchitectureModelUnavailableException where the upstream could not be read
      */

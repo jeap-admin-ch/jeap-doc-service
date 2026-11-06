@@ -29,8 +29,9 @@ import java.util.Set;
  * <b>A version is revalidated, not fetched once and trusted.</b> It rarely moves - a changed schema is normally
  * published as a new version - but the compatibility a version declares is derived upstream from the version
  * list, so publishing an intermediate version changes what an already published version answers, and an import
- * re-renders the schemas. A run therefore asks about every version the index lists: a new one costs a payload,
- * one that is unchanged costs a {@code 304} and no body, which is the same trade the artifacts make.
+ * re-renders the schemas. A run therefore looks at every version the index lists: a new one costs a payload,
+ * one whose listed tag is the stored one costs no request at all, and one listed without a tag - by an upstream
+ * that lists none per version - costs a {@code 304} and no body.
  * <p>
  * Like the artifacts and unlike the model, a run that gets part way through <b>keeps what it stored</b>. The
  * versions are independent of one another and the ones not reached are taken by the next run - and the order
@@ -56,9 +57,9 @@ public class MessageSchemaImportStep implements ArchitectureImportStep {
         Instant startedAt = clock.instant();
         ArchitectureImportState before = imports.state(environment, kind());
         try {
-            // Unconditional, and there is nothing to make it conditional with: the index lists no entity tag
-            // per version, and a tag over the list as a whole would not answer whether a version's schemas
-            // moved - which is the question this step asks. The tags it revalidates with come from the store.
+            // Unconditional. The tag of the index as a whole is not the question this step asks - whether a
+            // version's schemas moved - and an upstream that lists no tag per version gives it nothing else to
+            // go on. Where the index does list one per version, the entries carry it, and revalidate compares.
             List<MessageVersionRef> listed = upstream.index(environment);
             return replicate(environment, before, startedAt, deadline, listed);
         } catch (ArchitectureModelUnavailableException e) {
@@ -85,7 +86,7 @@ public class MessageSchemaImportStep implements ArchitectureImportStep {
         Fetched fetched = revalidate(environment, wanted.values(), byIdentity(stored), deadline);
 
         metrics.items(environment, kind(), "stored", fetched.stored());
-        metrics.items(environment, kind(), "unchanged", fetched.unchanged());
+        metrics.items(environment, kind(), "unchanged", fetched.unchanged().total());
         metrics.items(environment, kind(), "skipped", fetched.skipped());
         report(environment, fetched, removed, wanted.size(), startedAt);
 
@@ -109,7 +110,7 @@ public class MessageSchemaImportStep implements ArchitectureImportStep {
         // in it - so a run that skipped one is not complete, whatever else it managed. The run that stopped
         // early already returned above with the same answer, and the artifact step computes it the same way.
         boolean complete = fetched.skipped() == 0;
-        if (fetched.stored() == 0 && fetched.unchanged() == 0 && removed == 0 && fetched.skipped() > 0) {
+        if (fetched.stored() == 0 && fetched.unchanged().total() == 0 && removed == 0 && fetched.skipped() > 0) {
             // Nothing was replicated at all while there was something to replicate. Reporting that as a
             // success would refresh lastSuccessAt and reset the staleness gauge for an environment whose every
             // version failed - which is the one thing the gauge is there to show. A run that skipped some of
@@ -160,6 +161,11 @@ public class MessageSchemaImportStep implements ArchitectureImportStep {
      * Asks about every listed version while the deadline holds: the ones not stored for their schemas, the
      * ones stored for a confirmation that they have not moved.
      * <p>
+     * <b>A version whose listed tag is the stored tag is confirmed without asking.</b> The index lists the tag
+     * the version resource answers with, so equal tags are the answer a conditional request would give - and
+     * on an upstream that lists one per version, that is nearly every version of every run. An entry without a
+     * tag, or with one that moved, is asked about as before.
+     * <p>
      * The set of what is held grows as the run stores, because the upstream answers with the system and the
      * message type as <i>it</i> spells them: two index entries can resolve to one stored row, and a second
      * store of it would be a second insert against the unique index.
@@ -167,51 +173,53 @@ public class MessageSchemaImportStep implements ArchitectureImportStep {
     private Fetched revalidate(String environment, Collection<MessageVersionRef> listed,
                                Map<String, MessageVersionRef> stored, Deadline deadline) {
         Set<String> storedInThisRun = new LinkedHashSet<>();
-        List<String> couldNotBeFetched = new ArrayList<>();
-        int fetched = 0;
-        int unchanged = 0;
-        int skipped = 0;
-        int reached = 0;
-        int withoutATag = 0;
+        Tally tally = new Tally();
         for (MessageVersionRef ref : inFetchOrder(listed, stored)) {
             if (deadline.hasExpired()) {
-                return new Fetched(fetched, unchanged, skipped, reached, true, withoutATag, couldNotBeFetched);
+                return tally.fetched(true);
             }
-            reached++;
-            if (storedInThisRun.contains(keyOf(ref))) {
-                // Another entry of the index resolved to this row a moment ago. Asking again would fetch the
-                // same version twice and store it twice.
-                unchanged++;
-                continue;
+            tally.reached++;
+            revalidate(environment, ref, stored.get(keyOf(ref)), storedInThisRun, tally);
+        }
+        return tally.fetched(false);
+    }
+
+    /** One listed version: confirmed from the index, from the store, or asked about. */
+    private void revalidate(String environment, MessageVersionRef ref, MessageVersionRef known,
+                            Set<String> storedInThisRun, Tally tally) {
+        if (storedInThisRun.contains(keyOf(ref))) {
+            // Another entry of the index resolved to this row a moment ago. Asking again would fetch the same
+            // version twice and store it twice.
+            tally.unchanged++;
+            return;
+        }
+        if (ref.hasSameContentAs(known)) {
+            // Equal tags are the answer the upstream would give, so the index stands in for the request.
+            schemas.confirm(environment, known.system(), known.message(), known.version(), clock.instant());
+            tally.unchanged++;
+            tally.fromTheIndex++;
+            return;
+        }
+        switch (upstream.version(environment, ref, known == null ? null : known.etag())) {
+            case SchemaFetch.Stored(MessageVersionSchemas version) -> {
+                if (store(environment, ref, version, storedInThisRun)) {
+                    tally.withoutATag++;
+                }
+                tally.fetched++;
             }
-            MessageVersionRef known = stored.get(keyOf(ref));
-            switch (upstream.version(environment, ref, known == null ? null : known.etag())) {
-                case SchemaFetch.Stored(MessageVersionSchemas version) -> {
-                    if (store(environment, ref, version, storedInThisRun)) {
-                        withoutATag++;
-                    }
-                    fetched++;
-                }
-                case SchemaFetch.Unchanged() when known != null -> {
-                    schemas.confirm(environment, known.system(), known.message(), known.version(),
-                            clock.instant());
-                    unchanged++;
-                }
-                // A "not modified" with nothing stored to be unmodified against is not something that can be
-                // confirmed. It is left for the next run, like anything else that could not be replicated.
-                case SchemaFetch.Unchanged() -> {
-                    couldNotBeFetched.add(ref.identity());
-                    skipped++;
-                }
-                case SchemaFetch.Skipped(String reason) -> {
-                    log.debug("The schemas of {} of the system {} in the environment {} are not replicated: {}",
-                            ref.message() + " " + ref.version(), ref.system(), environment, reason);
-                    couldNotBeFetched.add(ref.identity());
-                    skipped++;
-                }
+            case SchemaFetch.Unchanged() when known != null -> {
+                schemas.confirm(environment, known.system(), known.message(), known.version(), clock.instant());
+                tally.unchanged++;
+            }
+            // A "not modified" with nothing stored to be unmodified against is not something that can be
+            // confirmed. It is left for the next run, like anything else that could not be replicated.
+            case SchemaFetch.Unchanged() -> tally.couldNotBeFetched(ref);
+            case SchemaFetch.Skipped(String reason) -> {
+                log.debug("The schemas of {} of the system {} in the environment {} are not replicated: {}",
+                        ref.message() + " " + ref.version(), ref.system(), environment, reason);
+                tally.couldNotBeFetched(ref);
             }
         }
-        return new Fetched(fetched, unchanged, skipped, reached, false, withoutATag, couldNotBeFetched);
     }
 
     /**
@@ -240,13 +248,16 @@ public class MessageSchemaImportStep implements ArchitectureImportStep {
      * <p>
      * A run that keeps hitting its deadline then keeps making progress: every run spends its time on the
      * versions that are new, and the confirmations of the ones that are not rotate through the list instead of
-     * reconfirming the same first twenty and never reaching a new one at the end of the alphabet.
+     * reconfirming the same first twenty and never reaching a new one at the end of the alphabet. Among the
+     * stored ones, a version whose listed tag moved comes before one the index shows unchanged, as an artifact
+     * does; an index without tags shows none unchanged, and the order is the one by confirmation alone.
      */
     private static List<MessageVersionRef> inFetchOrder(Collection<MessageVersionRef> listed,
                                                         Map<String, MessageVersionRef> stored) {
         List<MessageVersionRef> ordered = new ArrayList<>(listed);
         ordered.sort(Comparator
                 .comparing((MessageVersionRef ref) -> stored.containsKey(keyOf(ref)))
+                .thenComparing(ref -> ref.hasSameContentAs(stored.get(keyOf(ref))))
                 .thenComparing(ref -> checkedAtOf(stored.get(keyOf(ref))),
                         Comparator.nullsFirst(Comparator.naturalOrder()))
                 .thenComparing(MessageVersionRef::system)
@@ -262,13 +273,14 @@ public class MessageSchemaImportStep implements ArchitectureImportStep {
     /** What a run did, at the one level an operator reads. */
     private void report(String environment, Fetched fetched, int removed, int listed, Instant startedAt) {
         if (fetched.stored() == 0 && fetched.skipped() == 0 && removed == 0) {
-            log.debug("The message schemas of the environment {} are unchanged ({} versions).", environment,
-                    listed);
+            log.debug("The message schemas of the environment {} are unchanged ({} versions, {} of them confirmed "
+                      + "from the index).", environment, listed, fetched.unchanged().fromTheIndex());
             return;
         }
-        log.info("Replicated the message schemas of the environment {}: {} stored, {} unchanged, {} removed, "
-                 + "{} skipped, of {} versions ({}).", environment, fetched.stored(), fetched.unchanged(),
-                removed, fetched.skipped(), listed, Duration.between(startedAt, clock.instant()));
+        log.info("Replicated the message schemas of the environment {}: {} stored, {} unchanged ({} of them "
+                 + "confirmed from the index), {} removed, {} skipped, of {} versions ({}).", environment,
+                fetched.stored(), fetched.unchanged().total(), fetched.unchanged().fromTheIndex(), removed,
+                fetched.skipped(), listed, Duration.between(startedAt, clock.instant()));
         if (fetched.skipped() > 0) {
             // Named, not just counted. What is not stored is asked about before what only needs confirming, so
             // a version that can never be fetched keeps its place at the head of every run - and where enough
@@ -337,14 +349,46 @@ public class MessageSchemaImportStep implements ArchitectureImportStep {
 
     /**
      * @param stored       how many versions this run fetched and stored
-     * @param unchanged    how many the upstream confirmed against the stored tag, costing no payload
+     * @param unchanged    how many were confirmed against the stored tag, and how many of them by the index
      * @param skipped      how many it could not fetch, each of which is offered again next time
      * @param reached      how far down the list it got - stored, confirmed and unfetchable alike
      * @param stoppedEarly whether the deadline ended the run before the list did
      * @param withoutATag  how many arrived with no entity tag, which is how many will be fetched in full again
      * @param couldNotBeFetched which versions were left, by name - see {@link #report}
      */
-    private record Fetched(int stored, int unchanged, int skipped, int reached, boolean stoppedEarly,
+    private record Fetched(int stored, Confirmed unchanged, int skipped, int reached, boolean stoppedEarly,
                            int withoutATag, List<String> couldNotBeFetched) {
+    }
+
+    /**
+     * The versions a run confirmed rather than stored.
+     *
+     * @param total        how many were confirmed against the stored tag - by the index without a request, or by
+     *                     the upstream with a {@code 304} and no payload
+     * @param fromTheIndex how many of them the index confirmed, without a request. What says, in the log, that the
+     *                     upstream lists a tag per version and that it is used
+     */
+    private record Confirmed(int total, int fromTheIndex) {
+    }
+
+    /** What a run counts while it goes down the list, until it says what it did. */
+    private static final class Tally {
+        private final List<String> couldNotBeFetched = new ArrayList<>();
+        private int fetched;
+        private int unchanged;
+        private int fromTheIndex;
+        private int skipped;
+        private int reached;
+        private int withoutATag;
+
+        private void couldNotBeFetched(MessageVersionRef ref) {
+            couldNotBeFetched.add(ref.identity());
+            skipped++;
+        }
+
+        private Fetched fetched(boolean stoppedEarly) {
+            return new Fetched(fetched, new Confirmed(unchanged, fromTheIndex), skipped, reached, stoppedEarly,
+                    withoutATag, couldNotBeFetched);
+        }
     }
 }

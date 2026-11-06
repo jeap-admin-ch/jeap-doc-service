@@ -26,10 +26,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * What one run of the message schema replication does.
  * <p>
- * The assertion that matters most is what a request costs. Every listed version is asked about, because a
- * version is not fixed once published - but a version this service already holds is asked
- * <b>conditionally</b>, and an unchanged one answers {@code 304} with no payload. That is what lets this run on
- * the same schedule as the model, and it is the first thing a change here would break.
+ * The assertion that matters most is what a request costs. Every listed version is looked at, because a
+ * version is not fixed once published - but a version this service already holds is confirmed <b>from the
+ * index</b> where the index lists its tag, and otherwise asked <b>conditionally</b>, where an unchanged one
+ * answers {@code 304} with no payload. That is what lets this run on the same schedule as the model, and it is
+ * the first thing a change here would break.
  */
 class MessageSchemaImportStepTest {
 
@@ -310,6 +311,80 @@ class MessageSchemaImportStepTest {
         assertThat(schemas.stored).hasSize(1);
     }
 
+    /**
+     * <b>The economy of an upstream that lists a tag per version.</b> The index lists the tag the version
+     * resource answers with, so a second run of an unchanged landscape confirms every version without asking
+     * the upstream about any of them.
+     */
+    @Test
+    void run_whenTheIndexListsTheStoredTag_thenTheVersionIsConfirmedWithoutARequest() {
+        upstream.listsTags();
+        upstream.lists("orders", "OrdersPaidEvent", "1.0.0", "2.0.0");
+        step.run(ENVIRONMENT, Deadline.none());
+        upstream.forgetWhatWasAsked();
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.UNCHANGED);
+
+        assertThat(upstream.fetches).describedAs("no version was asked about").isEmpty();
+        assertThat(schemas.writes).describedAs("a confirmed version is not written again").isEqualTo(2);
+        assertThat(schemas.confirmations).isEqualTo(2);
+    }
+
+    /** A listed tag that moved is asked about - conditionally, with the stored tag - and the new copy stored. */
+    @Test
+    void run_whenTheListedTagMoved_thenTheVersionIsFetchedAgainAndReplaced() {
+        upstream.listsTags();
+        upstream.lists("orders", "OrdersPaidEvent", "1.0.0");
+        step.run(ENVIRONMENT, Deadline.none());
+        upstream.forgetWhatWasAsked();
+        upstream.serves("orders OrdersPaidEvent 1.0.0", "sha256:later", "BACKWARD", "2.0.0");
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.REPLACED);
+
+        assertThat(upstream.conditionalFetches).containsExactly("orders OrdersPaidEvent 1.0.0");
+        assertThat(schemas.stored.get("orders orderspaidevent 1.0.0").compatibleVersion()).isEqualTo("2.0.0");
+        assertThat(schemas.stored.get("orders orderspaidevent 1.0.0").etag()).isEqualTo("sha256:later");
+    }
+
+    /**
+     * An entry the index lists without a tag - an upstream that keeps none for that version yet - is asked
+     * about as before, while the tagged entries beside it are confirmed from the index.
+     */
+    @Test
+    void run_whenAnEntryIsListedWithoutATag_thenOnlyThatOneIsAskedAboutConditionally() {
+        upstream.listsTags();
+        upstream.lists("orders", "OrdersPaidEvent", "1.0.0", "2.0.0");
+        step.run(ENVIRONMENT, Deadline.none());
+        upstream.forgetWhatWasAsked();
+        upstream.listsNoTagFor("orders OrdersPaidEvent 1.0.0");
+
+        assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.UNCHANGED);
+
+        assertThat(upstream.fetches).containsExactly("orders OrdersPaidEvent 1.0.0");
+        assertThat(upstream.conditionalFetches).containsExactly("orders OrdersPaidEvent 1.0.0");
+        assertThat(schemas.confirmations).isEqualTo(2);
+    }
+
+    /**
+     * A stored version whose listed tag moved is asked about before one the index shows unchanged, so a run
+     * that runs out of time spends it on what moved.
+     */
+    @Test
+    void run_whenTheIndexListsTags_thenAMovedVersionIsAskedAboutBeforeTheUnchangedOnes() {
+        upstream.listsTags();
+        upstream.lists("orders", "OrdersPaidEvent", "1.0.0", "2.0.0");
+        step.run(ENVIRONMENT, Deadline.none());
+        upstream.forgetWhatWasAsked();
+        upstream.serves("orders OrdersPaidEvent 2.0.0", "sha256:later", "BACKWARD", "1.0.0");
+
+        step.run(ENVIRONMENT, Deadline.afterChecks(2));
+
+        assertThat(upstream.fetches)
+                .describedAs("the moved version comes first, although it sorts after the unchanged one")
+                .containsExactly("orders OrdersPaidEvent 2.0.0");
+        assertThat(schemas.confirmations).describedAs("the deadline came before the unchanged one").isZero();
+    }
+
     @Test
     void run_whenTheIndexIsEmpty_thenNothingIsStoredAndTheRunSucceeds() {
         assertThat(step.run(ENVIRONMENT, Deadline.none())).isEqualTo(ImportOutcome.UNCHANGED);
@@ -328,9 +403,21 @@ class MessageSchemaImportStepTest {
         private final List<String> missing = new ArrayList<>();
         private final List<String> answersNotModifiedTo = new ArrayList<>();
         private final Map<String, Served> served = new LinkedHashMap<>();
+        private final List<String> listedWithoutATag = new ArrayList<>();
         private int indexReads;
         private boolean unavailable;
         private String answersAs;
+        private boolean listsTags;
+
+        /** From now on the index lists, for every version, the tag the version resource answers with. */
+        private void listsTags() {
+            listsTags = true;
+        }
+
+        /** An entry the index lists without a tag, although it lists one for the others. */
+        private void listsNoTagFor(String identity) {
+            listedWithoutATag.add(identity);
+        }
 
         private void lists(String system, String message, String... versions) {
             for (String version : versions) {
@@ -373,9 +460,23 @@ class MessageSchemaImportStepTest {
             if (unavailable) {
                 throw new ArchitectureModelUnavailableException("the upstream is down");
             }
-            List<MessageVersionRef> refs = new ArrayList<>(listed.values());
+            List<MessageVersionRef> refs = new ArrayList<>(listed.values().stream()
+                    .map(this::withListedTag)
+                    .toList());
             refs.addAll(extra);
             return List.copyOf(refs);
+        }
+
+        private MessageVersionRef withListedTag(MessageVersionRef ref) {
+            if (!listsTags || listedWithoutATag.contains(ref.identity())) {
+                return ref;
+            }
+            return MessageVersionRef.listed(ref.environment(), ref.system(), ref.message(), ref.version(),
+                    ref.contentUrl(), servingOf(ref).etag());
+        }
+
+        private Served servingOf(MessageVersionRef ref) {
+            return served.getOrDefault(ref.identity(), new Served("sha256:first", "BACKWARD", null));
         }
 
         @Override
@@ -392,8 +493,7 @@ class MessageSchemaImportStepTest {
             if (answersNotModifiedTo.contains(ref.identity())) {
                 return SchemaFetch.unchanged();
             }
-            Served serving = served.getOrDefault(ref.identity(),
-                    new Served("sha256:first", "BACKWARD", null));
+            Served serving = servingOf(ref);
             if (serving.etag().equals(knownEtag)) {
                 return SchemaFetch.unchanged();
             }

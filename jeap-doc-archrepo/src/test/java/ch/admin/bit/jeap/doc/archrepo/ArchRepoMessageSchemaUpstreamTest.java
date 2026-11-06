@@ -17,6 +17,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * The message type schemas over the architecture repository's docs API.
@@ -75,8 +76,62 @@ class ArchRepoMessageSchemaUpstreamTest {
     }
 
     /**
-     * The index is what a run diffs against its store, so it is asked plainly. There is no per-version tag in
-     * it to compare and no question a conditional request would answer.
+     * An architecture repository that keeps a hash per version lists the tag of every version resource, and
+     * each entry carries it - verbatim, quotes and all, because it is compared with the {@code ETag} the version
+     * resource answered with when it was stored.
+     */
+    @Test
+    void index_whenTheUpstreamListsATagPerVersion_thenEveryEntryCarriesIt() {
+        stub(INDEX, 200, """
+                {"messageTypes": [
+                  {"system": "orders", "message": "OrdersPaidEvent", "kind": "EVENT", "versions": [
+                    {"version": "1.0.0", "contentUrl": "/archrepo/docs-api/message-types/orders/OrdersPaidEvent/versions/1.0.0",
+                     "etag": "\\"sha256:one\\""},
+                    {"version": "2.0.0", "contentUrl": "/archrepo/docs-api/message-types/orders/OrdersPaidEvent/versions/2.0.0",
+                     "etag": null}]}
+                ]}""");
+
+        assertThat(schemas.index(ENVIRONMENT)).extracting(MessageVersionRef::identity, MessageVersionRef::etag)
+                .containsExactly(tuple("orders OrdersPaidEvent 1.0.0", "\"sha256:one\""),
+                        tuple("orders OrdersPaidEvent 2.0.0", null));
+    }
+
+    /**
+     * An architecture repository that lists no tag per version - one released before it kept a hash per
+     * version - is read all the same, and its entries carry none, so a run asks about every stored version
+     * with the tag from the store.
+     */
+    @Test
+    void index_whenTheUpstreamListsNoTag_thenTheEntriesCarryNone() {
+        stub(INDEX, 200, """
+                {"messageTypes": [
+                  {"system": "orders", "message": "OrdersPaidEvent", "kind": "EVENT", "versions": [
+                    {"version": "1.0.0", "contentUrl": "/archrepo/docs-api/message-types/orders/OrdersPaidEvent/versions/1.0.0"}]}
+                ]}""");
+
+        assertThat(schemas.index(ENVIRONMENT)).extracting(MessageVersionRef::etag).containsExactly((String) null);
+    }
+
+    /**
+     * A field this service does not know is ignored rather than failing the run - which is what lets the
+     * architecture repository add one before every consumer reads it.
+     */
+    @Test
+    void index_whenAnEntryCarriesAFieldThisServiceDoesNotKnow_thenItIsReadAllTheSame() {
+        stub(INDEX, 200, """
+                {"messageTypes": [
+                  {"system": "orders", "message": "OrdersPaidEvent", "kind": "EVENT", "since": "2026", "versions": [
+                    {"version": "1.0.0", "contentUrl": "/archrepo/docs-api/message-types/orders/OrdersPaidEvent/versions/1.0.0",
+                     "lastModifiedAt": "2026-11-06T09:05:00Z"}]}
+                ]}""");
+
+        assertThat(schemas.index(ENVIRONMENT)).extracting(MessageVersionRef::identity)
+                .containsExactly("orders OrdersPaidEvent 1.0.0");
+    }
+
+    /**
+     * The index is what a run diffs against its store, so it is asked plainly. Its own tag covers the whole
+     * index, and whether one version moved is answered by the tags of its entries, not by a {@code 304}.
      */
     @Test
     void index_thenNoConditionalRequestIsMade() {

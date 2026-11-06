@@ -355,7 +355,7 @@ import finishing.
 A message type gets a page of its own under the building block view of the system that defines it: what it is,
 its topic and scope, the contracts on it - and its **versions**, as a table with a row per version.
 
-Where the [message schemas](architecture-import.md#the-message-schemas-asked-about-every-run-fetched-only-when-they-move) have
+Where the [message schemas](architecture-import.md#the-message-schemas-looked-at-every-run-fetched-only-when-they-move) have
 been replicated, a version's row splits into a sub-row for its key schema and one for its value schema. Each
 carries the schema **folded**, then its name linked into the message type registry, and the value row says what
 the version is compatible with. Folded, five versions take a screen and the contracts follow right below; the

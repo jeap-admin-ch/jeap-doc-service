@@ -93,8 +93,11 @@ final class DocsApiDtos {
     /**
      * @param contentUrl the path of the version resource, relative to the service root, carrying the
      *                   architecture repository's context path
+     * @param etag       byte-identical to the {@code ETag} header of the version resource, like an artifact
+     *                   index entry's. Null from an architecture repository that lists no tag per version, and
+     *                   for a version it stored before it kept one
      */
-    record MessageTypeVersionRefDto(String version, String contentUrl) {
+    record MessageTypeVersionRefDto(String version, String contentUrl, String etag) {
     }
 
     /**
