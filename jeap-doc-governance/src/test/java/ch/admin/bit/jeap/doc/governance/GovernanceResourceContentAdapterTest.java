@@ -214,7 +214,7 @@ class GovernanceResourceContentAdapterTest {
                   ],
                   "gracePeriodComponents": [
                     {"system": "orders", "component": "orders-legacy", "comment": "Migration planned",
-                     "details": ["tracked in JEAP-1"], "violationDetectedAt": "2026-10-20T06:00:00Z",
+                     "details": ["tracked in JEAP-1", "- first\\n* second\\n\\nthird"], "violationDetectedAt": "2026-10-20T06:00:00Z",
                      "gracePeriodEndsAt": "2026-11-10T06:00:00Z"}
                   ]
                 }
@@ -249,7 +249,8 @@ class GovernanceResourceContentAdapterTest {
 
         assertThat(value.gracePeriodComponents()).hasSize(1);
         assertThat(value.gracePeriodComponents().get(0).comment()).isEqualTo("Migration planned");
-        assertThat(value.gracePeriodComponents().get(0).details()).containsExactly("tracked in JEAP-1");
+        assertThat(value.gracePeriodComponents().get(0).details())
+                .containsExactly("tracked in JEAP-1", "first", "second", "third");
         assertThat(value.gracePeriodComponents().get(0).detectedAt())
                 .isEqualTo(OffsetDateTime.parse("2026-10-20T06:00:00Z"));
     }

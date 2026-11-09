@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.2] - 2026-11-11
+
+### Changed
+- **Governance site layout**: `systems/` is now the landing page with the system scores table, and the root page
+  is a short introduction. A system page shows Overall, Component score and the score history chart; the daily
+  score table is gone. Component pages moved to `systems/<system>/<component>/`, without a `components` folder.
+- A rule's explanation is a collapsed fold on an active rule's page, and the per-system conformance table is
+  sorted by rate, best first.
+- The further lines of a rule's result are shown as a bullet list. The component page left them out, and the
+  grace period table joined them with semicolons.
+
 ## [4.8.1] - 2026-11-10
 
 ### Fixed

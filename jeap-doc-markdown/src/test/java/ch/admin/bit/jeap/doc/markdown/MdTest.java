@@ -242,6 +242,13 @@ class MdTest {
      * built by the site template's plugin. The name here and the name there have to agree.
      */
     @Test
+    void listInCell_writesOneItemDirectivePerItemAndEscapesTheirText() {
+        assertThat(Md.listInCell(List.of(Md.text("one"), Markdown.EMPTY, Md.text("<b>two</b>"))).value())
+                .isEqualTo(":list[:item[one]:item[\\<b\\>two\\</b\\>]]");
+        assertThat(Md.listInCell(List.of())).isEqualTo(Markdown.EMPTY);
+    }
+
+    @Test
     void superscript_writesADirectiveAndKeepsWhatIsInIt() {
         assertThat(Md.superscript(Md.link("https://pacts.example.ch/orders", "pact")).value())
                 .isEqualTo(":sup[[pact](https://pacts.example.ch/orders)]");

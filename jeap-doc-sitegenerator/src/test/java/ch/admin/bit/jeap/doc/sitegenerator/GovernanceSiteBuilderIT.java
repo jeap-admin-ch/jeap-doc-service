@@ -100,13 +100,17 @@ class GovernanceSiteBuilderIT {
 
         Path directory = built.directory();
         assertThat(directory.resolve("index.html")).isRegularFile();
+        assertThat(directory.resolve("systems/index.html")).isRegularFile();
         assertThat(directory.resolve("systems/orders/index.html")).isRegularFile();
-        assertThat(directory.resolve("systems/orders/components/orders-payment-scs/index.html")).isRegularFile();
+        assertThat(directory.resolve("systems/orders/orders-payment-scs/index.html")).isRegularFile();
         assertThat(directory.resolve("rules/index.html")).isRegularFile();
         assertThat(directory.resolve("rules/naming-convention/index.html")).isRegularFile();
         assertThat(directory.resolve("rules/component-produces-metrics/index.html")).isRegularFile();
-        String overview = read(directory.resolve("index.html"));
-        assertThat(overview).contains("Governance").contains("orders").contains("73%").contains("shipping");
+        String introduction = read(directory.resolve("index.html"));
+        assertThat(introduction).contains("Governance").contains("href=/docs/site/governance/systems/")
+                .contains("href=/docs/site/governance/rules/");
+        String systemScores = read(directory.resolve("systems/index.html"));
+        assertThat(systemScores).contains("orders").contains("73%").contains("shipping");
         assertThat(directory.resolve("systems/shipping")).doesNotExist();
         assertThat(directory.resolve("rules/unreadable-rule")).doesNotExist();
     }
@@ -137,8 +141,10 @@ class GovernanceSiteBuilderIT {
         BuiltSite built = builder.generate(builder.prepare(3, site, wholeSiteOf(site), GENERATED_AT));
 
         String page = read(built.directory().resolve("systems/orders/index.html"));
-        assertThat(page).contains("Score history").contains("2026-11-01").contains("68%");
+        assertThat(page).contains("Score history");
         assertThat(page).doesNotContain("language-mermaid").doesNotContain("xychart-beta");
+        assertThat(page).as("the chart has no table of the daily values beside it")
+                .doesNotContain("<th>Day").doesNotContain("2026-11-01");
     }
 
     private void fillTheSite() {

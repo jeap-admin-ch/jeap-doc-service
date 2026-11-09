@@ -245,6 +245,8 @@ function docsOptions(environment) {
             require('./plugins/remark-reaction-view'),
             // A note raised above the line, such as the pact beside a caller - see the plugin.
             require('./plugins/remark-superscript'),
+            // A bullet list inside a table cell, from a directive - see the plugin.
+            require('./plugins/remark-cell-list'),
         ],
         // The folder layout the generator writes is the information architecture, so the items themselves are
         // the default generator's - what is added is the way out of a part, which needs this environment.

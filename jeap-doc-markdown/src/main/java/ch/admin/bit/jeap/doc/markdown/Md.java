@@ -146,6 +146,17 @@ public final class Md {
         return value.isEmpty() ? Markdown.EMPTY : new Markdown(":sup[" + value.value() + "]");
     }
 
+    /**
+     * A bullet list that fits in a table cell, which a Markdown list cannot. A {@code :list[:item[...]]}
+     * directive, built into {@code ul} and {@code li} by {@code remark-cell-list} in the site template; the two
+     * have to agree on the names. Empty items are left out, and no items give nothing.
+     */
+    public static Markdown listInCell(List<Markdown> items) {
+        String body = items.stream().filter(item -> !item.isEmpty())
+                .map(item -> ":item[" + item.value() + "]").collect(Collectors.joining());
+        return body.isEmpty() ? Markdown.EMPTY : new Markdown(":list[" + body + "]");
+    }
+
     public static Markdown italic(String value) {
         Markdown escaped = text(value);
         return escaped.isEmpty() ? Markdown.EMPTY : new Markdown("*" + escaped.value() + "*");

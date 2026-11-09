@@ -563,6 +563,10 @@ turns into one: raw HTML in a page is escaped and shown as text. A counterpart i
 run wrote the component's page and plain code where it did not, and an operation or a message with no
 counterpart gets `-`.
 
+**A list inside a table cell is a `:list[:item[…]]` directive**, which `remark-cell-list` in the site template
+turns into `ul` and `li` - a Markdown list cannot stand in a cell, and raw HTML is escaped. The governance pages
+use it for the further lines of a rule's result.
+
 **The view exclusions do not reach these columns.** `view-excluded-components` and `view-excluded-relations`
 bound the views and the relations tables written from them; a counterpart is read from the relations and the
 contracts themselves, so an excluded component is named here like any other - `POST /api/dbschemas` keeps all

@@ -22,6 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -121,7 +122,7 @@ class GovernanceResourceContentAdapter implements GovernanceResourceContent {
         List<GovernanceRuleState> ruleStates = dto.ruleStates() == null ? List.of()
                 : dto.ruleStates().stream()
                         .map(state -> new GovernanceRuleState(state.ruleId(), state.name(), state.state(),
-                                state.comment(), state.details() == null ? List.of() : state.details(),
+                                state.comment(), linesOf(state.details()),
                                 state.lastStatusChange()))
                         .toList();
         return new GovernanceComponent(dto.name(), dto.score(), dto.trend(), historyOf(dto.history()),
@@ -151,7 +152,23 @@ class GovernanceResourceContentAdapter implements GovernanceResourceContent {
     private static GovernanceGracePeriodComponent gracePeriodComponentOf(
             GovernanceDtos.GracePeriodComponentDto dto) {
         return new GovernanceGracePeriodComponent(dto.system(), dto.component(), dto.comment(),
-                dto.details() == null ? List.of() : dto.details(), dto.violationDetectedAt(), dto.gracePeriodEndsAt());
+                linesOf(dto.details()), dto.violationDetectedAt(), dto.gracePeriodEndsAt());
+    }
+
+    /**
+     * One item per line. An item the upstream delivers with line breaks, or with a bullet marker of its own,
+     * would otherwise run together into one paragraph on the page.
+     */
+    private static List<String> linesOf(List<String> details) {
+        if (details == null) {
+            return List.of();
+        }
+        return details.stream()
+                .filter(Objects::nonNull)
+                .flatMap(detail -> detail.lines())
+                .map(line -> line.strip().replaceFirst("^[-*\u2022]\\s+", ""))
+                .filter(line -> !line.isEmpty())
+                .toList();
     }
 
     /** Best effort only, for the warning: the value is exactly what did not parse. */

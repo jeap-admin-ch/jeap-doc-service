@@ -10,13 +10,12 @@ package ch.admin.bit.jeap.doc.domain.governance;
 public final class GovernancePaths {
 
     public static final String SYSTEMS_SEGMENT = "systems";
-    public static final String COMPONENTS_SEGMENT = "components";
     public static final String RULES_SEGMENT = "rules";
 
     private GovernancePaths() {
     }
 
-    /** The system scores overview, at the site root. */
+    /** The introduction, at the site root. */
     public static String overview() {
         return "/";
     }
@@ -30,7 +29,7 @@ public final class GovernancePaths {
     }
 
     public static String component(String systemSlug, String componentSlug) {
-        return system(systemSlug) + COMPONENTS_SEGMENT + "/" + componentSlug + "/";
+        return system(systemSlug) + componentSlug + "/";
     }
 
     public static String rules() {

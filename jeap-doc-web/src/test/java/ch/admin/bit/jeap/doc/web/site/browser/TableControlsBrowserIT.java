@@ -279,6 +279,26 @@ class TableControlsBrowserIT extends SiteBrowserTestBase {
     }
 
     /**
+     * <b>A bullet list in a cell is a real list.</b> Its items are {@code li} elements under the first line, the
+     * directive is not left on the page as text, and markup in an item is shown as the text it is. A cell that
+     * stayed {@code :list[...]} text would fail the first two checks.
+     */
+    @Test
+    void aCellWithAListOfLines_showsOneBulletPerLineUnderTheFirstLine() {
+        open("/" + TABLES_ROUTE + "/");
+        Locator cell = page.locator("article table").nth(3).locator("tbody td").nth(1);
+
+        assertThat(cell.locator("ul > li")).hasCount(RULE_RESULT_ITEMS.size());
+        assertThat(cell.locator("ul > li").first()).hasText(RULE_RESULT_ITEMS.getFirst());
+        assertThat(cell.locator("ul > li").last()).hasText("<b>not bold</b>");
+        assertThat(cell.locator("b")).hasCount(0);
+        assertThat(cell).not().containsText(":list");
+        assertThat(cell).not().containsText(":item");
+        assertThat(cell).containsText(RULE_RESULT_FIRST_LINE);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    /**
      * <b>A long cell shows its first three and a chip.</b> The cell stays complete in the page - the filter
      * and the search index read it whole - and the reader opens the rest where they want it.
      */

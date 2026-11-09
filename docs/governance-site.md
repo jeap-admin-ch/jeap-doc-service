@@ -45,16 +45,19 @@ names would land on the same page, and to a system or rule whose own resource co
 or rule is still listed on its overview, and a component page still shows its state of such a rule, but as text
 rather than as a link: the build fails on a link to a page that does not exist.
 
-| Page                   | Path                                       | Shows                                                                                                                                                                                                                                                                                        |
-|------------------------|--------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| System scores overview | `/`                                        | Every scored system, best score first, with score and trend, linking to its page where it has one; the time the scores are as of                                                                                                                                                                               |
-| System page            | `systems/<system>/`                        | The system's score, trend and score history; its components, best score first, linking to their pages                                                                                                                                                                                                          |
-| Component page         | `systems/<system>/components/<component>/` | The component's score, trend and score history; every rule evaluated for it, with state and comment                                                                                                                                                                                          |
-| Rules overview         | `rules/`                                   | Every known rule, active ones first by weight, linking to its page where it has one, with its weight, share, conformance rate, trend and number of exemptions; a fold per rule with exemptions                                                                                               |
-| Rule page              | `rules/<rule-id>/`                         | The rule's name, ID and explanation; for an active rule also its weight, violation delay, parameters, conformance rate (overall and per system), non-compliant components and, where it has one, its violation grace period - each system and component linking to its page where it has one |
+| Page           | Path                            | Shows                                                                                                                                                                                                                                                                                                                            |
+|----------------|---------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Introduction   | `/`                             | What the site shows, links to the systems and the rules, and the time the scores are as of                                                                                                                                                                                                                                       |
+| System scores  | `systems/`                      | Every scored system, best score first, with score and trend, linking to its page where it has one; the time the scores are as of                                                                                                                                                                                                 |
+| System page    | `systems/<system>/`             | Overall (score and trend), the component scores, best score first, linking to their pages, and the score history chart                                                                                                                                                                                                           |
+| Component page | `systems/<system>/<component>/` | The component's score, trend and score history; every rule evaluated for it, with state and comment, and the further lines of a rule's result as a bullet list under the table                                                                                                                                                                                                                              |
+| Rules overview | `rules/`                        | Every known rule, active ones first by weight, linking to its page where it has one, with its weight, share, conformance rate, trend and number of exemptions; a fold per rule with exemptions                                                                                                                                   |
+| Rule page      | `rules/<rule-id>/`              | The rule's name and ID; for an active rule its explanation in a fold that starts closed, weight, violation delay, parameters, conformance rate (overall and per system, best first), non-compliant components and, where it has one, its violation grace period - each system and component linking to its page where it has one |
 
-An **inactive** rule's page shows its explanation only - nothing else is known about a rule the instance does not
+An **inactive** rule's page shows its explanation only, open, - nothing else is known about a rule the instance does not
 activate. A rule shipped without an explanation says so on its page, rather than leaving the section empty.
+
+On an active rule the explanation sits in a fold that starts closed, so the conformance facts are near the top.
 
 A rule's explanation is the Markdown the Governance Service delivers with it, rendered with its own structure -
 headings, lists, emphasis - intact. Each of its headings is moved one level down, so the rule's name stays the
@@ -83,9 +86,8 @@ same way the value beside it does.
 
 ## The score history chart
 
-A system's and a component's score history is a line chart of the daily scores over the trend period, followed
-by the same values as a table - the chart for a reader who wants the shape of it, the table for the exact
-numbers. It is written as a fenced Mermaid definition on the page itself, in the `xychart-beta` syntax the
+A system's and a component's score history is a line chart of the daily scores over the trend period, and
+nothing else - there is no table of the daily values. It is written as a fenced Mermaid definition on the page itself, in the `xychart-beta` syntax the
 pinned Mermaid version renders. The chart is drawn by the browser, and `MermaidChartBrowserIT` checks in a real
 browser that this syntax is drawn.
 

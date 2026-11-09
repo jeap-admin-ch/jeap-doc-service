@@ -816,6 +816,11 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
 
     /** Where the page with a long and a short table is served - see {@code TableControlsBrowserIT}. */
     protected static final String TABLES_ROUTE = "tables";
+    protected static final String RULE_RESULT_FIRST_LINE = "Outdated message contracts";
+    protected static final List<String> RULE_RESULT_ITEMS = List.of(
+            "OrderPlacedEvent (CONSUMER on orders-placed) uses 1.0.0, latest is 1.1.0",
+            "PaymentAcceptedEvent (PRODUCER on payments-accepted) uses 2.4.0, latest is 2.5.0",
+            "<b>not bold</b>");
 
     /** The rows of the long table, above the threshold at which a table gets a filter. */
     protected static final int RELATIONS = 20;
@@ -892,7 +897,17 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 .heading(2, "Descriptions")
                 .table(List.of("Component", "Description"),
                         List.of(List.of(ch.admin.bit.jeap.doc.markdown.Md.code("orders-intake"),
-                                ch.admin.bit.jeap.doc.markdown.Md.text(PROSE_DESCRIPTION))));
+                                ch.admin.bit.jeap.doc.markdown.Md.text(PROSE_DESCRIPTION))))
+                // As the governance pages write the further lines of a rule's result: the first line, then a
+                // bullet list inside the same cell. The last item holds markup, which has to stay text.
+                .heading(2, "Rule results")
+                .table(List.of("Component", "Comment"),
+                        List.of(List.of(ch.admin.bit.jeap.doc.markdown.Md.code("orders-intake"),
+                                ch.admin.bit.jeap.doc.markdown.Md.joinWith(" ", List.of(
+                                        ch.admin.bit.jeap.doc.markdown.Md.text(RULE_RESULT_FIRST_LINE),
+                                        ch.admin.bit.jeap.doc.markdown.Md.listInCell(RULE_RESULT_ITEMS.stream()
+                                                .map(ch.admin.bit.jeap.doc.markdown.Md::text)
+                                                .toList()))))));
         Files.writeString(environmentTree.resolve(TABLES_ROUTE + ".md"), page.text(), StandardCharsets.UTF_8);
     }
 

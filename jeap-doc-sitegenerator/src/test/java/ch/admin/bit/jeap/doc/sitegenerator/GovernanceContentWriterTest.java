@@ -74,7 +74,7 @@ class GovernanceContentWriterTest {
         assertThat(filesBelow(tree)).containsExactly("index.md");
         assertThat(Files.readString(tree.resolve("index.md")))
                 .contains("No scoring run has completed yet.")
-                .contains("No system has been scored yet.");
+                .doesNotContain("](/systems/)");
     }
 
     @Test
@@ -86,8 +86,11 @@ class GovernanceContentWriterTest {
 
         writer.write(SITE, shell(), content, GENERATED_AT);
 
-        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("index.md"));
-        assertThat(overview).contains("slug: \"/\"")
+        assertThat(Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("index.md")))
+                .contains("[Systems](/systems/) lists the score and trend of every system");
+
+        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("systems/index.md"));
+        assertThat(overview).contains("slug: \"/systems/\"")
                 .contains("2026-11-04 ")
                 .contains("[orders](/systems/orders/)")
                 .contains("73%").contains("Down");
@@ -107,7 +110,7 @@ class GovernanceContentWriterTest {
 
         writer.write(SITE, shell(), content, GENERATED_AT);
 
-        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("index.md"));
+        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("systems/index.md"));
         assertThat(overview.indexOf("[beta]")).isPositive()
                 .isLessThan(overview.indexOf("[delta]"));
         assertThat(overview.indexOf("[delta]")).isLessThan(overview.indexOf("[alpha]"));
@@ -126,7 +129,7 @@ class GovernanceContentWriterTest {
 
         Path tree = content.resolve(SiteSources.SINGLE_TREE);
         assertThat(filesBelow(tree)).contains("systems/order-fulfilment/index.md");
-        assertThat(Files.readString(tree.resolve("index.md")))
+        assertThat(Files.readString(tree.resolve("systems/index.md")))
                 .contains("[Order Fulfilment](/systems/order-fulfilment/)");
         assertThat(Files.readString(tree.resolve("systems/order-fulfilment/index.md")))
                 .contains("slug: \"/systems/order-fulfilment/\"")
@@ -147,7 +150,7 @@ class GovernanceContentWriterTest {
 
         Path tree = content.resolve(SiteSources.SINGLE_TREE);
         assertThat(filesBelow(tree)).containsExactlyInAnyOrder("index.md", "systems/_category_.json",
-                "systems/orders/_category_.json", "systems/orders/index.md");
+                "systems/index.md", "systems/orders/_category_.json", "systems/orders/index.md");
         assertThat(Files.readString(tree.resolve("systems/orders/index.md"))).contains("title: \"Orders\"");
     }
 
@@ -166,8 +169,8 @@ class GovernanceContentWriterTest {
         writer.write(SITE, shell(), content, GENERATED_AT);
 
         Path tree = content.resolve(SiteSources.SINGLE_TREE);
-        assertThat(Files.readString(tree.resolve("index.md"))).contains("| orders | 🟡 70% | → Stable |");
-        assertThat(filesBelow(tree)).containsExactly("index.md");
+        assertThat(Files.readString(tree.resolve("systems/index.md"))).contains("| orders | 🟡 70% | → Stable |");
+        assertThat(filesBelow(tree)).containsExactlyInAnyOrder("index.md", "systems/_category_.json", "systems/index.md");
     }
 
     @Test
@@ -183,13 +186,13 @@ class GovernanceContentWriterTest {
         writer.write(SITE, shell(), content, GENERATED_AT);
 
         Path tree = content.resolve(SiteSources.SINGLE_TREE);
-        assertThat(filesBelow(tree)).contains("systems/orders/components/orders-payment-scs/index.md",
-                "systems/orders/components/_category_.json");
+        assertThat(filesBelow(tree)).contains("systems/orders/orders-payment-scs/index.md",
+                "systems/orders/_category_.json");
         assertThat(Files.readString(tree.resolve("systems/orders/index.md")))
-                .contains("[orders-payment-scs](/systems/orders/components/orders-payment-scs/)");
+                .contains("[orders-payment-scs](/systems/orders/orders-payment-scs/)");
         String componentPage = Files.readString(
-                tree.resolve("systems/orders/components/orders-payment-scs/index.md"));
-        assertThat(componentPage).contains("slug: \"/systems/orders/components/orders-payment-scs/\"")
+                tree.resolve("systems/orders/orders-payment-scs/index.md"));
+        assertThat(componentPage).contains("slug: \"/systems/orders/orders-payment-scs/\"")
                 .contains("65%").contains("Up");
     }
 
@@ -220,7 +223,8 @@ class GovernanceContentWriterTest {
         setRulesIndex("naming-convention");
         fakeContent.rulesByKey.put("naming-convention", activeRuleWithNoFindings("naming-convention", false));
         GovernanceRuleState failing = new GovernanceRuleState("naming-convention", "Naming convention", "FAIL",
-                "Not named after the system", List.of(), OffsetDateTime.parse("2026-11-01T06:00:00Z"));
+                "Not named after the system", List.of("orders-payment does not start with orders-", "second finding"),
+                OffsetDateTime.parse("2026-11-01T06:00:00Z"));
         GovernanceComponent component = new GovernanceComponent("orders-payment-scs", 65, "UP", List.of(),
                 List.of(failing));
         fakeContent.systemsByKey.put("orders",
@@ -229,9 +233,11 @@ class GovernanceContentWriterTest {
         writer.write(SITE, shell(), content, GENERATED_AT);
 
         String componentPage = Files.readString(content.resolve(SiteSources.SINGLE_TREE)
-                .resolve("systems/orders/components/orders-payment-scs/index.md"));
+                .resolve("systems/orders/orders-payment-scs/index.md"));
         assertThat(componentPage).contains("[Naming convention](/rules/naming-convention/)")
-                .contains("Non-compliant").contains("Not named after the system");
+                .contains("Non-compliant").contains("Not named after the system")
+                .contains("| Not named after the system :list[:item[orders-payment does not start with orders-]"
+                        + ":item[second finding]] |");
     }
 
     /**
@@ -255,14 +261,14 @@ class GovernanceContentWriterTest {
         writer.write(SITE, shell(), content, GENERATED_AT);
 
         String componentPage = Files.readString(content.resolve(SiteSources.SINGLE_TREE)
-                .resolve("systems/orders/components/orders-payment-scs/index.md"));
+                .resolve("systems/orders/orders-payment-scs/index.md"));
         assertThat(componentPage).contains("| Unknown rule | ✅ Compliant | - |")
                 .contains("| Unreadable rule | ✅ Compliant | - |")
                 .contains("| Rule without an ID | ✅ Compliant | - |");
     }
 
     @Test
-    void write_thenTheScoreHistoryIsWrittenAsATable() throws IOException {
+    void write_thenTheScoreHistoryIsNotRepeatedAsATable() throws IOException {
         fakeContent.index = new GovernanceSystemsIndex(null, 30,
                 List.of(new GovernanceSystemSummary("orders", 70, "STABLE")));
         resources.index(fakeContent.index);
@@ -275,13 +281,12 @@ class GovernanceContentWriterTest {
 
         String systemPage = Files.readString(
                 content.resolve(SiteSources.SINGLE_TREE).resolve("systems/orders/index.md"));
-        assertThat(systemPage).contains("Score history").contains("2026-11-01").contains("68%")
-                .contains("2026-11-02").contains("70%");
+        assertThat(systemPage).contains("Score history").doesNotContain("| Day | Score |");
     }
 
     /** A system page's score history has a chart before the table of the same values, not after it. */
     @Test
-    void write_thenASystemsScoreHistoryIsAMermaidXyLineChartFollowedByTheTable() throws IOException {
+    void write_thenASystemsScoreHistoryIsAMermaidXyLineChart() throws IOException {
         fakeContent.index = new GovernanceSystemsIndex(null, 30,
                 List.of(new GovernanceSystemSummary("orders", 70, "STABLE")));
         resources.index(fakeContent.index);
@@ -298,7 +303,7 @@ class GovernanceContentWriterTest {
                 .contains("x-axis [\"2026-11-01\", \"2026-11-02\"]")
                 .contains("y-axis \"Score (%)\" 0 --> 100")
                 .contains("line [68, 70]");
-        assertThat(systemPage.indexOf("xychart-beta")).isLessThan(systemPage.indexOf("| Day | Score |"));
+        assertThat(systemPage).contains("## Overall").doesNotContain("| Day | Score |");
     }
 
     /** The same chart, on a component page - {@code writeHistory} is the one place both pages write it. */
@@ -318,7 +323,7 @@ class GovernanceContentWriterTest {
         writer.write(SITE, shell(), content, GENERATED_AT);
 
         String componentPage = Files.readString(content.resolve(SiteSources.SINGLE_TREE)
-                .resolve("systems/orders/components/orders-payment-scs/index.md"));
+                .resolve("systems/orders/orders-payment-scs/index.md"));
         assertThat(componentPage).contains("```mermaid").contains("xychart-beta")
                 .contains("x-axis [\"2026-11-01\", \"2026-11-02\"]")
                 .contains("line [60, 65]");
@@ -338,7 +343,7 @@ class GovernanceContentWriterTest {
 
         writer.write(SITE, shell(), content, GENERATED_AT);
 
-        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("index.md"));
+        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("systems/index.md"));
         assertThat(overview).contains("Orders \\*and\\* \\[Shipping\\]");
     }
 
@@ -358,7 +363,7 @@ class GovernanceContentWriterTest {
 
         writer.write(SITE, shell(), content, GENERATED_AT);
 
-        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("index.md"));
+        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("systems/index.md"));
         assertThat(overview).contains(marker + " " + score + "%");
     }
 
@@ -384,7 +389,7 @@ class GovernanceContentWriterTest {
         writer.write(SITE, shell(), content, GENERATED_AT);
 
         String componentPage = Files.readString(content.resolve(SiteSources.SINGLE_TREE)
-                .resolve("systems/orders/components/orders-payment-scs/index.md"));
+                .resolve("systems/orders/orders-payment-scs/index.md"));
         assertThat(componentPage).contains(label);
     }
 
@@ -397,7 +402,7 @@ class GovernanceContentWriterTest {
 
         writer.write(SITE, shell(), content, GENERATED_AT);
 
-        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("index.md"));
+        String overview = Files.readString(content.resolve(SiteSources.SINGLE_TREE).resolve("systems/index.md"));
         assertThat(overview).contains("↑ Up");
     }
 
@@ -431,6 +436,8 @@ class GovernanceContentWriterTest {
         assertThat(page.lines().filter(line -> line.startsWith("# ")))
                 .containsExactly("# Naming convention");
         assertThat(page.lines()).contains("## Naming convention");
+        assertThat(page).contains(":::details[Explanation]");
+        assertThat(page.indexOf(":::details[Explanation]")).isLessThan(page.indexOf("## Conformance"));
     }
 
     @Test
@@ -517,7 +524,7 @@ class GovernanceContentWriterTest {
     void write_whenAComponentIsWithinTheGracePeriod_thenThePageListsItWithDetectionAndEnd() throws IOException {
         setRulesIndex("a-rule-with-grace-period");
         GovernanceGracePeriodComponent component = new GovernanceGracePeriodComponent("orders",
-                "orders-legacy", "Migration planned", List.of("tracked in JEAP-1"),
+                "orders-legacy", "Migration planned", List.of("tracked in JEAP-1", "owner: team a"),
                 OffsetDateTime.parse("2026-10-20T06:00:00Z"), OffsetDateTime.parse("2026-11-10T06:00:00Z"));
         GovernanceRule rule = new GovernanceRule("a-rule-with-grace-period", "A rule with a grace period", true,
                 "Explanation.", 5, new BigDecimal("25.0"), null, true, List.of(), List.of(), 100, "STABLE",
@@ -529,7 +536,8 @@ class GovernanceContentWriterTest {
         String page = Files.readString(
                 content.resolve(SiteSources.SINGLE_TREE).resolve("rules/a-rule-with-grace-period/index.md"));
         assertThat(page).contains("orders-legacy").contains("Migration planned")
-                .contains("tracked in JEAP-1").contains("2026-10-20").contains("2026-11-10");
+                .contains("| Migration planned :list[:item[tracked in JEAP-1]:item[owner: team a]] |")
+                .contains("2026-10-20").contains("2026-11-10");
     }
 
     /** A rule the rules index lists but whose own resource could not be read is listed without a link, not failed. */
@@ -558,7 +566,7 @@ class GovernanceContentWriterTest {
         Path tree = content.resolve(SiteSources.SINGLE_TREE);
         assertThat(filesBelow(tree)).containsExactlyInAnyOrder("index.md", "rules/_category_.json",
                 "rules/index.md");
-        assertThat(Files.readString(tree.resolve("index.md"))).contains("No system has been scored yet.");
+        assertThat(Files.readString(tree.resolve("index.md"))).contains("No scoring run has completed yet.");
         assertThat(Files.readString(tree.resolve("rules/index.md"))).contains("| .. | Active |");
     }
 
@@ -582,12 +590,11 @@ class GovernanceContentWriterTest {
 
         Path tree = content.resolve(SiteSources.SINGLE_TREE);
         assertThat(Files.readString(tree.resolve("systems/orders/index.md")))
-                .contains("x-axis [\"2026-11-02\"]").contains("line [70]")
-                .contains("| 2026-11-02 | 70% |").doesNotContain("null");
+                .contains("x-axis [\"2026-11-02\"]").contains("line [70]").doesNotContain("null");
         assertThat(Files.readString(tree.resolve("rules/naming-convention/index.md")))
                 .contains("title: \"naming-convention\"")
                 .contains("| [orders](/systems/orders/) | orders-legacy | - |")
-                .contains("| [orders](/systems/orders/) | orders-new | Planned | - | - | - |");
+                .contains("| [orders](/systems/orders/) | orders-new | Planned | - | - |");
     }
 
     /**
@@ -618,13 +625,13 @@ class GovernanceContentWriterTest {
         String page = Files.readString(
                 content.resolve(SiteSources.SINGLE_TREE).resolve("rules/naming-convention/index.md"));
         String orders = "[orders](/systems/orders/)";
-        String legacyLink = "[orders-legacy](/systems/orders/components/orders-legacy/)";
+        String legacyLink = "[orders-legacy](/systems/orders/orders-legacy/)";
         assertThat(page).contains("| " + orders + " | 🟡 50% |")
                 .contains("| shipping | 🟢 90% |")
                 .contains("| " + orders + " | " + legacyLink + " | - |")
                 .contains("| " + orders + " | orders-unscored | - |")
                 .contains("| shipping | orders-legacy | - |")
-                .contains("| " + orders + " | " + legacyLink + " | Planned | - | - | - |");
+                .contains("| " + orders + " | " + legacyLink + " | Planned | - | - |");
     }
 
     @Test
