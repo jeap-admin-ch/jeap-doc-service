@@ -289,7 +289,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             org.assertj.core.api.Assertions.assertThat(arrows).isEqualTo(java.util.List.of(
                     "Sum of individual medians – approximation: 404\n4243: 400\n4244: 4\n4245: 0"));
             assertThat(legend.locator("span")).hasText(route.equals(MESSAGE_REACTIONS_ROUTE)
-                    ? new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions"}
+                    ? new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions", "Pinned"}
                     : new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions", "Other system"});
             assertNothingWentWrongInTheBrowser();
         }
