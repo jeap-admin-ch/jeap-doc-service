@@ -1122,7 +1122,10 @@ sum as an approximation. Both trigger and action arrows connect to individual re
 only collapsed reactions contribute to arrows at the group frame. Explicitly hidden reactions contribute no arrows. Hover tooltips show frequency details; the existing reaction table provides
 the textual representation. The initial view and Reset view fit the complete graph with a margin and cap
 the zoom at 100%, so small graphs are not enlarged.
-Fit all continues to show the complete graph; manual pan and zoom survive redraws.
+Fit all continues to show the complete graph; manual pan and zoom survive presentation redraws.
+After a graph action, the viewport follows its target through relayout at the existing zoom, keeping its
+screen position where space permits. A removed target falls back to its group or a surviving neighbour.
+Keyboard actions continue at that element; this does not change the semantic focus or selection.
 The viewport offers zoom, fit, reset and full screen, with keyboard equivalents for zoom and pan. Groups can be collapsed and expanded
 without changing the selection. The legend stays visible, including in full screen. Toolbar buttons reuse
 the existing diagram plugin's icons, with tooltips and accessible names. Frequency details appear
@@ -1155,8 +1158,9 @@ that entry. It does not restore explicitly hidden interfaces.
 
 Right-click a group frame or one of its members for “Collapse group” or “Expand group”, according to its state.
 The menu groups documentation, visibility and exploration actions with separators and leading icons.
+Right-clicking the diagram or its menu suppresses the native browser menu, including outside full screen.
 The menu disables actions that would not change the group. Collapsing preserves pinned members and changes
-only that group; the other groups and other viewers retain their state. Zoom and pan survive the redraw.
+only that group; the other groups and other viewers retain their state. Zoom is preserved while the viewport follows the affected group.
 After selecting a group, Shift+F10 opens its menu (the first group is the initial keyboard target);
 arrow keys navigate the enabled menu entries and Escape closes it. The Paths toolbar button opens a new path selection; the other toolbar controls adjust the presentation.
 The minimap toggle opens an overview of the current diagram with its visible viewport marked. Clicking or

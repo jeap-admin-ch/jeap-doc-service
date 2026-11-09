@@ -59,7 +59,7 @@ function EnvironmentReactionViewer({entry, environment}) {
     useEffect(() => { setEditedView(null); setDialog(null); setMenu(null); setHover(null); setNotice('');
         setMinimapOpen(false); setSourceOpen(false); setTableReady(false); }, [entry, url]);
     const container = useRef(null), panel = useRef(null), controls = useRef(null);
-    const viewport = useRef(null);
+    const viewport = useRef(null), followedView = useRef(null);
     const viewKey = JSON.stringify([url, entry]);
     const presentationKey = viewKey + ':' + (editedView?.key === viewKey ? editedView.fitRevision : 0);
     const [activatedView, setActivatedView] = useState(null);
@@ -134,12 +134,16 @@ function EnvironmentReactionViewer({entry, environment}) {
         let disposed = false, destroy;
         import('./renderer').then(({render}) => {
             if (!disposed) {
+                const followAction = editedView?.key === viewKey && followedView.current !== editedView;
                 const instance = render(container.current, view.elements, colorMode === 'dark', setZoom, {
-                    onNodeMenu: setMenu, onRestore: ids => applyAction({type: 'show', ids}),
+                    onNodeMenu: setMenu, onRestore: (ids, anchor) => applyAction({type: 'show', ids}, anchor),
                     onExpand: action => applyAction({type: 'expand', ...action}), onDismissMenu: () => setMenu(null), onHover: setHover,
                     viewport: viewport.current?.key === presentationKey ? viewport.current.value : null,
+                    actionFocus: followAction ? editedView.actionFocus : null,
                 });
+                followedView.current = editedView;
                 controls.current = instance;
+                if (followAction && editedView.actionFocus) container.current?.focus({preventScroll: true});
                 setRenderer(instance);
                 setTableReady(true);
                 destroy = () => {
@@ -150,13 +154,14 @@ function EnvironmentReactionViewer({entry, environment}) {
         }).catch(() => { if (!disposed) setFailed(true); });
         return () => { disposed = true; destroy?.(); };
     }, [view, colorMode, viewKey, activatedView, presentationKey]);
-    const closeMenu = (restoreFocus = true) => { setMenu(null); if (restoreFocus) container.current?.focus(); };
-    const applyAction = action => {
+    const closeMenu = (restoreFocus = true) => { setMenu(null); if (restoreFocus) container.current?.focus({preventScroll: true}); };
+    const applyAction = (action, anchor = action.id) => {
+        const actionFocus = anchor ? controls.current?.actionFocus(anchor) : null;
         setEditedView(previous => {
             const current = previous?.key === viewKey ? previous.state : view.state;
             const next = changeView(snapshot.graph, current, action);
             if (next === current) return previous;
-            return {key: viewKey, state: next, fitRevision: (previous?.key === viewKey ? previous.fitRevision : 0)
+            return {key: viewKey, state: next, actionFocus, fitRevision: (previous?.key === viewKey ? previous.fitRevision : 0)
                 + (['focus', 'paths'].includes(action.type) ? 1 : 0)};
         });
         setDialog(null); closeMenu();
@@ -183,7 +188,7 @@ function EnvironmentReactionViewer({entry, environment}) {
     const count = view.reactionCount;
     const direct = ['MESSAGE', 'INTERFACE'].includes(currentEntry.kind) && !view.state.explored;
     const summary = `${count} ${direct ? 'directly connected ' : ''}${count === 1 ? 'reaction' : 'reactions'}`;
-    const closeDialog = () => { setDialog(null); container.current?.focus(); };
+    const closeDialog = () => { setDialog(null); container.current?.focus({preventScroll: true}); };
     return <><section ref={panel} className={styles.viewer} aria-label="Reaction chains">
         <div className={styles.toolbar}>
             <div><strong>{focus}</strong><span className={styles.caption}>{summary}</span></div>
@@ -210,12 +215,12 @@ function EnvironmentReactionViewer({entry, environment}) {
         {!snapshot.graph.ownershipComplete && <p role="status">Incomplete ownership: Not all reactions can be assigned to a system.</p>}
         <HiddenContent title={`${view.superseded} superseded reactions hidden (presumed superseded)`}
             ids={view.supersededIds} graph={snapshot.graph} onShow={id => applyAction({type: 'show', id})}/>
-        <div className={styles.graph}>
+        <div className={styles.graph} onContextMenuCapture={event => event.preventDefault()}>
             <div ref={container} className={`${styles.canvas} ${sourceOpen ? styles.coveredCanvas : ''}`} tabIndex={sourceOpen ? -1 : 0} role="group"
                 aria-hidden={sourceOpen || undefined}
                 aria-label="Reaction graph. Use arrow keys to pan, plus and minus to zoom, and zero to fit all. Right-click or press Shift+F10 to open the context menu."
                 aria-describedby={hover && !menu ? tooltipId : undefined}
-                onMouseLeave={() => setHover(null)} onKeyDown={onKeyDown} onContextMenu={event => event.preventDefault()}/>
+                onMouseLeave={() => setHover(null)} onKeyDown={onKeyDown}/>
             {minimapOpen && !sourceOpen && renderer && <Minimap id={minimapId} renderer={renderer}/>}
             {sourceOpen && <SourceView id={sourceId} source={source}
                 onClose={() => { setSourceOpen(false); sourceToggle.current?.focus(); }}/>

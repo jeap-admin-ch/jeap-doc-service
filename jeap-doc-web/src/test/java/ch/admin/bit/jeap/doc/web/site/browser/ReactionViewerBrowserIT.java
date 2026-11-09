@@ -296,6 +296,39 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     @Test
+    void graphContextMenuSuppressesTheBrowserMenuInNormalAndFullscreenViews() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']").first();
+        String group = groupOfReaction(viewer, "4243");
+        page.evaluate("""
+                () => document.addEventListener('contextmenu', event => {
+                    setTimeout(() => document.documentElement.dataset.contextPrevented = String(event.defaultPrevented), 0);
+                }, {capture: true})
+                """);
+        for (boolean fullscreen : java.util.List.of(false, true)) {
+            if (fullscreen) viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions()
+                    .setName("Fullscreen").setExact(true)).click();
+            page.evaluate("() => delete document.documentElement.dataset.contextPrevented");
+            openGroupMenu(viewer, group);
+            assertThat(page.locator("html")).hasAttribute("data-context-prevented", "true");
+            page.evaluate("() => delete document.documentElement.dataset.contextPrevented");
+            viewer.getByRole(AriaRole.MENU).click(new com.microsoft.playwright.Locator.ClickOptions()
+                    .setButton(com.microsoft.playwright.options.MouseButton.RIGHT).setPosition(10, 10));
+            assertThat(page.locator("html")).hasAttribute("data-context-prevented", "true");
+            viewer.locator("div[aria-label^='Reaction graph.']").click(
+                    new com.microsoft.playwright.Locator.ClickOptions().setPosition(5, 5));
+        }
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions()
+                .setName("Exit fullscreen").setExact(true)).click();
+        // Normal browser actions elsewhere on the page remain available.
+        org.assertj.core.api.Assertions.assertThat(page.locator("h1").first().evaluate("""
+                el => el.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true}))
+                """)).isEqualTo(true);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
     void groupMenu_supportsKeyboardAndLeavesTheOtherViewerUnchanged() {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
         var viewers = page.locator("section[aria-label='Reaction chains']");
@@ -316,14 +349,18 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(documentation).hasAttribute("href", "/" + COMPONENT_REACTIONS_ROUTE.replace(REACTING_COMPONENT, BUSY_COMPONENT) + "/");
         page.keyboard().press("ArrowDown");
         assertThat(first.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group"))).isFocused();
+        Object beforeCollapse = actionPosition(first, group);
         page.keyboard().press("Enter");
         awaitGroupMembers(group, 0);
+        awaitActionPosition(group, beforeCollapse);
         page.keyboard().press("Shift+F10");
         assertThat(documentation).isFocused();
         page.keyboard().press("ArrowDown");
         assertThat(first.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand group"))).isFocused();
+        Object beforeExpand = actionPosition(first, group);
         page.keyboard().press("Enter");
         awaitGroupMembers(group, 3);
+        awaitActionPosition(group, beforeExpand);
         org.assertj.core.api.Assertions.assertThat(secondCanvas.evaluate("element => element._cyreg.cy.elements().map(node => node.id())"))
                 .isEqualTo(otherNodes);
         assertNothingWentWrongInTheBrowser();
@@ -691,8 +728,13 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             String marker = (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
                     el => el._cyreg.cy.nodes('[kind="marker"]').filter(n => n.data('explore')?.direction === 'outgoing').first().id()
                     """);
+            String anchor = (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate(
+                    "(el, id) => el._cyreg.cy.getElementById(id).data('anchor')", marker);
+            Object beforeExpand = actionPosition(viewer, anchor);
             clickGraphNode(viewer, marker, false);
             awaitGraphKeys(java.util.List.of(key), true);
+            awaitActionPosition(anchor, beforeExpand);
+            assertThat(viewer.locator("div[aria-label^='Reaction graph.']")).isFocused();
         }
         awaitGraphKeys(java.util.List.of("D", "E", "r4", "old"), false);
         awaitPinned("A");
@@ -733,6 +775,27 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         awaitPinned("A");
         awaitPinned("C");
         assertNothingWentWrongInTheBrowser();
+    }
+
+    private Object actionPosition(com.microsoft.playwright.Locator viewer, String id) {
+        return viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
+                (el, id) => {
+                    const cy = el._cyreg.cy;
+                    return {point: cy.getElementById(id).renderedPosition(), zoom: cy.zoom()};
+                }
+                """, id);
+    }
+
+    private void awaitActionPosition(String id, Object before) {
+        page.waitForFunction("""
+                ({id, before}) => {
+                    const cy = document.querySelector('div[aria-label^="Reaction graph."]')?._cyreg?.cy;
+                    if (!cy || !cy.getElementById(id).length) return false;
+                    const point = cy.getElementById(id).renderedPosition();
+                    return Math.abs(point.x - before.point.x) < 2 && Math.abs(point.y - before.point.y) < 2
+                        && Math.abs(cy.zoom() - before.zoom) < 0.001;
+                }
+                """, java.util.Map.of("id", id, "before", before));
     }
 
     private void menuAction(com.microsoft.playwright.Locator viewer, String name) {

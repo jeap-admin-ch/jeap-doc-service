@@ -23,7 +23,7 @@ const httpHeight = node => Math.max(60, node.data('displayLabel').split('\n')
 
 const groupPadding = node => node.data('displayLabel').split('\n').length * 18 + 18;
 
-export function render(container, elements, dark, onZoom, {onNodeMenu, onDismissMenu, onHover, onRestore, onExpand, viewport} = {}) {
+export function render(container, elements, dark, onZoom, {onNodeMenu, onDismissMenu, onHover, onRestore, onExpand, viewport, actionFocus} = {}) {
     // Route between groups, then place their children inside. Dagre cannot route to compound parents.
     const parents = new Map(elements.filter(e => e.data.parent).map(e => [e.data.id, e.data.parent]));
     const children = new Map();
@@ -116,7 +116,7 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     cy.on('tapstart pan zoom', () => { onDismissMenu?.(); onHover?.(null); });
     cy.on('tap', 'node', event => {
         const node = event.target;
-        if (node.data('restore')) { onRestore?.(node.data('restore')); return; }
+        if (node.data('restore')) { onRestore?.(node.data('restore'), node.data('anchor') ?? node.parent().id()); return; }
         if (node.data('explore')) { onExpand?.(node.data('explore')); return; }
         activeGroup = groupOf(node).id(); activeNode = node.id();
     });
@@ -133,10 +133,34 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     };
     if (viewport) { cy.zoom(viewport.zoom); cy.pan(viewport.pan); }
     else reset();
+    // A semantic redraw may move nodes in model coordinates. Keep the action target at its screen position.
+    if (actionFocus) {
+        const target = actionFocus.candidates.map(candidate => ({...candidate, node: cy.getElementById(candidate.id)}))
+            .find(candidate => candidate.node.length);
+        if (target) {
+            const position = target.node.position(), zoom = cy.zoom();
+            const bounds = target.node.boundingBox({includeLabels: true, includeOverlays: false});
+            const keepVisible = (desired, size, before, after) => {
+                const low = 24 + before * zoom, high = size - 24 - after * zoom;
+                return low <= high ? Math.max(low, Math.min(high, desired)) : size / 2;
+            };
+            cy.pan({x: keepVisible(target.point.x, cy.width(), position.x - bounds.x1, bounds.x2 - position.x) - position.x * zoom,
+                y: keepVisible(target.point.y, cy.height(), position.y - bounds.y1, bounds.y2 - position.y) - position.y * zoom});
+            activeNode = target.id; activeGroup = groupOf(target.node).id();
+        }
+    }
     const resize = new ResizeObserver(() => cy.resize());
     resize.observe(container);
     return {
         fit, reset,
+        actionFocus: id => {
+            const node = cy.getElementById(id);
+            if (!node.length) return {candidates: [{id, point: {x: cy.width() / 2, y: cy.height() / 2}}]};
+            // Hiding or collapsing the target falls back to its group, then a surviving direct neighbour.
+            const candidates = node.union(node.parent()).union(node.connectedEdges().connectedNodes())
+                .filter(candidate => candidate.data('kind') !== 'marker');
+            return {candidates: candidates.map(candidate => ({id: candidate.id(), point: {...candidate.renderedPosition()}}))};
+        },
         overview: () => ({bounds: cy.elements().boundingBox(),
             image: cy.png({full: true, maxWidth: 440, maxHeight: 320})}),
         observeViewport: listener => {

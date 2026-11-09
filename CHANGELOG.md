@@ -22,6 +22,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   system borders on component groups and interfaces, without repeating them on individual reactions.
 
 ### Fixed
+- Suppress the native browser context menu throughout the reaction diagram and its menu, in normal and
+  fullscreen views, while preserving browser context menus elsewhere on the page.
+- Keep graph-action targets visible through relayout and retain their screen position, zoom and keyboard
+  target where possible, independently of semantic focus.
 - Include cycle-closing connections in the maximum expansion depth, even when their endpoints are already
   visible, while retaining the 50-edge expansion limit.
 
