@@ -28,13 +28,13 @@
     <parent>
         <groupId>ch.admin.bit.jeap</groupId>
         <artifactId>jeap-spring-boot-parent</artifactId>
-        <version>41.29.1</version>
+        <version>41.34.0</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
     <artifactId>jeap-doc-service</artifactId>
     <name>${project.groupId}:${project.artifactId}</name>
-    <version>4.7.0-SNAPSHOT</version>
+    <version>4.8.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <properties>
@@ -86,32 +86,32 @@
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-site</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-markdown</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-domain</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-persistence</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-objectstorage</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-html</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <!--
                 The HTML parser of jeap-doc-html, pinned here because neither Spring Boot nor the jEAP parent
@@ -121,53 +121,53 @@
             <dependency>
                 <groupId>org.jsoup</groupId>
                 <artifactId>jsoup</artifactId>
-                <version>1.23.2</version>
+                <version>1.24.1</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-template-arc42</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-upstream</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-archrepo</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-reactionobserver</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-governance</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-sitegenerator</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-metrics</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-web</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <!-- for an instance's tests: the base class of the verification of its provider contracts -->
                 <groupId>ch.admin.bit.jeap</groupId>
                 <artifactId>jeap-doc-test</artifactId>
-                <version>4.7.0-SNAPSHOT</version>
+                <version>4.8.0-SNAPSHOT</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
