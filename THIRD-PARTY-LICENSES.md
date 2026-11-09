@@ -319,6 +319,9 @@ BSD 2-Clause License
  * flexmark-java options utilities - [com.vladsch.flexmark:flexmark-util-options](https://github.com/vsch/flexmark-java/flexmark-util-options)
  * flexmark-java sequence utilities - [com.vladsch.flexmark:flexmark-util-sequence](https://github.com/vsch/flexmark-java/flexmark-util-sequence)
  * flexmark-java visitor utilities - [com.vladsch.flexmark:flexmark-util-visitor](https://github.com/vsch/flexmark-java/flexmark-util-visitor)
+ * commonmark-java core - [org.commonmark:commonmark](https://github.com/commonmark/commonmark-java/commonmark)
+ * commonmark-java extension for strikethrough - [org.commonmark:commonmark-ext-gfm-strikethrough](https://github.com/commonmark/commonmark-java/commonmark-ext-gfm-strikethrough)
+ * commonmark-java extension for tables - [org.commonmark:commonmark-ext-gfm-tables](https://github.com/commonmark/commonmark-java/commonmark-ext-gfm-tables)
  * HdrHistogram - [org.hdrhistogram:HdrHistogram](http://hdrhistogram.github.io/HdrHistogram/)
  * PostgreSQL JDBC Driver - [org.postgresql:postgresql](https://jdbc.postgresql.org)
 
@@ -406,7 +409,6 @@ MIT License
 
  * Java SemVer - [com.github.zafarkhaja:java-semver](https://github.com/zafarkhaja/jsemver)
  * semver4j - [com.vdurmont:semver4j](https://github.com/vdurmont/semver4j)
- * ClassGraph - [io.github.classgraph:classgraph](https://github.com/classgraph/classgraph)
  * toml4j - [io.hotmoka:toml4j](http://moandjiezana.com/toml/toml4j)
  * core - [io.pact.plugin.driver:core](https://github.com/pact-foundation/pact-plugins)
  * Logstash Logback Encoder - [net.logstash.logback:logstash-logback-encoder](https://github.com/logfellow/logstash-logback-encoder)
