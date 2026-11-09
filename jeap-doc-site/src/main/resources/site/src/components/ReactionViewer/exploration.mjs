@@ -32,7 +32,12 @@ function traverse(graph, state, starts, direction, limit = Infinity) {
 export function expansionLimit(graph, state, id, direction) {
     const walk = traverse(graph, state, startingNodes(graph, state, id), direction, 50);
     let maximum = 0;
-    for (const depth of walk.distance.values()) maximum = Math.max(maximum, depth);
+    // A closing edge needs one more step even when its endpoint was reached earlier.
+    for (const edgeId of walk.edges) {
+        const edge = graph.flow.get(edgeId);
+        const from = direction === 'outgoing' ? edge.source : edge.target;
+        maximum = Math.max(maximum, walk.distance.get(from) + 1);
+    }
     return maximum;
 }
 

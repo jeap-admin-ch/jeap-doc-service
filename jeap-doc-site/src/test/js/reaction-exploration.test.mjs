@@ -73,7 +73,7 @@ test('cycles use shortest distances and expansion stops at fifty edges without l
     const paths = pathView(graph, state, [iid('m0'), iid('m40')]);
     assert.equal(paths.edges.size, 80);
     const cycle = fixture([['A', 'r1', 'B'], ['B', 'r2', 'A']]).graph;
-    assert.equal(expansionLimit(cycle, interfaces(cycle, 'A'), iid('A'), 'outgoing'), 3);
+    assert.equal(expansionLimit(cycle, interfaces(cycle, 'A'), iid('A'), 'outgoing'), 4);
 });
 
 test('expansion can reveal foreign reactions without selecting their sibling reactions or other edges', () => {
@@ -242,4 +242,35 @@ test('expansion can add a missing cycle edge even when both of its nodes are alr
     assert.equal(depthThree.edges.size, depthTwo.edges.size + 1);
     assert.notStrictEqual(depthThree, depthTwo);
     assert.strictEqual(expandView(graph, depthThree, iid('A'), 'outgoing', 3), depthThree);
+});
+
+for (const direction of ['outgoing', 'incoming']) {
+    test(`${direction} maximum depth includes a cycle-closing edge to an already reached node`, () => {
+        const flows = [['A', 'r1', 'B'], ['B', 'r2', 'C'], ['C', 'r3', 'B']];
+        const graph = fixture(direction === 'outgoing' ? flows : flows.map(([from, reaction, to]) => [to, reaction, from])).graph;
+        const initial = interfaces(graph, 'A');
+        assert.equal(expansionLimit(graph, initial, iid('A'), direction), 6);
+        const beforeClosure = expandView(graph, initial, iid('A'), direction, 5);
+        const complete = expandView(graph, beforeClosure, iid('A'), direction, 6);
+        assert.equal(beforeClosure.edges.size, 5);
+        assert.deepEqual(complete.visible, beforeClosure.visible);
+        assert.deepEqual(complete.edges, new Set(graph.flow.keys()));
+        assert.equal(connections(graph, complete).length, 6);
+        assert.strictEqual(expandView(graph, complete, iid('A'), direction, 6), complete);
+        assert.throws(() => expandView(graph, initial, iid('A'), direction, 7));
+    });
+}
+
+test('cycle-closing edge depths respect the fifty-edge cap', () => {
+    for (const length of [25, 26]) {
+        const graph = fixture(Array.from({length}, (_, n) =>
+            [`m${n}`, `r${n}`, n === length - 1 ? 'm1' : `m${n + 1}`])).graph;
+        const initial = interfaces(graph, 'm0');
+        assert.equal(expansionLimit(graph, initial, iid('m0'), 'outgoing'), 50);
+        const expanded = expandView(graph, initial, iid('m0'), 'outgoing', 50);
+        assert.equal(expanded.edges.size, 50);
+        const closure = [...graph.flow.values()].find(edge => edge.source === rid(`r${length - 1}`) && edge.target === iid('m1'));
+        assert.equal(expanded.edges.has(closure.id), length === 25);
+        assert.throws(() => expandView(graph, initial, iid('m0'), 'outgoing', 51));
+    }
 });

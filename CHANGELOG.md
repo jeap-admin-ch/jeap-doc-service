@@ -5,16 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.9.0] - 2026-11-09
 
 ### Added
-- Mark pinned reaction-viewer elements with a red pin badge while preserving foreign-system borders and keeping the badge fully visible.
-- Group reaction context-menu actions with separators and icons, and show a single expand/collapse toggle.
-- Focus reaction-chain elements, expand incoming or outgoing connections, and select directed paths between
-  interfaces. Click numbered boundary circles to reveal the next neighbours across the snapshot.
-- Control reaction-viewer visibility with pins, node and group hiding, directed outgoing-path hiding and
-  restore markers. Preserve pins during partial group collapse and allow explicit superseded-reaction reveal.
-  Keep changes local to each viewer and recalculate flow widths from its visible contributions.
+- Focus reaction-chain interfaces, reactions and component groups. Expand incoming or outgoing connections
+  by a chosen edge depth, or click numbered boundary circles to reveal direct neighbours across systems.
+- Select directed paths between multiple interfaces, including cyclic detours and without a depth cutoff.
+- Pin elements, hide nodes or groups, and hide outgoing paths. Restore hidden neighbours through diagram
+  markers, preserve pins when collapsing groups and explicitly reveal superseded reactions. Keep each
+  viewer's selection independent and recalculate flow widths from its visible contributions.
+
+### Changed
+- Organize context-menu actions into categories with separators and icons. Show only the applicable
+  expand or collapse action for a group.
+- Mark pinned elements with a red pin badge that remains fully visible outside node borders. Show foreign
+  system borders on component groups and interfaces, without repeating them on individual reactions.
+
+### Fixed
+- Include cycle-closing connections in the maximum expansion depth, even when their endpoints are already
+  visible, while retaining the 50-edge expansion limit.
 
 ## [4.8.2] - 2026-11-11
 
