@@ -462,8 +462,10 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     .locator("div[aria-label^='Reaction graph.']").evaluate("""
                     element => {
                         const cy = element._cyreg.cy;
-                        return cy.nodes('[kind="message"]').length === 1
-                            && cy.edges().every(edge => edge.source().data('pinned') || edge.target().data('pinned'));
+                        const messages = cy.nodes('[kind="message"]');
+                        return messages.length === 1 && cy.nodes('[?pinned]').length === 0
+                            && cy.edges().every(edge => edge.source().id() === messages.first().id()
+                                || edge.target().id() === messages.first().id());
                     }
                     """)).isEqualTo(true);
 
