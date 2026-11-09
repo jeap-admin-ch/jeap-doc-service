@@ -702,7 +702,8 @@ find-in-page. A generated table of the initial selection remains available if th
 The last column is **Median per day**, the reaction's daily median within the observer's statistics window.
 Decimal values and zero are preserved; a missing median fails snapshot validation. The live table describes
 the individually visible reactions, including HTTP operations and unknown interface types. Superseded
-reactions stay in the snapshot and are represented by the viewer's hidden-content markers rather than rows.
+reactions stay in the snapshot and start behind a hidden-content hint. Explicitly revealed reactions also
+appear in the live table.
 The browser derives live rows from the same JSON and state as the graph, so collapsing or expanding a group
 updates its rows too. Filtering and sorting affect only the table and persist across graph changes.
 
@@ -1118,21 +1119,46 @@ rounded containers. The graph uses Cytoscape with a Dagre layout. Within each gr
 reduces crossings between their incoming and outgoing connections. Ties keep the existing order. All labels are text. Individual and bundled
 arrows use `min(6, 1 + log10(1 + median))` pixels; bundles sum distinct contributing reactions and identify the
 sum as an approximation. Both trigger and action arrows connect to individual reactions when expanded;
-only hidden reactions contribute to arrows at the group frame. Hover tooltips show frequency details; the existing reaction table provides
+only collapsed reactions contribute to arrows at the group frame. Explicitly hidden reactions contribute no arrows. Hover tooltips show frequency details; the existing reaction table provides
 the textual representation. The initial view and Reset view fit the complete graph with a margin and cap
 the zoom at 100%, so small graphs are not enlarged.
 Fit all continues to show the complete graph; manual pan and zoom survive redraws.
 The viewport offers zoom, fit, reset and full screen, with keyboard equivalents for zoom and pan. Groups can be collapsed and expanded
 without changing the selection. The legend stays visible, including in full screen. Toolbar buttons reuse
 the existing diagram plugin's icons, with tooltips and accessible names. Frequency details appear
-when hovering over an arrow or a reaction. This does not expand the selection across system boundaries
-or reveal superseded reactions.
+when hovering over an arrow or a reaction. Focus and directed expansion can explore the full snapshot across system boundaries.
 
-Right-click a group frame or one of its members for “Collapse group” and “Expand group”.
+Right-click any node to pin or unpin it, hide it, or hide all outgoing paths. A red pin badge marks pinned elements without changing their ownership border; the legend explains the badge.
+Several nodes and groups can be pinned at once. Hiding a pinned node uses **Unpin and hide**. A group with
+pins uses **Unpin members and hide group**, which removes the group's pin and all member pins together.
+Each action produces one complete semantic state for later history support; this release has no undo control.
+
+Ordinary **Hide** removes the chosen node and its incident edges. In each affected connected region that still
+has pins, it also removes nodes disconnected from every remaining pin. Connectivity uses only currently
+visible flow edges and ignores arrow direction. An alternative visible route keeps a node visible. Already
+hidden routes do not. Separate regions and affected regions without remaining pins stay unchanged.
+Removing the last pin therefore does not clear the remaining graph.
+
+**Hide all outgoing paths** follows visible arrows with cycle detection. It keeps the starting element,
+pins and containers needed by pinned reactions. It does not run the ordinary Hide cleanup. Upstream-only
+and separate regions remain. PREDECESSOR history participates in neither operation.
+
+Circular restore markers sit beside the visible neighbours of hidden content: incoming on the left,
+outgoing on the right. Clicking one restores the indicated neighbours. Counts and arrow widths are recalculated from the current state. Boundary circles count direct neighbours outside the current selection. Clicking one adds those neighbours
+and their connecting edges; successive clicks follow the chain one edge at a time.
+
+Superseded reactions start hidden. Open their count hint to reveal a chosen reaction and its flow connections.
+A revealed superseded reaction can be pinned and collapsed like an active reaction. Shared interfaces remain
+visible when one contributing reaction is hidden. The status means presumed superseded; it is never inferred
+from a zero median. Group expansion explicitly shows its hidden members, including superseded members in
+that entry. It does not restore explicitly hidden interfaces.
+
+Right-click a group frame or one of its members for “Collapse group” or “Expand group”, according to its state.
+The menu groups documentation, visibility and exploration actions with separators and leading icons.
 The menu disables actions that would not change the group. Collapsing preserves pinned members and changes
 only that group; the other groups and other viewers retain their state. Zoom and pan survive the redraw.
 After selecting a group, Shift+F10 opens its menu (the first group is the initial keyboard target);
-arrow keys navigate the enabled menu entries and Escape closes it. Toolbar controls apply only to the viewport.
+arrow keys navigate the enabled menu entries and Escape closes it. The Paths toolbar button opens a new path selection; the other toolbar controls adjust the presentation.
 The minimap toggle opens an overview of the current diagram with its visible viewport marked. Clicking or
 dragging moves the main viewport without changing zoom; arrow keys pan and Home fits the diagram. The map
 updates after group changes, colour-mode changes and resizing, including full screen, and is independent
@@ -1166,7 +1192,7 @@ REST is always included. Reaction arrows arrive at the left box border and leave
 Trigger arrows connect to the individual reactions while a group is expanded, and to the group frame
 while it is collapsed.
 
-Group titles contain only the component name. Nodes of a known foreign system have a blue border,
+Group titles contain only the component name. Interfaces and component groups of a known foreign system have a blue border; individual reactions keep their normal border,
 explained in the legend. Message ownership comes from unambiguous
 architecture-model assignments published with the snapshot, while reactions keep their resolved ownership.
 The reference is the system/component page's system or the selected message's documented system.
@@ -1180,3 +1206,20 @@ without observations is unchanged. Entry metadata travels in an inert `reaction-
 Reaction viewers share one snapshot request per URL within a page visit. Navigating to another page
 and returning creates a fresh request with HTTP cache revalidation; the server supplies an ETag and
 `Cache-Control: no-cache`. Completed requests are not retained across page visits.
+
+### Focusing and exploring reaction chains
+
+**Focus** in a node menu starts a new selection and pins that node. An interface shows its directly connected
+reactions; a reaction shows its trigger and action interfaces; a group starts collapsed with its adjacent
+interfaces. The original entry remains recorded for future reset support.
+
+**Expand incoming paths** and **Expand outgoing paths** add directed connections at a chosen edge depth,
+from one to the reachable depth, capped at 50. Existing contents and pins remain. Group expansion starts
+from all eligible members without unfolding the group. Already visible selections disable the action.
+Superseded reactions participate only after explicit reveal; PREDECESSOR history never participates.
+
+**Paths** selects at least two distinct interfaces and pins them in a new view. After the first selection,
+candidates are interfaces reachable in either direction from an endpoint. The result includes all directed
+connections between every ordered pair, including cyclic detours, without a depth cutoff. Dead-end branches
+are excluded. This shows graph relationships, not an individual execution trace. Message, HTTP and generic
+interfaces support the same operations.

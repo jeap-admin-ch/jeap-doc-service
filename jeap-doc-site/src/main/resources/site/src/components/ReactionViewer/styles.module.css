@@ -22,9 +22,9 @@
 .sourceBar button { padding: 5px 10px; font: inherit; font-size: 0.85rem; color: var(--ifm-font-color-base); background: var(--ifm-background-color); border: 1px solid var(--ifm-color-emphasis-300); border-radius: 4px; cursor: pointer; }
 .sourceView p { margin: 0; font-size: 0.8rem; }
 .sourceView textarea { flex: 1; min-height: 0; width: 100%; resize: none; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 4px; padding: 12px; font: 0.8rem var(--ifm-font-family-monospace); color: var(--ifm-font-color-base); background: var(--ifm-background-surface-color); white-space: pre; }
-.groupMenu { position: absolute; z-index: 2; min-width: 200px; max-width: calc(100% - 16px); padding: 6px; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 6px; background: var(--ifm-background-color); box-shadow: 0 4px 16px #0003; }
+.groupMenu { position: absolute; z-index: 2; min-width: 240px; max-height: calc(100% - 16px); overflow-y: auto; max-width: calc(100% - 16px); padding: 6px; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 6px; background: var(--ifm-background-color); box-shadow: 0 4px 16px #0003; }
 .menuTitle { padding: 6px 10px; font-size: 0.85rem; font-weight: 600; overflow-wrap: anywhere; }
-.groupMenu a, .groupMenu button { text-decoration: none; display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 3px; background: transparent; color: var(--ifm-font-color-base); text-align: left; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.groupMenu a, .groupMenu button { text-decoration: none; display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 3px; background: transparent; color: var(--ifm-font-color-base); text-align: left; font: inherit; font-size: 0.85rem; cursor: pointer; }
 .groupMenu a:hover, .groupMenu a:focus-visible, .groupMenu button:hover:not(:disabled), .groupMenu button:focus-visible { background: var(--ifm-color-emphasis-100); outline: 2px solid var(--ifm-color-primary); outline-offset: -2px; }
 .groupMenu button:disabled { color: var(--ifm-color-emphasis-500); cursor: default; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.75rem; color: var(--ifm-color-emphasis-700); padding: 12px 18px; border-top: 1px solid var(--ifm-color-emphasis-200); }
@@ -36,3 +36,15 @@
 .viewer:fullscreen .graph { flex: 1; min-height: 350px; display: flex; }
 .viewer:fullscreen .canvas { height: auto; min-height: 350px; }
 @media (max-width: 600px) { .canvas { height: 480px; } .toolbar { padding: 12px; } }
+.actions .pathButton { width: auto; padding-inline: 10px; }
+.explorationDialog { width: 38rem; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow: auto; padding: 24px; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 8px; color: var(--ifm-font-color-base); background: var(--ifm-background-color); }
+.explorationDialog::backdrop { background: #0008; }
+.explorationDialog label { display: flex; flex-direction: column; gap: 8px; }
+.explorationDialog input, .explorationDialog select { width: 100%; padding: 8px; font: inherit; color: inherit; background: var(--ifm-background-color); border: 1px solid var(--ifm-color-emphasis-500); border-radius: 4px; }
+.explorationDialog button { margin: 8px 8px 8px 0; padding: 6px 12px; font: inherit; color: inherit; background: var(--ifm-background-color); border: 1px solid var(--ifm-color-emphasis-500); border-radius: 4px; cursor: pointer; }
+.explorationDialog button:disabled { opacity: .5; cursor: default; }
+.explorationDialog ul { max-height: 12rem; overflow-y: auto; overflow-wrap: anywhere; }
+
+.menuIcon { width: 18px; height: 18px; flex: 0 0 18px; }
+.menuSeparator { height: 1px; margin: 6px 4px; background: var(--ifm-color-emphasis-200); }
+.menuCategory { padding: 4px 10px; font-size: 0.7rem; font-weight: 600; color: var(--ifm-color-emphasis-600); letter-spacing: 0.04em; text-transform: uppercase; }

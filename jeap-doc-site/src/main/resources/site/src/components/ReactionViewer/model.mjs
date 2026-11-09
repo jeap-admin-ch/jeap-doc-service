@@ -28,7 +28,7 @@ export function readGraph(payload, site, environment) {
         if (!nodes.has(source) || !nodes.has(target)) throw new Error('Missing endpoint');
         if (edge.edgeType === 'TRIGGER' && (nodes.get(source).reaction || !nodes.get(target).reaction)
             || edge.edgeType === 'ACTION' && (!nodes.get(source).reaction || nodes.get(target).reaction)) throw new Error('Invalid flow');
-        return {...edge, source, target};
+        return {...edge, source, target, id: JSON.stringify([edge.edgeType, source, target])};
     });
     const owners = new Map((payload.ownership ?? []).map(owner => [identity(owner.reaction), owner]));
     const triggers = new Map();
@@ -70,54 +70,84 @@ export function readGraph(payload, site, environment) {
         if (messageSystems.has(name) && fold(messageSystems.get(name)) !== fold(owner.system)) throw new Error('Ambiguous message ownership');
         messageSystems.set(name, owner.system);
     }
-    return {nodes, edges, groups, groupOf, adjacent, messageSystems, ownershipComplete: payload.ownershipComplete};
+    const flow = new Map(), outgoing = new Map(), incoming = new Map();
+    for (const edge of edges) {
+        if (!['TRIGGER', 'ACTION'].includes(edge.edgeType)) continue;
+        flow.set(edge.id, edge);
+        if (!outgoing.has(edge.source)) outgoing.set(edge.source, new Set());
+        if (!incoming.has(edge.target)) incoming.set(edge.target, new Set());
+        outgoing.get(edge.source).add(edge.id);
+        incoming.get(edge.target).add(edge.id);
+    }
+    return {nodes, edges, flow, outgoing, incoming, groups, groupOf, adjacent, messageSystems,
+        ownershipComplete: payload.ownershipComplete};
 }
 
-export function entryView(graph, entry) {
-    const selected = new Set(), visible = new Set(), pins = new Set(), hiddenSuperseded = new Set();
-    const active = id => graph.nodes.get(id).reaction?.status !== 'SUPERSEDED';
-    if (entry.kind === 'MESSAGE') {
+export function createView(entry, revealed = new Set()) {
+    return {selected: new Set(), reactions: new Set(), edges: new Set(), visible: new Set(),
+        pins: new Set(), hidden: new Set(), revealed: new Set(revealed),
+        system: entry.system, entry, baseline: entry};
+}
+
+/** The scope is explicit: showing a group never silently selects its other members or edges. */
+export function entryView(graph, entry, revealed = new Set()) {
+    const state = createView(entry, revealed);
+    const interfaceEntry = entry.kind === 'MESSAGE' || entry.kind === 'INTERFACE';
+    if (interfaceEntry) {
         for (const node of graph.nodes.values()) {
             const message = node.interfaceDetails?.message;
-            if (message && fold(message.messageType) === fold(entry.message) && (message.variant ?? '') === entry.variant) {
-                visible.add(node.id); pins.add(node.id);
+            if (entry.kind === 'INTERFACE' ? node.id === entry.id && !node.reaction
+                : message && fold(message.messageType) === fold(entry.message) && (message.variant ?? '') === entry.variant) {
+                state.visible.add(node.id); state.pins.add(node.id);
+                for (const reaction of graph.adjacent.get(node.id) ?? []) state.reactions.add(reaction);
+                state.system = graph.messageSystems.get(fold(message?.messageType));
             }
         }
-        for (const edge of graph.edges) {
-            const reaction = edge.edgeType === 'TRIGGER' && pins.has(edge.source) ? edge.target
-                : edge.edgeType === 'ACTION' && pins.has(edge.target) ? edge.source : null;
-            if (reaction && active(reaction)) { selected.add(graph.groupOf.get(reaction)); visible.add(reaction); }
-            else if (reaction) hiddenSuperseded.add(reaction);
-        }
-    } else {
+    } else if (entry.kind === 'REACTION') {
+        if (!graph.nodes.get(entry.id)?.reaction) throw new Error('Unknown reaction');
+        state.reactions.add(entry.id); state.pins.add(entry.id);
+        if (graph.nodes.get(entry.id).reaction.status === 'SUPERSEDED') state.revealed.add(entry.id);
+        state.system = graph.groups.get(graph.groupOf.get(entry.id)).owner.system;
+    } else if (entry.kind === 'GROUP') {
+        const group = graph.groups.get(entry.id);
+        if (!group) throw new Error('Unknown group');
+        group.members.forEach(id => state.reactions.add(id));
+        state.pins.add(entry.id); state.system = group.owner.system;
+    } else if (['SYSTEM', 'COMPONENT'].includes(entry.kind)) {
         for (const group of graph.groups.values()) {
             if (fold(group.owner.system) === fold(entry.system)
-                && (entry.kind === 'SYSTEM' || fold(group.owner.component) === fold(entry.component))) selected.add(group.id);
+                && (entry.kind === 'SYSTEM' || fold(group.owner.component) === fold(entry.component))) {
+                group.members.forEach(id => state.reactions.add(id));
+            }
+        }
+    } else throw new Error('Unknown entry');
+    for (const id of state.reactions) {
+        state.selected.add(graph.groupOf.get(id));
+        if ((interfaceEntry || entry.kind === 'REACTION') && availableReaction(graph, state, id)) state.visible.add(id);
+    }
+    for (const edge of graph.flow.values()) {
+        const reaction = reactionOf(edge);
+        if (!state.reactions.has(reaction)) continue;
+        if (interfaceEntry && !state.pins.has(edge.source) && !state.pins.has(edge.target)) continue;
+        state.edges.add(edge.id);
+        if (!interfaceEntry && availableReaction(graph, state, reaction)) {
+            state.visible.add(edge.edgeType === 'TRIGGER' ? edge.source : edge.target);
         }
     }
-    const focusedReactions = entry.kind === 'MESSAGE' ? new Set([...visible].filter(id => graph.nodes.get(id).reaction)) : null;
-    // Every selected group supplies its adjacent interfaces, including hidden members' actions.
-    for (const edge of focusedReactions ? [] : graph.edges) {
-        if (edge.edgeType === 'TRIGGER' && selected.has(graph.groupOf.get(edge.target)) && active(edge.target)) visible.add(edge.source);
-        if (edge.edgeType === 'ACTION' && selected.has(graph.groupOf.get(edge.source)) && active(edge.source)) visible.add(edge.target);
-    }
-    const system = entry.kind === 'MESSAGE' ? graph.messageSystems.get(fold(entry.message)) : entry.system;
-    return {selected, visible, pins, hiddenSuperseded, system, focusedReactions};
+    return state;
 }
 
-/** Count the entry's reactions independently of group expansion, excluding superseded history. */
+export const reactionOf = edge => edge.edgeType === 'TRIGGER' ? edge.target : edge.source;
+
+export function copyView(state) {
+    return {...state, selected: new Set(state.selected), reactions: new Set(state.reactions), edges: new Set(state.edges),
+        visible: new Set(state.visible), pins: new Set(state.pins), hidden: new Set(state.hidden), revealed: new Set(state.revealed)};
+}
+
+/** The caption counts the selection independently of hiding and group collapse. */
 export function focusedReactionCount(graph, state) {
-    const reactions = new Set();
-    if (state.pins.size) {
-        for (const id of state.pins) {
-            for (const reaction of graph.adjacent.get(id) ?? []) reactions.add(reaction);
-        }
-    } else {
-        for (const id of state.selected) {
-            for (const reaction of graph.groups.get(id).members) reactions.add(reaction);
-        }
-    }
-    return [...reactions].filter(id => graph.nodes.get(id).reaction.status !== 'SUPERSEDED').length;
+    return [...state.reactions].filter(id => graph.nodes.get(id).reaction.status !== 'SUPERSEDED'
+        || state.revealed.has(id)).length;
 }
 
 /** The table follows individual visible reactions, never bundles, markers or predecessor history. */
@@ -125,12 +155,12 @@ export function visibleReactionRows(graph, state) {
     const rows = new Map();
     for (const id of state.visible) {
         const reaction = graph.nodes.get(id).reaction;
-        if (reaction && reaction.status !== 'SUPERSEDED' && state.selected.has(graph.groupOf.get(id))) {
+        if (reaction && state.selected.has(graph.groupOf.get(id))) {
             rows.set(id, {id, component: reaction.component, trigger: null, answers: new Set(), median: reaction.median});
         }
     }
-    for (const edge of graph.edges) {
-        if (state.focusedReactions && !state.pins.has(edge.source) && !state.pins.has(edge.target)) continue;
+    for (const edge of graph.flow.values()) {
+        if (!state.edges.has(edge.id)) continue;
         if (edge.edgeType === 'TRIGGER' && rows.has(edge.target)) {
             rows.get(edge.target).trigger = tableInterfaceLabel(graph.nodes.get(edge.source));
         } else if (edge.edgeType === 'ACTION' && rows.has(edge.source)) {
@@ -149,12 +179,12 @@ function tableInterfaceLabel(node) {
     return labelOf(node).replaceAll('\n', ' ');
 }
 
-/** Expand only the selected groups; never pull foreign or superseded reactions into an entry view. */
+/** Expand the entry selection, retaining explicit visibility and status decisions. */
 export function expandGroups(graph, state) {
     const visible = new Set(state.visible);
     for (const id of state.selected) {
         for (const member of membersOf(graph, state, id)) {
-            if (graph.nodes.get(member).reaction.status !== 'SUPERSEDED') visible.add(member);
+            if (availableReaction(graph, state, member)) visible.add(member);
         }
     }
     return {...state, visible};
@@ -165,14 +195,14 @@ export function setGroupExpanded(graph, state, groupId, expanded) {
     if (!state.selected.has(groupId)) throw new Error('Group outside this view');
     const visible = new Set(state.visible);
     for (const member of membersOf(graph, state, groupId)) {
-        if (expanded && graph.nodes.get(member).reaction.status !== 'SUPERSEDED') visible.add(member);
+        if (expanded && availableReaction(graph, state, member)) visible.add(member);
         else if (!expanded && !state.pins.has(member)) visible.delete(member);
     }
     return {...state, visible};
 }
 
 function membersOf(graph, state, groupId) {
-    return graph.groups.get(groupId).members.filter(id => !state.focusedReactions || state.focusedReactions.has(id));
+    return graph.groups.get(groupId).members.filter(id => state.reactions.has(id));
 }
 
 export function labelOf(node) {
@@ -200,18 +230,21 @@ function diagramLabelOf(node) {
 export function project(graph, state) {
     const elements = [], bundles = new Map();
     const foreign = system => Boolean(state.system && system && fold(system) !== fold(state.system));
-    const superseded = new Set(state.hiddenSuperseded);
+    const superseded = new Set();
     for (const id of state.selected) {
         const group = graph.groups.get(id);
         const members = membersOf(graph, state, id);
-        const active = members.filter(member => graph.nodes.get(member).reaction.status !== 'SUPERSEDED');
-        members.filter(member => graph.nodes.get(member).reaction.status === 'SUPERSEDED').forEach(member => superseded.add(member));
-        if (!active.length) continue;
-        elements.push({data: {id, kind: 'group', system: group.owner.system ?? null,
+        if (state.hidden.has(id)) continue;
+        const active = members.filter(member => availableReaction(graph, state, member));
+        members.filter(member => graph.nodes.get(member).reaction.status === 'SUPERSEDED' && !state.revealed.has(member)).forEach(member => superseded.add(member));
+        if (!active.length && !state.pins.has(id)) continue;
+        elements.push({data: {id, kind: 'group', pinned: state.pins.has(id), system: group.owner.system ?? null,
             component: group.owner.component ?? null, grouping: group.grouping, label: `${group.owner.system ?? '?'} / ${group.owner.component ?? '?'}`,
             displayLabel: withoutSuffix(group.owner.component ?? '?', ['-service', '-scs']), foreign: foreign(group.owner.system)}});
-        const hidden = active.filter(member => !state.visible.has(member)).length;
-        if (hidden) elements.push({data: {id: 'hidden:' + id, parent: id, kind: 'marker', label: String(hidden)}});
+        const hiddenMembers = members.filter(member => !state.visible.has(member)
+            && (graph.nodes.get(member).reaction.status !== 'SUPERSEDED' || state.revealed.has(member)));
+        if (hiddenMembers.length) elements.push({data: {id: 'hidden:' + id, parent: id, kind: 'marker',
+            label: String(hiddenMembers.length), restore: hiddenMembers}});
     }
     for (const id of state.visible) {
         const node = graph.nodes.get(id);
@@ -231,10 +264,9 @@ export function project(graph, state) {
     for (const edge of graph.edges) {
         const reactionId = edge.edgeType === 'TRIGGER' ? edge.target : edge.edgeType === 'ACTION' ? edge.source : null;
         if (!reactionId || !state.selected.has(graph.groupOf.get(reactionId))) continue;
-        if (state.focusedReactions && (!state.focusedReactions.has(reactionId)
-            || !state.pins.has(edge.source) && !state.pins.has(edge.target))) continue;
+        if (!state.reactions.has(reactionId) || !state.edges.has(edge.id)) continue;
         const reaction = graph.nodes.get(reactionId);
-        if (reaction.reaction.status === 'SUPERSEDED') continue;
+        if (!availableReaction(graph, state, reactionId) || state.hidden.has(graph.groupOf.get(reactionId))) continue;
         const group = graph.groupOf.get(reactionId);
         if (edge.edgeType === 'TRIGGER' && state.visible.has(edge.source)) add(edge.source, state.visible.has(reactionId) ? reactionId : group, reaction);
         if (edge.edgeType === 'ACTION' && state.visible.has(edge.target)) add(state.visible.has(reactionId) ? reactionId : group, edge.target, reaction);
@@ -247,14 +279,25 @@ export function project(graph, state) {
             : `Sum of individual medians – approximation: ${sum}\n` + [...bundle.contributions].map(([key, value]) => `${graph.nodes.get(key).identity.key}: ${value}`).join('\n');
         elements.push({data: {id: 'edge:' + id, source: bundle.source, target: bundle.target, width: widthOf(sum), tooltip}});
     }
-    // Counts are scoped to the displayed interfaces, not to every unrelated node in the environment.
+    // Boundary markers expand only the missing direct connections in their arrow direction.
     for (const id of state.visible) {
-        if (graph.nodes.get(id).reaction) continue;
-        const hidden = new Set();
-        for (const other of graph.adjacent.get(id) ?? []) {
-            if (!state.selected.has(graph.groupOf.get(other))) hidden.add(other);
+        for (const direction of ['incoming', 'outgoing']) {
+            const hidden = new Set();
+            for (const edgeId of graph[direction].get(id) ?? []) {
+                const edge = graph.flow.get(edgeId), reaction = reactionOf(edge);
+                const other = direction === 'outgoing' ? edge.target : edge.source;
+                if (graph.nodes.get(reaction).reaction.status === 'SUPERSEDED' && !state.revealed.has(reaction)) continue;
+                if (!state.edges.has(edgeId) || graph.nodes.get(other).reaction && !state.reactions.has(other)) hidden.add(other);
+            }
+            if (hidden.size) elements.push({data: {id: 'boundary:' + JSON.stringify([id, direction]),
+                kind: 'marker', label: String(hidden.size), anchor: id, direction,
+                explore: {id, direction, depth: 1}, tooltip: `Show ${hidden.size} ${direction} connections`}});
         }
-        if (hidden.size) elements.push({data: {id: 'boundary:' + id, kind: 'marker', label: String(hidden.size), anchor: id}});
     }
-    return {elements, superseded: superseded.size};
+    for (const id of state.revealed) superseded.delete(id);
+    return {elements, superseded: superseded.size, supersededIds: [...superseded]};
+}
+
+export function availableReaction(graph, state, id) {
+    return !state.hidden.has(id) && (graph.nodes.get(id).reaction.status !== 'SUPERSEDED' || state.revealed.has(id));
 }

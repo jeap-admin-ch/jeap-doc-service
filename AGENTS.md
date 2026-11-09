@@ -929,3 +929,16 @@ JavaScript and when the graph fails to load.
 Message entry views contain only the selected variant, its incident flow edges and their reaction endpoints.
 Group expansion must not add sibling reactions or other interfaces. The generated and live tables use the
 same selection. Reaction labels show daily medians; IDs remain opaque identities in the source.
+
+Visibility commands live in `ReactionViewer/visibility.mjs` and return a new complete state per action.
+Keep explicit hiding separate from collapsing: collapsed reactions contribute bundled arrows, hidden reactions
+contribute none. Cleanup uses only visible flow connectivity within affected regions; regions without remaining
+pins are not pruned. Group containment is not a flow edge. Message entry interfaces remain fixed independently
+of pins, so unpinning never broadens the selection. Explicit superseded reveal survives subsequent pin and
+collapse operations. Restore hidden content through markers at its visible neighbours; do not add a separate hidden-content list.
+
+Reaction exploration lives in `ReactionViewer/exploration.mjs`. A selection records reaction identities and
+flow-edge identities separately: reaching a reaction must not expose all its interfaces implicitly. Focus
+preserves the original baseline, expansion preserves existing pins, and path selection uses forward/backward
+reachability for ordered endpoint pairs, including cycles without enumerating walks. Boundary-circle clicks
+use the same one-edge expansion command as the depth dialog. PREDECESSOR edges are never traversed.

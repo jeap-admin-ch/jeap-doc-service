@@ -5,10 +5,14 @@ import {
     CloseIcon, FitIcon, MaximizeIcon, MinimapIcon, ResetZoomIcon, SourceIcon, ZoomInIcon, ZoomOutIcon,
 } from '@matfsw/docusaurus-plantuml-plugin/theme/PlantUmlDiagram/icons.js';
 import {useEnvironment, routePrefixOf} from '../../data/environments';
-import {readGraph, entryView, expandGroups, setGroupExpanded, project, focusedReactionCount, visibleReactionRows} from './model.mjs';
+import {readGraph, entryView, expandGroups, project, labelOf, focusedReactionCount, visibleReactionRows} from './model.mjs';
 import styles from './styles.module.css';
+import {hiddenMarkers} from './visibility.mjs';
 import {SnapshotRequests} from './SnapshotProvider';
 import Legend from './Legend';
+import HiddenContent from './HiddenContent';
+import {changeView} from './exploration.mjs';
+import {ExpansionDialog, PathDialog} from './ExplorationDialog';
 import NodeMenu from './NodeMenu';
 import Tooltip from './Tooltip';
 import Minimap from './Minimap';
@@ -50,13 +54,14 @@ function EnvironmentReactionViewer({entry, environment}) {
     const [renderer, setRenderer] = useState(null);
     const [tableReady, setTableReady] = useState(false);
     const sourceToggle = useRef(null);
-    const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
-    const [menu, setMenu] = useState(null);
-    useEffect(() => { setCollapsedGroups(new Set()); setMenu(null); setHover(null); setNotice('');
+    const [editedView, setEditedView] = useState(null);
+    const [menu, setMenu] = useState(null), [dialog, setDialog] = useState(null);
+    useEffect(() => { setEditedView(null); setDialog(null); setMenu(null); setHover(null); setNotice('');
         setMinimapOpen(false); setSourceOpen(false); setTableReady(false); }, [entry, url]);
     const container = useRef(null), panel = useRef(null), controls = useRef(null);
     const viewport = useRef(null);
     const viewKey = JSON.stringify([url, entry]);
+    const presentationKey = viewKey + ':' + (editedView?.key === viewKey ? editedView.fitRevision : 0);
     const [activatedView, setActivatedView] = useState(null);
     const [zoom, setZoom] = useState(100);
     const [fullscreen, setFullscreen] = useState(false);
@@ -95,17 +100,17 @@ function EnvironmentReactionViewer({entry, environment}) {
     const view = useMemo(() => {
         if (!snapshot || snapshot.url !== url) return null;
         try {
-            let state = expandGroups(snapshot.graph, entryView(snapshot.graph, entry));
-            for (const group of collapsedGroups) {
-                if (state.selected.has(group)) state = setGroupExpanded(snapshot.graph, state, group, false);
-            }
-            return {...project(snapshot.graph, state), state, reactionCount: focusedReactionCount(snapshot.graph, state),
+            const state = editedView?.key === viewKey ? editedView.state
+                : expandGroups(snapshot.graph, entryView(snapshot.graph, entry));
+            const projection = project(snapshot.graph, state);
+            return {...projection, elements: [...projection.elements, ...hiddenMarkers(snapshot.graph, state)],
+                state, reactionCount: focusedReactionCount(snapshot.graph, state),
                 rows: visibleReactionRows(snapshot.graph, state)};
         }
         catch { return {invalid: true}; }
-    }, [snapshot, url, entry, collapsedGroups]);
+    }, [snapshot, url, entry, editedView, viewKey]);
     const source = useMemo(() => sourceOpen && view && !view.invalid
-        ? viewSource(view.elements, entry, docSite, environment.id) : '', [sourceOpen, view, entry, docSite, environment.id]);
+        ? viewSource(view.elements, view.state.entry, docSite, environment.id) : '', [sourceOpen, view, entry, docSite, environment.id]);
     useEffect(() => {
         if (activatedView === viewKey || !panel.current) return;
         if (typeof IntersectionObserver === 'undefined') {
@@ -130,29 +135,33 @@ function EnvironmentReactionViewer({entry, environment}) {
         import('./renderer').then(({render}) => {
             if (!disposed) {
                 const instance = render(container.current, view.elements, colorMode === 'dark', setZoom, {
-                    onNodeMenu: setMenu, onDismissMenu: () => setMenu(null), onHover: setHover,
-                    viewport: viewport.current?.key === viewKey ? viewport.current.value : null,
+                    onNodeMenu: setMenu, onRestore: ids => applyAction({type: 'show', ids}),
+                    onExpand: action => applyAction({type: 'expand', ...action}), onDismissMenu: () => setMenu(null), onHover: setHover,
+                    viewport: viewport.current?.key === presentationKey ? viewport.current.value : null,
                 });
                 controls.current = instance;
                 setRenderer(instance);
                 setTableReady(true);
                 destroy = () => {
-                    viewport.current = {key: viewKey, value: instance.viewport()};
+                    viewport.current = {key: presentationKey, value: instance.viewport()};
                     instance.destroy(); controls.current = null;
                 };
             }
         }).catch(() => { if (!disposed) setFailed(true); });
         return () => { disposed = true; destroy?.(); };
-    }, [view, colorMode, viewKey, activatedView]);
+    }, [view, colorMode, viewKey, activatedView, presentationKey]);
     const closeMenu = (restoreFocus = true) => { setMenu(null); if (restoreFocus) container.current?.focus(); };
-    const changeGroup = expanded => {
-        setCollapsedGroups(previous => {
-            const next = new Set(previous);
-            if (expanded) next.delete(menu.group); else next.add(menu.group);
-            return next;
+    const applyAction = action => {
+        setEditedView(previous => {
+            const current = previous?.key === viewKey ? previous.state : view.state;
+            const next = changeView(snapshot.graph, current, action);
+            if (next === current) return previous;
+            return {key: viewKey, state: next, fitRevision: (previous?.key === viewKey ? previous.fitRevision : 0)
+                + (['focus', 'paths'].includes(action.type) ? 1 : 0)};
         });
-        closeMenu();
+        setDialog(null); closeMenu();
     };
+    const changeGroup = expanded => applyAction({type: expanded ? 'show' : 'collapse', id: menu.group});
     const menuGroup = menu && snapshot?.graph.groups.get(menu.group);
     const environmentPrefix = url.slice(0, -'reaction-graph.json'.length);
     const destination = !menu ? null : menu.kind === 'group'
@@ -160,16 +169,27 @@ function EnvironmentReactionViewer({entry, environment}) {
         : interfaceDestination(entry, snapshot?.graph.nodes.get(menu.id), environmentPrefix);
     if (failed || view?.invalid) return <p role="status">Reaction graph currently unavailable</p>;
     if (!view) return <p role="status">Loading reaction graph …</p>;
-    if (!view.elements.length && !view.superseded && snapshot.graph.ownershipComplete) return null;
-    let focus = `${entry.system} (System)`;
-    if (entry.kind === 'COMPONENT') focus = entry.component;
-    if (entry.kind === 'MESSAGE') focus = entry.message + (entry.variant ? ` [${entry.variant}]` : '');
+    if (!view.elements.length && !view.superseded && !view.state.hidden.size && snapshot.graph.ownershipComplete) return null;
+    const currentEntry = view.state.entry;
+    let focus = `${currentEntry.system} (System)`;
+    if (currentEntry.kind === 'COMPONENT') focus = currentEntry.component;
+    if (currentEntry.kind === 'MESSAGE') focus = currentEntry.message + (currentEntry.variant ? ` [${currentEntry.variant}]` : '');
+    if (['INTERFACE', 'REACTION'].includes(currentEntry.kind)) focus = labelOf(snapshot.graph.nodes.get(currentEntry.id)).replaceAll('\n', ' · ');
+    if (currentEntry.kind === 'GROUP') {
+        const owner = snapshot.graph.groups.get(currentEntry.id).owner;
+        focus = `${owner.system ?? '?'} / ${owner.component ?? '?'} (Group)`;
+    }
+    if (currentEntry.kind === 'PATH') focus = `Paths between ${currentEntry.interfaces.length} interfaces`;
     const count = view.reactionCount;
-    const summary = `${count} ${entry.kind === 'MESSAGE' ? 'directly connected ' : ''}${count === 1 ? 'reaction' : 'reactions'}`;
+    const direct = ['MESSAGE', 'INTERFACE'].includes(currentEntry.kind) && !view.state.explored;
+    const summary = `${count} ${direct ? 'directly connected ' : ''}${count === 1 ? 'reaction' : 'reactions'}`;
+    const closeDialog = () => { setDialog(null); container.current?.focus(); };
     return <><section ref={panel} className={styles.viewer} aria-label="Reaction chains">
         <div className={styles.toolbar}>
             <div><strong>{focus}</strong><span className={styles.caption}>{summary}</span></div>
             <div className={styles.actions} role="group" aria-label="Graph view">
+                <button type="button" className={styles.pathButton} aria-label="Open path view" title="Open path view"
+                    onClick={() => { setMenu(null); setDialog({kind: 'paths', ids: []}); }}>Paths</button>
                 <button type="button" disabled={sourceOpen} aria-label="Zoom out" title="Zoom out" onClick={() => controls.current?.zoom(0.8)}><ZoomOutIcon/></button>
                 <output aria-label="Zoom">{zoom}%</output>
                 <button type="button" disabled={sourceOpen} aria-label="Zoom in" title="Zoom in" onClick={() => controls.current?.zoom(1.25)}><ZoomInIcon/></button>
@@ -188,7 +208,8 @@ function EnvironmentReactionViewer({entry, environment}) {
             </div>
         </div>
         {!snapshot.graph.ownershipComplete && <p role="status">Incomplete ownership: Not all reactions can be assigned to a system.</p>}
-        {view.superseded > 0 && <p>{view.superseded} superseded reactions hidden.</p>}
+        <HiddenContent title={`${view.superseded} superseded reactions hidden (presumed superseded)`}
+            ids={view.supersededIds} graph={snapshot.graph} onShow={id => applyAction({type: 'show', id})}/>
         <div className={styles.graph}>
             <div ref={container} className={`${styles.canvas} ${sourceOpen ? styles.coveredCanvas : ''}`} tabIndex={sourceOpen ? -1 : 0} role="group"
                 aria-hidden={sourceOpen || undefined}
@@ -201,12 +222,24 @@ function EnvironmentReactionViewer({entry, environment}) {
             }
             {hover && !menu && !sourceOpen && <Tooltip id={tooltipId} hover={hover}/>}
             {menu && <NodeMenu menu={menu} href={destination.href} linkLabel={destination.label}
-                canExpand={menuGroup?.members.some(id => (!view.state.focusedReactions || view.state.focusedReactions.has(id))
-                    && !view.state.visible.has(id)
-                    && snapshot.graph.nodes.get(id).reaction.status !== 'SUPERSEDED')}
+                canExpand={menuGroup?.members.some(id => view.state.reactions.has(id)
+                    && !view.state.visible.has(id))}
                 canCollapse={menuGroup?.members.some(id => view.state.visible.has(id) && !view.state.pins.has(id))}
+                pinned={view.state.pins.has(menu.id)}
+                groupPinned={menu.kind === 'group' && (view.state.pins.has(menu.id)
+                    || menuGroup?.members.some(id => view.state.pins.has(id)))}
+                onExplore={direction => {
+                    setDialog(direction === 'paths' ? {kind: 'paths', ids: [menu.id]}
+                        : {kind: 'expand', id: menu.id, direction});
+                    closeMenu(false);
+                }}
+                onAction={type => applyAction({type, id: menu.id})}
                 onChange={changeGroup} onClose={closeMenu}/>}
         </div>
+        {dialog?.kind === 'expand' && <ExpansionDialog graph={snapshot.graph} state={view.state}
+            id={dialog.id} direction={dialog.direction} onApply={applyAction} onClose={closeDialog}/>}
+        {dialog?.kind === 'paths' && <PathDialog graph={snapshot.graph} state={view.state}
+            initialIds={dialog.ids} onApply={applyAction} onClose={closeDialog}/>}
         {notice && <p role="status">{notice}</p>}
         <Legend dark={colorMode === 'dark'} elements={view.elements}/>
     </section>

@@ -1,5 +1,5 @@
 import React from 'react';
-import {nodeAppearance, foreignAppearance} from './appearance.mjs';
+import {nodeAppearance, foreignAppearance, pinBadgeImage} from './appearance.mjs';
 import styles from './styles.module.css';
 
 function Symbol({kind, appearance}) {
@@ -29,6 +29,8 @@ export default function Legend({dark, elements}) {
         {Object.entries({message: 'Message', http: 'REST', interface: 'Interface', reaction: 'Reaction',
             group: 'Group', marker: 'Hidden reactions'}).filter(([kind]) => kinds.has(kind)).map(([kind, label]) =>
             <span key={kind}><Symbol kind={kind} appearance={appearance[kind]}/>{label}</span>)}
+        {elements.some(element => element.data.pinned) &&
+            <span><img src={pinBadgeImage} width="24" height="24" alt="" aria-hidden="true"/>Pinned</span>}
         {elements.some(element => element.data.foreign) &&
             <span><Symbol kind="message" appearance={{...appearance.message, ...foreignAppearance}}/>Other system</span>}
     </div>;

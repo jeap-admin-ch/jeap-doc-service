@@ -137,7 +137,10 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         var viewer = page.locator("section[aria-label='Reaction chains']");
         showReactionViewer(0);
-        var buttons = viewer.getByRole(AriaRole.BUTTON);
+        assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions()
+                .setName("Open path view"))).hasText("Paths");
+        var buttons = viewer.getByRole(AriaRole.GROUP, new com.microsoft.playwright.Locator.GetByRoleOptions()
+                .setName("Graph view").setExact(true)).locator("button:not([aria-label=\"Open path view\"])");
         assertThat(buttons).hasCount(7);
         for (var button : buttons.all()) {
             assertThat(button).hasText("");
@@ -147,12 +150,12 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         }
         String group = groupOfReaction(viewer, "4243");
         openGroupMenu(viewer, group);
-        assertThat(viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand group"))).isDisabled();
+        assertThat(viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand group"))).hasCount(0);
         viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group")).click();
         awaitGroupMembers(group, 0);
         assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
         openGroupMenu(viewer, group);
-        assertThat(viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group"))).isDisabled();
+        assertThat(viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group"))).hasCount(0);
         viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand group")).click();
         awaitGroupMembers(group, 3);
         var zoom = viewer.getByLabel("Zoom", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true));
@@ -408,7 +411,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             var viewer = page.locator("section[aria-label='Reaction chains']").first();
             showReactionViewer(0);
             openInterfaceMenu(viewer, UNDOCUMENTED_MESSAGE);
-            assertThat(viewer.getByRole(AriaRole.MENUITEM)).isDisabled();
+            assertThat(viewer.getByRole(AriaRole.MENUITEM,
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Documentation unavailable"))).isDisabled();
             page.keyboard().press("Escape");
             openInterfaceMenu(viewer, "OrdersPaymentAcceptedEvent");
             var eventLink = viewer.getByRole(AriaRole.MENUITEM,
@@ -581,6 +585,242 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
         org.assertj.core.api.Assertions.assertThat(otherCanvas.evaluate("el => ({zoom: el._cyreg.cy.zoom(), pan: el._cyreg.cy.pan()})")).isEqualTo(otherView);
         assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void pinnedReactionSurvivesCollapseAndMarkerRestoresTheOtherMembers() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']").first();
+        String group = groupOfReaction(viewer, "4243");
+        openReactionMenu(viewer, "4243");
+        menuAction(viewer, "Pin");
+        awaitPinned("4243");
+        assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true)))
+                .containsText("Pinned");
+        org.assertj.core.api.Assertions.assertThat(viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
+                el => {
+                    const node = el._cyreg.cy.nodes('[?pinned]').filter(n => n.data('identity')?.key === '4243').first();
+                    return node.style('background-image').includes('data:image/svg+xml')
+                        && node.style('border-color') === 'rgb(182,144,69)';
+                }
+                """)).isEqualTo(true);
+        openGroupMenu(viewer, group);
+        menuAction(viewer, "Collapse group");
+        awaitGroupMembers(group, 1);
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+        org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
+                (el, group) => {
+                    const cy = el._cyreg.cy, frame = cy.getElementById(group);
+                    return {pins: frame.children('[?pinned]').length,
+                        hidden: frame.children('[kind="marker"]').data('label'),
+                        bundles: frame.connectedEdges().length};
+                }
+                """, group)).isEqualTo(java.util.Map.of("pins", 1, "hidden", "2", "bundles", 1));
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+        clickGraphNode(viewer, "hidden:" + group, false);
+        awaitGroupMembers(group, 3);
+        openGroupMenu(viewer, group);
+        menuAction(viewer, "Unpin members and hide group");
+        awaitGraphKeys(java.util.List.of("4243"), false);
+        assertThat(viewer.getByText("Hidden content", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true))).hasCount(0);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void hideUsesOnlyVisibleAlternatePathsAndKeepsSeparateRegions() {
+        for (boolean alternate : java.util.List.of(false, true)) {
+            installVisibilityFixture(alternate);
+            open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+            showReactionViewer(0);
+            var viewer = page.locator("section[aria-label='Reaction chains']");
+            openFixtureInterfaceMenu(viewer, "A");
+            menuAction(viewer, "Pin");
+            awaitPinned("A");
+            openFixtureInterfaceMenu(viewer, "B");
+            menuAction(viewer, "Hide");
+            awaitGraphKeys(java.util.List.of("B"), false);
+            awaitGraphKeys(java.util.List.of("A", "r1", "D", "r4", "E"), true);
+            awaitGraphKeys(java.util.List.of("C", "r2"), alternate);
+            viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+            String marker = (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
+                    el => el._cyreg.cy.nodes('[kind="marker"]').filter(n => n.data('restore')?.some(id => JSON.parse(id)[1] === 'B')).first().id()
+                    """);
+            clickGraphNode(viewer, marker, false);
+            awaitGraphKeys(java.util.List.of("B"), true);
+            assertNothingWentWrongInTheBrowser();
+            page.unroute("**/reaction-graph.json");
+        }
+    }
+
+    @Test
+    void outgoingHideTerminatesOnCyclesAndSupersededRevealCanBePinned() {
+        installVisibilityFixture(true);
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        viewer.locator("summary").filter(new com.microsoft.playwright.Locator.FilterOptions().setHasText("superseded reactions hidden")).click();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Show shipping-dispatch: old")).click();
+        awaitGraphKeys(java.util.List.of("old"), true);
+        openReactionMenu(viewer, "old");
+        menuAction(viewer, "Pin");
+        awaitPinned("old");
+        openFixtureInterfaceMenu(viewer, "B");
+        menuAction(viewer, "Hide all outgoing paths");
+        awaitGraphKeys(java.util.List.of("B", "old", "D", "r4", "E"), true);
+        awaitGraphKeys(java.util.List.of("A", "C", "r1", "r2", "r3"), false);
+        openReactionMenu(viewer, "old");
+        menuAction(viewer, "Unpin and hide");
+        awaitGraphKeys(java.util.List.of("old"), false);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void boundaryCirclesOpenTheNextReactionAndInterface() {
+        installVisibilityFixture(false);
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        openFixtureInterfaceMenu(viewer, "A");
+        menuAction(viewer, "Focus");
+        awaitGraphKeys(java.util.List.of("A", "r1"), true);
+        awaitGraphKeys(java.util.List.of("B", "r2", "C"), false);
+        awaitPinned("A");
+        for (String key : java.util.List.of("B", "r2", "C")) {
+            viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+            String marker = (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
+                    el => el._cyreg.cy.nodes('[kind="marker"]').filter(n => n.data('explore')?.direction === 'outgoing').first().id()
+                    """);
+            clickGraphNode(viewer, marker, false);
+            awaitGraphKeys(java.util.List.of(key), true);
+        }
+        awaitGraphKeys(java.util.List.of("D", "E", "r4", "old"), false);
+        awaitPinned("A");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void directedExpansionChecksDepthAndPathViewIncludesCyclicDetours() {
+        installVisibilityFixture(true);
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        openFixtureInterfaceMenu(viewer, "B");
+        menuAction(viewer, "Focus");
+        awaitGraphKeys(java.util.List.of("B", "r1", "r2"), true);
+        openFixtureInterfaceMenu(viewer, "B");
+        menuAction(viewer, "Expand outgoing paths…");
+        var dialog = page.getByRole(AriaRole.DIALOG);
+        var expand = dialog.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand").setExact(true));
+        assertThat(expand).isDisabled();
+        dialog.getByLabel("Edge depth").fill("0");
+        assertThat(expand).isDisabled();
+        dialog.getByLabel("Edge depth").fill("2");
+        expand.click();
+        awaitGraphKeys(java.util.List.of("C"), true);
+        awaitPinned("B");
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Open path view")).click();
+        var show = dialog.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Show paths"));
+        assertThat(show).isDisabled();
+        for (String key : java.util.List.of("A", "C")) {
+            dialog.getByLabel("Add interface")
+                    .selectOption("[\"INTERFACE\",\"" + key + "\"]");
+            dialog.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Add").setExact(true)).click();
+        }
+        show.click();
+        awaitGraphKeys(java.util.List.of("A", "B", "C", "r1", "r2", "r3"), true);
+        awaitGraphKeys(java.util.List.of("D", "E", "r4", "old"), false);
+        awaitPinned("A");
+        awaitPinned("C");
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    private void menuAction(com.microsoft.playwright.Locator viewer, String name) {
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions()
+                .setName(name).setExact(true)).click();
+    }
+
+    private void openFixtureInterfaceMenu(com.microsoft.playwright.Locator viewer, String name) {
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+        clickGraphNode(viewer, "[\"INTERFACE\",\"" + name + "\"]", true);
+        assertThat(viewer.getByRole(AriaRole.MENU)).isVisible();
+    }
+
+    private void clickGraphNode(com.microsoft.playwright.Locator viewer, String id, boolean contextMenu) {
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+        // Finish scrolling before resolving the renderer's click coordinates.
+        canvas.scrollIntoViewIfNeeded();
+        var position = (java.util.Map<?, ?>) canvas.evaluate("""
+                async (el, id) => {
+                    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                    delete el.dataset.clickedNode;
+                    el._cyreg.cy.one('tapstart cxttap', 'node', event => { el.dataset.clickedNode = event.target.id(); });
+                    return el._cyreg.cy.getElementById(id).renderedPosition();
+                }
+                """, id);
+        canvas.click(new com.microsoft.playwright.Locator.ClickOptions()
+                .setButton(contextMenu ? com.microsoft.playwright.options.MouseButton.RIGHT : com.microsoft.playwright.options.MouseButton.LEFT)
+                .setPosition(((Number) position.get("x")).doubleValue(), ((Number) position.get("y")).doubleValue()));
+        assertThat(canvas).hasAttribute("data-clicked-node", id);
+    }
+
+    private void awaitPinned(String key) {
+        page.waitForFunction("""
+                key => [...document.querySelectorAll('div[aria-label^="Reaction graph."]')]
+                    .some(el => el._cyreg?.cy.nodes().some(n => n.data('identity')?.key === key && n.data('pinned')))
+                """, key);
+    }
+
+    private void awaitGraphKeys(java.util.List<String> keys, boolean present) {
+        page.waitForFunction("""
+                args => {
+                    const cy = document.querySelector('div[aria-label^="Reaction graph."]')?._cyreg?.cy;
+                    return cy && args.keys.every(key => cy.nodes().some(n => n.data('identity')?.key === key) === args.present);
+                }
+                """, java.util.Map.of("keys", keys, "present", present));
+    }
+
+    private void installVisibilityFixture(boolean cycle) {
+        page.route("**/reaction-graph.json", route -> {
+            var response = route.fetch();
+            var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+            var payload = (tools.jackson.databind.node.ObjectNode) mapper.readTree(response.text());
+            payload.putArray("ownership");
+            var graph = payload.putObject("graph");
+            var nodes = graph.putArray("nodes");
+            for (String name : java.util.List.of("A", "B", "C", "D", "E")) {
+                var node = nodes.addObject();
+                node.putObject("identity").put("nodeType", "INTERFACE").put("key", name);
+                node.put("nodeType", "MESSAGE");
+                node.putObject("interfaceDetails").putObject("message").put("messageType", name).put("variant", "");
+            }
+            for (String name : java.util.List.of("r1", "r2", "r3", "r4", "old")) {
+                var node = nodes.addObject();
+                node.putObject("identity").put("nodeType", "REACTION").put("key", name);
+                node.put("nodeType", "REACTION");
+                node.putObject("reaction").put("system", "shipping").put("component", "shipping-dispatch")
+                        .put("median", 10).put("status", name.equals("old") ? "SUPERSEDED" : "ACTIVE").put("groupKey", name);
+            }
+            var edges = graph.putArray("edges");
+            for (String[] flow : new String[][]{{"A", "r1", "B"}, {"B", "r2", "C"}, {"D", "r4", "E"}, {"A", "old", "C"}}) {
+                addFixtureEdge(edges, flow[0], flow[1], "TRIGGER");
+                addFixtureEdge(edges, flow[1], flow[2], "ACTION");
+            }
+            if (cycle) {
+                addFixtureEdge(edges, "C", "r3", "TRIGGER");
+                addFixtureEdge(edges, "r3", "A", "ACTION");
+            }
+            var predecessor = edges.addObject().put("edgeType", "PREDECESSOR");
+            predecessor.putObject("source").put("nodeType", "REACTION").put("key", "r1");
+            predecessor.putObject("target").put("nodeType", "REACTION").put("key", "old");
+            route.fulfill(new FulfillOptions().setResponse(response).setBody(mapper.writeValueAsString(payload)));
+        });
+    }
+
+    private void addFixtureEdge(tools.jackson.databind.node.ArrayNode edges, String source, String target, String type) {
+        var edge = edges.addObject().put("edgeType", type);
+        edge.putObject("source").put("nodeType", type.equals("ACTION") ? "REACTION" : "INTERFACE").put("key", source);
+        edge.putObject("target").put("nodeType", type.equals("TRIGGER") ? "REACTION" : "INTERFACE").put("key", target);
     }
 
     private void assertGraphFitted(com.microsoft.playwright.Locator viewer) {

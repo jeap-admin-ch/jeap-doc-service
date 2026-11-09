@@ -1,7 +1,7 @@
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
 import {orderGroupChildren} from './layout.mjs';
-import {nodeAppearance, foreignAppearance} from './appearance.mjs';
+import {nodeAppearance, foreignAppearance, pinnedAppearance} from './appearance.mjs';
 cytoscape.use(dagre);
 
 function wrap(label, kind) {
@@ -23,7 +23,7 @@ const httpHeight = node => Math.max(60, node.data('displayLabel').split('\n')
 
 const groupPadding = node => node.data('displayLabel').split('\n').length * 18 + 18;
 
-export function render(container, elements, dark, onZoom, {onNodeMenu, onDismissMenu, onHover, viewport} = {}) {
+export function render(container, elements, dark, onZoom, {onNodeMenu, onDismissMenu, onHover, onRestore, onExpand, viewport} = {}) {
     // Route between groups, then place their children inside. Dagre cannot route to compound parents.
     const parents = new Map(elements.filter(e => e.data.parent).map(e => [e.data.id, e.data.parent]));
     const children = new Map();
@@ -57,9 +57,14 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
         const data = {...element.data, displayLabel: wrap(element.data.displayLabel ?? element.data.label ?? '', element.data.kind)};
         let position;
         if (!data.source) {
-            position = {...layout.getElementById(data.parent ?? data.anchor ?? data.id).position()};
+            const anchorParent = parents.get(data.anchor);
+            position = {...layout.getElementById(data.parent ?? anchorParent ?? data.anchor ?? data.id).position()};
+            if (anchorParent) position.y += (orderedChildren.get(anchorParent).indexOf(data.anchor) - (children.get(anchorParent).length - 1) / 2) * 54;
             if (data.parent) position.y += (orderedChildren.get(data.parent).indexOf(data.id) - (children.get(data.parent).length - 1) / 2) * 54;
-            if (data.anchor) { position.x += 118; position.y -= 38; }
+            if (data.anchor) {
+                position.x += data.direction === 'incoming' ? -118 : 118;
+                position.y += data.restore ? -38 : 38;
+            }
         }
         return {...element, data, position};
     });
@@ -83,9 +88,10 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
             {selector: '[kind="group"]', style: {...appearance.group, 'text-valign': 'top',
                 'text-margin-y': node => groupPadding(node) - 8,
                 'font-weight': 600, 'text-max-width': 210, 'min-width': 130, padding: groupPadding}},
-            {selector: '[kind="marker"]', style: {...appearance.marker, width: 34, height: 34, 'font-weight': 700}},
-            {selector: '[?pinned]', style: {'border-width': 3, 'border-color': dark ? '#7dd3fc' : '#0369a1'}},
-            {selector: 'node[?foreign]', style: foreignAppearance},
+            {selector: '[kind="marker"]', style: {...appearance.marker, width: 34, height: 34, 'font-weight': 700,
+                'z-compound-depth': 'top', 'z-index': 10}},
+            {selector: 'node[?pinned]', style: pinnedAppearance},
+            {selector: 'node[?foreign][kind != "reaction"]', style: foreignAppearance},
             {selector: 'edge', style: {width: 'data(width)', 'line-color': arrow, 'target-arrow-color': arrow,
                 'target-arrow-shape': 'triangle', 'arrow-scale': 1.15, 'curve-style': 'bezier', 'line-style': 'solid',
                 // Keep left-to-right reaction arrows attached to the box edges, away from labels.
@@ -96,9 +102,10 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     const groupOf = node => node.data('kind') === 'group' ? node : node.parent();
     const openNodeMenu = (node, position) => {
         if (!node.length) return;
-        const group = groupOf(node);
-        const target = node.data('kind') === 'marker' ? group : node;
-        if (!target.length || !['reaction', 'group', 'message', 'http'].includes(target.data('kind'))) return;
+        const target = node.data('kind') === 'marker'
+            ? (node.data('anchor') ? cy.getElementById(node.data('anchor')) : groupOf(node)) : node;
+        const group = groupOf(target);
+        if (!target.length || !['reaction', 'group', 'message', 'http', 'interface'].includes(target.data('kind'))) return;
         activeGroup = group.id(); activeNode = target.id();
         position ??= target.renderedPosition();
         onHover?.(null);
@@ -108,12 +115,15 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     cy.on('cxttap', 'node', event => openNodeMenu(event.target, event.renderedPosition));
     cy.on('tapstart pan zoom', () => { onDismissMenu?.(); onHover?.(null); });
     cy.on('tap', 'node', event => {
-        activeGroup = groupOf(event.target).id(); activeNode = event.target.id();
+        const node = event.target;
+        if (node.data('restore')) { onRestore?.(node.data('restore')); return; }
+        if (node.data('explore')) { onExpand?.(node.data('explore')); return; }
+        activeGroup = groupOf(node).id(); activeNode = node.id();
     });
-    cy.on('mouseover mousemove', 'edge, node[kind="reaction"]', event => {
+    cy.on('mouseover mousemove', 'edge, node[kind="reaction"], node[kind="marker"][tooltip]', event => {
         onHover?.({text: event.target.data('tooltip'), x: event.renderedPosition.x, y: event.renderedPosition.y});
     });
-    cy.on('mouseout', 'edge, node[kind="reaction"]', () => onHover?.(null));
+    cy.on('mouseout', 'edge, node[kind="reaction"], node[kind="marker"][tooltip]', () => onHover?.(null));
     cy.on('zoom', () => onZoom(Math.round(cy.zoom() * 100)));
     const fit = () => { cy.resize(); cy.fit(undefined, 45); onZoom(Math.round(cy.zoom() * 100)); };
     const reset = () => {
