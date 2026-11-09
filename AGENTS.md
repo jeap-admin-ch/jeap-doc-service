@@ -930,6 +930,7 @@ Message entry views contain only the selected variant, its incident flow edges a
 Group expansion must not add sibling reactions or other interfaces. The generated and live tables use the
 same selection. Reaction labels show daily medians; IDs remain opaque identities in the source.
 
+Pins are exclusively user-selected: entry views, focus and path selection never pin automatically.
 Visibility commands live in `ReactionViewer/visibility.mjs` and return a new complete state per action.
 Keep explicit hiding separate from collapsing: collapsed reactions contribute bundled arrows, hidden reactions
 contribute none. Cleanup uses only visible flow connectivity within affected regions; regions without remaining

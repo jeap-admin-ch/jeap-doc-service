@@ -92,27 +92,28 @@ export function createView(entry, revealed = new Set()) {
 /** The scope is explicit: showing a group never silently selects its other members or edges. */
 export function entryView(graph, entry, revealed = new Set()) {
     const state = createView(entry, revealed);
+    const entryInterfaces = new Set();
     const interfaceEntry = entry.kind === 'MESSAGE' || entry.kind === 'INTERFACE';
     if (interfaceEntry) {
         for (const node of graph.nodes.values()) {
             const message = node.interfaceDetails?.message;
             if (entry.kind === 'INTERFACE' ? node.id === entry.id && !node.reaction
                 : message && fold(message.messageType) === fold(entry.message) && (message.variant ?? '') === entry.variant) {
-                state.visible.add(node.id); state.pins.add(node.id);
+                state.visible.add(node.id); entryInterfaces.add(node.id);
                 for (const reaction of graph.adjacent.get(node.id) ?? []) state.reactions.add(reaction);
                 state.system = graph.messageSystems.get(fold(message?.messageType));
             }
         }
     } else if (entry.kind === 'REACTION') {
         if (!graph.nodes.get(entry.id)?.reaction) throw new Error('Unknown reaction');
-        state.reactions.add(entry.id); state.pins.add(entry.id);
+        state.reactions.add(entry.id);
         if (graph.nodes.get(entry.id).reaction.status === 'SUPERSEDED') state.revealed.add(entry.id);
         state.system = graph.groups.get(graph.groupOf.get(entry.id)).owner.system;
     } else if (entry.kind === 'GROUP') {
         const group = graph.groups.get(entry.id);
         if (!group) throw new Error('Unknown group');
         group.members.forEach(id => state.reactions.add(id));
-        state.pins.add(entry.id); state.system = group.owner.system;
+        state.system = group.owner.system;
     } else if (['SYSTEM', 'COMPONENT'].includes(entry.kind)) {
         for (const group of graph.groups.values()) {
             if (fold(group.owner.system) === fold(entry.system)
@@ -128,7 +129,7 @@ export function entryView(graph, entry, revealed = new Set()) {
     for (const edge of graph.flow.values()) {
         const reaction = reactionOf(edge);
         if (!state.reactions.has(reaction)) continue;
-        if (interfaceEntry && !state.pins.has(edge.source) && !state.pins.has(edge.target)) continue;
+        if (interfaceEntry && !entryInterfaces.has(edge.source) && !entryInterfaces.has(edge.target)) continue;
         state.edges.add(edge.id);
         if (!interfaceEntry && availableReaction(graph, state, reaction)) {
             state.visible.add(edge.edgeType === 'TRIGGER' ? edge.source : edge.target);

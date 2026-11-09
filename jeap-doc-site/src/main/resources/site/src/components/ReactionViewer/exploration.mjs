@@ -125,7 +125,7 @@ export function pathView(graph, previous, ids) {
     if (!selection.connected) throw new Error(ids.length < 2 ? 'Select at least two interfaces.' : 'No directed connection between the selected interfaces.');
     const state = createView({kind: 'PATH', interfaces: ordered}, previous.revealed);
     state.baseline = previous.baseline; state.system = previous.system;
-    state.visible = selection.nodes; state.edges = selection.edges; state.pins = new Set(ordered);
+    state.visible = selection.nodes; state.edges = selection.edges;
     for (const id of state.visible) {
         if (graph.nodes.get(id).reaction) {
             state.reactions.add(id); state.selected.add(graph.groupOf.get(id));

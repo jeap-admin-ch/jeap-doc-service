@@ -1132,6 +1132,7 @@ the existing diagram plugin's icons, with tooltips and accessible names. Frequen
 when hovering over an arrow or a reaction. Focus and directed expansion can explore the full snapshot across system boundaries.
 
 Right-click any node to pin or unpin it, hide it, or hide all outgoing paths. A red pin badge marks pinned elements without changing their ownership border; the legend explains the badge.
+Pins are set only by the explicit **Pin** action; entry views, Focus and Paths start unpinned.
 Several nodes and groups can be pinned at once. Hiding a pinned node uses **Unpin and hide**. A group with
 pins uses **Unpin members and hide group**, which removes the group's pin and all member pins together.
 Each action produces one complete semantic state for later history support; this release has no undo control.
@@ -1213,7 +1214,7 @@ and returning creates a fresh request with HTTP cache revalidation; the server s
 
 ### Focusing and exploring reaction chains
 
-**Focus** in a node menu starts a new selection and pins that node. An interface shows its directly connected
+**Focus** in a node menu starts a new selection without pinning the node. An interface shows its directly connected
 reactions; a reaction shows its trigger and action interfaces; a group starts collapsed with its adjacent
 interfaces. The original entry remains recorded for future reset support.
 
@@ -1222,7 +1223,7 @@ from one to the reachable depth, capped at 50. Existing contents and pins remain
 from all eligible members without unfolding the group. Already visible selections disable the action.
 Superseded reactions participate only after explicit reveal; PREDECESSOR history never participates.
 
-**Paths** selects at least two distinct interfaces and pins them in a new view. After the first selection,
+**Paths** selects at least two distinct interfaces in a new, unpinned view. After the first selection,
 candidates are interfaces reachable in either direction from an endpoint. The result includes all directed
 connections between every ordered pair, including cyclic detours, without a depth cutoff. Dead-end branches
 are excluded. This shows graph relationships, not an individual execution trace. Message, HTTP and generic

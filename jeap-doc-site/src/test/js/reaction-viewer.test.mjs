@@ -155,10 +155,10 @@ test('system boundary, stable grouping, collapsed contributions and deduplicatio
     assert.equal(result.elements.filter(e=>e.data.kind==='reaction').length, 0);
     assert.equal(result.elements.filter(e=>e.data.id.startsWith('boundary:'))[0].data.label, '1');
 });
-test('message entry pins only its message and exposes directly connected reactions', () => {
+test('message entry starts unpinned and exposes directly connected reactions', () => {
     const graph = readGraph(payload(),'site','dev');
     const state = entryView(graph,{kind:'MESSAGE',message:'B',variant:''});
-    assert.deepEqual([...state.pins], [identity(key('B'))]);
+    assert.deepEqual([...state.pins], []);
     const projected = project(graph,state);
     assert.equal(projected.elements.filter(e=>e.data.kind==='reaction').length, 2);
     assert.deepEqual(projected.elements.filter(e=>e.data.source && e.data.target===identity(key('B'))).map(e=>e.data.width), [widthOf(10),widthOf(80)]);
@@ -542,7 +542,9 @@ test('superseded reveal includes its flow, shared interfaces and rows; predecess
 test('unpinning message entry preserves its selection and counter; superseded reveal stays scoped', () => {
     const graph = readGraph(payload(), 'site', 'dev');
     const state = expandGroups(graph, entryView(graph, {kind: 'MESSAGE', message: 'A', variant: ''}));
-    const unpinned = act(graph, state, 'pin', mid('A'));
+    const pinned = act(graph, state, 'pin', mid('A'));
+    const unpinned = act(graph, pinned, 'pin', mid('A'));
+    assert.deepEqual([...unpinned.pins], []);
     assert.equal(focusedReactionCount(graph, unpinned), focusedReactionCount(graph, state));
     assert.deepEqual(project(graph, unpinned).elements.filter(e => e.data.source), project(graph, state).elements.filter(e => e.data.source));
     const revealed = act(graph, unpinned, 'show', rid('old'));

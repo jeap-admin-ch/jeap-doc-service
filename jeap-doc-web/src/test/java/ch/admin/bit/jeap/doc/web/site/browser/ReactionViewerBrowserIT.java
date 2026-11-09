@@ -289,7 +289,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             org.assertj.core.api.Assertions.assertThat(arrows).isEqualTo(java.util.List.of(
                     "Sum of individual medians – approximation: 404\n4243: 400\n4244: 4\n4245: 0"));
             assertThat(legend.locator("span")).hasText(route.equals(MESSAGE_REACTIONS_ROUTE)
-                    ? new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions", "Pinned"}
+                    ? new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions"}
                     : new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions", "Other system"});
             assertNothingWentWrongInTheBrowser();
         }
@@ -722,7 +722,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         menuAction(viewer, "Focus");
         awaitGraphKeys(java.util.List.of("A", "r1"), true);
         awaitGraphKeys(java.util.List.of("B", "r2", "C"), false);
-        awaitPinned("A");
+        assertNoPins(viewer);
         for (String key : java.util.List.of("B", "r2", "C")) {
             viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
             String marker = (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
@@ -737,7 +737,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             assertThat(viewer.locator("div[aria-label^='Reaction graph.']")).isFocused();
         }
         awaitGraphKeys(java.util.List.of("D", "E", "r4", "old"), false);
-        awaitPinned("A");
+        assertNoPins(viewer);
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -760,7 +760,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         dialog.getByLabel("Edge depth").fill("2");
         expand.click();
         awaitGraphKeys(java.util.List.of("C"), true);
-        awaitPinned("B");
+        assertNoPins(viewer);
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Open path view")).click();
         var show = dialog.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Show paths"));
         assertThat(show).isDisabled();
@@ -772,9 +772,15 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         show.click();
         awaitGraphKeys(java.util.List.of("A", "B", "C", "r1", "r2", "r3"), true);
         awaitGraphKeys(java.util.List.of("D", "E", "r4", "old"), false);
-        awaitPinned("A");
-        awaitPinned("C");
+        assertNoPins(viewer);
         assertNothingWentWrongInTheBrowser();
+    }
+
+    private void assertNoPins(com.microsoft.playwright.Locator viewer) {
+        org.assertj.core.api.Assertions.assertThat(viewer.locator("div[aria-label^='Reaction graph.']")
+                .evaluate("el => el._cyreg.cy.nodes('[?pinned]').length")).isEqualTo(0);
+        assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true)))
+                .not().containsText("Pinned");
     }
 
     private Object actionPosition(com.microsoft.playwright.Locator viewer, String id) {

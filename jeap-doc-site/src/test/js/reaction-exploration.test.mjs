@@ -25,8 +25,26 @@ const system = graph => expandGroups(graph, entryView(graph, {kind: 'SYSTEM', sy
 const interfaces = (graph, name) => entryView(graph, {kind: 'INTERFACE', id: iid(name)});
 const connections = (graph, state) => project(graph, state).elements.filter(e => e.data.source).map(e => [e.data.source, e.data.target]);
 
+test('all entry kinds start unpinned, including message variants', () => {
+    const {payload} = fixture([['A', 'r1', 'B'], ['B', 'r2', 'C']]);
+    payload.graph.nodes.find(node => node.identity.key === 'A').interfaceDetails.message.variant = 'express';
+    const graph = readGraph(payload, 'site', 'dev');
+    for (const entry of [
+        {kind: 'SYSTEM', system: 'orders'},
+        {kind: 'COMPONENT', system: 'orders', component: 'dispatcher'},
+        {kind: 'MESSAGE', message: 'A', variant: 'express'},
+        {kind: 'INTERFACE', id: iid('B')},
+        {kind: 'REACTION', id: rid('r2')},
+        {kind: 'GROUP', id: graph.groupOf.get(rid('r1'))},
+    ]) {
+        const state = expandGroups(graph, entryView(graph, entry));
+        assert.deepEqual(state.pins, new Set());
+        assert.ok(project(graph, state).elements.every(element => !element.data.pinned));
+    }
+});
+
 test('outgoing expansion counts individual edges, remains additive and preserves pins and baseline', () => {
-    const graph = chain(), initial = interfaces(graph, 'A');
+    const graph = chain(), initial = changeView(graph, interfaces(graph, 'A'), {type: 'pin', id: iid('A')});
     const before = structuredClone(initial), originalGraph = structuredClone(graph);
     assert.equal(expansionLimit(graph, initial, iid('A'), 'outgoing'), 6);
     assert.strictEqual(expandView(graph, initial, iid('A'), 'outgoing', 1), initial);
@@ -119,21 +137,21 @@ test('interface and reaction focus use initial views and preserve the original b
     const graph = chain(), state = system(graph);
     const first = focusView(graph, state, iid('B'));
     assert.deepEqual(first.visible, new Set([iid('B'), rid('r1'), rid('r2')]));
-    assert.deepEqual(first.pins, new Set([iid('B')]));
+    assert.deepEqual(first.pins, new Set());
     assert.equal(first.edges.size, 2);
     const next = focusView(graph, first, rid('r3'));
     assert.deepEqual(next.visible, new Set([rid('r3'), iid('C'), iid('D')]));
-    assert.deepEqual(next.pins, new Set([rid('r3')]));
+    assert.deepEqual(next.pins, new Set());
     assert.strictEqual(first.baseline, state.baseline);
     assert.strictEqual(next.baseline, state.baseline);
 });
 
-test('group focus starts collapsed and pinned, while a triggerless reaction invents no trigger', () => {
+test('group focus starts collapsed and unpinned, while a triggerless reaction invents no trigger', () => {
     const graph = fixture([['A', 'r1', 'B'], ['A', 'r2', 'C'], [null, 'orphan', 'X']]).graph;
     const state = system(graph), group = graph.groupOf.get(rid('r1'));
     const focused = focusView(graph, state, group);
     assert.deepEqual(focused.visible, new Set([iid('A'), iid('B'), iid('C')]));
-    assert.deepEqual(focused.pins, new Set([group]));
+    assert.deepEqual(focused.pins, new Set());
     assert.equal(connections(graph, focused).length, 3);
     const orphan = focusView(graph, focused, rid('orphan'));
     assert.deepEqual(orphan.visible, new Set([rid('orphan'), iid('X')]));
@@ -158,12 +176,12 @@ test('multi-interface paths include both directions and cyclic detours, but excl
     const paths = pathView(graph, state, [iid('A'), iid('D')]);
     assert.deepEqual(paths.visible, new Set([iid('A'), iid('B'), iid('C'), iid('D'), rid('r1'), rid('r2'), rid('r3'), rid('r4'), rid('back')]));
     assert.equal(paths.edges.size, 10);
-    assert.deepEqual(paths.pins, new Set([iid('A'), iid('D')]));
+    assert.deepEqual(paths.pins, new Set());
     const reversed = pathView(graph, state, [iid('D'), iid('A')]);
     assert.deepEqual(reversed.edges, paths.edges);
     assert.deepEqual(reversed.visible, paths.visible);
     assert.strictEqual(paths.baseline, state.baseline);
-    assert.deepEqual(pathView(graph, state, [iid('A'), iid('C'), iid('D')]).pins, new Set([iid('A'), iid('C'), iid('D')]));
+    assert.deepEqual(pathView(graph, state, [iid('A'), iid('C'), iid('D')]).pins, new Set());
 });
 
 test('editing endpoints requires at least one connected pair, without connecting every selected interface', () => {
