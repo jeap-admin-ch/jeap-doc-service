@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.1] - 2026-11-10
+
+### Fixed
+- `PactProviderTestBase` (jeap-doc-test) addresses the token it signs to the application under verification: its
+  audience is the resource id the jEAP security starter validates (`jeap.security.oauth2.resourceserver.resource-id`,
+  by default `spring.application.name`). The verification now passes with `strict-audience-validation: "on"`,
+  so an instance no longer has to lower the mode for its Pact provider test.
+
 ## [4.8.0] - 2026-11-09
 
 ### Dependencies

@@ -9,6 +9,7 @@ import au.com.dius.pact.provider.junitsupport.Provider;
 import au.com.dius.pact.provider.junitsupport.State;
 import au.com.dius.pact.provider.junitsupport.loader.PactBroker;
 import ch.admin.bit.jeap.doc.web.DocServiceApplication;
+import ch.admin.bit.jeap.security.resource.properties.ResourceServerProperties;
 import ch.admin.bit.jeap.security.resource.semanticAuthentication.SemanticApplicationRole;
 import ch.admin.bit.jeap.security.resource.token.JeapAuthenticationContext;
 import ch.admin.bit.jeap.security.test.jws.JwsBuilderFactory;
@@ -154,6 +155,16 @@ public class PactProviderTestBase {
     @Value("${jeap.security.oauth2.resourceserver.system-name}")
     private String securitySystemName;
 
+    /**
+     * Where the token is addressed to: the resource id of this application. Taken from the properties of the jEAP
+     * security starter rather than from the configuration, because the starter falls back to
+     * {@code spring.application.name} when an instance sets none - so the token carries exactly the audience this
+     * application validates, and is accepted whatever its strict audience validation is set to, {@code on}
+     * included.
+     */
+    @Autowired
+    private ResourceServerProperties resourceServerProperties;
+
     @BeforeEach
     void setUp(PactVerificationContext context) {
         // If there are no pacts there will be no context.
@@ -183,8 +194,9 @@ public class PactProviderTestBase {
      * token in its place, and <b>no interaction may assert anything about the {@code Authorization}
      * header</b>.
      * <p>
-     * The token carries the semantic role of the webhook, so <b>authorization is exercised rather than
-     * mocked</b>: a call without the role is refused by this application just as it is in production.
+     * The token is addressed to this application and carries the semantic role of the webhook, so <b>audience
+     * validation and authorization are exercised rather than mocked</b>: a call without the role is refused by
+     * this application just as it is in production.
      * <p>
      * <b>Only a bearer header is replaced.</b> A request carrying none belongs to an interaction about being
      * unauthenticated, and substituting a token into it would verify something the consumer never sends.
@@ -195,6 +207,7 @@ public class PactProviderTestBase {
         }
         String token = jwsBuilderFactory
                 .createValidFromNowBuilder("governance-service", JeapAuthenticationContext.SYS, 5, ChronoUnit.MINUTES)
+                .withAudiences(resourceServerProperties.getResourceId())
                 .withUserRoles(SemanticApplicationRole.builder()
                         .system(securitySystemName)
                         .resource(GOVERNANCE_NOTIFICATIONS)
