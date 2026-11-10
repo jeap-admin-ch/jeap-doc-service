@@ -233,10 +233,15 @@ class TableControlsBrowserIT extends SiteBrowserTestBase {
 
         page.getByText("The page with folds").click();
         page.waitForURL(url -> url.endsWith("/" + FOLD_ROUTE + "/"));
+        // The router changes the URL before React replaces the page. Going back sooner can cancel
+        // that replacement and leave the original, still sorted table mounted.
+        assertThat(page.locator("article h1")).hasText("Folds");
         page.goBack();
         page.waitForURL(url -> url.endsWith("/" + TABLES_ROUTE + "/"));
+        assertThat(page.locator("article h1")).hasText("Tables");
 
         assertThat(page.locator("article .jeapTableFilter")).hasCount(1);
+        assertThat(filterOf(relations()).locator("input")).hasValue("");
         assertThat(relations().locator("thead th[aria-sort]")).hasCount(0);
         assertThat(relations().locator("tbody tr:not([hidden])")).hasCount(RELATIONS);
         assertThat(column(relations(), 0)).isEqualTo(written);
