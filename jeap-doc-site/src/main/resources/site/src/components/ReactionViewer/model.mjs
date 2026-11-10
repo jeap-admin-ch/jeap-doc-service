@@ -100,6 +100,7 @@ export function entryView(graph, entry, revealed = new Set()) {
             if (entry.kind === 'INTERFACE' ? node.id === entry.id && !node.reaction
                 : message && fold(message.messageType) === fold(entry.message) && (message.variant ?? '') === entry.variant) {
                 state.visible.add(node.id); entryInterfaces.add(node.id);
+                if (entry.kind === 'MESSAGE') state.pins.add(node.id);
                 for (const reaction of graph.adjacent.get(node.id) ?? []) state.reactions.add(reaction);
                 state.system = graph.messageSystems.get(fold(message?.messageType));
             }
@@ -161,7 +162,7 @@ export function visibleReactionRows(graph, state) {
         }
     }
     for (const edge of graph.flow.values()) {
-        if (!state.edges.has(edge.id)) continue;
+        if (!state.edges.has(edge.id) || !state.visible.has(edge.source) || !state.visible.has(edge.target)) continue;
         if (edge.edgeType === 'TRIGGER' && rows.has(edge.target)) {
             rows.get(edge.target).trigger = tableInterfaceLabel(graph.nodes.get(edge.source));
         } else if (edge.edgeType === 'ACTION' && rows.has(edge.source)) {

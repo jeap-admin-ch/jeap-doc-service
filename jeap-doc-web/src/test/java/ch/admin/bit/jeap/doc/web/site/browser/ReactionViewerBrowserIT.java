@@ -138,7 +138,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var viewer = page.locator("section[aria-label='Reaction chains']");
         showReactionViewer(0);
         assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions()
-                .setName("Open path view"))).hasText("Paths");
+                .setName("Open path view"))).hasCount(0);
         var buttons = viewer.getByRole(AriaRole.GROUP, new com.microsoft.playwright.Locator.GetByRoleOptions()
                 .setName("Graph view").setExact(true)).locator("button:not([aria-label=\"Open path view\"])");
         assertThat(buttons).hasCount(7);
@@ -289,7 +289,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             org.assertj.core.api.Assertions.assertThat(arrows).isEqualTo(java.util.List.of(
                     "Sum of individual medians – approximation: 404\n4243: 400\n4244: 4\n4245: 0"));
             assertThat(legend.locator("span")).hasText(route.equals(MESSAGE_REACTIONS_ROUTE)
-                    ? new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions"}
+                    ? new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions", "Pinned"}
                     : new String[]{"Message", "REST", "Reaction", "Group", "2Hidden reactions", "Other system"});
             assertNothingWentWrongInTheBrowser();
         }
@@ -432,7 +432,13 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             assertThat(page.locator("article table").first()).isVisible();
             assertThat(page.locator("article [data-plantuml-diagram]")).hasCount(0);
             var componentViewer = page.locator("section[aria-label='Reaction chains']").first();
-            openGroupMenu(componentViewer, groupOfReaction(componentViewer, "4242"));
+            org.assertj.core.api.Assertions.assertThat(componentViewer.locator("div[aria-label^='Reaction graph.']")
+                    .evaluate("el => el._cyreg.cy.nodes('[kind=\"reaction\"]').length")).isEqualTo(0);
+            String collapsedGroup = (String) componentViewer.locator("div[aria-label^='Reaction graph.']")
+                    .evaluate("el => el._cyreg.cy.nodes('[kind=\"group\"]').first().id()");
+            openGroupMenu(componentViewer, collapsedGroup);
+            assertThat(componentViewer.getByRole(AriaRole.MENUITEM,
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand group"))).isVisible();
             assertThat(page.getByRole(AriaRole.MENU).locator("a")).hasCount(0);
             assertNothingWentWrongInTheBrowser();
         }
@@ -463,7 +469,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     element => {
                         const cy = element._cyreg.cy;
                         const messages = cy.nodes('[kind="message"]');
-                        return messages.length === 1 && cy.nodes('[?pinned]').length === 0
+                        return messages.length === 1 && messages.first().data('pinned') && cy.nodes('[?pinned]').length === 1
                             && cy.edges().every(edge => edge.source().id() === messages.first().id()
                                 || edge.target().id() === messages.first().id());
                     }
@@ -693,6 +699,62 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     @Test
+    void hideWithoutPinsCascadesOnlyThroughTheAffectedRegion() {
+        for (boolean group : java.util.List.of(false, true)) {
+            installVisibilityFixture(false);
+            open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+            showReactionViewer(0);
+            var viewer = page.locator("section[aria-label='Reaction chains']");
+            if (group) {
+                openGroupMenu(viewer, groupOfReaction(viewer, "r1"));
+                menuAction(viewer, "Hide group");
+            } else {
+                openFixtureInterfaceMenu(viewer, "B");
+                menuAction(viewer, "Hide");
+            }
+            awaitGraphKeys(java.util.List.of("A", "B", "C", "r1", "r2"), false);
+            awaitGraphKeys(java.util.List.of("D", "E", "r4"), true);
+            assertNothingWentWrongInTheBrowser();
+            page.unroute("**/reaction-graph.json");
+        }
+    }
+
+    @Test
+    void hiddenTriggerMarkersFollowReactionRowsAndCollapseToOneGroupMarker() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']").first();
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+        String group = groupOfReaction(viewer, "4243");
+        openGroupMenu(viewer, group);
+        menuAction(viewer, "Pin");
+        String message = (String) canvas.evaluate("el => el._cyreg.cy.nodes('[kind=\"message\"]').first().id()");
+        clickGraphNode(viewer, message, true);
+        menuAction(viewer, "Unpin and hide");
+        awaitGroupMembers(group, 3);
+        org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
+                (el, group) => {
+                    const cy = el._cyreg.cy;
+                    const markers = cy.nodes('[kind="marker"]').filter(n => n.data('anchor')
+                        && cy.getElementById(n.data('anchor')).parent().id() === group && n.data('restore'));
+                    return markers.length === 3 && markers.every(marker => {
+                        const anchor = cy.getElementById(marker.data('anchor'));
+                        return Math.abs(marker.position('y') - anchor.position('y')) <= 10
+                            && Math.abs(marker.position('x') - anchor.position('x')) < 100;
+                    });
+                }
+                """, group)).isEqualTo(true);
+        openGroupMenu(viewer, group);
+        menuAction(viewer, "Collapse group");
+        awaitGroupMembers(group, 0);
+        org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
+                (el, group) => el._cyreg.cy.nodes('[kind="marker"]')
+                    .filter(n => n.data('anchor') === group && n.data('restore')).map(n => n.data('label'))
+                """, group)).isEqualTo(java.util.List.of("1"));
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
     void hideUsesOnlyVisibleAlternatePathsAndKeepsSeparateRegions() {
         for (boolean alternate : java.util.List.of(false, true)) {
             installVisibilityFixture(alternate);
@@ -770,7 +832,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     @Test
-    void directedExpansionChecksDepthAndPathViewIncludesCyclicDetours() {
+    void directedExpansionChecksDepthAndPreparedViewsDoNotOfferPathSearch() {
         installVisibilityFixture(true);
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         showReactionViewer(0);
@@ -789,18 +851,11 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         expand.click();
         awaitGraphKeys(java.util.List.of("C"), true);
         assertNoPins(viewer);
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Open path view")).click();
-        var show = dialog.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Show paths"));
-        assertThat(show).isDisabled();
-        for (String key : java.util.List.of("A", "C")) {
-            dialog.getByLabel("Add interface")
-                    .selectOption("[\"INTERFACE\",\"" + key + "\"]");
-            dialog.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Add").setExact(true)).click();
-        }
-        show.click();
-        awaitGraphKeys(java.util.List.of("A", "B", "C", "r1", "r2", "r3"), true);
-        awaitGraphKeys(java.util.List.of("D", "E", "r4", "old"), false);
-        assertNoPins(viewer);
+        assertThat(viewer.getByRole(AriaRole.BUTTON,
+                new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Open path view"))).hasCount(0);
+        openFixtureInterfaceMenu(viewer, "B");
+        assertThat(viewer.getByRole(AriaRole.MENUITEM,
+                new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Find paths from here…"))).hasCount(0);
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -956,8 +1011,11 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var position = (java.util.Map<?, ?>) canvas.evaluate("""
                 (element, id) => {
                     const cy = element._cyreg.cy;
-                    const bounds = cy.getElementById(id).renderedBoundingBox({includeLabels: false});
-                    return {x: (bounds.x1 + bounds.x2) / 2, y: bounds.y1 + 8 * cy.zoom()};
+                    const group = cy.getElementById(id);
+                    const bounds = group.renderedBoundingBox({includeLabels: false});
+                    // Pinned nodes include the overhanging badge in their texture bounds.
+                    return {x: (bounds.x1 + bounds.x2) / 2,
+                        y: bounds.y1 + (group.data('pinned') ? 24 : 8) * cy.zoom()};
                 }
                 """, group);
         canvas.click(new com.microsoft.playwright.Locator.ClickOptions().setButton(com.microsoft.playwright.options.MouseButton.RIGHT)

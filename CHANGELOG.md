@@ -10,12 +10,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Focus reaction-chain interfaces, reactions and component groups. Expand incoming or outgoing connections
   by a chosen edge depth, or click numbered boundary circles to reveal direct neighbours across systems.
-- Select directed paths between multiple interfaces, including cyclic detours and without a depth cutoff.
 - Pin elements, hide nodes or groups, and hide outgoing paths. Restore hidden neighbours through diagram
   markers, preserve pins when collapsing groups and explicitly reveal superseded reactions. Keep each
   viewer's selection independent and recalculate flow widths from its visible contributions.
 
 ### Changed
+- Start component groups collapsed and pin the selected message variant in message views. Reserve path
+  selection for the standalone explorer.
 - Organize context-menu actions into categories with separators and icons. Show only the applicable
   expand or collapse action for a group.
 - Mark pinned elements with a red pin badge that remains fully visible outside node borders. Show foreign

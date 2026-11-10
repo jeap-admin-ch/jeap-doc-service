@@ -25,7 +25,7 @@ const system = graph => expandGroups(graph, entryView(graph, {kind: 'SYSTEM', sy
 const interfaces = (graph, name) => entryView(graph, {kind: 'INTERFACE', id: iid(name)});
 const connections = (graph, state) => project(graph, state).elements.filter(e => e.data.source).map(e => [e.data.source, e.data.target]);
 
-test('all entry kinds start unpinned, including message variants', () => {
+test('only message entries pin their selected variant', () => {
     const {payload} = fixture([['A', 'r1', 'B'], ['B', 'r2', 'C']]);
     payload.graph.nodes.find(node => node.identity.key === 'A').interfaceDetails.message.variant = 'express';
     const graph = readGraph(payload, 'site', 'dev');
@@ -38,8 +38,9 @@ test('all entry kinds start unpinned, including message variants', () => {
         {kind: 'GROUP', id: graph.groupOf.get(rid('r1'))},
     ]) {
         const state = expandGroups(graph, entryView(graph, entry));
-        assert.deepEqual(state.pins, new Set());
-        assert.ok(project(graph, state).elements.every(element => !element.data.pinned));
+        assert.deepEqual(state.pins, new Set(entry.kind === 'MESSAGE' ? [iid('A')] : []));
+        assert.deepEqual(project(graph, state).elements.filter(element => element.data.pinned).map(element => element.data.id),
+            entry.kind === 'MESSAGE' ? [iid('A')] : []);
     }
 });
 

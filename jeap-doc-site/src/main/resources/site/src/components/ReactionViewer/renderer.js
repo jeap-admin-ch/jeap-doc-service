@@ -62,8 +62,10 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
             if (anchorParent) position.y += (orderedChildren.get(anchorParent).indexOf(data.anchor) - (children.get(anchorParent).length - 1) / 2) * 54;
             if (data.parent) position.y += (orderedChildren.get(data.parent).indexOf(data.id) - (children.get(data.parent).length - 1) / 2) * 54;
             if (data.anchor) {
-                position.x += data.direction === 'incoming' ? -118 : 118;
-                position.y += data.restore ? -38 : 38;
+                const offset = anchorParent ? 65 + 17 + 4 : 118;
+                position.x += data.direction === 'incoming' ? -offset : offset;
+                // Reaction markers follow their own row, not the group's boundary.
+                position.y += anchorParent ? (data.restore ? -10 : 10) : (data.restore ? -38 : 38);
             }
         }
         return {...element, data, position};

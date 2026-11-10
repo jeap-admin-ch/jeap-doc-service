@@ -77,8 +77,7 @@ export default function NodeMenu({menu, href, linkLabel, canExpand, canCollapse,
                 <MenuIcon name="incoming"/>Expand incoming paths…</button>
             <button type="button" role="menuitem" onClick={() => onExplore('outgoing')}>
                 <MenuIcon name="outgoing"/>Expand outgoing paths…</button>
-            {['message', 'http', 'interface'].includes(menu.kind) && <button type="button" role="menuitem"
-                onClick={() => onExplore('paths')}><MenuIcon name="paths"/>Find paths from here…</button>}
+
         </MenuSection>
     </div>;
 }

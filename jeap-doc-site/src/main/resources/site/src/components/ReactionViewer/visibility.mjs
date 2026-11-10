@@ -111,7 +111,6 @@ export function changeVisibility(graph, previous, action) {
         for (const region of regions) {
             const remainingPins = [...state.pins].filter(pin =>
                 seeds(graph, previous, [pin]).some(seed => region.has(seed)));
-            if (!remainingPins.length) continue;
             const retained = reach(after, seeds(graph, state, remainingPins));
             for (const node of region) if (!retained.has(node)) removed.add(node);
         }

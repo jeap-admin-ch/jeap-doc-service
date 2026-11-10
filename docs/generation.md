@@ -1094,8 +1094,9 @@ Its subtitle counts reactions belonging to that system or component. For message
 directly triggering on or publishing the selected message variant, once each. Superseded reactions are excluded,
 and collapsing a group does not change the count.
 It loads the complete `reaction-graph.json` of the current site and environment once per browser application,
-then derives independent entry states for each embedded viewer. System and component entries start with their
-selected reaction groups expanded and their adjacent interfaces visible. Message entries show only the selected
+then derives independent entry states for each embedded viewer. System entries start with their selected
+reaction groups expanded; component entries start collapsed. Both show their adjacent interfaces. Message
+entries show only the selected
 variant, its incoming and outgoing edges, and the reactions at their other ends. Other members of the same
 group and other interfaces of those reactions stay outside the selection, including after expanding a group.
 Their tables follow the same restriction.
@@ -1103,7 +1104,8 @@ Layout and canvas creation wait until the viewer approaches the viewport; scroll
 Sites without environments show an unavailable message and keep the generated table without fetching a graph.
 Groups can be collapsed independently through their context menu. System entries exclude foreign reactions.
 Reaction tables remain below the viewer. Once the graph renders, each table uses the same JSON and shows the
-individual reactions currently visible in its viewer. Collapsing a group removes its rows; expanding it
+individual reactions currently visible in its viewer. Trigger and action cells include only connections
+whose interface endpoint is also visible. Collapsing a group removes its rows; expanding it
 restores them. Search and sorting remain available and keep their settings as the graph changes. Other
 variants' tables are independent. When all groups are collapsed, the table explains why it has no rows.
 The generated table of the initial selection remains the fallback when JavaScript is disabled or the viewer
@@ -1132,16 +1134,17 @@ the existing diagram plugin's icons, with tooltips and accessible names. Frequen
 when hovering over an arrow or a reaction. Focus and directed expansion can explore the full snapshot across system boundaries.
 
 Right-click any node to pin or unpin it, hide it, or hide all outgoing paths. A red pin badge marks pinned elements without changing their ownership border; the legend explains the badge.
-Pins are set only by the explicit **Pin** action; entry views, Focus and Paths start unpinned.
+Message entries pin their selected message variant initially. Other entries and Focus start unpinned.
+The **Pin** action adds or removes pins independently of the entry selection.
 Several nodes and groups can be pinned at once. Hiding a pinned node uses **Unpin and hide**. A group with
 pins uses **Unpin members and hide group**, which removes the group's pin and all member pins together.
 Each action produces one complete semantic state for later history support; this release has no undo control.
 
-Ordinary **Hide** removes the chosen node and its incident edges. In each affected connected region that still
-has pins, it also removes nodes disconnected from every remaining pin. Connectivity uses only currently
+Ordinary **Hide** removes the chosen node and its incident edges. In each affected connected region,
+it also removes nodes disconnected from every remaining pin. Connectivity uses only currently
 visible flow edges and ignores arrow direction. An alternative visible route keeps a node visible. Already
-hidden routes do not. Separate regions and affected regions without remaining pins stay unchanged.
-Removing the last pin therefore does not clear the remaining graph.
+hidden routes do not. Separate regions stay unchanged. An affected region without remaining pins is removed completely;
+removing the last pin through Hide can therefore empty that region.
 
 **Hide all outgoing paths** follows visible arrows with cycle detection. It keeps the starting element,
 pins and containers needed by pinned reactions. It does not run the ordinary Hide cleanup. Upstream-only
@@ -1164,7 +1167,8 @@ Right-clicking the diagram or its menu suppresses the native browser menu, inclu
 The menu disables actions that would not change the group. Collapsing preserves pinned members and changes
 only that group; the other groups and other viewers retain their state. Zoom is preserved while the viewport follows the affected group.
 After selecting a group, Shift+F10 opens its menu (the first group is the initial keyboard target);
-arrow keys navigate the enabled menu entries and Escape closes it. The Paths toolbar button opens a new path selection; the other toolbar controls adjust the presentation.
+arrow keys navigate the enabled menu entries and Escape closes it. The toolbar controls adjust the presentation.
+Prepared views do not offer path selection.
 The minimap toggle opens an overview of the current diagram with its visible viewport marked. Clicking or
 dragging moves the main viewport without changing zoom; arrow keys pan and Home fits the diagram. The map
 updates after group changes, colour-mode changes and resizing, including full screen, and is independent
@@ -1224,7 +1228,8 @@ from one to the reachable depth, capped at 50. Existing contents and pins remain
 from all eligible members without unfolding the group. Already visible selections disable the action.
 Superseded reactions participate only after explicit reveal; PREDECESSOR history never participates.
 
-**Paths** selects at least two distinct interfaces in a new, unpinned view. After the first selection,
+Path selection is reserved for the future standalone Graph Explorer, including a searchable endpoint picker.
+Its existing graph algorithm selects at least two distinct interfaces in a new, unpinned view. After the first selection,
 candidates are interfaces reachable in either direction from an endpoint. The result includes all directed
 connections between every ordered pair, including cyclic detours, without a depth cutoff. Dead-end branches
 are excluded. This shows graph relationships, not an individual execution trace. Message, HTTP and generic

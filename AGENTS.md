@@ -930,12 +930,13 @@ Message entry views contain only the selected variant, its incident flow edges a
 Group expansion must not add sibling reactions or other interfaces. The generated and live tables use the
 same selection. Reaction labels show daily medians; IDs remain opaque identities in the source.
 
-Pins are exclusively user-selected: entry views, focus and path selection never pin automatically.
+Message entry views initially pin the selected message variant. Other entries, focus and path selection start unpinned.
+Component entry groups start collapsed; path selection is reserved for the standalone explorer.
 Visibility commands live in `ReactionViewer/visibility.mjs` and return a new complete state per action.
 Keep explicit hiding separate from collapsing: collapsed reactions contribute bundled arrows, hidden reactions
-contribute none. Cleanup uses only visible flow connectivity within affected regions; regions without remaining
-pins are not pruned. Group containment is not a flow edge. Message entry interfaces remain fixed independently
-of pins, so unpinning never broadens the selection. Explicit superseded reveal survives subsequent pin and
+contribute none. Cleanup uses only visible flow connectivity within affected regions; affected regions without remaining
+pins are removed too, while unrelated regions remain unchanged. Group containment is not a flow edge.
+Message entry interfaces remain fixed independently of pins, so unpinning never broadens the selection. Explicit superseded reveal survives subsequent pin and
 collapse operations. Restore hidden content through markers at its visible neighbours or the numbered group marker; do not add a separate hidden-content list.
 The group menu only unfolds eligible members and preserves explicit hiding and superseded status. The group
 marker is a separate restore action and deliberately counts explicitly hidden members as well as collapsed ones.

@@ -101,7 +101,8 @@ function EnvironmentReactionViewer({entry, environment}) {
         if (!snapshot || snapshot.url !== url) return null;
         try {
             const state = editedView?.key === viewKey ? editedView.state
-                : expandGroups(snapshot.graph, entryView(snapshot.graph, entry));
+                : entry.kind === 'COMPONENT' ? entryView(snapshot.graph, entry)
+                    : expandGroups(snapshot.graph, entryView(snapshot.graph, entry));
             const projection = project(snapshot.graph, state);
             return {...projection, elements: [...projection.elements, ...hiddenMarkers(snapshot.graph, state)],
                 state, reactionCount: focusedReactionCount(snapshot.graph, state),
@@ -193,8 +194,6 @@ function EnvironmentReactionViewer({entry, environment}) {
         <div className={styles.toolbar}>
             <div><strong>{focus}</strong><span className={styles.caption}>{summary}</span></div>
             <div className={styles.actions} role="group" aria-label="Graph view">
-                <button type="button" className={styles.pathButton} aria-label="Open path view" title="Open path view"
-                    onClick={() => { setMenu(null); setDialog({kind: 'paths', ids: []}); }}>Paths</button>
                 <button type="button" disabled={sourceOpen} aria-label="Zoom out" title="Zoom out" onClick={() => controls.current?.zoom(0.8)}><ZoomOutIcon/></button>
                 <output aria-label="Zoom">{zoom}%</output>
                 <button type="button" disabled={sourceOpen} aria-label="Zoom in" title="Zoom in" onClick={() => controls.current?.zoom(1.25)}><ZoomInIcon/></button>
