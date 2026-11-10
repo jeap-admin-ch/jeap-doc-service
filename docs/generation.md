@@ -1154,12 +1154,13 @@ and their connecting edges; successive clicks follow the chain one edge at a tim
 Superseded reactions start hidden. Open their count hint to reveal a chosen reaction and its flow connections.
 A revealed superseded reaction can be pinned and collapsed like an active reaction. Shared interfaces remain
 visible when one contributing reaction is hidden. The status means presumed superseded; it is never inferred
-from a zero median. Group expansion explicitly shows its hidden members, including superseded members in
-that entry. It does not restore explicitly hidden interfaces.
+from a zero median. The Expand group menu action only unfolds eligible members; it preserves explicit hiding and never reveals
+superseded reactions. The numbered group marker is a separate restore action: it also restores explicitly
+hidden members counted in that marker, but does not reveal previously unrevealed superseded reactions.
 
 Right-click a group frame or one of its members for “Collapse group” or “Expand group”, according to its state.
 The menu groups documentation, visibility and exploration actions with separators and leading icons.
-Right-clicking the diagram or its menu suppresses the native browser menu, including outside full screen.
+Right-clicking the diagram or its menu suppresses the native browser menu, including outside full screen. The source view retains its native browser menu.
 The menu disables actions that would not change the group. Collapsing preserves pinned members and changes
 only that group; the other groups and other viewers retain their state. Zoom is preserved while the viewport follows the affected group.
 After selecting a group, Shift+F10 opens its menu (the first group is the initial keyboard target);

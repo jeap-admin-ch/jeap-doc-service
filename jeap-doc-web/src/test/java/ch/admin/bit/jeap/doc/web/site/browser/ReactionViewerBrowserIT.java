@@ -552,6 +552,9 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Show source")).click();
         var source = viewer.getByRole(AriaRole.TEXTBOX, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Graph source (JSON)"));
         assertThat(source).isVisible();
+        org.assertj.core.api.Assertions.assertThat(source.evaluate(
+                "el => el.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true}))"))
+                .isEqualTo(true);
         assertThat(viewers.nth(1).getByRole(AriaRole.TEXTBOX)).hasCount(0);
         showReactionViewer(1);
         org.assertj.core.api.Assertions.assertThat(source.inputValue()).contains("<script>alert(1)</script>");
@@ -623,6 +626,29 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(minimap).isVisible();
         assertThat(viewer.getByLabel("Legend", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).isVisible();
         org.assertj.core.api.Assertions.assertThat(otherCanvas.evaluate("el => ({zoom: el._cyreg.cy.zoom(), pan: el._cyreg.cy.pan()})")).isEqualTo(otherView);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void groupMenuPreservesHiddenMembersAndGroupMarkerRestoresThem() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']").first();
+        String group = groupOfReaction(viewer, "4243");
+        openReactionMenu(viewer, "4244");
+        menuAction(viewer, "Hide");
+        awaitGroupMembers(group, 2);
+        openGroupMenu(viewer, group);
+        menuAction(viewer, "Collapse group");
+        awaitGroupMembers(group, 0);
+        openGroupMenu(viewer, group);
+        menuAction(viewer, "Expand group");
+        awaitGroupMembers(group, 2);
+        awaitGraphKeys(java.util.List.of("4244"), false);
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+        clickGraphNode(viewer, "hidden:" + group, false);
+        awaitGroupMembers(group, 3);
+        awaitGraphKeys(java.util.List.of("4244"), true);
         assertNothingWentWrongInTheBrowser();
     }
 

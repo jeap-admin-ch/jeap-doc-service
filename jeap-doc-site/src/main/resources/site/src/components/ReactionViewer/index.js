@@ -5,7 +5,7 @@ import {
     CloseIcon, FitIcon, MaximizeIcon, MinimapIcon, ResetZoomIcon, SourceIcon, ZoomInIcon, ZoomOutIcon,
 } from '@matfsw/docusaurus-plantuml-plugin/theme/PlantUmlDiagram/icons.js';
 import {useEnvironment, routePrefixOf} from '../../data/environments';
-import {readGraph, entryView, expandGroups, project, labelOf, focusedReactionCount, visibleReactionRows} from './model.mjs';
+import {readGraph, entryView, expandGroups, availableReaction, project, labelOf, focusedReactionCount, visibleReactionRows} from './model.mjs';
 import styles from './styles.module.css';
 import {hiddenMarkers} from './visibility.mjs';
 import {SnapshotRequests} from './SnapshotProvider';
@@ -166,7 +166,7 @@ function EnvironmentReactionViewer({entry, environment}) {
         });
         setDialog(null); closeMenu();
     };
-    const changeGroup = expanded => applyAction({type: expanded ? 'show' : 'collapse', id: menu.group});
+    const changeGroup = expanded => applyAction({type: expanded ? 'expand-group' : 'collapse', id: menu.group});
     const menuGroup = menu && snapshot?.graph.groups.get(menu.group);
     const environmentPrefix = url.slice(0, -'reaction-graph.json'.length);
     const destination = !menu ? null : menu.kind === 'group'
@@ -215,7 +215,7 @@ function EnvironmentReactionViewer({entry, environment}) {
         {!snapshot.graph.ownershipComplete && <p role="status">Incomplete ownership: Not all reactions can be assigned to a system.</p>}
         <HiddenContent title={`${view.superseded} superseded reactions hidden (presumed superseded)`}
             ids={view.supersededIds} graph={snapshot.graph} onShow={id => applyAction({type: 'show', id})}/>
-        <div className={styles.graph} onContextMenuCapture={event => event.preventDefault()}>
+        <div className={styles.graph} onContextMenuCapture={event => { if (!sourceOpen) event.preventDefault(); }}>
             <div ref={container} className={`${styles.canvas} ${sourceOpen ? styles.coveredCanvas : ''}`} tabIndex={sourceOpen ? -1 : 0} role="group"
                 aria-hidden={sourceOpen || undefined}
                 aria-label="Reaction graph. Use arrow keys to pan, plus and minus to zoom, and zero to fit all. Right-click or press Shift+F10 to open the context menu."
@@ -228,7 +228,7 @@ function EnvironmentReactionViewer({entry, environment}) {
             {hover && !menu && !sourceOpen && <Tooltip id={tooltipId} hover={hover}/>}
             {menu && <NodeMenu menu={menu} href={destination.href} linkLabel={destination.label}
                 canExpand={menuGroup?.members.some(id => view.state.reactions.has(id)
-                    && !view.state.visible.has(id))}
+                    && !view.state.visible.has(id) && availableReaction(snapshot.graph, view.state, id))}
                 canCollapse={menuGroup?.members.some(id => view.state.visible.has(id) && !view.state.pins.has(id))}
                 pinned={view.state.pins.has(menu.id)}
                 groupPinned={menu.kind === 'group' && (view.state.pins.has(menu.id)

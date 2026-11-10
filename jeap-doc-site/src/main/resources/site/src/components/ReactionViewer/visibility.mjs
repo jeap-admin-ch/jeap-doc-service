@@ -67,7 +67,8 @@ function showNode(graph, state, id) {
     state.selected.add(group);
     state.hidden.delete(group);
     if (graph.nodes.get(id).reaction.status === 'SUPERSEDED') state.revealed.add(id);
-    for (const edge of graph.flow.values()) {
+    for (const edgeId of [...(graph.incoming.get(id) ?? []), ...(graph.outgoing.get(id) ?? [])]) {
+        const edge = graph.flow.get(edgeId);
         if (!state.edges.has(edge.id)) continue;
         const neighbour = edge.edgeType === 'TRIGGER' && edge.target === id ? edge.source
             : edge.edgeType === 'ACTION' && edge.source === id ? edge.target : null;
@@ -81,8 +82,8 @@ export function changeVisibility(graph, previous, action) {
     const {id} = action;
     if (action.type === 'pin') {
         if (state.pins.has(id)) state.pins.delete(id); else state.pins.add(id);
-    } else if (action.type === 'collapse') {
-        state = setGroupExpanded(graph, state, id, false);
+    } else if (action.type === 'collapse' || action.type === 'expand-group') {
+        state = setGroupExpanded(graph, state, id, action.type === 'expand-group');
     } else if (action.type === 'show') {
         for (const target of action.ids ?? [id]) {
             state.hidden.delete(target);
@@ -127,6 +128,7 @@ export function changeVisibility(graph, previous, action) {
 
 /** Markers only restore this entry's hidden selection; exploration is a separate operation. */
 export function hiddenMarkers(graph, state) {
+    if (!state.hidden.size) return [];
     const markers = [];
     const full = copyView(state);
     full.hidden.clear();

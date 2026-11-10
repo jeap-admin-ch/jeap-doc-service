@@ -936,7 +936,9 @@ Keep explicit hiding separate from collapsing: collapsed reactions contribute bu
 contribute none. Cleanup uses only visible flow connectivity within affected regions; regions without remaining
 pins are not pruned. Group containment is not a flow edge. Message entry interfaces remain fixed independently
 of pins, so unpinning never broadens the selection. Explicit superseded reveal survives subsequent pin and
-collapse operations. Restore hidden content through markers at its visible neighbours; do not add a separate hidden-content list.
+collapse operations. Restore hidden content through markers at its visible neighbours or the numbered group marker; do not add a separate hidden-content list.
+The group menu only unfolds eligible members and preserves explicit hiding and superseded status. The group
+marker is a separate restore action and deliberately counts explicitly hidden members as well as collapsed ones.
 
 Reaction exploration lives in `ReactionViewer/exploration.mjs`. A selection records reaction identities and
 flow-edge identities separately: reaching a reaction must not expose all its interfaces implicitly. Focus

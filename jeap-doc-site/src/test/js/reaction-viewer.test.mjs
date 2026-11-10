@@ -638,3 +638,25 @@ test('outgoing hide through a collapsed group does not visit initially supersede
 });
 
 import "./reaction-exploration.test.mjs";
+
+test('group menu expansion preserves explicit hiding and superseded status while its marker restores hidden members', () => {
+    const graph = readGraph(payload(), 'site', 'dev');
+    const initial = expandGroups(graph, entryView(graph, entry));
+    const group = graph.groupOf.get(rid('r1'));
+    const hidden = act(graph, initial, 'hide', rid('r2'));
+    const collapsed = act(graph, hidden, 'collapse', group);
+    const expanded = act(graph, collapsed, 'expand-group', group);
+    assert.ok(expanded.visible.has(rid('r1')));
+    assert.ok(!expanded.visible.has(rid('r2')));
+    assert.ok(!expanded.visible.has(rid('old')));
+    assert.deepEqual(expanded.hidden, hidden.hidden);
+    assert.deepEqual(expanded.revealed, hidden.revealed);
+    const marker = project(graph, expanded).elements.find(e => e.data.id === 'hidden:' + group).data;
+    assert.equal(marker.label, '1');
+    assert.deepEqual(marker.restore, [rid('r2')]);
+    const restored = changeVisibility(graph, expanded, {type: 'show', ids: marker.restore});
+    assert.ok(restored.visible.has(rid('r2')));
+    assert.ok(!restored.hidden.has(rid('r2')));
+    assert.ok(!restored.visible.has(rid('old')));
+    assert.deepEqual(restored.revealed, initial.revealed);
+});
