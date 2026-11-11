@@ -2,7 +2,7 @@ publiccodeYmlVersion: 0.7.0
 name: jeap-doc-service
 applicationSuite: jEAP
 softwareVersion: 4.10.0
-releaseDate: 2026-11-11
+releaseDate: 2026-11-12
 url: "https://github.com/jeap-admin-ch/jeap-doc-service.git"
 landingURL: "https://github.com/jeap-admin-ch/jeap"
 platforms:
