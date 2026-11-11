@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.9.0] - 2026-11-09
+## [4.9.0] - 2026-11-11
 
 ### Added
 - Focus reaction-chain interfaces, reactions and component groups. Expand incoming or outgoing connections
@@ -25,6 +25,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   system borders on component groups and interfaces, without repeating them on individual reactions.
 
 ### Fixed
+- Keep hidden trigger and action connections out of the live reaction table until their interfaces are shown again.
+- Wait for rendered page content in the table navigation browser test before navigating back.
 - Keep explicit hiding and superseded reactions unchanged when expanding a group through its menu; retain
   the numbered group marker as a separate restore action. Preserve the native context menu in the source view.
 - Suppress the native browser context menu throughout the reaction diagram and its menu, in normal and
