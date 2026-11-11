@@ -137,6 +137,7 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     };
     if (viewport) { cy.zoom(viewport.zoom); cy.pan(viewport.pan); }
     else reset();
+    let highlightTarget;
     // A semantic redraw may move nodes in model coordinates. Keep the action target at its screen position.
     if (actionFocus) {
         const target = actionFocus.candidates.map(candidate => ({...candidate, node: cy.getElementById(candidate.id)}))
@@ -150,10 +151,16 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
             };
             cy.pan({x: keepVisible(target.point.x, cy.width(), position.x - bounds.x1, bounds.x2 - position.x) - position.x * zoom,
                 y: keepVisible(target.point.y, cy.height(), position.y - bounds.y1, bounds.y2 - position.y) - position.y * zoom});
+            if (actionFocus.hiding) highlightTarget = target.node;
             activeNode = target.id; activeGroup = groupOf(target.node).id();
         }
     }
     let highlightTimer;
+    const highlight = elements => {
+        elements.addClass('newlyExpanded');
+        highlightTimer = setTimeout(() => cy.elements().removeClass('newlyExpanded'), 1800);
+    };
+    if (highlightTarget) highlight(highlightTarget);
     if (actionFocus?.expanding) {
         const previous = new Set(actionFocus.visibleIds);
         const added = cy.elements().filter(node => node.data('kind') !== 'marker' && !previous.has(node.id()));
@@ -166,8 +173,7 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
             const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             if (reducedMotion) { cy.zoom(next.zoom); cy.pan(next.pan); }
             else cy.animate({zoom: next.zoom, pan: next.pan}, {duration: 250});
-            added.union(added.connectedEdges()).addClass('newlyExpanded');
-            highlightTimer = setTimeout(() => cy.elements().removeClass('newlyExpanded'), 1800);
+            highlight(added.union(added.connectedEdges()));
         }
     }
     // A pointer gesture takes precedence over the automatic viewport movement.
@@ -179,13 +185,29 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     resize.observe(container);
     return {
         fit, reset,
-        actionFocus: (id, expanding = false) => {
+        actionFocus: (id, expanding = false, hiding = false) => {
             const node = cy.getElementById(id);
             if (!node.length) return {candidates: [{id, point: {x: cy.width() / 2, y: cy.height() / 2}}]};
-            // Hiding or collapsing the target falls back to its group, then a surviving direct neighbour.
-            const candidates = node.union(node.parent()).union(node.connectedEdges().connectedNodes())
+            // Hiding follows the closest surviving upstream node, then downstream, before a group frame.
+            // Include all distances so subgraph hiding can find a remaining pinned boundary.
+            const walk = incoming => {
+                const pending = node.union(node.children('[kind="reaction"]')).toArray();
+                const seen = new Set(pending.map(n => n.id()));
+                const found = [];
+                for (let index = 0; index < pending.length; index++) {
+                    const edges = incoming ? pending[index].incomers('edge') : pending[index].outgoers('edge');
+                    for (const edge of edges) {
+                        const next = incoming ? edge.source() : edge.target();
+                        if (seen.has(next.id())) continue;
+                        seen.add(next.id()); pending.push(next); found.push(next);
+                    }
+                }
+                return cy.collection(found);
+            };
+            const candidates = (hiding ? node.union(walk(true)).union(walk(false)).union(node.parent())
+                : node.union(node.parent()).union(node.connectedEdges().connectedNodes()))
                 .filter(candidate => candidate.data('kind') !== 'marker');
-            return {expanding, visibleIds: cy.elements().map(node => node.id()), candidates: candidates.map(candidate => ({id: candidate.id(), point: {...candidate.renderedPosition()}}))};
+            return {expanding, hiding, visibleIds: cy.elements().map(node => node.id()), candidates: candidates.map(candidate => ({id: candidate.id(), point: {...candidate.renderedPosition()}}))};
         },
         overview: () => ({bounds: cy.elements().boundingBox(),
             image: cy.png({full: true, maxWidth: 440, maxHeight: 320})}),

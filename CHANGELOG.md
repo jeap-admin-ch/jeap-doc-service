@@ -17,6 +17,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   viewer's selection independent and recalculate flow widths from its visible contributions.
 
 ### Changed
+- Briefly highlight the surviving predecessor or successor after hiding, using the same yellow style as
+  newly shown content, and keep that node in view without pinning it.
 - Automatically fit the starting point and all newly expanded nodes and connections with minimal panning.
   Highlight new elements briefly.
 - Start component groups collapsed and pin the selected message variant in message views. Reserve path

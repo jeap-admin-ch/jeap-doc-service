@@ -783,6 +783,41 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     @Test
+    void hidingHighlightsTheSurvivingPredecessorOrSuccessorWithoutPinningIt() {
+        for (boolean predecessor : java.util.List.of(true, false)) {
+            installVisibilityFixture(false);
+            open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+            showReactionViewer(0);
+            var viewer = page.locator("section[aria-label='Reaction chains']");
+            if (predecessor) {
+                openFixtureInterfaceMenu(viewer, "B");
+                menuAction(viewer, "Hide");
+            } else {
+                openReactionMenu(viewer, "r1");
+                menuAction(viewer, "Hide");
+            }
+            String expected = predecessor ? "r1" : "B";
+            page.waitForFunction("""
+                    key => {
+                        const cy = document.querySelector('div[aria-label^="Reaction graph."]')?._cyreg?.cy;
+                        if (!cy) return false;
+                        const marked = cy.nodes('.newlyExpanded');
+                        if (marked.length !== 1 || JSON.parse(marked.first().id())[1] !== key) return false;
+                        const point = marked.first().renderedPosition();
+                        return !marked.first().data('pinned') && point.x >= 0 && point.x <= cy.width()
+                            && point.y >= 0 && point.y <= cy.height();
+                    }
+                    """, expected);
+            page.waitForFunction("""
+                    () => document.querySelector('div[aria-label^="Reaction graph."]')?._cyreg?.cy
+                        .nodes('.newlyExpanded').length === 0
+                    """);
+            assertNothingWentWrongInTheBrowser();
+            page.unroute("**/reaction-graph.json");
+        }
+    }
+
+    @Test
     void connectedSubgraphHidesBothDirectionsAndStopsAtPins() {
         for (boolean pinned : java.util.List.of(false, true)) {
             installVisibilityFixture(false);

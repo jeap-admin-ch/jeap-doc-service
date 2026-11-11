@@ -1127,6 +1127,9 @@ the zoom at 100%, so small graphs are not enlarged.
 Fit all continues to show the complete graph; manual pan and zoom survive presentation redraws.
 After a graph action, the viewport follows its target through relayout, keeping its screen position where
 space permits. Expansions pan and zoom out as needed to show the complete addition; other actions preserve zoom. A removed target falls back to its group or a surviving neighbour.
+After hiding, the nearest surviving predecessor is preferred, then a successor, then the group frame.
+It is briefly highlighted in the same yellow style as newly shown content, without adding a pin.
+If nothing remains in that connected area, no unrelated node is highlighted.
 Keyboard actions continue at that element; this does not change the semantic focus or selection.
 The viewport offers zoom, fit, reset and full screen, with keyboard equivalents for zoom and pan. Groups can be collapsed and expanded
 without changing the selection. The legend stays visible, including in full screen. Toolbar buttons reuse
