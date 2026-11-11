@@ -685,3 +685,24 @@ test('live rows exclude hidden trigger and action connections and restore them w
         assert.deepEqual(visibleReactionRows(graph, initial), [row]);
     }
 });
+
+import {expansionViewport} from '../../main/resources/site/src/components/ReactionViewer/expansionViewport.mjs';
+test('small expansions pan only as far as necessary without zooming in', () => {
+    const input = {bounds: {x1: 0, x2: 500, y1: 0, y2: 200}, width: 600, height: 400,
+        zoom: 1, pan: {x: 80, y: 80}, anchor: {x: 100, y: 100}};
+    assert.deepEqual(expansionViewport(input), {zoom: 1, pan: {x: 68, y: 80}});
+    const smaller = expansionViewport({...input, width: 500});
+    assert.equal(smaller.zoom, 0.872);
+    assert.ok(smaller.pan.x + 500 * smaller.zoom <= 468);
+});
+test('large expansions always fit all new content, even at an already low zoom', () => {
+    for (const zoom of [1, 0.4, 0.2]) {
+        const input = {bounds: {x1: 0, x2: 5000, y1: 0, y2: 2000}, width: 600, height: 400,
+            zoom, pan: {x: 80, y: 80}, anchor: {x: 100, y: 100}};
+        const result = expansionViewport(input);
+        assert.ok(result.zoom < zoom);
+        assert.ok(result.pan.x >= 32 && result.pan.y >= 32);
+        assert.ok(result.pan.x + 5000 * result.zoom <= 568);
+        assert.ok(result.pan.y + 2000 * result.zoom <= 368);
+    }
+});

@@ -157,7 +157,7 @@ function EnvironmentReactionViewer({entry, environment}) {
     }, [view, colorMode, viewKey, activatedView, presentationKey]);
     const closeMenu = (restoreFocus = true) => { setMenu(null); if (restoreFocus) container.current?.focus({preventScroll: true}); };
     const applyAction = (action, anchor = action.id) => {
-        const actionFocus = anchor ? controls.current?.actionFocus(anchor) : null;
+        const actionFocus = anchor ? controls.current?.actionFocus(anchor, ['expand', 'expand-group', 'show'].includes(action.type)) : null;
         setEditedView(previous => {
             const current = previous?.key === viewKey ? previous.state : view.state;
             const next = changeView(snapshot.graph, current, action);

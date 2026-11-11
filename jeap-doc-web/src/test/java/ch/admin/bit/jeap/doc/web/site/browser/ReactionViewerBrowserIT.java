@@ -360,7 +360,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         Object beforeExpand = actionPosition(first, group);
         page.keyboard().press("Enter");
         awaitGroupMembers(group, 3);
-        awaitActionPosition(group, beforeExpand);
+        awaitExpansionPosition(group, beforeExpand);
         org.assertj.core.api.Assertions.assertThat(secondCanvas.evaluate("element => element._cyreg.cy.elements().map(node => node.id())"))
                 .isEqualTo(otherNodes);
         assertNothingWentWrongInTheBrowser();
@@ -823,7 +823,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             Object beforeExpand = actionPosition(viewer, anchor);
             clickGraphNode(viewer, marker, false);
             awaitGraphKeys(java.util.List.of(key), true);
-            awaitActionPosition(anchor, beforeExpand);
+            awaitExpansionPosition(anchor, beforeExpand);
             assertThat(viewer.locator("div[aria-label^='Reaction graph.']")).isFocused();
         }
         awaitGraphKeys(java.util.List.of("D", "E", "r4", "old"), false);
@@ -859,6 +859,50 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertNothingWentWrongInTheBrowser();
     }
 
+    @Test
+    void largeExpansionAutomaticallyFitsAndHighlightsNewNodes() {
+        installVisibilityFixture(false);
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+        openFixtureInterfaceMenu(viewer, "A");
+        menuAction(viewer, "Focus");
+        openFixtureInterfaceMenu(viewer, "A");
+        menuAction(viewer, "Expand outgoing paths…");
+        canvas.evaluate("el => el._cyreg.cy.zoom(3)");
+        var dialog = page.getByRole(AriaRole.DIALOG);
+        dialog.getByLabel("Edge depth").fill("4");
+        dialog.getByRole(AriaRole.BUTTON,
+                new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Expand").setExact(true)).click();
+        awaitGraphKeys(java.util.List.of("C", "r2"), true);
+        var fit = viewer.getByRole(AriaRole.BUTTON,
+                new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Show expansion").setExact(true));
+        assertThat(fit).hasCount(0);
+        org.assertj.core.api.Assertions.assertThat(canvas.evaluate(
+                "el => el._cyreg.cy.nodes('.newlyExpanded').length > 0")).isEqualTo(true);
+        page.waitForFunction("""
+                () => {
+                    const cy = document.querySelector('div[aria-label^="Reaction graph."]')?._cyreg?.cy;
+                    return cy && !cy.animated() && cy.zoom() < 3;
+                }
+                """);
+        org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
+                el => {
+                    const cy = el._cyreg.cy;
+                    return cy.nodes('[kind="message"], [kind="reaction"]').every(node => {
+                        const p = node.renderedPosition();
+                        return p.x >= 0 && p.x <= cy.width() && p.y >= 0 && p.y <= cy.height();
+                    });
+                }
+                """)).isEqualTo(true);
+        page.waitForFunction("""
+                () => document.querySelector('div[aria-label^="Reaction graph."]')?._cyreg?.cy
+                    .nodes('.newlyExpanded').length === 0
+                """);
+        assertNothingWentWrongInTheBrowser();
+    }
+
     private void assertNoPins(com.microsoft.playwright.Locator viewer) {
         org.assertj.core.api.Assertions.assertThat(viewer.locator("div[aria-label^='Reaction graph.']")
                 .evaluate("el => el._cyreg.cy.nodes('[?pinned]').length")).isEqualTo(0);
@@ -873,6 +917,18 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     return {point: cy.getElementById(id).renderedPosition(), zoom: cy.zoom()};
                 }
                 """, id);
+    }
+
+    private void awaitExpansionPosition(String id, Object before) {
+        page.waitForFunction("""
+                ({id, before}) => {
+                    const cy = document.querySelector('div[aria-label^="Reaction graph."]')?._cyreg?.cy;
+                    if (!cy || cy.animated() || !cy.getElementById(id).length) return false;
+                    const point = cy.getElementById(id).renderedPosition();
+                    return point.x >= 0 && point.x <= cy.width() && point.y >= 0 && point.y <= cy.height()
+                        && cy.zoom() > 0 && cy.zoom() <= before.zoom + 0.001;
+                }
+                """, java.util.Map.of("id", id, "before", before));
     }
 
     private void awaitActionPosition(String id, Object before) {

@@ -1125,8 +1125,8 @@ only collapsed reactions contribute to arrows at the group frame. Explicitly hid
 the textual representation. The initial view and Reset view fit the complete graph with a margin and cap
 the zoom at 100%, so small graphs are not enlarged.
 Fit all continues to show the complete graph; manual pan and zoom survive presentation redraws.
-After a graph action, the viewport follows its target through relayout at the existing zoom, keeping its
-screen position where space permits. A removed target falls back to its group or a surviving neighbour.
+After a graph action, the viewport follows its target through relayout, keeping its screen position where
+space permits. Expansions pan and zoom out as needed to show the complete addition; other actions preserve zoom. A removed target falls back to its group or a surviving neighbour.
 Keyboard actions continue at that element; this does not change the semantic focus or selection.
 The viewport offers zoom, fit, reset and full screen, with keyboard equivalents for zoom and pan. Groups can be collapsed and expanded
 without changing the selection. The legend stays visible, including in full screen. Toolbar buttons reuse
@@ -1165,7 +1165,7 @@ Right-click a group frame or one of its members for “Collapse group” or “E
 The menu groups documentation, visibility and exploration actions with separators and leading icons.
 Right-clicking the diagram or its menu suppresses the native browser menu, including outside full screen. The source view retains its native browser menu.
 The menu disables actions that would not change the group. Collapsing preserves pinned members and changes
-only that group; the other groups and other viewers retain their state. Zoom is preserved while the viewport follows the affected group.
+only that group; the other groups and other viewers retain their state. Collapsing preserves zoom; expanding may adjust the viewport to include the complete addition.
 After selecting a group, Shift+F10 opens its menu (the first group is the initial keyboard target);
 arrow keys navigate the enabled menu entries and Escape closes it. The toolbar controls adjust the presentation.
 Prepared views do not offer path selection.
@@ -1234,3 +1234,8 @@ candidates are interfaces reachable in either direction from an endpoint. The re
 connections between every ordered pair, including cyclic detours, without a depth cutoff. Dead-end branches
 are excluded. This shows graph relationships, not an individual execution trace. Message, HTTP and generic
 interfaces support the same operations.
+
+
+Reaction-view expansions pan minimally and zoom out as far as necessary to show the starting point and all
+new nodes and connections together. They do not zoom in. New elements are highlighted briefly. Viewport
+movement respects reduced-motion preferences and stops on a pointer gesture.

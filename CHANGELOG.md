@@ -15,6 +15,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   viewer's selection independent and recalculate flow widths from its visible contributions.
 
 ### Changed
+- Automatically fit the starting point and all newly expanded nodes and connections with minimal panning.
+  Highlight new elements briefly.
 - Start component groups collapsed and pin the selected message variant in message views. Reserve path
   selection for the standalone explorer.
 - Organize context-menu actions into categories with separators and icons. Show only the applicable

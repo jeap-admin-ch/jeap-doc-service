@@ -1,5 +1,6 @@
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
+import {expansionViewport} from './expansionViewport.mjs';
 import {orderGroupChildren} from './layout.mjs';
 import {nodeAppearance, foreignAppearance, pinnedAppearance} from './appearance.mjs';
 cytoscape.use(dagre);
@@ -92,6 +93,7 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
                 'font-weight': 600, 'text-max-width': 210, 'min-width': 130, padding: groupPadding}},
             {selector: '[kind="marker"]', style: {...appearance.marker, width: 34, height: 34, 'font-weight': 700,
                 'z-compound-depth': 'top', 'z-index': 10}},
+            {selector: '.newlyExpanded', style: {'underlay-color': '#e8a23b', 'underlay-opacity': 0.35, 'underlay-padding': 7}},
             {selector: 'node[?pinned]', style: pinnedAppearance},
             {selector: 'node[?foreign][kind != "reaction"]', style: foreignAppearance},
             {selector: 'edge', style: {width: 'data(width)', 'line-color': arrow, 'target-arrow-color': arrow,
@@ -127,7 +129,7 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     });
     cy.on('mouseout', 'edge, node[kind="reaction"], node[kind="marker"][tooltip]', () => onHover?.(null));
     cy.on('zoom', () => onZoom(Math.round(cy.zoom() * 100)));
-    const fit = () => { cy.resize(); cy.fit(undefined, 45); onZoom(Math.round(cy.zoom() * 100)); };
+    const fit = () => { cy.stop(); cy.resize(); cy.fit(undefined, 45); onZoom(Math.round(cy.zoom() * 100)); };
     const reset = () => {
         fit();
         if (cy.zoom() > 1) cy.zoom(1);
@@ -151,17 +153,39 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
             activeNode = target.id; activeGroup = groupOf(target.node).id();
         }
     }
+    let highlightTimer;
+    if (actionFocus?.expanding) {
+        const previous = new Set(actionFocus.visibleIds);
+        const added = cy.elements().filter(node => node.data('kind') !== 'marker' && !previous.has(node.id()));
+        const anchor = cy.getElementById(actionFocus.candidates[0]?.id);
+        if (added.length && anchor.length) {
+            const expansion = added.union(anchor).union(added.edges().connectedNodes());
+            const next = expansionViewport({bounds: expansion.boundingBox({includeLabels: true}),
+                width: cy.width(), height: cy.height(), zoom: cy.zoom(), pan: {...cy.pan()}, anchor: anchor.position()});
+            cy.minZoom(Math.min(cy.minZoom(), next.zoom));
+            const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reducedMotion) { cy.zoom(next.zoom); cy.pan(next.pan); }
+            else cy.animate({zoom: next.zoom, pan: next.pan}, {duration: 250});
+            added.union(added.connectedEdges()).addClass('newlyExpanded');
+            highlightTimer = setTimeout(() => cy.elements().removeClass('newlyExpanded'), 1800);
+        }
+    }
+    // A pointer gesture takes precedence over the automatic viewport movement.
+    const stopFollowing = () => cy.stop();
+    const gestureArea = container.closest('section') ?? container;
+    gestureArea.addEventListener('pointerdown', stopFollowing);
+    container.addEventListener('wheel', stopFollowing, {passive: true});
     const resize = new ResizeObserver(() => cy.resize());
     resize.observe(container);
     return {
         fit, reset,
-        actionFocus: id => {
+        actionFocus: (id, expanding = false) => {
             const node = cy.getElementById(id);
             if (!node.length) return {candidates: [{id, point: {x: cy.width() / 2, y: cy.height() / 2}}]};
             // Hiding or collapsing the target falls back to its group, then a surviving direct neighbour.
             const candidates = node.union(node.parent()).union(node.connectedEdges().connectedNodes())
                 .filter(candidate => candidate.data('kind') !== 'marker');
-            return {candidates: candidates.map(candidate => ({id: candidate.id(), point: {...candidate.renderedPosition()}}))};
+            return {expanding, visibleIds: cy.elements().map(node => node.id()), candidates: candidates.map(candidate => ({id: candidate.id(), point: {...candidate.renderedPosition()}}))};
         },
         overview: () => ({bounds: cy.elements().boundingBox(),
             image: cy.png({full: true, maxWidth: 440, maxHeight: 320})}),
@@ -178,6 +202,6 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
         },
         zoom: factor => cy.zoom({level: cy.zoom() * factor, renderedPosition: {x: cy.width() / 2, y: cy.height() / 2}}),
         pan: (x, y) => cy.panBy({x, y}),
-        destroy: () => { resize.disconnect(); cy.destroy(); },
+        destroy: () => { clearTimeout(highlightTimer); gestureArea.removeEventListener('pointerdown', stopFollowing); container.removeEventListener('wheel', stopFollowing); resize.disconnect(); cy.destroy(); },
     };
 }
