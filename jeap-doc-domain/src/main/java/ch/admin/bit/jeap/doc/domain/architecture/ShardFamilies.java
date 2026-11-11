@@ -34,13 +34,15 @@ import java.util.regex.Pattern;
 final class ShardFamilies {
 
     /**
-     * How many tables of one stem make a family.
+     * How many tables of one stem make a family: two, so a partitioned table is grouped from its second shard.
      * <p>
-     * Measured rather than chosen: of the 810 published schemas at 200 tables or fewer, exactly one holds a
-     * single shard-suffixed table, and every one of the 20 above 200 is 78-99.7% shards. Any value from 3 to
-     * 20 partitions this estate identically, so five guards against a schema that does not exist yet.
+     * A table partitioned by month starts with a few shards, and a higher bound listed each of them until
+     * enough months had passed. One schema had twenty-two such stems of three or four shards, which pushed
+     * other tables off its bounded list. Two tables kept apart on purpose, such as {@code audit_2024} and
+     * {@code audit_2025}, are only grouped when their columns and primary key are identical, and the entry
+     * still says how many tables it stands for and their range.
      */
-    private static final int MIN_FAMILY = 5;
+    private static final int MIN_FAMILY = 2;
 
     /** What a collapsed family is named: the stem, and a postfix saying at a glance that this is not one table. */
     private static final String FAMILY_POSTFIX = "*";

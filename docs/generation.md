@@ -467,8 +467,10 @@ A family is recognised by two signals, and the second is what makes the first sa
 | the stem | the name without its last segment, where that segment looks like a partition key - `_202609`, `_20260904`, `_54`, `_ym110` |
 | the column signature | the ordered columns with their types and nullability, and the primary key. Shards of one table are identical, because the database generated them from one definition. The **foreign keys are deliberately not compared**: a hand-sharded child table often carries a reference per shard, and the entry that stands for the family shows the arrows of one shard |
 
-**Five tables of one stem make a family**, and a stem whose tables do not all share their columns and their
-primary key is left alone entirely. That is deliberate: an `order_v1` beside an `order_v2` whose columns differ are two tables,
+**Two tables of one stem make a family**, so a table partitioned by month is grouped from its second month on.
+Two tables kept apart on purpose with identical columns, such as `audit_2024` and `audit_2025`, are grouped too,
+and the count and the range on the entry are what tell the reader. A stem whose tables do not all share their
+columns and their primary key is left alone entirely. That is deliberate: an `order_v1` beside an `order_v2` whose columns differ are two tables,
 and a reader shown one row would never learn it. Nothing here infers what a table is *for* - PostgreSQL knows
 the answer properly in `pg_inherits`, and the day the schema publisher passes it on this heuristic goes away.
 

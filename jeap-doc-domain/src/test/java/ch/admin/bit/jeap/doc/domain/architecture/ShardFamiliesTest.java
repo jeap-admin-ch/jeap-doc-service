@@ -89,16 +89,14 @@ class ShardFamiliesTest {
         assertThat(namesOf(ShardFamilies.collapse(index))).containsExactly("doc_index_*");
     }
 
-    /**
-     * <b>Four do not collapse and five do.</b> The bound guards against a schema that does not exist yet: in
-     * the measured estate nothing is anywhere near it.
-     */
+    /** <b>Two of a stem collapse.</b> A table partitioned by month is grouped from its second month on. */
     @Test
-    void whenThereAreFewerThanFiveOfAStem_thenNothingIsCollapsed() {
-        assertThat(namesOf(ShardFamilies.collapse(shards("audit", 1, 4, "id"))))
-                .containsExactly("audit_1", "audit_2", "audit_3", "audit_4");
-        assertThat(namesOf(ShardFamilies.collapse(shards("audit", 1, 5, "id"))))
-                .containsExactly("audit_*");
+    void whenThereAreTwoOfAStem_thenTheyBecomeOneEntry() {
+        List<SchemaTable> collapsed = ShardFamilies.collapse(
+                List.of(table("invoice_2611", "id"), table("invoice_2612", "id")));
+
+        assertThat(namesOf(collapsed)).containsExactly("invoice_*");
+        assertThat(collapsed.getFirst().shards()).isEqualTo(new Shards(2, "_2611", "_2612"));
     }
 
     /** A lone table whose name happens to end in a number is a table, not a family. */
@@ -106,6 +104,14 @@ class ShardFamiliesTest {
     void whenATableStandsAlone_thenItKeepsItsName() {
         assertThat(namesOf(ShardFamilies.collapse(List.of(table("x_1", "id")))))
                 .containsExactly("x_1");
+    }
+
+    /** Two of a stem whose columns differ are still two tables, however few they are. */
+    @Test
+    void whenTwoTablesOfOneStemDoNotShareTheirColumns_thenNeitherIsCollapsed() {
+        List<SchemaTable> versions = List.of(table("order_v1", "id"), table("order_v2", "id", "tenant"));
+
+        assertThat(namesOf(ShardFamilies.collapse(versions))).containsExactly("order_v1", "order_v2");
     }
 
     /**
