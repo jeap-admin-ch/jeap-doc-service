@@ -15,11 +15,11 @@ function topology(graph, state, directed = false) {
     return adjacency;
 }
 
-function reach(adjacency, seeds) {
+function reach(adjacency, seeds, stops = new Set()) {
     const visited = new Set(), pending = [...seeds];
     while (pending.length) {
         const id = pending.pop();
-        if (visited.has(id) || !adjacency.has(id)) continue;
+        if (visited.has(id) || stops.has(id) || !adjacency.has(id)) continue;
         visited.add(id);
         for (const next of adjacency.get(id)) pending.push(next);
     }
@@ -96,30 +96,24 @@ export function changeVisibility(graph, previous, action) {
         }
     } else if (action.type === 'hide') {
         const before = topology(graph, previous);
-        const regions = [];
-        const seen = new Set();
-        for (const seed of seeds(graph, previous, [id])) {
-            if (seen.has(seed)) continue;
-            const region = reach(before, [seed]);
-            region.forEach(node => seen.add(node));
-            regions.push(region);
-        }
+        const neighbours = new Set(seeds(graph, previous, [id]).flatMap(seed => [...(before.get(seed) ?? [])]));
         state.pins.delete(id);
         for (const member of graph.groups.get(id)?.members ?? []) state.pins.delete(member);
         remove(graph, state, [id]);
-        const after = topology(graph, state), removed = new Set();
-        for (const region of regions) {
-            const remainingPins = [...state.pins].filter(pin =>
-                seeds(graph, previous, [pin]).some(seed => region.has(seed)));
-            const retained = reach(after, seeds(graph, state, remainingPins));
-            for (const node of region) if (!retained.has(node)) removed.add(node);
-        }
-        removeProjected(graph, state, removed);
-    } else if (action.type === 'outgoing') {
+        const after = topology(graph, state);
+        const orphans = [...neighbours].filter(node => {
+            if (!after.has(node) || after.get(node).size || state.pins.has(node)
+                || state.pins.has(graph.groupOf.get(node))) return false;
+            // A group frame without bundled edges can still contain connected, visible reactions.
+            return !graph.groups.has(node) || !graph.groups.get(node).members.some(member => state.visible.has(member));
+        });
+        removeProjected(graph, state, orphans);
+    } else if (action.type === 'outgoing' || action.type === 'connected') {
         const starts = seeds(graph, previous, [id]);
-        const reached = reach(topology(graph, previous, true), starts);
-        const protectedIds = new Set([id, ...state.pins]);
-        if (graph.groups.has(id)) starts.forEach(member => protectedIds.add(member));
+        const protectedIds = new Set(seeds(graph, previous, state.pins));
+        if (action.type === 'outgoing') starts.forEach(node => protectedIds.add(node));
+        const stops = new Set([...protectedIds].filter(node => !starts.includes(node)));
+        const reached = reach(topology(graph, previous, action.type === 'outgoing'), starts, stops);
         removeProjected(graph, state, [...reached].filter(node => !protectedIds.has(node)));
     } else throw new Error('Unknown visibility action');
     return state;

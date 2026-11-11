@@ -1133,22 +1133,26 @@ without changing the selection. The legend stays visible, including in full scre
 the existing diagram plugin's icons, with tooltips and accessible names. Frequency details appear
 when hovering over an arrow or a reaction. Focus and directed expansion can explore the full snapshot across system boundaries.
 
-Right-click any node to pin or unpin it, hide it, or hide all outgoing paths. A red pin badge marks pinned elements without changing their ownership border; the legend explains the badge.
+Right-click any node to pin or unpin it, hide it, or hide the downstream subgraph. A red pin badge marks pinned elements without changing their ownership border; the legend explains the badge.
 Message entries pin their selected message variant initially. Other entries and Focus start unpinned.
 The **Pin** action adds or removes pins independently of the entry selection.
 Several nodes and groups can be pinned at once. Hiding a pinned node uses **Unpin and hide**. A group with
 pins uses **Unpin members and hide group**, which removes the group's pin and all member pins together.
 Each action produces one complete semantic state for later history support; this release has no undo control.
 
-Ordinary **Hide** removes the chosen node and its incident edges. In each affected connected region,
-it also removes nodes disconnected from every remaining pin. Connectivity uses only currently
-visible flow edges and ignores arrow direction. An alternative visible route keeps a node visible. Already
-hidden routes do not. Separate regions stay unchanged. An affected region without remaining pins is removed completely;
-removing the last pin through Hide can therefore empty that region.
+Ordinary **Hide** removes only the chosen node (or the members of the chosen group) and its incident
+edges. Direct neighbours that lose their last visible flow connection are also hidden unless pinned.
+Connected siblings and other branches remain visible, even when nothing is pinned. Cleanup is not recursive;
+empty group frames are omitted automatically, while frames containing visible reactions remain.
 
-**Hide all outgoing paths** follows visible arrows with cycle detection. It keeps the starting element,
-pins and containers needed by pinned reactions. It does not run the ordinary Hide cleanup. Upstream-only
-and separate regions remain. PREDECESSOR history participates in neither operation.
+**Hide outgoing paths** follows visible outgoing arrows with cycle detection. It keeps the starting
+element and stops at pinned nodes or groups; members of a pinned group are protected too. A node beyond a
+pin can still be reached and hidden through another unpinned path. Upstream-only and separate regions remain.
+**Hide connected subgraph** follows visible connections in both directions and includes the selected node
+or group itself unless pinned. Pins stop traversal and stay visible, including members of pinned groups.
+When starting on a pinned node or group, its neighbours can still be hidden while the start stays visible.
+Disconnected regions remain unchanged. Group containment is not a connection between its reaction paths.
+PREDECESSOR history participates in none of these operations.
 
 Circular restore markers sit beside the visible neighbours of hidden content: incoming on the left,
 outgoing on the right. Clicking one restores the indicated neighbours. Counts and arrow widths are recalculated from the current state. Boundary circles count direct neighbours outside the current selection. Clicking one adds those neighbours

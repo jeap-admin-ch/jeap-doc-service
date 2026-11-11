@@ -8,6 +8,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [4.9.0] - 2026-11-11
 
 ### Added
+- Hide connected subgraphs in both directions as a separate action from Hide and Hide outgoing paths;
+  pins stop traversal and unrelated regions remain visible.
 - Focus reaction-chain interfaces, reactions and component groups. Expand incoming or outgoing connections
   by a chosen edge depth, or click numbered boundary circles to reveal direct neighbours across systems.
 - Pin elements, hide nodes or groups, and hide outgoing paths. Restore hidden neighbours through diagram
@@ -25,6 +27,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   system borders on component groups and interfaces, without repeating them on individual reactions.
 
 ### Fixed
+- Keep connected sibling reactions when hiding one reaction. Remove only orphan direct neighbours;
+  the separate Hide outgoing paths action follows outgoing connections and stops at pins.
 - Keep hidden trigger and action connections out of the live reaction table until their interfaces are shown again.
 - Wait for rendered page content in the table navigation browser test before navigating back.
 - Keep explicit hiding and superseded reactions unchanged when expanding a group through its menu; retain

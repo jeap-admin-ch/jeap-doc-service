@@ -934,8 +934,10 @@ Message entry views initially pin the selected message variant. Other entries, f
 Component entry groups start collapsed; path selection is reserved for the standalone explorer.
 Visibility commands live in `ReactionViewer/visibility.mjs` and return a new complete state per action.
 Keep explicit hiding separate from collapsing: collapsed reactions contribute bundled arrows, hidden reactions
-contribute none. Cleanup uses only visible flow connectivity within affected regions; affected regions without remaining
-pins are removed too, while unrelated regions remain unchanged. Group containment is not a flow edge.
+contribute none. Ordinary Hide only removes the target and unpinned direct neighbours that become isolated; it never
+prunes an entire connected region. Downstream subgraph hiding follows visible arrows and stops at pins,
+including the visible members of pinned groups. Connected subgraph hiding uses the same pin boundaries
+in both directions and includes the unpinned start; group containment never connects independent paths. Group containment is not a flow edge.
 Message entry interfaces remain fixed independently of pins, so unpinning never broadens the selection. Explicit superseded reveal survives subsequent pin and
 collapse operations. Restore hidden content through markers at its visible neighbours or the numbered group marker; do not add a separate hidden-content list.
 The group menu only unfolds eligible members and preserves explicit hiding and superseded status. The group

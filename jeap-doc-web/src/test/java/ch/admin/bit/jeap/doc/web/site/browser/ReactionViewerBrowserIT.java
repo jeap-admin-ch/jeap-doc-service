@@ -699,7 +699,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     @Test
-    void hideWithoutPinsCascadesOnlyThroughTheAffectedRegion() {
+    void hideWithoutPinsRemovesOnlyTheTargetAndOrphanNeighbours() {
         for (boolean group : java.util.List.of(false, true)) {
             installVisibilityFixture(false);
             open("/" + SYSTEM_REACTIONS_ROUTE + "/");
@@ -712,7 +712,9 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                 openFixtureInterfaceMenu(viewer, "B");
                 menuAction(viewer, "Hide");
             }
-            awaitGraphKeys(java.util.List.of("A", "B", "C", "r1", "r2"), false);
+            awaitGraphKeys(java.util.List.of("C", "r2"), true);
+            awaitGraphKeys(group ? java.util.List.of("A", "r1") : java.util.List.of("B"), false);
+            awaitGraphKeys(group ? java.util.List.of("B") : java.util.List.of("A", "r1"), true);
             awaitGraphKeys(java.util.List.of("D", "E", "r4"), true);
             assertNothingWentWrongInTheBrowser();
             page.unroute("**/reaction-graph.json");
@@ -768,7 +770,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             menuAction(viewer, "Hide");
             awaitGraphKeys(java.util.List.of("B"), false);
             awaitGraphKeys(java.util.List.of("A", "r1", "D", "r4", "E"), true);
-            awaitGraphKeys(java.util.List.of("C", "r2"), alternate);
+            awaitGraphKeys(java.util.List.of("C", "r2"), true);
             viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
             String marker = (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
                     el => el._cyreg.cy.nodes('[kind="marker"]').filter(n => n.data('restore')?.some(id => JSON.parse(id)[1] === 'B')).first().id()
@@ -778,6 +780,48 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             assertNothingWentWrongInTheBrowser();
             page.unroute("**/reaction-graph.json");
         }
+    }
+
+    @Test
+    void connectedSubgraphHidesBothDirectionsAndStopsAtPins() {
+        for (boolean pinned : java.util.List.of(false, true)) {
+            installVisibilityFixture(false);
+            open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+            showReactionViewer(0);
+            var viewer = page.locator("section[aria-label='Reaction chains']");
+            if (pinned) {
+                openFixtureInterfaceMenu(viewer, "B");
+                menuAction(viewer, "Pin");
+                awaitPinned("B");
+            }
+            openReactionMenu(viewer, "r2");
+            assertThat(viewer.getByRole(AriaRole.MENUITEM,
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Hide").setExact(true))).isVisible();
+            assertThat(viewer.getByRole(AriaRole.MENUITEM,
+                    new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Hide outgoing paths").setExact(true))).isVisible();
+            menuAction(viewer, "Hide connected subgraph");
+            awaitGraphKeys(java.util.List.of("C", "r2"), false);
+            awaitGraphKeys(java.util.List.of("A", "r1", "B"), pinned);
+            awaitGraphKeys(java.util.List.of("D", "r4", "E"), true);
+            assertNothingWentWrongInTheBrowser();
+            page.unroute("**/reaction-graph.json");
+        }
+    }
+
+    @Test
+    void downstreamSubgraphHideStopsAtPinnedReaction() {
+        installVisibilityFixture(false);
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        openReactionMenu(viewer, "r2");
+        menuAction(viewer, "Pin");
+        awaitPinned("r2");
+        openFixtureInterfaceMenu(viewer, "A");
+        menuAction(viewer, "Hide outgoing paths");
+        awaitGraphKeys(java.util.List.of("r1", "B"), false);
+        awaitGraphKeys(java.util.List.of("A", "r2", "C", "D", "r4", "E"), true);
+        assertNothingWentWrongInTheBrowser();
     }
 
     @Test
@@ -793,7 +837,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         menuAction(viewer, "Pin");
         awaitPinned("old");
         openFixtureInterfaceMenu(viewer, "B");
-        menuAction(viewer, "Hide all outgoing paths");
+        menuAction(viewer, "Hide outgoing paths");
         awaitGraphKeys(java.util.List.of("B", "old", "D", "r4", "E"), true);
         awaitGraphKeys(java.util.List.of("A", "C", "r1", "r2", "r3"), false);
         openReactionMenu(viewer, "old");

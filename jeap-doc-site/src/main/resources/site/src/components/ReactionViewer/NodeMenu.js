@@ -10,6 +10,7 @@ const iconPaths = {
     unpin: 'M3 3l18 18 M9 3h6 M14 3v6l4 4v2h-3 M9 9l-3 4v2h5 M12 17v4',
     hide: 'M3 3l18 18 M10 5a11 11 0 0 1 11 7 17 17 0 0 1-4 5 M6 6a17 17 0 0 0-3 6c4 8 12 8 15 5 M10 10a3 3 0 0 0 4 4',
     outgoingHide: 'M3 12h11 M10 8l4 4-4 4 M18 8l4 8 M22 8l-4 8',
+    connectedHide: 'M4 12h16 M8 8l-4 4 4 4 M16 8l4 4-4 4 M10 3l4 4 M14 3l-4 4',
     focus: 'M8 3H3v5 M16 3h5v5 M21 16v5h-5 M8 21H3v-5 M9 12h6 M12 9v6',
     incoming: 'M21 12H3 M9 6l-6 6 6 6',
     outgoing: 'M3 12h18 M15 6l6 6-6 6',
@@ -69,7 +70,9 @@ export default function NodeMenu({menu, href, linkLabel, canExpand, canCollapse,
                 <MenuIcon name="hide"/>{menu.kind === 'group' ? groupPinned ? 'Unpin members and hide group' : 'Hide group'
                     : pinned ? 'Unpin and hide' : 'Hide'}</button>
             <button type="button" role="menuitem" onClick={() => onAction('outgoing')}>
-                <MenuIcon name="outgoingHide"/>Hide all outgoing paths</button>
+                <MenuIcon name="outgoingHide"/>Hide outgoing paths</button>
+            <button type="button" role="menuitem" onClick={() => onAction('connected')}>
+                <MenuIcon name="connectedHide"/>Hide connected subgraph</button>
         </MenuSection>
         <MenuSection label="Exploration">
             <button type="button" role="menuitem" onClick={() => onAction('focus')}><MenuIcon name="focus"/>Focus</button>

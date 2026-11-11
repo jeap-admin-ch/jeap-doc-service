@@ -422,7 +422,7 @@ function chainFixture({alternate = false, cycle = false} = {}) {
     return {graph, state: expandGroups(graph, entryView(graph, entry))};
 }
 const act = (graph, state, type, id) => changeVisibility(graph, state, {type, id});
-test('ordinary hide preserves only pin-connected affected contents, with arrows ignored', () => {
+test('ordinary hide preserves connected neighbours regardless of remote pins', () => {
     for (const bothPins of [false, true]) {
         const {graph, state} = chainFixture();
         state.pins.add(mid('A'));
@@ -430,22 +430,22 @@ test('ordinary hide preserves only pin-connected affected contents, with arrows 
         const original = structuredClone(state), originalGraph = structuredClone(graph);
         const result = act(graph, state, 'hide', mid('B'));
         assert.equal(result.visible.has(mid('B')), false);
-        assert.equal(result.visible.has(rid('r2')), bothPins);
-        assert.equal(result.visible.has(mid('C')), bothPins);
+        assert.ok(result.visible.has(rid('r2')));
+        assert.ok(result.visible.has(mid('C')));
         for (const id of [mid('A'), rid('r1'), mid('D'), rid('r4'), mid('E')]) assert.ok(result.visible.has(id));
         assert.deepEqual(state, original);
         assert.deepEqual(graph, originalGraph);
     }
 });
-test('alternate routes and cycles preserve connections; previously hidden routes do not', () => {
+test('ordinary hide does not prune branches after alternate routes have been hidden', () => {
     for (const config of [{alternate: true}, {cycle: true}]) {
         const {graph, state} = chainFixture(config);
         const hiddenRoute = act(graph, act(graph, state, 'pin', mid('A')), 'hide', rid('r3'));
         for (const candidate of [state, hiddenRoute]) {
             const pinned = {...candidate, pins: new Set([mid('A')])};
             const result = act(graph, pinned, 'hide', mid('B'));
-            assert.equal(result.visible.has(mid('C')), candidate === state);
-            assert.equal(result.visible.has(rid('r2')), candidate === state);
+            assert.ok(result.visible.has(mid('C')));
+            assert.ok(result.visible.has(rid('r2')));
         }
     }
 });
@@ -454,7 +454,7 @@ test('no pin, a separate pin and removal of the last local pin never cause globa
         const {graph, state} = chainFixture();
         pins.forEach(name => state.pins.add(mid(name)));
         const result = act(graph, state, 'hide', mid('B'));
-        assert.deepEqual(result.visible, new Set([mid('D'), rid('r4'), mid('E'), rid('r3')]));
+        assert.deepEqual(result.visible, new Set([...state.visible].filter(id => id !== mid('B'))));
         assert.deepEqual(result.pins, new Set(pins.filter(name => name !== 'B').map(mid)));
     }
 });
@@ -496,8 +496,8 @@ test('directed hide traverses cycles but preserves start, pins, containers and u
         assert.ok(result.visible.has(mid('B')));
         assert.ok(result.visible.has(rid('r2')));
         assert.ok(!result.hidden.has(graph.groupOf.get(rid('r2'))));
-        assert.ok(!result.visible.has(mid('C')));
-        assert.equal(result.visible.has(mid('A')), !cycle);
+        assert.ok(result.visible.has(mid('C')));
+        assert.ok(result.visible.has(mid('A')));
         assert.ok(result.visible.has(mid('D')));
         assert.ok(result.visible.has(mid('E')));
     }
@@ -574,7 +574,7 @@ test('repeated explicit hiding can empty the view and every hidden element can b
     const elements = view => project(graph, view).elements.sort((a, b) => a.data.id.localeCompare(b.data.id));
     assert.deepEqual(elements(result), elements(state));
 });
-test('a group with separate paths cascades every affected region and preserves pins', () => {
+test('hiding a group removes its orphan interfaces but preserves pins', () => {
     const data = payload();
     data.graph.nodes = ['A', 'B', 'C', 'D'].map(message)
         .concat(['r1', 'r2'].map(name => reaction(name, 's', 10, {groupKey: 'shared'})));
@@ -624,7 +624,8 @@ test('a group pin remains a local pin even after its last visible member is expl
     assert.ok(result.pins.has(group));
     assert.ok(project(graph, result).elements.some(e => e.data.id === group && e.data.pinned));
     assert.deepEqual(project(graph, result).elements.find(e => e.data.id === 'hidden:' + group).data.restore, [rid('r1')]);
-    for (const id of [mid('A'), mid('B'), mid('C'), rid('r2')]) assert.ok(!result.visible.has(id));
+    assert.ok(!result.visible.has(mid('A')));
+    for (const id of [mid('B'), mid('C'), rid('r2')]) assert.ok(result.visible.has(id));
     assert.ok(result.visible.has(mid('D')));
 });
 test('outgoing hide through a collapsed group does not visit initially superseded members', () => {
@@ -705,4 +706,77 @@ test('large expansions always fit all new content, even at an already low zoom',
         assert.ok(result.pan.x + 5000 * result.zoom <= 568);
         assert.ok(result.pan.y + 2000 * result.zoom <= 368);
     }
+});
+
+
+test('hiding one of 39 unpinned siblings preserves the shared trigger, group and all other siblings', () => {
+    const data = payload();
+    const members = Array.from({length: 39}, (_, i) => `member${i}`);
+    data.graph.nodes = [message('trigger'), message('exclusive'), ...members.map(name => reaction(name))];
+    data.graph.edges = [...members.map(name => edge('trigger', name, 'TRIGGER')), edge('member0', 'exclusive', 'ACTION')];
+    const graph = readGraph(data, 'site', 'dev');
+    const state = expandGroups(graph, entryView(graph, entry));
+    const result = act(graph, state, 'hide', rid('member0'));
+    assert.deepEqual(result.hidden, new Set([rid('member0'), mid('exclusive')]));
+    assert.ok(result.visible.has(mid('trigger')));
+    for (const member of members.slice(1)) assert.ok(result.visible.has(rid(member)));
+    const group = graph.groupOf.get(rid('member0'));
+    assert.deepEqual(project(graph, result).elements.find(e => e.data.id === 'hidden:' + group).data.restore, [rid('member0')]);
+    const pinned = act(graph, state, 'pin', mid('exclusive'));
+    assert.ok(act(graph, pinned, 'hide', rid('member0')).visible.has(mid('exclusive')));
+});
+
+test('downstream hiding stops at a pinned group in both collapsed and expanded views', () => {
+    for (const expanded of [false, true]) {
+        const {graph, state: initial} = chainFixture();
+        const group = graph.groupOf.get(rid('r2'));
+        const state = setGroupExpanded(graph, initial, group, expanded);
+        state.pins.add(group);
+        const result = act(graph, state, 'outgoing', mid('A'));
+        assert.ok(!result.visible.has(mid('B')));
+        assert.ok(result.visible.has(mid('C')));
+        assert.ok(!result.hidden.has(rid('r2')));
+        assert.ok(project(graph, result).elements.some(e => e.data.id === group));
+    }
+});
+
+
+test('connected subgraph hide crosses both directions and preserves separate regions', () => {
+    for (const cycle of [false, true]) {
+        const {graph, state} = chainFixture({cycle});
+        const result = act(graph, state, 'connected', rid('r2'));
+        for (const id of [mid('A'), mid('B'), mid('C'), rid('r1'), rid('r2')]) assert.ok(result.hidden.has(id));
+        for (const id of [mid('D'), mid('E'), rid('r4')]) assert.ok(result.visible.has(id));
+        assert.ok(!state.hidden.size);
+    }
+});
+
+test('connected hiding stops at pins in either direction, including collapsed or expanded groups', () => {
+    const {graph, state} = chainFixture();
+    state.pins.add(mid('B'));
+    const result = act(graph, state, 'connected', rid('r2'));
+    assert.deepEqual(result.hidden, new Set([rid('r2'), mid('C')]));
+    for (const expanded of [false, true]) {
+        const {graph, state: initial} = chainFixture();
+        const group = graph.groupOf.get(rid('r1'));
+        const state = setGroupExpanded(graph, initial, group, expanded);
+        state.pins.add(group);
+        const result = act(graph, state, 'connected', mid('B'));
+        assert.ok(result.hidden.has(mid('B')) && result.hidden.has(mid('C')));
+        assert.ok(result.visible.has(mid('A')));
+        assert.ok(!result.hidden.has(rid('r1')));
+        assert.ok(project(graph, result).elements.some(e => e.data.id === group));
+    }
+});
+
+test('connected hiding from a group includes its visible and collapsed members while keeping pins', () => {
+    const graph = readGraph(payload(), 'site', 'dev');
+    const state = expandGroups(graph, entryView(graph, entry));
+    const group = graph.groupOf.get(rid('r1'));
+    state.visible.delete(rid('r2'));
+    state.pins.add(mid('A'));
+    const result = act(graph, state, 'connected', group);
+    for (const id of [rid('r1'), rid('r2'), mid('B')]) assert.ok(result.hidden.has(id));
+    assert.ok(result.visible.has(mid('A')));
+    assert.ok(!result.hidden.has(rid('old')));
 });
