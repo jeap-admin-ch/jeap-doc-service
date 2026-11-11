@@ -9,7 +9,7 @@ import java.util.Map;
  * One database schema as a page shows it: what is documented, what the diagram draws, what the list carries.
  * <p>
  * <b>Built once at the top of a page and read from there.</b> Every set below is derived from
- * {@link DatabaseSchema#documentedTables()}, which filters, collapses and sorts on every call - and one render
+ * {@link DatabaseSchema#documentedTables()}, which filters, groups, collapses and sorts on every call - and one render
  * of one page asks for it about a dozen times, directly and through the counts, the diagram and the list. On a
  * schema of 6583 tables that is a dozen sorts and a dozen groupings of 33 000 columns.
  * <p>
@@ -24,6 +24,7 @@ import java.util.Map;
 public final class DocumentedSchema {
 
     private final DatabaseSchema schema;
+    private final DatabaseSchema.Entries entries;
     private final List<SchemaTable> documented;
     private final List<SchemaTable> drawn;
     private final List<SchemaTable> listed;
@@ -34,10 +35,11 @@ public final class DocumentedSchema {
      */
     private final Map<String, String> drawnByFoldedName;
 
-    private DocumentedSchema(DatabaseSchema schema, List<SchemaTable> documented, List<SchemaTable> drawn,
+    private DocumentedSchema(DatabaseSchema schema, DatabaseSchema.Entries entries, List<SchemaTable> drawn,
                              List<SchemaTable> listed) {
         this.schema = schema;
-        this.documented = documented;
+        this.entries = entries;
+        this.documented = entries.tables();
         this.drawn = drawn;
         this.listed = listed;
         this.drawnByFoldedName = new HashMap<>();
@@ -54,12 +56,22 @@ public final class DocumentedSchema {
      * @param maxListed how many entries the page may write with their columns
      */
     public static DocumentedSchema of(DatabaseSchema schema, int maxDrawn, int maxListed) {
-        List<SchemaTable> documented = schema.documentedTables();
-        List<SchemaTable> listed = DatabaseSchema.listedFrom(documented, maxListed);
-        return new DocumentedSchema(schema, documented, DatabaseSchema.drawnFrom(listed, maxDrawn), listed);
+        return of(schema, List.of(), maxDrawn, maxListed);
     }
 
-    /** Every table worth documenting, sorted by name, with each family of partitions as one entry. */
+    /**
+     * The same, with the groups configured for the component applied first.
+     *
+     * @param groups the groups configured for the component that published the schema
+     */
+    public static DocumentedSchema of(DatabaseSchema schema, List<SchemaTableGroup> groups, int maxDrawn,
+                                      int maxListed) {
+        DatabaseSchema.Entries entries = schema.entries(groups);
+        List<SchemaTable> listed = DatabaseSchema.listedFrom(entries.tables(), maxListed);
+        return new DocumentedSchema(schema, entries, DatabaseSchema.drawnFrom(listed, maxDrawn, entries), listed);
+    }
+
+    /** Every table worth documenting, sorted by name, with each group and each family of partitions as one entry. */
     public List<SchemaTable> documented() {
         return documented;
     }
@@ -82,6 +94,11 @@ public final class DocumentedSchema {
     /** How many of those entries stand for a family of partitions rather than for one table. */
     public int collapsedFamilies() {
         return (int) documented.stream().filter(table -> table.shards() != null).count();
+    }
+
+    /** How many of those entries stand for a group the instance configured for the component. */
+    public int configuredGroups() {
+        return (int) documented.stream().filter(table -> table.group() != null).count();
     }
 
     /** The entries the page writes with their columns. */
@@ -118,8 +135,9 @@ public final class DocumentedSchema {
     /**
      * The drawn entity a foreign key points at, or null where it points at nothing the diagram has.
      * <p>
-     * A key into a shard - {@code doc_meta_1607} - finds the entity its family was collapsed into, so that
-     * collapsing a schema does not silently drop every arrow in it.
+     * A key into a shard - {@code doc_meta_1607} - finds the entity its family was collapsed into, and a key
+     * into a table of a configured group finds the group, so that grouping a schema does not silently drop
+     * every arrow in it.
      */
     public String drawnEntityNameOf(String referencedTableName) {
         if (referencedTableName == null) {
@@ -129,8 +147,7 @@ public final class DocumentedSchema {
         if (drawnName != null) {
             return drawnName;
         }
-        String family = ShardFamilies.familyNameOf(referencedTableName);
-        return family == null ? null : drawnByFoldedName.get(folded(family));
+        return drawnByFoldedName.get(folded(entries.entryOf(referencedTableName)));
     }
 
     private static String folded(String value) {

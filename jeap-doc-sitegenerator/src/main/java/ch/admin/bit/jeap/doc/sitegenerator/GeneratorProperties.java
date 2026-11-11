@@ -1,5 +1,7 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaTableGroup;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaTableGroups;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ExcludedRelation;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExclusions;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
@@ -9,7 +11,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * What the generated pages look like, as opposed to how a build runs.
@@ -77,6 +81,16 @@ public class GeneratorProperties {
      * the edge of what renders, and a list can afford far more than a picture.
      */
     private int maxSchemaTableList = 200;
+
+    /**
+     * How many entities the entry of a configured table group lists - see {@link #schemaTableGroups}.
+     * <p>
+     * <b>Its own bound, larger than {@code max-schema-table-list}.</b> One group of one schema stands for 253
+     * entities, so the list bound would cut off the very list the group exists to show. A member is one row of
+     * three cells rather than a table of columns, so a thousand of them cost little. Above this the entry says
+     * how many it did not list.
+     */
+    private int maxSchemaGroupMembers = 1000;
 
     /**
      * How many relations a whitebox picture may draw at all. Above this it is <b>not drawn</b> and the page
@@ -150,6 +164,41 @@ public class GeneratorProperties {
      */
     private List<ExcludedRelationProperties> viewExcludedRelations = new ArrayList<>();
 
+    /**
+     * Tables with the same structure under different names, documented as one entry, by component name.
+     * <p>
+     * A component that keeps one table per entity and month - {@code id_orders_2611}, {@code id_parties_2611}
+     * - publishes thousands of tables of one structure. A group names them with a regular expression over the
+     * whole table name, whose named group {@code entity} says what a table belongs to and whose optional named
+     * group {@code partition} gives each entity its range. Only the matching tables of the same columns and
+     * primary key are grouped; the page lists the others as tables of their own.
+     */
+    private Map<String, List<SchemaTableGroupProperties>> schemaTableGroups = new LinkedHashMap<>();
+
+    /** The configured table groups - see {@link SchemaTableGroups}. Compiled on every call. */
+    public SchemaTableGroups schemaTableGroups() {
+        Map<String, List<SchemaTableGroup>> compiled = new LinkedHashMap<>();
+        schemaTableGroups.forEach((component, groups) -> compiled.put(component,
+                (groups == null ? List.<SchemaTableGroupProperties>of() : groups).stream()
+                        .map(SchemaTableGroupProperties::toSchemaTableGroup).toList()));
+        return SchemaTableGroups.of(compiled);
+    }
+
+    /** One entry of {@code schema-table-groups}, as the configuration spells it. */
+    @Data
+    public static class SchemaTableGroupProperties {
+
+        /** The heading of the entry, such as {@code id_<entity>_<yymm>}. */
+        private String name;
+
+        /** The regular expression over the whole table name, with the named group {@code entity}. */
+        private String tables;
+
+        SchemaTableGroup toSchemaTableGroup() {
+            return SchemaTableGroup.of(name, tables);
+        }
+    }
+
     /** What the views leave out - see {@link ViewExclusions}. Compiled on every call. */
     public ViewExclusions viewExclusions() {
         return ViewExclusions.excluding(viewExcludedComponents,
@@ -185,10 +234,10 @@ public class GeneratorProperties {
         }
     }
 
-    /** The five bounds in one value, which is what a template is handed. */
+    /** The bounds in one value, which is what a template is handed. */
     public DiagramLimits limits() {
         return new DiagramLimits(maxDiagramNodes, maxEdgeLabels, maxContextComponents, maxSchemaTableDiagram,
-                maxSchemaTableList, maxDiagramEdges, maxDetailedEdges);
+                maxSchemaTableList, maxDiagramEdges, maxDetailedEdges, maxSchemaGroupMembers);
     }
 
     // A configuration error should stop the deployment, not the first build.
@@ -218,6 +267,11 @@ public class GeneratorProperties {
             throw new IllegalStateException(
                     "jeap.doc.generator.max-schema-table-list is " + maxSchemaTableList
                     + ". A schema page needs room for at least one table.");
+        }
+        if (maxSchemaGroupMembers < 1) {
+            throw new IllegalStateException(
+                    "jeap.doc.generator.max-schema-group-members is " + maxSchemaGroupMembers
+                    + ". A grouped entry needs room for at least one entity.");
         }
         if (maxDiagramEdges < 1) {
             throw new IllegalStateException(
@@ -258,6 +312,12 @@ public class GeneratorProperties {
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
                     "jeap.doc.generator.view-excluded-relations is not usable: " + e.getMessage(), e);
+        }
+        try {
+            schemaTableGroups();
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "jeap.doc.generator.schema-table-groups is not usable: " + e.getMessage(), e);
         }
     }
 }

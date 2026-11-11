@@ -20,6 +20,8 @@ import ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview;
 import ch.admin.bit.jeap.doc.domain.architecture.SchemaColumn;
 import ch.admin.bit.jeap.doc.domain.architecture.SchemaForeignKey;
 import ch.admin.bit.jeap.doc.domain.architecture.SchemaTable;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaTableGroup;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaTableGroups;
 import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
 import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
@@ -61,7 +63,7 @@ class Arc42ComponentTreeTest {
     private static final Instant MODEL_IMPORTED_AT = Instant.parse("2026-08-28T05:50:00Z");
 
     /** The bounds the shipped defaults set. A case that is about a bound overrides the one it is about. */
-    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200, 40, 20);
+    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000);
 
     /** Where a component's tree is served, which every link on these pages has to agree with. */
     private static final String STRUCTURE_URL =
@@ -334,7 +336,7 @@ class Arc42ComponentTreeTest {
     /** The picture is cut, the facts are not: the page says how many counterparts it left out. */
     @Test
     void theContextView_saysWhenItLeavesACounterpartOut() throws IOException {
-        context = contextOf(orders, new DiagramLimits(100, 4, 0, 100, 200, 40, 20));
+        context = contextOf(orders, new DiagramLimits(100, 4, 0, 100, 200, 40, 20, 1000));
 
         generate();
 
@@ -437,13 +439,86 @@ class Arc42ComponentTreeTest {
     }
 
     /**
+     * <b>A group configured for the component is one entry listing its entities</b>, and a matching table of
+     * another shape stays an entry of its own. The entry says both, and the note says the grouping is
+     * configured rather than read off the names.
+     */
+    @Test
+    void theDatabaseSchemaPage_whenAGroupIsConfigured_thenItIsOneEntryListingItsEntities() throws IOException {
+        DocumentedComponent grouped = componentOf(orders, "orders-intake")
+                .withArtifacts(groupedSchema(), componentOf(orders, "orders-intake").api());
+        orders = orders(grouped);
+        context = contextOf(orders, LIMITS).withSchemaTableGroups(BY_MONTH);
+
+        generate(grouped);
+
+        String page = read("component-architecture/5-building-block-view/database-schema.md");
+        assertThat(page).contains("| Tables | 7 (3 documented entries) |")
+                .contains("### `id_<entity>_<yymm>`")
+                .contains("5 tables of 2 entities match the grouping configured for this component and share "
+                          + "this shape. They are documented as one entry.")
+                .contains("One more table matches the grouping but has another shape, so it is documented as "
+                          + "an entry of its own.")
+                .contains("| Entity | Tables | Range |")
+                .contains("| `orders` | 3 | `2601` to `2603` |")
+                .contains("| `parties` | 2 | `2611` to `2612` |")
+                .describedAs("the table of another shape is an entry of its own, under its own name")
+                .contains("### `id_legacy_2601`")
+                .contains(":::info[Tables are grouped by configuration]")
+                .contains("One entry of this schema groups tables that match a pattern configured for this "
+                          + "component and share the same columns and primary key: `id_<entity>_<yymm>` is "
+                          + "one. Such an entry lists the entities its tables belong to below its columns.")
+                .describedAs("an arrow into one of the grouped tables reaches the group")
+                .contains("\"orders_order\" }o--|| \"id_<entity>_<yymm>\"")
+                .describedAs("the pattern is configuration, and not on the page")
+                .doesNotContain("(?<entity>")
+                .describedAs("nothing here is a family of partitions, so that note is not there")
+                .doesNotContain("Tables of one name pattern are grouped");
+    }
+
+    /** The entities of a group are bounded too, and the entry says how many it did not list. */
+    @Test
+    void theDatabaseSchemaPage_whenAGroupHasMoreEntitiesThanItMayList_thenItSaysHowMany() throws IOException {
+        DocumentedComponent grouped = componentOf(orders, "orders-intake")
+                .withArtifacts(groupedSchema(), componentOf(orders, "orders-intake").api());
+        orders = orders(grouped);
+        context = contextOf(orders, new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1))
+                .withSchemaTableGroups(BY_MONTH);
+
+        generate(grouped);
+
+        String page = read("component-architecture/5-building-block-view/database-schema.md");
+        assertThat(page).contains("| `orders` | 3 | `2601` to `2603` |")
+                .doesNotContain("| `parties` |")
+                .contains("This entry lists 1 of its 2 entities, by name.");
+    }
+
+    /** A group configured for another component changes nothing on this one's page. */
+    @Test
+    void theDatabaseSchemaPage_whenAGroupIsConfiguredForAnotherComponent_thenNothingIsGrouped()
+            throws IOException {
+        DocumentedComponent grouped = componentOf(orders, "orders-intake")
+                .withArtifacts(groupedSchema(), componentOf(orders, "orders-intake").api());
+        orders = orders(grouped);
+        context = contextOf(orders, LIMITS).withSchemaTableGroups(SchemaTableGroups.of(Map.of("orders-shipping",
+                List.of(SchemaTableGroup.of("id_<entity>_<yymm>", "id_(?<entity>.+)_(?<partition>\\d{4})")))));
+
+        generate(grouped);
+
+        String page = read("component-architecture/5-building-block-view/database-schema.md");
+        assertThat(page).doesNotContain("id_<entity>_<yymm>")
+                .doesNotContain("Tables are grouped by configuration")
+                .contains("### `id_orders_*`");
+    }
+
+    /**
      * <b>The one bound on the facts rather than on a picture</b>, so the page has to say how much it did not
      * write and where the rest is. An unbounded list is what cost one component's page an hour and a half.
      */
     @Test
     void theDatabaseSchemaPage_whenThereAreMoreTablesThanTheListMayCarry_thenItSaysHowMany()
             throws IOException {
-        context = contextOf(orders, new DiagramLimits(100, 4, 40, 100, 1, 40, 20));
+        context = contextOf(orders, new DiagramLimits(100, 4, 40, 100, 1, 40, 20, 1000));
 
         generate();
 
@@ -497,7 +572,7 @@ class Arc42ComponentTreeTest {
      */
     @Test
     void theDatabaseSchemaPage_whenTheSchemaIsTooLargeToDraw_thenTheListIsStillComplete() throws IOException {
-        context = contextOf(orders, new DiagramLimits(100, 4, 40, 1, 200, 40, 20));
+        context = contextOf(orders, new DiagramLimits(100, 4, 40, 1, 200, 40, 20, 1000));
 
         generate();
 
@@ -530,7 +605,7 @@ class Arc42ComponentTreeTest {
         DocumentedComponent partitioned = componentOf(orders, "orders-intake")
                 .withArtifacts(partitionedSchema(), componentOf(orders, "orders-intake").api());
         orders = orders(partitioned);
-        context = contextOf(orders, new DiagramLimits(100, 4, 40, 1, 2, 40, 20));
+        context = contextOf(orders, new DiagramLimits(100, 4, 40, 1, 2, 40, 20, 1000));
 
         generate(partitioned);
 
@@ -1110,6 +1185,31 @@ class Arc42ComponentTreeTest {
      * A hundred and five partitions of one table, two ordinary tables and the Flyway history: a hundred and
      * eight tables that are three entries.
      */
+    /** One table per entity and month, configured as one group for this component. */
+    private static final SchemaTableGroups BY_MONTH = SchemaTableGroups.of(Map.of("orders-intake",
+            List.of(SchemaTableGroup.of("id_<entity>_<yymm>", "id_(?<entity>.+)_(?<partition>\\d{4})"))));
+
+    /**
+     * Two entities of one shape in five monthly tables, one matching table of another shape, and a table that
+     * has a foreign key into one of the grouped ones.
+     */
+    private static DatabaseSchema groupedSchema() {
+        List<SchemaColumn> shape = List.of(new SchemaColumn("id_real", "varchar", false),
+                new SchemaColumn("hash", "bytea", false));
+        List<SchemaTable> tables = new ArrayList<>();
+        tables.add(new SchemaTable("orders_order",
+                List.of(new SchemaColumn("id", "uuid", false), new SchemaColumn("ref_id", "varchar", true)),
+                List.of("id"),
+                List.of(new SchemaForeignKey("fk_order_ref", List.of("ref_id"), "id_orders_2602",
+                        List.of("id_real")))));
+        for (String table : List.of("id_orders_2601", "id_orders_2602", "id_orders_2603", "id_parties_2611",
+                "id_parties_2612")) {
+            tables.add(new SchemaTable(table, shape, List.of("id_real"), List.of()));
+        }
+        tables.add(new SchemaTable("id_legacy_2601", shape, List.of("id_real", "hash"), List.of()));
+        return new DatabaseSchema("orders_db", "1.2.3", tables);
+    }
+
     private static DatabaseSchema partitionedSchema() {
         List<SchemaTable> tables = new ArrayList<>();
         tables.add(new SchemaTable("orders_order",

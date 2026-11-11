@@ -219,7 +219,8 @@ public class SystemPages {
         return new GenerationContext(snapshot.model(), environment,
                 architectureModel.sourceUrlOf(environment).orElse(""), snapshot.importedAt(), generatedAt,
                 properties.limits(), diagramLinkPrefix, properties.apiPaths())
-                .withViewExclusions(properties.viewExclusions());
+                .withViewExclusions(properties.viewExclusions())
+                .withSchemaTableGroups(properties.schemaTableGroups());
     }
 
     /**

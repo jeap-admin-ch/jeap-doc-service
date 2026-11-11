@@ -150,10 +150,10 @@ class WhiteboxViewTest {
     // ----------------------------------------------------------------------------------------------------
 
     /** The two bounds of these cases: a picture is folded above two relations and dropped above four. */
-    private static final DiagramLimits BANDS = new DiagramLimits(60, 4, 40, 100, 200, 4, 2);
+    private static final DiagramLimits BANDS = new DiagramLimits(60, 4, 40, 100, 200, 4, 2, 1000);
 
     /** No bound reached: every picture is drawn in full. */
-    private static final DiagramLimits NO_BOUND = new DiagramLimits(60, 4, 40, 100, 200, 100, 100);
+    private static final DiagramLimits NO_BOUND = new DiagramLimits(60, 4, 40, 100, 200, 100, 100, 1000);
 
     /** An arrow to a neighbour the bound left out would point at nothing. */
     @Test

@@ -3,7 +3,8 @@ package ch.admin.bit.jeap.doc.domain.architecture;
 import java.util.List;
 
 /**
- * One table of a {@link DatabaseSchema}, or one family of partitions standing for the table they are of.
+ * One table of a {@link DatabaseSchema}, or one entry standing for several: a family of partitions, or a
+ * group an instance configured.
  *
  * @param name              the table name
  * @param columns           its columns, in the order the upstream listed them
@@ -13,9 +14,10 @@ import java.util.List;
  * @param shards            what this entry stands for where it is a collapsed family of partitions, null for
  *                          an ordinary table. One type flows through both renderings, which is what lets the
  *                          diagram and the list agree without either of them knowing about collapsing
+ * @param group             what this entry stands for where it is a configured group, null otherwise
  */
 public record SchemaTable(String name, List<SchemaColumn> columns, List<String> primaryKeyColumns,
-                          List<SchemaForeignKey> foreignKeys, Shards shards) {
+                          List<SchemaForeignKey> foreignKeys, Shards shards, GroupedTables group) {
 
     public SchemaTable {
         columns = columns == null ? List.of() : List.copyOf(columns);
@@ -23,10 +25,10 @@ public record SchemaTable(String name, List<SchemaColumn> columns, List<String> 
         foreignKeys = foreignKeys == null ? List.of() : List.copyOf(foreignKeys);
     }
 
-    /** An ordinary table. Only {@link ShardFamilies} ever builds one that stands for a family. */
+    /** An ordinary table. Only {@link ShardFamilies} and {@link TableGroups} build one that stands for more. */
     public SchemaTable(String name, List<SchemaColumn> columns, List<String> primaryKeyColumns,
                        List<SchemaForeignKey> foreignKeys) {
-        this(name, columns, primaryKeyColumns, foreignKeys, null);
+        this(name, columns, primaryKeyColumns, foreignKeys, null, null);
     }
 
     /** The primary key columns, in the order the table lists its columns. */

@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.10.1] - 2026-11-12
+## [4.11.0] - 2026-11-12
+
+### Added
+- `jeap.doc.generator.schema-table-groups` groups tables with the same structure under different names into
+  one entry per component, such as one table per entity and month. Only matching tables of the same columns
+  and primary key are grouped, and the entry lists its entities with their range.
+- `jeap.doc.generator.max-schema-group-members` bounds the entities such an entry lists (default 1000).
 
 ### Changed
 - Group tables of one name pattern and shape on a database schema page from two tables on, instead of five,

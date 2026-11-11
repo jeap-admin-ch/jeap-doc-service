@@ -2,9 +2,11 @@ package ch.admin.bit.jeap.doc.domain.architecture;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -50,12 +52,45 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
      * held - see {@link DocumentedSchema}.
      */
     public List<SchemaTable> documentedTables() {
+        return entries(List.of()).tables();
+    }
+
+    /** The same, with the configured groups of the component applied before the partitions are collapsed. */
+    public List<SchemaTable> documentedTables(List<SchemaTableGroup> groups) {
+        return entries(groups).tables();
+    }
+
+    /**
+     * The documented entries, and which entry stands for each table: a configured group first - see
+     * {@link TableGroups} - then the families of partitions among the rest.
+     */
+    Entries entries(List<SchemaTableGroup> groups) {
         List<SchemaTable> visible = tables.stream()
                 .filter(table -> table.name() != null && !isInfrastructure(table.name()))
                 .toList();
-        return ShardFamilies.collapse(visible).stream()
-                .sorted(Comparator.comparing(SchemaTable::name, String.CASE_INSENSITIVE_ORDER))
-                .toList();
+        TableGroups.Result grouped = TableGroups.group(visible, groups == null ? List.of() : groups);
+        List<SchemaTable> collapsed = ShardFamilies.collapse(grouped.remaining());
+
+        Map<String, String> entryByTable = new HashMap<>();
+        grouped.grouped().forEach(
+                (table, entry) -> entryByTable.put(folded(table.name()), entry.name()));
+        Set<String> families = new HashSet<>();
+        for (SchemaTable entry : collapsed) {
+            if (entry.shards() != null) {
+                families.add(folded(entry.name()));
+            }
+        }
+        for (SchemaTable table : grouped.remaining()) {
+            String family = ShardFamilies.familyNameOf(table.name());
+            if (family != null && families.contains(folded(family))) {
+                entryByTable.put(folded(table.name()), family);
+            }
+        }
+
+        List<SchemaTable> entries = new ArrayList<>(grouped.entries());
+        entries.addAll(collapsed);
+        entries.sort(Comparator.comparing(SchemaTable::name, String.CASE_INSENSITIVE_ORDER));
+        return new Entries(List.copyOf(entries), Map.copyOf(entryByTable));
     }
 
     /**
@@ -114,13 +149,15 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
      *
      * @param listed    the entries the page writes, already collapsed and sorted
      * @param maxTables how many tables the diagram may draw. Above it the page says how many were left out
+     * @param entries   which entry stands for each table, so that a key into a grouped table counts for the
+     *                  entry that table is part of
      */
-    static List<SchemaTable> drawnFrom(List<SchemaTable> listed, int maxTables) {
+    static List<SchemaTable> drawnFrom(List<SchemaTable> listed, int maxTables, Entries entries) {
         int room = Math.min(Math.max(maxTables, 0), listed.size());
         if (room == listed.size()) {
             return listed;
         }
-        Set<String> referenced = referencedNamesOf(listed);
+        Set<String> referenced = referencedNamesOf(listed, entries);
         List<SchemaTable> byPriority = new ArrayList<>(listed);
         byPriority.sort(Comparator
                 .comparingInt((SchemaTable table) -> referenced.contains(folded(table.name())) ? 0 : 1)
@@ -132,23 +169,35 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
 
     /**
      * The names something has a foreign key into, folded for comparison - and where a key points into a
-     * shard, the family that shard was collapsed into. Without that, keeping a referenced table on the
-     * diagram would keep the wrong ones.
+     * table that is part of an entry, that entry. Without that, keeping a referenced table on the diagram
+     * would keep the wrong ones.
      */
-    private static Set<String> referencedNamesOf(List<SchemaTable> tables) {
+    private static Set<String> referencedNamesOf(List<SchemaTable> tables, Entries entries) {
         Set<String> referenced = new HashSet<>();
         for (SchemaTable table : tables) {
             for (SchemaForeignKey key : table.foreignKeys()) {
                 if (key.referencedTableName() != null) {
                     referenced.add(folded(key.referencedTableName()));
-                    String family = ShardFamilies.familyNameOf(key.referencedTableName());
-                    if (family != null) {
-                        referenced.add(folded(family));
-                    }
+                    referenced.add(folded(entries.entryOf(key.referencedTableName())));
                 }
             }
         }
         return referenced;
+    }
+
+    /**
+     * The documented entries, and the one definition of which entry stands for a table: a configured group,
+     * a family of partitions, or the table itself.
+     *
+     * @param tables       the entries, sorted by name
+     * @param entryByTable the entry name of every table that is part of a group or a family, by folded name
+     */
+    record Entries(List<SchemaTable> tables, Map<String, String> entryByTable) {
+
+        /** The name of the entry that stands for this table - its own name where it stands alone. */
+        String entryOf(String tableName) {
+            return entryByTable.getOrDefault(folded(tableName), tableName);
+        }
     }
 
     private static boolean isInfrastructure(String tableName) {

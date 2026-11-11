@@ -1,8 +1,10 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaTableGroup;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -37,9 +39,10 @@ class GeneratorPropertiesTest {
         properties.setMaxSchemaTableList(13);
         properties.setMaxDiagramEdges(15);
         properties.setMaxDetailedEdges(3);
+        properties.setMaxSchemaGroupMembers(17);
 
         assertThat(properties.limits())
-                .isEqualTo(new ch.admin.bit.jeap.doc.domain.template.DiagramLimits(7, 0, 9, 11, 13, 15, 3));
+                .isEqualTo(new ch.admin.bit.jeap.doc.domain.template.DiagramLimits(7, 0, 9, 11, 13, 15, 3, 17));
     }
 
     @ParameterizedTest
@@ -286,5 +289,92 @@ class GeneratorPropertiesTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jeap.doc.generator.max-detailed-edges")
                 .hasMessageContaining("jeap.doc.generator.max-diagram-edges");
+    }
+
+    /** A configured group lists more entities than the list bound has entries: one schema has 253. */
+    @Test
+    void theDefaultListsAThousandEntitiesOfAGroup() {
+        assertThat(new GeneratorProperties().getMaxSchemaGroupMembers()).isEqualTo(1000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1})
+    void aGroupWithRoomForNoEntity_stopsTheStartup(int members) {
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setMaxSchemaGroupMembers(members);
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.max-schema-group-members");
+    }
+
+    @Test
+    void byDefault_noComponentHasTableGroups() {
+        assertThat(new GeneratorProperties().schemaTableGroups().forComponent("orders-intake")).isEmpty();
+    }
+
+    @Test
+    void theConfiguredTableGroupsAreTheOnesOfTheirComponent() {
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setSchemaTableGroups(Map.of("orders-intake",
+                List.of(group("id_<entity>_<yymm>", "id_(?<entity>.+)_(?<partition>\\d{4})"))));
+
+        assertThatCode(properties::check).doesNotThrowAnyException();
+        assertThat(properties.schemaTableGroups().forComponent("orders-intake"))
+                .extracting(SchemaTableGroup::name).containsExactly("id_<entity>_<yymm>");
+        assertThat(properties.schemaTableGroups().forComponent("orders-shipping")).isEmpty();
+    }
+
+    @Test
+    void aTableGroupThatIsNotARegularExpression_stopsTheStartup() {
+        assertStopsTheStartup(group("orders", "orders_(?<entity>.+"), "is not a regular expression");
+    }
+
+    /** Without it the page could not say which entity a table belongs to. */
+    @Test
+    void aTableGroupWithoutAnEntity_stopsTheStartup() {
+        assertStopsTheStartup(group("orders", "orders_(.+)_\\d{4}"), "has no named group 'entity'");
+    }
+
+    @Test
+    void aTableGroupWithoutAName_stopsTheStartup() {
+        assertStopsTheStartup(group(" ", "orders_(?<entity>.+)"), "a group has no name");
+    }
+
+    /** The star marks the partitioned tables grouped by name, so a configured entry may not take it. */
+    @Test
+    void aTableGroupNamedWithAStar_stopsTheStartup() {
+        assertStopsTheStartup(group("orders_*", "orders_(?<entity>.+)"), "contains '*'");
+    }
+
+    /** Two entries under one heading would be one page saying two things. */
+    @Test
+    void twoTableGroupsOfOneComponentWithOneName_stopTheStartup() {
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setSchemaTableGroups(Map.of("orders-intake",
+                List.of(group("orders", "orders_(?<entity>.+)"), group("ORDERS", "o_(?<entity>.+)"))));
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.schema-table-groups")
+                .hasMessageContaining("two groups called 'ORDERS'");
+    }
+
+    private static void assertStopsTheStartup(GeneratorProperties.SchemaTableGroupProperties group,
+                                              String reason) {
+        GeneratorProperties properties = new GeneratorProperties();
+        properties.setSchemaTableGroups(Map.of("orders-intake", List.of(group)));
+
+        assertThatThrownBy(properties::check)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jeap.doc.generator.schema-table-groups is not usable")
+                .hasMessageContaining(reason);
+    }
+
+    private static GeneratorProperties.SchemaTableGroupProperties group(String name, String tables) {
+        GeneratorProperties.SchemaTableGroupProperties group = new GeneratorProperties.SchemaTableGroupProperties();
+        group.setName(name);
+        group.setTables(tables);
+        return group;
     }
 }

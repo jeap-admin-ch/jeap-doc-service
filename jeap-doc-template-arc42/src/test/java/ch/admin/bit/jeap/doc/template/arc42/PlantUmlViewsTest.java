@@ -66,7 +66,7 @@ class PlantUmlViewsTest {
     private static final Instant GENERATED_AT = Instant.parse("2026-08-28T06:05:02Z");
 
     /** The bounds the shipped defaults set. A case that is about a bound overrides the one it is about. */
-    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200, 40, 20);
+    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000);
 
     @Test
     void contextView_drawsTheSystemItsNeighboursAndTheArrowsBetweenThem() {
@@ -301,7 +301,7 @@ class PlantUmlViewsTest {
         WhiteboxView view = WhiteboxView.of(model, orders, 60);
 
         // The whole picture of two relations is over the bound, so the ladder falls back to the boundary one.
-        GenerationContext bounded = generation(model, new DiagramLimits(60, 4, 40, 100, 200, 1, 1));
+        GenerationContext bounded = generation(model, new DiagramLimits(60, 4, 40, 100, 200, 1, 1, 1000));
         String uml = PlantUmlViews.boundaryView(view, view.pictures(bounded.limits()).outside(), "orders",
                 bounded).source();
 
@@ -332,7 +332,7 @@ class PlantUmlViewsTest {
         ArchitectureModel model = ArchitectureModel.of(List.of(orders));
         WhiteboxView view = WhiteboxView.of(model, orders, 60);
         // Folded above one relation, so this picture of two is drawn as its shape.
-        GenerationContext folding = generation(model, new DiagramLimits(60, 4, 40, 100, 200, 10, 1));
+        GenerationContext folding = generation(model, new DiagramLimits(60, 4, 40, 100, 200, 10, 1, 1000));
 
         String uml = PlantUmlViews.internalView(view, view.pictures(folding.limits()).inside(), "orders",
                 folding).source();
@@ -355,7 +355,7 @@ class PlantUmlViewsTest {
                         "OrdersCleared"));
         ArchitectureModel model = ArchitectureModel.of(List.of(orders));
         WhiteboxView view = WhiteboxView.of(model, orders, 60);
-        GenerationContext folding = generation(model, new DiagramLimits(60, 4, 40, 100, 200, 10, 0));
+        GenerationContext folding = generation(model, new DiagramLimits(60, 4, 40, 100, 200, 10, 0, 1000));
 
         String uml = PlantUmlViews.internalView(view, view.pictures(folding.limits()).inside(), "orders",
                 folding).source();
@@ -406,7 +406,7 @@ class PlantUmlViewsTest {
     void whenTheCapIsZero_thenEvenOneNameIsCounted() {
         ArchitectureModel model = busy(1);
         GenerationContext generation = new GenerationContext(model, "prod", "https://archrepo",
-                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200, 40, 20),
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200, 40, 20, 1000),
                 "/docs/prod/");
 
         String uml = whiteboxOf(WhiteboxView.of(model, busySystem(1), 60), "orders",
@@ -631,7 +631,7 @@ class PlantUmlViewsTest {
     void componentContextView_countsTheNamesOnAnArrowThatCarriesTooMany() {
         ArchitectureModel model = componentLandscape();
         GenerationContext capped = new GenerationContext(model, "prod", "https://archrepo",
-                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200, 40, 20),
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 0, 40, 100, 200, 40, 20, 1000),
                 "/docs/prod/");
 
         PlantUmlViews.Diagram diagram =
@@ -767,7 +767,7 @@ class PlantUmlViewsTest {
         tables.add(new SchemaTable("doc_root", List.of(new SchemaColumn("meta_id", "uuid", false)),
                 List.of(), List.of()));
         GenerationContext narrow = new GenerationContext(landscape(), "prod", "https://archrepo",
-                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200, 40, 20),
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200, 40, 20, 1000),
                 "/docs/prod/");
 
         String uml = PlantUmlViews.databaseSchema(
@@ -784,7 +784,7 @@ class PlantUmlViewsTest {
     @Test
     void databaseSchema_whenItLeavesATableOut_thenNoArrowPointsAtIt() {
         GenerationContext narrow = new GenerationContext(landscape(), "prod", "https://archrepo",
-                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200, 40, 20),
+                GENERATED_AT.minusSeconds(900), GENERATED_AT, new DiagramLimits(100, 4, 40, 1, 200, 40, 20, 1000),
                 "/docs/prod/");
 
         String uml = PlantUmlViews.databaseSchema(documented(schema(), narrow)).source();

@@ -3,10 +3,10 @@ package ch.admin.bit.jeap.doc.domain.template;
 /**
  * How much a generated page may render.
  * <p>
- * <b>All but the last bound the picture rather than the facts</b>: whatever a diagram leaves out is still in
- * the table below it on the page. {@code maxSchemaTableList} is the exception - it bounds the facts
- * themselves, because a list of 33 527 rows of columns is not a page a reader can use either, and the page
- * says how many it did not write.
+ * <b>Most of them bound the picture rather than the facts</b>: whatever a diagram leaves out is still in the
+ * table below it on the page. {@code maxSchemaTableList} and {@code maxSchemaGroupMembers} are the exceptions -
+ * they bound the facts themselves, because a list of 33 527 rows of columns is not a page a reader can use
+ * either, and the page says how many it did not write.
  * <p>
  * They are one record rather than a row of parameters because they are all ints. Swapping two of them would
  * compile and change every page of the site.
@@ -24,8 +24,9 @@ package ch.admin.bit.jeap.doc.domain.template;
  * @param maxDetailedEdges      how many relations a whitebox picture may draw <b>in full</b> - an arrow per
  *                              kind and direction, in its colour, with the names on it. Above this the
  *                              picture is folded to its shape
+ * @param maxSchemaGroupMembers how many entities the entry of a configured table group lists
  */
 public record DiagramLimits(int maxDiagramNodes, int maxEdgeLabels, int maxContextComponents,
                             int maxSchemaTableDiagram, int maxSchemaTableList,
-                            int maxDiagramEdges, int maxDetailedEdges) {
+                            int maxDiagramEdges, int maxDetailedEdges, int maxSchemaGroupMembers) {
 }

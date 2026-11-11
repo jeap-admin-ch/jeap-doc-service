@@ -786,11 +786,12 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
   nested conditions reads worse. `java:S1192` where the duplicated literal is the *label* `arc42` next to the
   template id `ID` - the same spelling, two different things. Do not "fix" these on the next scan; everything
   else Sonar reports is worth fixing.
-- **Every reduction on a page says so, and every bound is on a picture - with one measured exception.** Five
-  bounds exist - `max-diagram-nodes`, `max-edge-labels`, `max-context-components`, `max-schema-table-diagram`
-  and `max-schema-table-list` - and they travel to a template together, in `DiagramLimits`, so that they
-  arrive as named values rather than as five integers in a row. A new bound goes in there, is validated in
-  `GeneratorProperties.check()`, and the page says what it left out.
+- **Every reduction on a page says so, and every bound is on a picture - with two measured exceptions.** The
+  bounds - `max-diagram-nodes`, `max-edge-labels`, `max-context-components`, `max-schema-table-diagram`,
+  `max-schema-table-list`, `max-diagram-edges`, `max-detailed-edges` and `max-schema-group-members` - travel to
+  a template together, in `DiagramLimits`, so that they arrive as named values rather than as a row of
+  integers. A new bound goes in there, is validated in `GeneratorProperties.check()`, and the page says what it
+  left out.
 
   **`max-schema-table-list` is the exception, and it was not free.** It bounds the *facts*: a database schema
   page writes 200 entries and no more. The page below a diagram used to carry everything, and one component's
@@ -798,7 +799,14 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
   unavoidable, the page has to say how many entries it did not write; that is what keeps it honest rather than
   merely short. Prefer summarising to bounding: the tables sharing one name pattern and one shape are grouped
   into one entry first, which is what keeps this bound from ever applying to 828 of the 830 schemas in the
-  estate.
+  estate. `max-schema-group-members` is the second exception, for the same reason: it bounds the entities one
+  configured group lists, and it is larger than the list bound because one group of one schema has 253.
+
+  **A configured table group is a decision, not an observation, and the shape is still its prerequisite.**
+  `schema-table-groups` names tables per component by a pattern, but `TableGroups` groups only the matching
+  tables of the most common shape - the others stay entries of their own, and the entry says how many. It runs
+  before `ShardFamilies`, and `DatabaseSchema.Entries` is the one place that says which entry stands for a
+  table: a foreign key into a grouped table or a shard is resolved there, never by deriving a name again.
 
   **It links nothing, and no page links the architecture repository's own API.** Naming the source that
   carries the rest sounds like the honest thing, and it was tried: the only such source is `/docs-api`, an

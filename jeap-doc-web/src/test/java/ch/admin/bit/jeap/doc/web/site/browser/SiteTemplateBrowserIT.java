@@ -232,6 +232,8 @@ class SiteTemplateBrowserIT extends SiteBrowserTestBase {
         assertThat(schema).containsText("orders_party");
         // A column, which only an entity has: a component box carries no rows.
         assertThat(schema).containsText("party_id");
+        // The entry of a configured group, drawn with its angle brackets rather than read as a tag.
+        assertThat(schema).containsText("orders_<entity>_<yymm>");
         assertThat(schema).not().containsText("Syntax Error");
         assertNothingWentWrongInTheBrowser();
     }

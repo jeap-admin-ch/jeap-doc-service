@@ -247,8 +247,9 @@ final class PlantUmlViews {
      * An arrow is only drawn between two tables the diagram has. A foreign key into a table that was cut, or
      * into a machinery table, would point at nothing - and an arrow that reaches one is drawn with the
      * <b>table's</b> spelling of its name rather than the foreign key's, which need not agree with it.
-     * <b>A key into a shard finds the family that shard was collapsed into</b>, or collapsing a schema would
-     * drop every arrow in it; both are {@link DocumentedSchema#drawnEntityNameOf}'s doing.
+     * <b>A key into a shard finds the family that shard was collapsed into</b>, and a key into a table of a
+     * configured group finds the group, or grouping a schema would drop every arrow in it; both are
+     * {@link DocumentedSchema#drawnEntityNameOf}'s doing.
      */
     static Diagram databaseSchema(DocumentedSchema schema) {
         List<SchemaTable> drawn = schema.drawn();

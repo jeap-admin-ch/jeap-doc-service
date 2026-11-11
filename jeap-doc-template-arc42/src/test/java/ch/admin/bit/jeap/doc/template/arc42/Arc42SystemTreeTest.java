@@ -55,7 +55,7 @@ class Arc42SystemTreeTest {
      * sibling components on a component's context view and a hundred tables on an entity relationship
      * diagram. A case that is about a bound overrides the one it is about.
      */
-    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200, 40, 20);
+    private static final DiagramLimits LIMITS = new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000);
 
     @TempDir
     Path content;
@@ -287,7 +287,7 @@ class Arc42SystemTreeTest {
     void theWhiteboxView_whenThereAreMoreRelationsThanMayBeNamed_thenThePictureIsFoldedToItsShape()
             throws IOException {
         orders = wired();
-        context = boundedBy(new DiagramLimits(100, 4, 40, 100, 200, 40, 1));
+        context = boundedBy(new DiagramLimits(100, 4, 40, 100, 200, 40, 1, 1000));
 
         generate();
 
@@ -311,7 +311,7 @@ class Arc42SystemTreeTest {
     @Test
     void theWhiteboxView_whenTheWholePictureIsTooLarge_thenTheBoundaryOneIsDrawnInstead() throws IOException {
         // Three relations together is over the bound; the two crossing the boundary are not.
-        context = boundedBy(new DiagramLimits(100, 4, 40, 100, 200, 2, 2));
+        context = boundedBy(new DiagramLimits(100, 4, 40, 100, 200, 2, 2, 1000));
 
         generate();
 
@@ -328,7 +328,7 @@ class Arc42SystemTreeTest {
     @Test
     void theWhiteboxView_whenNothingCanBeDrawn_thenThePageSaysSoAndKeepsItsTables() throws IOException {
         orders = wired();
-        context = boundedBy(new DiagramLimits(100, 4, 40, 100, 200, 1, 1));
+        context = boundedBy(new DiagramLimits(100, 4, 40, 100, 200, 1, 1, 1000));
 
         generate();
 
@@ -511,7 +511,7 @@ class Arc42SystemTreeTest {
     void aDiagramShowsACountWhereAnArrowCarriesMoreNamesThanItCanLabel() throws IOException {
         GenerationContext capped = new GenerationContext(context.model(), "dev",
                 "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
-                new DiagramLimits(100, 0, 40, 100, 200, 40, 20), "/docs/dev/");
+                new DiagramLimits(100, 0, 40, 100, 200, 40, 20, 1000), "/docs/dev/");
 
         template.writeSystem(Documented.of(orders), capped, systemDirectory);
 
@@ -530,7 +530,7 @@ class Arc42SystemTreeTest {
     void theDiagramsSayWhenTheyLeaveANeighbourOut() throws IOException {
         GenerationContext narrow = new GenerationContext(context.model(), "dev",
                 "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
-                new DiagramLimits(1, 4, 40, 100, 200, 40, 20), "/docs/dev/");
+                new DiagramLimits(1, 4, 40, 100, 200, 40, 20, 1000), "/docs/dev/");
         DocumentedSystem crowded = new DocumentedSystem("orders", "orders", null, List.of(), null,
                 orders.components(),
                 List.of(new SystemRelation(RelationKind.EVENT, "shipping", "shipping-gateway", "orders",
@@ -542,7 +542,7 @@ class Arc42SystemTreeTest {
                 ArchitectureModel.of(List.of(crowded, shipping(), new DocumentedSystem("zulu", "zulu", null,
                         List.of(), null, List.of(), List.of(), List.of()))),
                 "dev", narrow.archRepoUrl(), MODEL_IMPORTED_AT, GENERATED_AT,
-                new DiagramLimits(1, 4, 40, 100, 200, 40, 20), "/docs/dev/");
+                new DiagramLimits(1, 4, 40, 100, 200, 40, 20, 1000), "/docs/dev/");
 
         template.writeSystem(Documented.of(crowded), landscape, systemDirectory);
 
@@ -583,7 +583,7 @@ class Arc42SystemTreeTest {
                         new DocumentedSystem("zulu", "zulu", null, List.of(), null, List.of(), List.of(),
                                 List.of()))),
                 "dev", "https://archrepo.example.com/archrepo", MODEL_IMPORTED_AT, GENERATED_AT,
-                new DiagramLimits(1, 4, 40, 100, 200, 40, 20), "/docs/dev/");
+                new DiagramLimits(1, 4, 40, 100, 200, 40, 20, 1000), "/docs/dev/");
 
         template.writeSystem(Documented.of(crowded), landscape, systemDirectory);
 

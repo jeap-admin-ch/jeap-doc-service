@@ -259,6 +259,10 @@ bounded too. Where that applies the page says how many entries it did not write 
 only source carrying the rest is the architecture repository's own `/docs-api`, an internal address a reader of
 a published site cannot reach, so a link there would read as an offer and answer nothing.
 
+Before either bound applies, tables are grouped into entries: the partitions of a table by their name and shape,
+and the groups an instance configured for the component - see
+[Generating the documentation](generation.md#tables-of-one-name-pattern-are-grouped-and-the-list-is-bounded).
+
 | Diagram                       | Bounded by                                | The page still carries      |
 |-------------------------------|-------------------------------------------|-----------------------------|
 | System context view           | `max-diagram-nodes` other systems         | every relation              |

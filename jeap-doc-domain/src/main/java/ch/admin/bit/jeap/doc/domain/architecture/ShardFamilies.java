@@ -63,7 +63,7 @@ final class ShardFamilies {
      * a family wrongly and end a sort with an exception. Reading the digits as a number also sorts a
      * zero-padded {@code 007} where seven belongs.
      */
-    private static final Comparator<String> BY_PARTITION_KEY = Comparator
+    static final Comparator<String> BY_PARTITION_KEY = Comparator
             .comparing(ShardFamilies::tagOf, String.CASE_INSENSITIVE_ORDER)
             .thenComparing(ShardFamilies::numberOf)
             .thenComparing(Comparator.naturalOrder());
@@ -133,7 +133,7 @@ final class ShardFamilies {
         SchemaTable first = shards.getFirst();
         return new SchemaTable(stem + SEPARATOR + FAMILY_POSTFIX, first.columns(), first.primaryKeyColumns(),
                 first.foreignKeys(),
-                new Shards(shards.size(), SEPARATOR + suffixes.getFirst(), SEPARATOR + suffixes.getLast()));
+                new Shards(shards.size(), SEPARATOR + suffixes.getFirst(), SEPARATOR + suffixes.getLast()), null);
     }
 
     /**
@@ -168,7 +168,7 @@ final class ShardFamilies {
      * <b>The foreign keys are left out deliberately.</b> A manually sharded child points at the counterpart
      * shard of its parent, so comparing them would keep apart a family a reader wants as one row.
      */
-    private static String signatureOf(SchemaTable table) {
+    static String signatureOf(SchemaTable table) {
         StringBuilder signature = new StringBuilder();
         for (SchemaColumn column : table.columns()) {
             signature.append(column.name()).append(':').append(column.type()).append(':')

@@ -319,8 +319,8 @@ is drawn rather than how much of it there is**, and a dropped whitebox picture i
 away whole rather than cutting it - a whitebox view is dense rather than long-tailed, so its first hundred
 arrows are not a truthful part of it the way a schema's first hundred tables are. The list of tables below an
 entity relationship diagram carries what it left out - up to
-[`max-schema-table-list`](configuration.md#the-architecture-model) entries. That is the one bound on the facts
-themselves, and [Tables of one name pattern are grouped, and the list is bounded](#tables-of-one-name-pattern-are-grouped-and-the-list-is-bounded)
+[`max-schema-table-list`](configuration.md#the-architecture-model) entries. That is a bound on the facts
+themselves - with the bound on the entities of a configured group the only one - and [Tables of one name pattern are grouped, and the list is bounded](#tables-of-one-name-pattern-are-grouped-and-the-list-is-bounded)
 is what it is for.
 
 ### Where the generated content comes from
@@ -474,6 +474,29 @@ columns and their primary key is left alone entirely. That is deliberate: an `or
 and a reader shown one row would never learn it. Nothing here infers what a table is *for* - PostgreSQL knows
 the answer properly in `pg_inherits`, and the day the schema publisher passes it on this heuristic goes away.
 
+**An instance can also group tables by configuration.** A component may keep one table per entity and month -
+`id_orders_2611`, `id_parties_2611` - so that thousands of tables share one structure under hundreds of names.
+The name heuristic above groups each entity's months, but it cannot see that the entities are alike.
+[`jeap.doc.generator.schema-table-groups`](configuration.md#the-architecture-model) names such tables per
+component with a regular expression. Its named group `entity` says which entity a table belongs to, and its
+optional named group `partition` gives each entity its range. A configured group works like this:
+
+- It is applied **first**, and the name heuristic groups whatever is left.
+- **The shape is still a prerequisite.** Of the tables a pattern matches, only those with the most common
+  columns and primary key are grouped. A matching table of another shape is an entry of its own, and the group's
+  entry says how many such tables there are. A single table is never a group.
+- A table belongs to the first group of its component that matches it.
+- The entry is headed by the group's configured name. It shows the shared columns once, then one row per entity
+  with its number of tables and their range. The entities are bounded by
+  [`max-schema-group-members`](configuration.md#the-architecture-model) (**1000**), and the entry says how many
+  it did not list.
+- A foreign key into any grouped table points at the group's box on the diagram.
+- A note says that the grouping is configured, so it is not read as something observed in the names. The pattern
+  itself is not on the page.
+
+A changed group takes effect the next time the part of that component's system is built, like every other
+setting that is applied when a page is written.
+
 **Grouping happens before either bound applies**, which is what turns both bounds into a formality for all but
 two schemas in the estate. Then:
 
@@ -488,8 +511,8 @@ without the diagram's own bound being anywhere near, and the note that named the
 the wrong cause. Where the diagram drew every listed entry there is no diagram note at all, and the list note
 carries the rest.
 
-`max-schema-table-list` is the one bound on the facts rather than on a picture, and it is what makes a schema
-page's cost finite: unbounded, one component's page carried 33 527 rows of columns and cost an hour and a half
+`max-schema-table-list` is a bound on the facts rather than on a picture - with `max-schema-group-members` the
+only one - and it is what makes a schema page's cost finite: unbounded, one component's page carried 33 527 rows of columns and cost an hour and a half
 to build. Where it applies the page says how many entries it did not write, and it **links nothing**: the only
 other place that carries every entry is the architecture repository's own API, which is not a page a reader of
 a published site can open. In the measured estate two components' pages are shortened, by about 60 and 54

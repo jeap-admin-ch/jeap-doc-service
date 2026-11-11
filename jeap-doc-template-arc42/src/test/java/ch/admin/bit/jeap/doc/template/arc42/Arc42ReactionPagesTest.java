@@ -23,7 +23,7 @@ class Arc42ReactionPagesTest {
                 system("s", List.of(component("provider", true), component("ambiguous", true), component("no-api", false))),
                 system("other", List.of(component("ambiguous", false)))));
         var context = new GenerationContext(model, "dev", null, Instant.EPOCH, Instant.EPOCH,
-                new DiagramLimits(100, 4, 40, 100, 200, 40, 20), "/site/docs/dev/");
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000), "/site/docs/dev/");
         var view = new ReactionView(List.of(
                 new ReactionView.MessageLink("AcceptedEvent", "s", "accepted", MessageKind.EVENT),
                 new ReactionView.MessageLink("AcceptedEvent", "s", "accepted", MessageKind.EVENT),
@@ -39,7 +39,7 @@ class Arc42ReactionPagesTest {
     void componentLinksRequireAnAvailableRuntimePageAndOmitTheCurrentComponent() {
         var context = new GenerationContext(ArchitectureModel.of(List.of(system("s", List.of()))),
                 "dev", null, Instant.EPOCH, Instant.EPOCH,
-                new DiagramLimits(100, 4, 40, 100, 200, 40, 20), "/site/docs/dev/");
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000), "/site/docs/dev/");
         var group = new ReactionView.ComponentLink("s", "provider", "provider", "s");
         assertThat(Arc42ReactionPages.componentLink(group, context, null)).contains(
                 "/site/docs/dev/systems/s/system-architecture/building-block-view/components/provider/component-architecture/runtime-view/component-reactions/");
@@ -109,7 +109,7 @@ class Arc42ReactionPagesTest {
 
     private static String render(ReactionView view, ArchitectureModel model) {
         var context = new GenerationContext(model, "dev", null, Instant.EPOCH, Instant.EPOCH,
-                new DiagramLimits(100, 4, 40, 100, 200, 40, 20), "/site/docs/dev/");
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000), "/site/docs/dev/");
         var page = new MarkdownWriter();
         Arc42ReactionPages.writeViewer(page, new ReactionEntry(ReactionEntry.Kind.SYSTEM, "s", null, null, null), view, context, null);
         Arc42ReactionPages.writeTableAndProvenance(page, view, context);

@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.domain.template;
 
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
+import ch.admin.bit.jeap.doc.domain.architecture.SchemaTableGroups;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExclusions;
 
 import java.time.Instant;
@@ -27,6 +28,7 @@ import java.time.Instant;
  *                   are in its specification without being what a reader came for
  * @param reactions  the reaction graphs of the system being written
  * @param viewExclusions the components left out of the diagrams and relations tables of other pages
+ * @param schemaTableGroups the table groups configured per component, applied to its database schema page
  */
 public record GenerationContext(
         ArchitectureModel model,
@@ -38,13 +40,15 @@ public record GenerationContext(
         String linkPrefix,
         DocumentedApiPaths apiPaths,
         ReactionViews reactions,
-        ViewExclusions viewExclusions) {
+        ViewExclusions viewExclusions,
+        SchemaTableGroups schemaTableGroups) {
 
     public GenerationContext {
         apiPaths = apiPaths == null ? DocumentedApiPaths.ALL : apiPaths;
         reactions = reactions == null ? ReactionViews.none() : reactions;
         viewExclusions = viewExclusions == null ? ViewExclusions.NONE
                 : viewExclusions;
+        schemaTableGroups = schemaTableGroups == null ? SchemaTableGroups.NONE : schemaTableGroups;
     }
 
     /** A run that leaves no component out of the views. */
@@ -52,7 +56,7 @@ public record GenerationContext(
                              Instant modelImportedAt, Instant generatedAt, DiagramLimits limits,
                              String linkPrefix, DocumentedApiPaths apiPaths, ReactionViews reactions) {
         this(model, environment, archRepoUrl, modelImportedAt, generatedAt, limits, linkPrefix, apiPaths,
-                reactions, ViewExclusions.NONE);
+                reactions, ViewExclusions.NONE, SchemaTableGroups.NONE);
     }
 
     /**
@@ -89,13 +93,19 @@ public record GenerationContext(
      */
     public GenerationContext withReactions(ReactionViews reactions) {
         return new GenerationContext(model, environment, archRepoUrl, modelImportedAt, generatedAt,
-                limits, linkPrefix, apiPaths, reactions, viewExclusions);
+                limits, linkPrefix, apiPaths, reactions, viewExclusions, schemaTableGroups);
     }
 
     /** The same run, leaving the given components out of the views of other pages. */
     public GenerationContext withViewExclusions(ViewExclusions excluded) {
         return new GenerationContext(model, environment, archRepoUrl, modelImportedAt, generatedAt,
-                limits, linkPrefix, apiPaths, reactions, excluded);
+                limits, linkPrefix, apiPaths, reactions, excluded, schemaTableGroups);
+    }
+
+    /** The same run, grouping the tables of the database schemas as the instance configured. */
+    public GenerationContext withSchemaTableGroups(SchemaTableGroups groups) {
+        return new GenerationContext(model, environment, archRepoUrl, modelImportedAt, generatedAt,
+                limits, linkPrefix, apiPaths, reactions, viewExclusions, groups);
     }
 
     /** When the reactions were imported, written where a person reads it. Empty when they never were. */

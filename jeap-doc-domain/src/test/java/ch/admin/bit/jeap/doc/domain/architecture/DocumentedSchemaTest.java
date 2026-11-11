@@ -282,4 +282,42 @@ class DocumentedSchemaTest {
         assertThat(view.drawn()).isEmpty();
         assertThat(view.drawnEntityNameOf("doc_meta_3")).isNull();
     }
+
+    /**
+     * <b>An arrow into a table of a configured group has to find the group</b>, in either spelling, as an
+     * arrow into a shard finds its family.
+     */
+    @Test
+    void drawnEntityNameOf_whenTheKeyPointsIntoAConfiguredGroup_thenItFindsTheGroup() {
+        SchemaTableGroup byMonth = SchemaTableGroup.of("id_<entity>_<yymm>", "id_(?<entity>.+)_(?<partition>\\d{4})");
+        List<SchemaTable> tables = new ArrayList<>(List.of(table("id_orders_2601"), table("id_parties_2601")));
+        tables.add(table("doc_root", foreignKeyTo("ID_ORDERS_2601")));
+
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(tables), List.of(byMonth), 100, 200);
+
+        assertThat(view.documented()).extracting(SchemaTable::name).containsExactly("doc_root", "id_<entity>_<yymm>");
+        assertThat(view.drawnEntityNameOf("ID_ORDERS_2601")).isEqualTo("id_<entity>_<yymm>");
+        assertThat(view.configuredGroups()).isEqualTo(1);
+        assertThat(view.collapsedFamilies()).isZero();
+    }
+
+    /**
+     * <b>A group is one entry against both bounds</b>, which is what keeps a large grouped schema on the
+     * page: a key into it keeps it on a bounded diagram the way a key into a family does.
+     */
+    @Test
+    void drawn_whenAKeyPointsIntoAConfiguredGroup_thenTheGroupIsWhatIsKept() {
+        SchemaTableGroup byMonth = SchemaTableGroup.of("id_<entity>_<yymm>", "id_(?<entity>.+)_(?<partition>\\d{4})");
+        List<SchemaTable> tables = new ArrayList<>(List.of(table("id_orders_2601"), table("id_parties_2601")));
+        tables.add(table("a_first"));
+        tables.add(table("z_root", foreignKeyTo("id_parties_2601")));
+
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(tables), List.of(byMonth), 2, 200);
+
+        assertThat(view.documentedCount()).isEqualTo(3);
+        assertThat(view.drawn()).extracting(SchemaTable::name)
+                .describedAs("the group is referenced, so it keeps its box and z_root, which nothing "
+                             + "references and sorts last, loses its own")
+                .containsExactly("a_first", "id_<entity>_<yymm>");
+    }
 }

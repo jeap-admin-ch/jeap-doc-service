@@ -9,6 +9,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSchema;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.architecture.GroupedTables;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageContract;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
 import ch.admin.bit.jeap.doc.domain.architecture.RestApiOperation;
@@ -333,12 +334,12 @@ final class Arc42ComponentPages {
     private static void writeDatabaseSchema(DocumentedComponent component, GenerationContext context,
                                             Path directory) throws IOException {
         DatabaseSchema schema = component.schema();
-        // Worked out once for the whole page. Collapsing the partitions and sorting is what documentedTables()
+        // Worked out once for the whole page. Grouping, collapsing the partitions and sorting is what entries()
         // does on every call, and the page needs it through a dozen paths: the count, the diagram, the notes
         // and the list of tables.
         DocumentedSchema documented = schema == null ? null
-                : DocumentedSchema.of(schema, context.limits().maxSchemaTableDiagram(),
-                        context.limits().maxSchemaTableList());
+                : DocumentedSchema.of(schema, context.schemaTableGroups().forComponent(component.name()),
+                        context.limits().maxSchemaTableDiagram(), context.limits().maxSchemaTableList());
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(DATABASE_SCHEMA_LABEL, 1, context))
                 .heading(1, DATABASE_SCHEMA_LABEL)
@@ -367,16 +368,17 @@ final class Arc42ComponentPages {
             writeHiddenNote(page, documented);
         } else {
             page.fence(PlantUmlViews.LANGUAGE, PlantUmlViews.databaseSchema(documented).source());
-            // Four reductions can apply to one page - partitions grouped, the diagram cut, the list cut, the
-            // machinery hidden - and each of them says so in its own note. They stand together above the
+            // Five reductions can apply to one page - configured groups, partitions grouped, the diagram cut, the
+            // list cut, the machinery hidden - and each of them says so in its own note. They stand together above the
             // list, because a reader who cannot tell them apart cannot tell what is missing from what is
             // merely summarised - and under two hundred table sections the last of them reads as belonging
             // to the last table.
             writeDiagramNote(page, documented);
+            writeGroupNote(page, documented);
             writePartitionNote(page, documented);
             writeListNote(page, documented);
             writeHiddenNote(page, documented);
-            writeTables(page, documented);
+            writeTables(page, documented, context.limits().maxSchemaGroupMembers());
         }
         Arc42Pages.write(directory, DATABASE_SCHEMA_PAGE + ".md", page);
     }
@@ -496,9 +498,9 @@ final class Arc42ComponentPages {
      * see that the schema holds 6583 tables and that the page shows 260 of them - rather than be shown 260
      * and told nothing.
      * <p>
-     * <b>The second number is not named after one of the two reductions.</b> Machinery tables are left out and
-     * partitions are grouped, and a cell reading "after grouping partitions" would put the hidden tables down
-     * to the grouping. Which reduction did what is what the two notes below the diagram say.
+     * <b>The second number is not named after one of the reductions.</b> Machinery tables are left out,
+     * configured groups and partitions are grouped, and a cell reading "after grouping partitions" would put
+     * the hidden tables down to the grouping. Which reduction did what is what the notes below the diagram say.
      */
     private static Markdown tableCount(DocumentedSchema documented) {
         if (documented.rawTableCount() == documented.documentedCount()) {
@@ -508,11 +510,39 @@ final class Arc42ComponentPages {
                 .formatted(documented.rawTableCount(), documented.documentedCount()));
     }
 
+    /**
+     * That the instance configured groups for this component, and what such an entry stands for.
+     * <p>
+     * <b>A note of its own, apart from the partitions.</b> A configured group is a decision of the instance,
+     * not something read off the names, so it is not worded as an observation. The pattern itself is not on
+     * the page: it is configuration, and the entities an entry lists are what a reader looks for.
+     */
+    private static void writeGroupNote(MarkdownWriter page, DocumentedSchema documented) {
+        int groups = documented.configuredGroups();
+        if (groups == 0) {
+            return;
+        }
+        String example = documented.documented().stream()
+                .filter(table -> table.group() != null)
+                .findFirst().orElseThrow().name();
+        page.admonition("info", "Tables are grouped by configuration", Md.join(
+                Arc42Pages.leftOut(groups,
+                        "One entry of this schema groups tables that match a pattern configured for this "
+                        + "component and share the same columns and primary key: ",
+                        ("%d entries of this schema each group tables that match a pattern configured for this "
+                         + "component and share the same columns and primary key - ").formatted(groups)),
+                Md.sentence("{} is one. Such an entry lists the entities its tables belong to below its "
+                            + "columns.", Md.code(example))));
+    }
+
     /** Every entry with its columns, including the ones the diagram had no room for. */
-    private static void writeTables(MarkdownWriter page, DocumentedSchema documented) {
+    private static void writeTables(MarkdownWriter page, DocumentedSchema documented, int maxMembers) {
         page.heading(2, "Tables");
         for (SchemaTable table : documented.listed()) {
             page.heading(3, Md.code(table.name()));
+            if (table.group() != null) {
+                writeGroupSummary(page, table.group());
+            }
             if (table.shards() != null) {
                 // Summarised, never hidden: the count and the range are what let a reader see that this one
                 // entry stands for a hundred and twenty-five tables. And said as what was observed - the
@@ -533,7 +563,57 @@ final class Arc42ComponentPages {
                             Md.text(column.nullable() ? "yes" : "no"),
                             keysOf(table, column)))
                     .toList());
+            if (table.group() != null) {
+                writeGroupMembers(page, table.group(), maxMembers);
+            }
         }
+    }
+
+    /**
+     * How many tables a configured group stands for, and how many matching tables it did not take because
+     * their shape differs. Those are entries of their own on this page, so nothing is hidden.
+     */
+    private static void writeGroupSummary(MarkdownWriter page, GroupedTables group) {
+        page.paragraph(Md.sentence("{} tables of {} entities match the grouping configured for this component "
+                                   + "and share this shape. They are documented as one entry.",
+                Md.text(String.valueOf(group.tables())), Md.text(String.valueOf(group.members().size()))));
+        if (group.differentShape() > 0) {
+            page.paragraph(Arc42Pages.leftOut(group.differentShape(),
+                    "One more table matches the grouping but has another shape, so it is documented as an "
+                    + "entry of its own.",
+                    ("%d more tables match the grouping but have another shape, so they are documented as "
+                     + "entries of their own.").formatted(group.differentShape())));
+        }
+    }
+
+    /**
+     * The entities of a configured group, with how many tables each has and their range. Bounded, because a
+     * pattern that matches every table of a large schema would otherwise make one row per table.
+     */
+    private static void writeGroupMembers(MarkdownWriter page, GroupedTables group, int maxMembers) {
+        List<GroupedTables.Member> members = group.members();
+        List<GroupedTables.Member> listed = members.size() > maxMembers
+                ? members.subList(0, maxMembers) : members;
+        page.table(List.of("Entity", "Tables", "Range"), listed.stream()
+                .map(member -> List.of(
+                        Md.code(member.entity()),
+                        Md.text(String.valueOf(member.tables())),
+                        rangeOf(member)))
+                .toList());
+        if (listed.size() < members.size()) {
+            page.paragraph(Md.sentence("This entry lists {} of its {} entities, by name.",
+                    Md.text(String.valueOf(listed.size())), Md.text(String.valueOf(members.size()))));
+        }
+    }
+
+    private static Markdown rangeOf(GroupedTables.Member member) {
+        if (member.firstPartition() == null) {
+            return Md.text("-");
+        }
+        if (member.firstPartition().equals(member.lastPartition())) {
+            return Md.code(member.firstPartition());
+        }
+        return Md.sentence("{} to {}", Md.code(member.firstPartition()), Md.code(member.lastPartition()));
     }
 
     /** Which keys the column belongs to, and where a foreign key points. */

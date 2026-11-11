@@ -716,15 +716,25 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * heuristic applied to an entity's members they would be drawn in a compartment of their own, after
      * {@code remark}. It does not: every member of an entity is a field, drawn where it was declared, and
      * the assertion in {@code SiteTemplateBrowserIT} is what keeps that from changing under us.
+     * <p>
+     * <b>The entry of a configured table group is named with angle brackets</b> - {@code orders_<entity>_<yymm>}
+     * - which PlantUML could read as a formatting tag inside a label. The assertion in
+     * {@code SiteTemplateBrowserIT} checks that the name is drawn as written.
      */
     private static final String GENERATED_SCHEMA_DIAGRAM = """
             @startuml
             skinparam nodesep 8
             skinparam ranksep 20
+            entity "orders_<entity>_<yymm>" {
+              * id_real : varchar <<PK>>
+              --
+              * hash : bytea
+            }
             entity "orders_order" {
               * id : uuid <<PK>>
               --
                 party_id : uuid <<FK>>
+                ref_id : varchar <<FK>>
               * total : numeric(12,2)
                 tags : text[]
                 remark : text
@@ -733,6 +743,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
               * id : uuid <<PK>>
             }
             "orders_order" }o--|| "orders_party" : party_id
+            "orders_order" }o--|| "orders_<entity>_<yymm>" : ref_id
             @enduml""";
 
     /** The system nothing has deployed and a team has documented - see {@code CustomDocsBrowserIT}. */
@@ -989,7 +1000,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         // link that 404s for a reader while every generated page still looks right.
         String linkPrefix = urls.baseUrl(defaultSite()) + (environment.main() ? "" : environment.id() + "/");
         GenerationContext context = new GenerationContext(model, environment.id(), "https://archrepo.example",
-                GENERATED_AT, GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200, 40, 20), linkPrefix)
+                GENERATED_AT, GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000), linkPrefix)
                 .withReactions(reactions);
         writeSystemPage(environmentTree, REACTING_SYSTEM, "Ships what was ordered");
         new Arc42Template().writeSystem(withoutUploads(shipping), context,
@@ -1001,7 +1012,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         writeSystemPage(environmentTree, OTHER_SYSTEM, "Settles what was shipped");
         new Arc42Template().writeSystem(withoutUploads(billing),
                 new GenerationContext(model, environment.id(), "https://archrepo.example", GENERATED_AT,
-                        GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200, 40, 20), linkPrefix, null,
+                        GENERATED_AT, new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000), linkPrefix, null,
                         billingReactions),
                 environmentTree.resolve("systems").resolve(OTHER_SYSTEM));
     }
@@ -1014,7 +1025,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     private void writeDocumentedSystem(Path environmentTree, SiteEnvironment environment) throws IOException {
         GenerationContext context = new GenerationContext(new ArchitectureModel(List.of()), environment.id(),
                 "https://archrepo.example", GENERATED_AT, GENERATED_AT,
-                new DiagramLimits(100, 4, 40, 100, 200, 40, 20), "/");
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000), "/");
         writeSystemPage(environmentTree, DOCUMENTED_SYSTEM, "Documented by hand");
         new Arc42Template().writeSystem(UploadedDocumentation.of(DOCUMENTED_SYSTEM, DOCUMENTED_LIBRARY),
                 context, environmentTree.resolve("systems").resolve(DOCUMENTED_SYSTEM));
