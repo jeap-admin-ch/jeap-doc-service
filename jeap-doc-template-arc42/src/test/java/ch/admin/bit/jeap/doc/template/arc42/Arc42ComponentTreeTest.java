@@ -457,8 +457,8 @@ class Arc42ComponentTreeTest {
                 .contains("### `id_<entity>_<yymm>`")
                 .contains("5 tables of 2 entities match the grouping configured for this component and share "
                           + "this shape. They are documented as one entry.")
-                .contains("One more table matches the grouping but has another shape, so it is documented as "
-                          + "an entry of its own.")
+                .contains("One more table matches the grouping but has another shape, so it is documented "
+                          + "apart from this entry.")
                 .contains("| Entity | Tables | Range |")
                 .contains("| `orders` | 3 | `2601` to `2603` |")
                 .contains("| `parties` | 2 | `2611` to `2612` |")
@@ -474,6 +474,69 @@ class Arc42ComponentTreeTest {
                 .doesNotContain("(?<entity>")
                 .describedAs("nothing here is a family of partitions, so that note is not there")
                 .doesNotContain("Tables of one name pattern are grouped");
+    }
+
+    /**
+     * <b>A group's tables can have no published column</b>, and the entry still lists its entities: the note
+     * promises them, and they are what a reader looks for.
+     */
+    @Test
+    void theDatabaseSchemaPage_whenAGroupsTablesHaveNoColumns_thenItStillListsItsEntities() throws IOException {
+        List<SchemaTable> tables = new ArrayList<>();
+        for (String table : List.of("id_orders_2601", "id_orders_2602", "id_parties_2611")) {
+            tables.add(new SchemaTable(table, List.of(), List.of(), List.of()));
+        }
+        DocumentedComponent grouped = componentOf(orders, "orders-intake")
+                .withArtifacts(new DatabaseSchema("orders_db", "1.2.3", tables),
+                        componentOf(orders, "orders-intake").api());
+        orders = orders(grouped);
+        context = contextOf(orders, LIMITS).withSchemaTableGroups(BY_MONTH);
+
+        generate(grouped);
+
+        String page = read("component-architecture/5-building-block-view/database-schema.md");
+        assertThat(page).contains("The published schema names no column of this table.")
+                .contains("| Entity | Tables | Range |")
+                .contains("| `orders` | 2 | `2601` to `2602` |")
+                .contains("| `parties` | 1 | `2611` |");
+    }
+
+    /**
+     * <b>A key only some of the grouped tables declare is not shown</b>, because the entities of a group can
+     * point at different tables - and the entry says how many keys it left out.
+     */
+    @Test
+    void theDatabaseSchemaPage_whenTheEntitiesOfAGroupPointAtDifferentTables_thenItShowsNoneOfThoseKeys()
+            throws IOException {
+        List<SchemaColumn> shape = List.of(new SchemaColumn("id_real", "varchar", false),
+                new SchemaColumn("ref_id", "varchar", false));
+        List<SchemaTable> tables = new ArrayList<>();
+        for (String table : List.of("id_orders_2601", "id_orders_2602")) {
+            tables.add(new SchemaTable(table, shape, List.of("id_real"), List.of(new SchemaForeignKey(
+                    "fk_" + table, List.of("ref_id"), "orders_order", List.of("id")))));
+        }
+        for (String table : List.of("id_parties_2611", "id_parties_2612")) {
+            tables.add(new SchemaTable(table, shape, List.of("id_real"), List.of(new SchemaForeignKey(
+                    "fk_" + table, List.of("ref_id"), "orders_party", List.of("id")))));
+        }
+        tables.add(new SchemaTable("orders_order", List.of(new SchemaColumn("id", "uuid", false)),
+                List.of("id"), List.of()));
+        tables.add(new SchemaTable("orders_party", List.of(new SchemaColumn("id", "uuid", false)),
+                List.of("id"), List.of()));
+        DocumentedComponent grouped = componentOf(orders, "orders-intake")
+                .withArtifacts(new DatabaseSchema("orders_db", "1.2.3", tables),
+                        componentOf(orders, "orders-intake").api());
+        orders = orders(grouped);
+        context = contextOf(orders, LIMITS).withSchemaTableGroups(BY_MONTH);
+
+        generate(grouped);
+
+        String page = read("component-architecture/5-building-block-view/database-schema.md");
+        assertThat(page).contains("2 foreign keys are declared by only some of these tables, so this entry does "
+                                  + "not show them.")
+                .contains("| `ref_id` | `varchar` | no | - |")
+                .doesNotContain("FK to `orders_order`")
+                .doesNotContain("\"id_<entity>_<yymm>\" }o--||");
     }
 
     /** The entities of a group are bounded too, and the entry says how many it did not list. */
@@ -1181,10 +1244,6 @@ class Arc42ComponentTreeTest {
         return new DatabaseSchema("orders_db", "1.2.3", List.of(order, party, flyway));
     }
 
-    /**
-     * A hundred and five partitions of one table, two ordinary tables and the Flyway history: a hundred and
-     * eight tables that are three entries.
-     */
     /** One table per entity and month, configured as one group for this component. */
     private static final SchemaTableGroups BY_MONTH = SchemaTableGroups.of(Map.of("orders-intake",
             List.of(SchemaTableGroup.of("id_<entity>_<yymm>", "id_(?<entity>.+)_(?<partition>\\d{4})"))));
@@ -1210,6 +1269,10 @@ class Arc42ComponentTreeTest {
         return new DatabaseSchema("orders_db", "1.2.3", tables);
     }
 
+    /**
+     * A hundred and five partitions of one table, two ordinary tables and the Flyway history: a hundred and
+     * eight tables that are three entries.
+     */
     private static DatabaseSchema partitionedSchema() {
         List<SchemaTable> tables = new ArrayList<>();
         tables.add(new SchemaTable("orders_order",

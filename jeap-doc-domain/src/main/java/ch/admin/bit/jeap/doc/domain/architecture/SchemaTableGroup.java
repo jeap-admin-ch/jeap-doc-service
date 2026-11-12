@@ -52,10 +52,19 @@ public record SchemaTableGroup(String name, Pattern tables) {
         return new SchemaTableGroup(name, pattern);
     }
 
-    /** The match over the whole table name, or null where the table is not one of this group's. */
+    /**
+     * The match over the whole table name, or null where the table is not one of this group's.
+     * <p>
+     * A match that says no entity is no match: a pattern can make {@code entity} optional, and a table that
+     * belongs to no entity cannot be listed under one.
+     */
     Matcher matching(String tableName) {
         Matcher matcher = tables.matcher(tableName);
-        return matcher.matches() ? matcher : null;
+        if (!matcher.matches()) {
+            return null;
+        }
+        String entity = matcher.group(ENTITY);
+        return entity == null || entity.isBlank() ? null : matcher;
     }
 
     boolean hasPartitions() {

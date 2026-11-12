@@ -10,7 +10,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - `jeap.doc.generator.schema-table-groups` groups tables with the same structure under different names into
   one entry per component, such as one table per entity and month. Only matching tables of the same columns
-  and primary key are grouped, and the entry lists its entities with their range.
+  and primary key are grouped, and the entry lists its entities with their range and the foreign keys that
+  all of its tables declare.
 - `jeap.doc.generator.max-schema-group-members` bounds the entities such an entry lists (default 1000).
 
 ### Changed

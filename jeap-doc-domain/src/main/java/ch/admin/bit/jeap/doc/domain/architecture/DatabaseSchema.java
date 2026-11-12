@@ -72,8 +72,9 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
         List<SchemaTable> collapsed = ShardFamilies.collapse(grouped.remaining());
 
         Map<String, String> entryByTable = new HashMap<>();
-        grouped.grouped().forEach(
-                (table, entry) -> entryByTable.put(folded(table.name()), entry.name()));
+        for (TableGroups.Group group : grouped.groups()) {
+            group.tables().forEach(table -> entryByTable.put(folded(table.name()), group.entry().name()));
+        }
         Set<String> families = new HashSet<>();
         for (SchemaTable entry : collapsed) {
             if (entry.shards() != null) {
@@ -87,10 +88,14 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
             }
         }
 
-        List<SchemaTable> entries = new ArrayList<>(grouped.entries());
+        Entries resolved = new Entries(List.of(), Map.copyOf(entryByTable));
+        List<SchemaTable> entries = new ArrayList<>();
+        for (TableGroups.Group group : grouped.groups()) {
+            entries.add(TableGroups.withSharedKeys(group, resolved::entryOf));
+        }
         entries.addAll(collapsed);
         entries.sort(Comparator.comparing(SchemaTable::name, String.CASE_INSENSITIVE_ORDER));
-        return new Entries(List.copyOf(entries), Map.copyOf(entryByTable));
+        return new Entries(List.copyOf(entries), resolved.entryByTable());
     }
 
     /**

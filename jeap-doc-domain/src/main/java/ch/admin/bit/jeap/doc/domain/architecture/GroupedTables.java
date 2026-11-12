@@ -10,9 +10,11 @@ import java.util.List;
  * @param tables         how many tables the entry stands for
  * @param members        the entities, ordered by name
  * @param differentShape how many tables matched the group's pattern but have another shape, and are therefore
- *                       documented as entries of their own
+ *                       documented apart from it - on their own, or collapsed as partitions of one table
+ * @param partialKeys    how many foreign keys only some of the tables declare. The entry shows the keys all of
+ *                       them declare, and the page says how many it left out
  */
-public record GroupedTables(int tables, List<Member> members, int differentShape) {
+public record GroupedTables(int tables, List<Member> members, int differentShape, int partialKeys) {
 
     public GroupedTables {
         members = members == null ? List.of() : List.copyOf(members);

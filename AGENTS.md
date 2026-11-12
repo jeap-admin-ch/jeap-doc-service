@@ -804,7 +804,7 @@ Every rule below cost a review finding. They are cheap to follow and expensive t
 
   **A configured table group is a decision, not an observation, and the shape is still its prerequisite.**
   `schema-table-groups` names tables per component by a pattern, but `TableGroups` groups only the matching
-  tables of the most common shape - the others stay entries of their own, and the entry says how many. It runs
+  tables of the most common shape - the others are documented apart from it, and the entry says how many. It runs
   before `ShardFamilies`, and `DatabaseSchema.Entries` is the one place that says which entry stands for a
   table: a foreign key into a grouped table or a shard is resolved there, never by deriving a name again.
 

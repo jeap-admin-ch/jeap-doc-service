@@ -334,9 +334,9 @@ final class Arc42ComponentPages {
     private static void writeDatabaseSchema(DocumentedComponent component, GenerationContext context,
                                             Path directory) throws IOException {
         DatabaseSchema schema = component.schema();
-        // Worked out once for the whole page. Grouping, collapsing the partitions and sorting is what entries()
-        // does on every call, and the page needs it through a dozen paths: the count, the diagram, the notes
-        // and the list of tables.
+        // Worked out once for the whole page. Grouping, collapsing the partitions and sorting is done on every
+        // call of DatabaseSchema.documentedTables, and the page needs it through a dozen paths: the count, the
+        // diagram, the notes and the list of tables.
         DocumentedSchema documented = schema == null ? null
                 : DocumentedSchema.of(schema, context.schemaTableGroups().forComponent(component.name()),
                         context.limits().maxSchemaTableDiagram(), context.limits().maxSchemaTableList());
@@ -554,15 +554,15 @@ final class Arc42ComponentPages {
             }
             if (table.columns().isEmpty()) {
                 page.paragraph("The published schema names no column of this table.");
-                continue;
+            } else {
+                page.table(List.of("Column", "Type", "Nullable", "Key"), table.columns().stream()
+                        .map(column -> List.of(
+                                Md.code(column.name()),
+                                Md.code(column.type()),
+                                Md.text(column.nullable() ? "yes" : "no"),
+                                keysOf(table, column)))
+                        .toList());
             }
-            page.table(List.of("Column", "Type", "Nullable", "Key"), table.columns().stream()
-                    .map(column -> List.of(
-                            Md.code(column.name()),
-                            Md.code(column.type()),
-                            Md.text(column.nullable() ? "yes" : "no"),
-                            keysOf(table, column)))
-                    .toList());
             if (table.group() != null) {
                 writeGroupMembers(page, table.group(), maxMembers);
             }
@@ -570,8 +570,9 @@ final class Arc42ComponentPages {
     }
 
     /**
-     * How many tables a configured group stands for, and how many matching tables it did not take because
-     * their shape differs. Those are entries of their own on this page, so nothing is hidden.
+     * How many tables a configured group stands for, how many matching tables it did not take because their
+     * shape differs - they are documented apart from it on this page, so nothing is hidden - and how many foreign
+     * keys it does not show because only some of its tables declare them.
      */
     private static void writeGroupSummary(MarkdownWriter page, GroupedTables group) {
         page.paragraph(Md.sentence("{} tables of {} entities match the grouping configured for this component "
@@ -579,10 +580,17 @@ final class Arc42ComponentPages {
                 Md.text(String.valueOf(group.tables())), Md.text(String.valueOf(group.members().size()))));
         if (group.differentShape() > 0) {
             page.paragraph(Arc42Pages.leftOut(group.differentShape(),
-                    "One more table matches the grouping but has another shape, so it is documented as an "
-                    + "entry of its own.",
-                    ("%d more tables match the grouping but have another shape, so they are documented as "
-                     + "entries of their own.").formatted(group.differentShape())));
+                    "One more table matches the grouping but has another shape, so it is documented apart from "
+                    + "this entry.",
+                    ("%d more tables match the grouping but have another shape, so they are documented apart "
+                     + "from this entry - each on its own, or as partitions of one table where their names and "
+                     + "shape say so.").formatted(group.differentShape())));
+        }
+        if (group.partialKeys() > 0) {
+            page.paragraph(Arc42Pages.leftOut(group.partialKeys(),
+                    "One foreign key is declared by only some of these tables, so this entry does not show it.",
+                    ("%d foreign keys are declared by only some of these tables, so this entry does not show "
+                     + "them.").formatted(group.partialKeys())));
         }
     }
 

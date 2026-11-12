@@ -35,6 +35,13 @@ class TableGroupsTest {
         return new SchemaTable(name, columnList, primaryKey, List.of());
     }
 
+    /** A table of the monthly shape with one foreign key from {@code ref_id} into {@code target}. */
+    private static SchemaTable referencing(String name, String target) {
+        return new SchemaTable(name, List.of(new SchemaColumn("id_real", "varchar", false),
+                new SchemaColumn("ref_id", "varchar", false)), List.of("id_real"),
+                List.of(new SchemaForeignKey("fk_" + name, List.of("ref_id"), target, List.of("id"))));
+    }
+
     private static DatabaseSchema schemaOf(List<SchemaTable> tables) {
         return new DatabaseSchema("orders_db", "1", tables);
     }
@@ -64,7 +71,7 @@ class TableGroupsTest {
         SchemaTable entry = documented.getFirst();
         assertThat(entry.group()).isEqualTo(new GroupedTables(15, List.of(
                 new GroupedTables.Member("orders", 12, "2601", "2612"),
-                new GroupedTables.Member("parties", 3, "2610", "2612")), 0));
+                new GroupedTables.Member("parties", 3, "2610", "2612")), 0, 0));
         assertThat(entry.columns()).extracting(SchemaColumn::name).containsExactly("id_real", "hash");
         assertThat(entry.shards()).describedAs("a group is not a family of partitions").isNull();
     }
@@ -114,6 +121,62 @@ class TableGroupsTest {
         assertThat(documented.getFirst().group().members()).extracting(GroupedTables.Member::entity)
                 .containsExactly("alpha");
         assertThat(namesOf(documented)).containsExactly("id_<entity>_<yymm>", "id_zebra_*");
+    }
+
+    /**
+     * <b>The entities of a group can point at different tables</b>, so the entry shows only the keys all of its
+     * tables declare. Showing the first table's keys would tell the reader that every entity points at the
+     * orders, which the parties do not.
+     */
+    @Test
+    void whenTheEntitiesOfAGroupPointAtDifferentTables_thenTheEntryShowsNoneOfThoseKeysAndCountsThem() {
+        List<SchemaTable> tables = List.of(
+                referencing("id_orders_2601", "orders_order"), referencing("id_orders_2602", "orders_order"),
+                referencing("id_parties_2601", "orders_party"), referencing("id_parties_2602", "orders_party"),
+                table("orders_order", "id"), table("orders_party", "id"));
+
+        SchemaTable entry = schemaOf(tables).documentedTables(List.of(BY_MONTH)).getFirst();
+
+        assertThat(entry.name()).isEqualTo("id_<entity>_<yymm>");
+        assertThat(entry.foreignKeys()).isEmpty();
+        assertThat(entry.group().partialKeys()).isEqualTo(2);
+    }
+
+    /**
+     * A key every table declares stays, also where the tables point at different partitions of one parent:
+     * they are the same entry on the page, so the key is the same key.
+     */
+    @Test
+    void whenEveryTableOfAGroupPointsAtTheSameEntry_thenTheEntryKeepsTheKey() {
+        List<SchemaTable> tables = List.of(
+                referencing("id_orders_2601", "orders_order_2601"),
+                referencing("id_parties_2601", "orders_order_2602"),
+                table("orders_order_2601", "id"), table("orders_order_2602", "id"));
+
+        SchemaTable entry = schemaOf(tables).documentedTables(List.of(BY_MONTH)).getFirst();
+
+        assertThat(entry.foreignKeys()).extracting(SchemaForeignKey::referencedTableName)
+                .containsExactly("orders_order_2601");
+        assertThat(entry.group().partialKeys()).isZero();
+    }
+
+    /**
+     * A pattern may make {@code entity} optional. A table it matches without one belongs to no entity, so it
+     * is not grouped - rather than failing the page when the entities are listed.
+     */
+    @Test
+    void whenAMatchHasNoEntity_thenTheTableIsNotGrouped() {
+        SchemaTableGroup optional = SchemaTableGroup.of("id_<entity>_<yymm>",
+                "id_(?<entity>[a-z]+)?_(?<partition>\\d{4})");
+
+        List<SchemaTable> documented = schemaOf(List.of(
+                table("id__2601", "id_real"), table("id__2602", "id_real"),
+                table("id_orders_2601", "id_real"), table("id_orders_2602", "id_real")))
+                .documentedTables(List.of(optional));
+
+        assertThat(documented.getFirst().group().members()).extracting(GroupedTables.Member::entity)
+                .containsExactly("orders");
+        assertThat(namesOf(documented)).containsExactly("id_<entity>_<yymm>", "id__*");
     }
 
     /** One table is not a group: it keeps its own name, and the page is not given an entry of one. */

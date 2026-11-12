@@ -9,7 +9,7 @@ import java.util.Map;
  * One database schema as a page shows it: what is documented, what the diagram draws, what the list carries.
  * <p>
  * <b>Built once at the top of a page and read from there.</b> Every set below is derived from
- * {@link DatabaseSchema#documentedTables()}, which filters, groups, collapses and sorts on every call - and one render
+ * {@link DatabaseSchema#documentedTables(List)}, which filters, groups, collapses and sorts on every call - and one render
  * of one page asks for it about a dozen times, directly and through the counts, the diagram and the list. On a
  * schema of 6583 tables that is a dozen sorts and a dozen groupings of 33 000 columns.
  * <p>

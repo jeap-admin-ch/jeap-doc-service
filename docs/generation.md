@@ -483,14 +483,19 @@ optional named group `partition` gives each entity its range. A configured group
 
 - It is applied **first**, and the name heuristic groups whatever is left.
 - **The shape is still a prerequisite.** Of the tables a pattern matches, only those with the most common
-  columns and primary key are grouped. A matching table of another shape is an entry of its own, and the group's
-  entry says how many such tables there are. A single table is never a group.
-- A table belongs to the first group of its component that matches it.
+  columns and primary key are grouped. The matching tables of another shape are documented apart from the group,
+  like any other table: on their own, or as one entry where they are partitions of one table. The group's entry
+  says how many such tables there are. A single table is never a group.
+- A table belongs to the first group of its component that matches it. A match in which `entity` is empty or
+  absent is no match.
 - The entry is headed by the group's configured name. It shows the shared columns once, then one row per entity
   with its number of tables and their range. The entities are bounded by
   [`max-schema-group-members`](configuration.md#the-architecture-model) (**1000**), and the entry says how many
   it did not list.
 - A foreign key into any grouped table points at the group's box on the diagram.
+- The entry shows only the foreign keys **every** table of the group declares: the same columns, pointing at
+  tables that are documented as the same entry. The entities of a group can point at different tables, so a key
+  only some of them declare is left out, and the entry says how many it left out.
 - A note says that the grouping is configured, so it is not read as something observed in the names. The pattern
   itself is not on the page.
 
