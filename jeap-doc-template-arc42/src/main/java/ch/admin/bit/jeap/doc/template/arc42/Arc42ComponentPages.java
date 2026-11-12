@@ -560,7 +560,7 @@ final class Arc42ComponentPages {
                                 Md.code(column.name()),
                                 Md.code(column.type()),
                                 Md.text(column.nullable() ? "yes" : "no"),
-                                keysOf(table, column)))
+                                keysOf(documented, table, column)))
                         .toList());
             }
             if (table.group() != null) {
@@ -624,15 +624,19 @@ final class Arc42ComponentPages {
         return Md.sentence("{} to {}", Md.code(member.firstPartition()), Md.code(member.lastPartition()));
     }
 
-    /** Which keys the column belongs to, and where a foreign key points. */
-    private static Markdown keysOf(SchemaTable table, SchemaColumn column) {
+    /**
+     * Which keys the column belongs to, and where a foreign key points: at the entry this page documents the
+     * referenced table as, so that a key into a partition names the family a reader can find below rather
+     * than a partition that has no entry.
+     */
+    private static Markdown keysOf(DocumentedSchema documented, SchemaTable table, SchemaColumn column) {
         List<Markdown> keys = new ArrayList<>();
         if (table.isKeyColumn(column.name())) {
             keys.add(Md.text("PK"));
         }
         table.foreignKeys().stream()
                 .filter(key -> key.columnNames().stream().anyMatch(name -> name.equalsIgnoreCase(column.name())))
-                .map(key -> Md.join(Md.text("FK to "), Md.code(key.referencedTableName())))
+                .map(key -> Md.join(Md.text("FK to "), Md.code(documented.entryNameOf(key.referencedTableName()))))
                 .forEach(keys::add);
         return Md.joinWith(", ", keys);
     }

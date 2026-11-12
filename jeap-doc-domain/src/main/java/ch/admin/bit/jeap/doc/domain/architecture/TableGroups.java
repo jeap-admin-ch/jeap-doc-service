@@ -48,10 +48,11 @@ final class TableGroups {
     /**
      * One entry and the tables it stands for.
      *
-     * @param entry  the entry, with the foreign keys of its first table until {@link #withSharedKeys} has run
-     * @param tables the tables it stands for, sorted by name
+     * @param definition the configured group
+     * @param entry      the entry, with the foreign keys of its first table until {@link #withSharedKeys} has run
+     * @param tables     the tables it stands for, sorted by name
      */
-    record Group(SchemaTable entry, List<SchemaTable> tables) {
+    record Group(SchemaTableGroup definition, SchemaTable entry, List<SchemaTable> tables) {
     }
 
     /** A table belongs to the first group whose pattern matches its whole name, in the configured order. */
@@ -78,7 +79,7 @@ final class TableGroups {
                 remaining.addAll(members);
                 return;
             }
-            result.add(new Group(entryOf(group, shape, members.size() - shape.size()), shape));
+            result.add(new Group(group, entryOf(group, shape, members.size() - shape.size()), shape));
             // By identity: a schema of several thousand tables would otherwise compare every column of
             // every table against the whole group.
             Set<SchemaTable> grouped = Collections.newSetFromMap(new IdentityHashMap<>());

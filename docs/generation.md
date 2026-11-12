@@ -492,7 +492,10 @@ optional named group `partition` gives each entity its range. A configured group
   with its number of tables and their range. The entities are bounded by
   [`max-schema-group-members`](configuration.md#the-architecture-model) (**1000**), and the entry says how many
   it did not list.
-- A foreign key into any grouped table points at the group's box on the diagram.
+- A foreign key into any grouped table points at the group's box on the diagram, and the Key column of the list
+  names the group. A key into a partition names its family the same way, also between groups: a partitioned group
+  whose tables point at their counterparts in another group draws one arrow between the two. A name the schema
+  does not list, such as a partition dropped since, still finds its group or family by its name.
 - The entry shows only the foreign keys **every** table of the group declares: the same columns, pointing at
   tables that are documented as the same entry. The entities of a group can point at different tables, so a key
   only some of them declare is left out, and the entry says how many it left out.

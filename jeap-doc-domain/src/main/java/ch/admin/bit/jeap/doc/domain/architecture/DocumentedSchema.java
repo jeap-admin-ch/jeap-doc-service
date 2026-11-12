@@ -133,6 +133,15 @@ public final class DocumentedSchema {
     }
 
     /**
+     * The entry a foreign key points at, as the list of tables names it: the family or the group a table is
+     * part of, or the table itself. Unlike {@link #drawnEntityNameOf} it answers for entries the diagram had no
+     * room for, and for names the schema does not list.
+     */
+    public String entryNameOf(String referencedTableName) {
+        return referencedTableName == null ? null : entries.entryOf(referencedTableName);
+    }
+
+    /**
      * The drawn entity a foreign key points at, or null where it points at nothing the diagram has.
      * <p>
      * A key into a shard - {@code doc_meta_1607} - finds the entity its family was collapsed into, and a key

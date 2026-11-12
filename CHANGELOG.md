@@ -17,6 +17,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - Group tables of one name pattern and shape on a database schema page from two tables on, instead of five,
   so a table partitioned by month no longer lists its first months one by one.
+- The Key column of a database schema page names the entry a foreign key points at - the family of
+  partitions or the configured group - rather than one of its tables, as the arrow on the diagram does.
 
 ## [4.10.0] - 2026-11-11
 

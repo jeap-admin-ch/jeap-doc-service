@@ -539,6 +539,56 @@ class Arc42ComponentTreeTest {
                 .doesNotContain("\"id_<entity>_<yymm>\" }o--||");
     }
 
+    /**
+     * <b>Keys into partitions and between groups are drawn at the entries</b>, and the Key column names the
+     * same entry the arrow reaches: an ordinary table into a partition, a family of partitions into a group,
+     * and a partitioned group into the counterparts of another.
+     */
+    @Test
+    void theDatabaseSchemaPage_whenKeysPointIntoPartitionsAndGroups_thenTheyReachTheEntries() throws IOException {
+        List<SchemaColumn> shape = List.of(new SchemaColumn("id_real", "varchar", false),
+                new SchemaColumn("ref_id", "varchar", false));
+        List<SchemaTable> tables = new ArrayList<>();
+        tables.add(new SchemaTable("orders_order", List.of(new SchemaColumn("id", "uuid", false),
+                new SchemaColumn("line_id", "varchar", true)), List.of("id"),
+                List.of(new SchemaForeignKey("fk_order_line", List.of("line_id"), "line_2601", List.of("id_real")))));
+        tables.add(new SchemaTable("line_2601", shape, List.of("id_real"), List.of(new SchemaForeignKey(
+                "fk_line_2601", List.of("ref_id"), "id_orders_2601", List.of("id_real")))));
+        tables.add(new SchemaTable("line_2602", shape, List.of("id_real"), List.of(new SchemaForeignKey(
+                "fk_line_2602", List.of("ref_id"), "id_parties_2611", List.of("id_real")))));
+        for (String partition : List.of("orders_2601", "orders_2602", "parties_2611")) {
+            tables.add(new SchemaTable("id_" + partition, List.of(new SchemaColumn("id_real", "varchar", false)),
+                    List.of("id_real"), List.of()));
+            tables.add(new SchemaTable("item_" + partition, shape, List.of("id_real"), List.of(
+                    new SchemaForeignKey("fk_item_" + partition, List.of("ref_id"), "id_" + partition,
+                            List.of("id_real")))));
+        }
+        DocumentedComponent grouped = componentOf(orders, "orders-intake")
+                .withArtifacts(new DatabaseSchema("orders_db", "1.2.3", tables),
+                        componentOf(orders, "orders-intake").api());
+        orders = orders(grouped);
+        context = contextOf(orders, LIMITS).withSchemaTableGroups(SchemaTableGroups.of(Map.of("orders-intake",
+                List.of(SchemaTableGroup.of("item_<entity>_<yymm>", "item_(?<entity>.+)_(?<partition>\\d{4})"),
+                        SchemaTableGroup.of("id_<entity>_<yymm>", "id_(?<entity>.+)_(?<partition>\\d{4})")))));
+
+        generate(grouped);
+
+        String page = read("component-architecture/5-building-block-view/database-schema.md");
+        assertThat(page).contains("| Tables | 9 (4 documented entries) |")
+                .describedAs("an ordinary table into a partition")
+                .contains("\"orders_order\" }o--|| \"line_*\" : line_id")
+                .contains("| `line_id` | `varchar` | yes | FK to `line_*` |")
+                .describedAs("a family of partitions into a group")
+                .contains("\"line_*\" }o--|| \"id_<entity>_<yymm>\" : ref_id")
+                .describedAs("a partitioned group into the counterparts of another")
+                .contains("\"item_<entity>_<yymm>\" }o--|| \"id_<entity>_<yymm>\" : ref_id")
+                .contains("| `ref_id` | `varchar` | no | FK to `id_<entity>_<yymm>` |")
+                .describedAs("no partition is named where its entry is meant")
+                .doesNotContain("FK to `line_2601`")
+                .doesNotContain("FK to `id_orders_2601`")
+                .doesNotContain("foreign keys are declared by only some");
+    }
+
     /** The entities of a group are bounded too, and the entry says how many it did not list. */
     @Test
     void theDatabaseSchemaPage_whenAGroupHasMoreEntitiesThanItMayList_thenItSaysHowMany() throws IOException {

@@ -121,6 +121,83 @@ class DocumentedSchemaTest {
         assertThat(view.drawnEntityNameOf(null)).isNull();
     }
 
+    private static final SchemaTableGroup BY_MONTH =
+            SchemaTableGroup.of("id_<entity>_<yymm>", "id_(?<entity>.+)_(?<partition>\\d{4})");
+
+    /**
+     * <b>A key into a partition the schema no longer lists still finds the family</b>, by its name: a child
+     * can point at a partition that has been dropped since, and its arrow belongs to the family all the same.
+     */
+    @Test
+    void entryNameOf_whenTheKeyPointsAtAPartitionTheSchemaDoesNotList_thenItFindsTheFamily() {
+        List<SchemaTable> tables = new ArrayList<>(shards("doc_meta", 3));
+        tables.add(table("doc_root", foreignKeyTo("doc_meta_9")));
+
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(tables), 100, 200);
+
+        assertThat(view.entryNameOf("doc_meta_9")).isEqualTo("doc_meta_*");
+        assertThat(view.drawnEntityNameOf("DOC_META_9")).isEqualTo("doc_meta_*");
+    }
+
+    /** The same for a group: a name its pattern matches belongs to it, whether the schema lists it or not. */
+    @Test
+    void entryNameOf_whenTheKeyPointsAtAGroupsTableTheSchemaDoesNotList_thenItFindsTheGroup() {
+        List<SchemaTable> tables = new ArrayList<>(List.of(table("id_orders_2601"), table("id_parties_2601")));
+        tables.add(table("doc_root", foreignKeyTo("id_orders_2512")));
+
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(tables), List.of(BY_MONTH), 100, 200);
+
+        assertThat(view.entryNameOf("id_orders_2512")).isEqualTo("id_<entity>_<yymm>");
+        assertThat(view.drawnEntityNameOf("id_orders_2512")).isEqualTo("id_<entity>_<yymm>");
+    }
+
+    /**
+     * The list names an entry in <b>the entry's</b> spelling, and a name that is no entry and no part of one
+     * as the key spelled it - it is the only name there is.
+     */
+    @Test
+    void entryNameOf_answersInTheEntrysOwnSpelling() {
+        List<SchemaTable> tables = new ArrayList<>(shards("doc_meta", 3));
+        tables.add(table("doc_root"));
+
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(tables), 100, 200);
+
+        assertThat(view.entryNameOf("DOC_ROOT")).isEqualTo("doc_root");
+        assertThat(view.entryNameOf("DOC_META_2")).isEqualTo("doc_meta_*");
+        assertThat(view.entryNameOf("Somewhere_Else")).isEqualTo("Somewhere_Else");
+        assertThat(view.entryNameOf(null)).isNull();
+    }
+
+    /** A pattern that matches every name still never takes a key into the machinery, which is hidden. */
+    @Test
+    void entryNameOf_whenAPatternMatchesTheMachinery_thenAKeyIntoItFindsNoGroup() {
+        SchemaTableGroup everything = SchemaTableGroup.of("everything", "(?<entity>.+)");
+        DatabaseSchema schema = schemaOf(List.of(table("orders_a", foreignKeyTo("shedlock")), table("orders_b"),
+                table("shedlock")));
+
+        DocumentedSchema view = DocumentedSchema.of(schema, List.of(everything), 100, 200);
+
+        assertThat(view.entryNameOf("shedlock")).isEqualTo("shedlock");
+        assertThat(view.drawnEntityNameOf("shedlock")).isNull();
+        assertThat(view.entryNameOf("flyway_schema_history")).isEqualTo("flyway_schema_history");
+    }
+
+    /** A family of partitions pointing into a configured group draws its arrow at the group. */
+    @Test
+    void drawnEntityNameOf_whenAFamilyPointsIntoAConfiguredGroup_thenTheArrowReachesTheGroup() {
+        List<SchemaTable> tables = new ArrayList<>(List.of(table("id_orders_2601"), table("id_parties_2601")));
+        tables.add(table("line_2601", foreignKeyTo("id_orders_2601")));
+        tables.add(table("line_2602", foreignKeyTo("id_parties_2601")));
+
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(tables), List.of(BY_MONTH), 100, 200);
+
+        SchemaTable family = view.documented().stream().filter(table -> table.shards() != null).findFirst()
+                .orElseThrow();
+        assertThat(family.name()).isEqualTo("line_*");
+        assertThat(family.foreignKeys()).extracting(key -> view.drawnEntityNameOf(key.referencedTableName()))
+                .containsExactly("id_<entity>_<yymm>");
+    }
+
     /** A schema of nothing but machinery has nothing to document, and the page says so instead of drawing. */
     @Test
     void of_whenASchemaIsNothingButMachinery_thenItIsEmpty() {

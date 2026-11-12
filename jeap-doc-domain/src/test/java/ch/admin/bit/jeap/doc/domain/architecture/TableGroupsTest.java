@@ -160,6 +160,69 @@ class TableGroupsTest {
         assertThat(entry.group().partialKeys()).isZero();
     }
 
+    private static final SchemaTableGroup ITEMS =
+            SchemaTableGroup.of("item_<entity>_<yymm>", "item_(?<entity>.+)_(?<partition>\\d{4})");
+
+    /** The key of a group entry and the entry it points at, as the page resolves it. */
+    private static List<String> targetsOf(String group, List<SchemaTable> tables, List<SchemaTableGroup> groups) {
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(tables), groups, 100, 200);
+        SchemaTable entry = view.documented().stream().filter(table -> table.name().equals(group)).findFirst()
+                .orElseThrow();
+        assertThat(entry.group().partialKeys()).describedAs("no key of %s is declared by only some", group)
+                .isZero();
+        return entry.foreignKeys().stream().map(key -> view.drawnEntityNameOf(key.referencedTableName())).toList();
+    }
+
+    /**
+     * <b>A partitioned group pointing into a partitioned group</b>: every child points at the counterpart of
+     * its own entity and month, which are different tables and one entry - so the key is every table's, and
+     * its arrow reaches the other group.
+     */
+    @Test
+    void whenAGroupPointsAtTheCounterpartsInAnotherGroup_thenTheKeyIsKeptAndReachesThatGroup() {
+        List<SchemaTable> tables = new ArrayList<>();
+        for (String partition : List.of("orders_2601", "orders_2602", "parties_2601")) {
+            tables.add(referencing("item_" + partition, "id_" + partition));
+            tables.add(table("id_" + partition, "id_real", "hash"));
+        }
+
+        assertThat(targetsOf("item_<entity>_<yymm>", tables, List.of(ITEMS, BY_MONTH)))
+                .containsExactly("id_<entity>_<yymm>");
+    }
+
+    /** A group whose tables point into tables of the same group points at itself. */
+    @Test
+    void whenAGroupPointsIntoItself_thenTheKeyIsKeptAndReachesTheGroup() {
+        List<SchemaTable> tables = List.of(referencing("item_orders_2601", "item_orders_2602"),
+                referencing("item_orders_2602", "item_orders_2601"),
+                referencing("item_parties_2601", "item_parties_2601"));
+
+        assertThat(targetsOf("item_<entity>_<yymm>", tables, List.of(ITEMS)))
+                .containsExactly("item_<entity>_<yymm>");
+    }
+
+    /** Every table of a group pointing at one ordinary table keeps that key. */
+    @Test
+    void whenEveryTableOfAGroupPointsAtOneTable_thenTheKeyIsKept() {
+        List<SchemaTable> tables = List.of(referencing("item_orders_2601", "orders_order"),
+                referencing("item_parties_2601", "orders_order"), table("orders_order", "id"));
+
+        assertThat(targetsOf("item_<entity>_<yymm>", tables, List.of(ITEMS))).containsExactly("orders_order");
+    }
+
+    /**
+     * Partitions the schema no longer lists are resolved by their names, so a group pointing at old months of
+     * one family still shares the key.
+     */
+    @Test
+    void whenAGroupPointsAtPartitionsTheSchemaDoesNotList_thenTheyAreResolvedByName() {
+        List<SchemaTable> tables = List.of(referencing("item_orders_2601", "order_2511"),
+                referencing("item_parties_2601", "order_2512"), table("order_2601", "id"),
+                table("order_2602", "id"));
+
+        assertThat(targetsOf("item_<entity>_<yymm>", tables, List.of(ITEMS))).containsExactly("order_*");
+    }
+
     /**
      * A pattern may make {@code entity} optional. A table it matches without one belongs to no entity, so it
      * is not grouped - rather than failing the page when the entities are listed.

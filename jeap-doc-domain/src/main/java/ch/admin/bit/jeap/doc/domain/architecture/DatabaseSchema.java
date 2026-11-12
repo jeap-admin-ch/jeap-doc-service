@@ -88,14 +88,24 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
             }
         }
 
-        Entries resolved = new Entries(List.of(), Map.copyOf(entryByTable));
+        Map<String, String> entryByName = new HashMap<>();
+        List<SchemaTableGroup> grouping = new ArrayList<>();
+        for (TableGroups.Group group : grouped.groups()) {
+            entryByName.put(folded(group.entry().name()), group.entry().name());
+            grouping.add(group.definition());
+        }
+        collapsed.forEach(entry -> entryByName.put(folded(entry.name()), entry.name()));
+
+        Entries resolved = new Entries(List.of(), Map.copyOf(entryByTable), Map.copyOf(entryByName),
+                List.copyOf(grouping));
         List<SchemaTable> entries = new ArrayList<>();
         for (TableGroups.Group group : grouped.groups()) {
             entries.add(TableGroups.withSharedKeys(group, resolved::entryOf));
         }
         entries.addAll(collapsed);
         entries.sort(Comparator.comparing(SchemaTable::name, String.CASE_INSENSITIVE_ORDER));
-        return new Entries(List.copyOf(entries), resolved.entryByTable());
+        return new Entries(List.copyOf(entries), resolved.entryByTable(), resolved.entryByName(),
+                resolved.groups());
     }
 
     /**
@@ -196,12 +206,38 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
      *
      * @param tables       the entries, sorted by name
      * @param entryByTable the entry name of every table that is part of a group or a family, by folded name
+     * @param entryByName  the name of every entry in its own spelling, by folded name
+     * @param groups       the configured groups that grouped anything, in the configured order
      */
-    record Entries(List<SchemaTable> tables, Map<String, String> entryByTable) {
+    record Entries(List<SchemaTable> tables, Map<String, String> entryByTable, Map<String, String> entryByName,
+                   List<SchemaTableGroup> groups) {
 
-        /** The name of the entry that stands for this table - its own name where it stands alone. */
+        /**
+         * The name of the entry that stands for this table, in the entry's own spelling - the table's own
+         * name where it stands alone or is nowhere in the schema.
+         * <p>
+         * <b>A name the schema does not list still finds its entry by its name</b>, the way the grouping would
+         * have placed it: a key can point at a partition that has been dropped since, and the arrow belongs to
+         * the family or the group all the same. A group is asked before a family, as in the grouping itself.
+         * The machinery is never part of either, whatever a pattern matches.
+         */
         String entryOf(String tableName) {
-            return entryByTable.getOrDefault(folded(tableName), tableName);
+            String name = folded(tableName);
+            String entry = entryByTable.get(name);
+            if (entry == null) {
+                entry = entryByName.get(name);
+            }
+            if (entry != null || isInfrastructure(tableName)) {
+                return entry == null ? tableName : entry;
+            }
+            for (SchemaTableGroup group : groups) {
+                if (group.matching(tableName) != null) {
+                    return group.name();
+                }
+            }
+            String family = ShardFamilies.familyNameOf(tableName);
+            String collapsed = family == null ? null : entryByName.get(folded(family));
+            return collapsed == null ? tableName : collapsed;
         }
     }
 
