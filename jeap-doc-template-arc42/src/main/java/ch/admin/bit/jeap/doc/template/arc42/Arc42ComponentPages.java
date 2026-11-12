@@ -551,6 +551,7 @@ final class Arc42ComponentPages {
                                            + "are documented as one entry.",
                         Md.text(String.valueOf(table.shards().count())),
                         Md.code(table.shards().firstSuffix()), Md.code(table.shards().lastSuffix())));
+                writePartialKeys(page, table.shards().partialKeys());
             }
             if (table.columns().isEmpty()) {
                 page.paragraph("The published schema names no column of this table.");
@@ -586,11 +587,19 @@ final class Arc42ComponentPages {
                      + "from this entry - each on its own, or as partitions of one table where their names and "
                      + "shape say so.").formatted(group.differentShape())));
         }
-        if (group.partialKeys() > 0) {
-            page.paragraph(Arc42Pages.leftOut(group.partialKeys(),
+        writePartialKeys(page, group.partialKeys());
+    }
+
+    /**
+     * How many foreign keys an entry standing for several tables does not show, because only some of its
+     * tables declare them. Its arrows are the ones every table has, and a reader must not take them for all.
+     */
+    private static void writePartialKeys(MarkdownWriter page, int partialKeys) {
+        if (partialKeys > 0) {
+            page.paragraph(Arc42Pages.leftOut(partialKeys,
                     "One foreign key is declared by only some of these tables, so this entry does not show it.",
                     ("%d foreign keys are declared by only some of these tables, so this entry does not show "
-                     + "them.").formatted(group.partialKeys())));
+                     + "them.").formatted(partialKeys)));
         }
     }
 

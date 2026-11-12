@@ -124,8 +124,9 @@ final class ShardFamilies {
      * across it, which is what the signature established - and it carries what it stands for so that the
      * page can say so.
      * <p>
-     * Its foreign keys are the first shard's, because they are not compared - see {@link #signatureOf}. The
-     * arrows the diagram draws for a family are therefore the ones of one of its shards.
+     * Its foreign keys are the first shard's for now, because they are not part of the shape - see
+     * {@link #signatureOf}. {@link DatabaseSchema} narrows them to the ones every shard declares once every
+     * entry is known, see {@link SharedKeys}.
      */
     private static SchemaTable representativeOf(String stem, List<SchemaTable> shards) {
         List<String> suffixes = shards.stream().map(ShardFamilies::suffixOf).sorted(BY_PARTITION_KEY)

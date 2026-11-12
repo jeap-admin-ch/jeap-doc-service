@@ -589,6 +589,43 @@ class Arc42ComponentTreeTest {
                 .doesNotContain("foreign keys are declared by only some");
     }
 
+    /**
+     * <b>A family of two whose tables point at different tables shows neither key</b>, on the diagram or in
+     * the list, and says how many it left out - rather than presenting the first table's key as the family's.
+     */
+    @Test
+    void theDatabaseSchemaPage_whenTheShardsOfAFamilyPointAtDifferentTables_thenItShowsNoneOfThoseKeys()
+            throws IOException {
+        List<SchemaColumn> shape = List.of(new SchemaColumn("id", "uuid", false),
+                new SchemaColumn("ref_id", "uuid", false));
+        List<SchemaTable> tables = new ArrayList<>();
+        tables.add(new SchemaTable("event_v1", shape, List.of("id"),
+                List.of(new SchemaForeignKey("fk_v1", List.of("ref_id"), "orders_order", List.of("id")))));
+        tables.add(new SchemaTable("event_v2", shape, List.of("id"),
+                List.of(new SchemaForeignKey("fk_v2", List.of("ref_id"), "orders_party", List.of("id")))));
+        tables.add(new SchemaTable("orders_order", List.of(new SchemaColumn("id", "uuid", false)), List.of("id"),
+                List.of()));
+        tables.add(new SchemaTable("orders_party", List.of(new SchemaColumn("id", "uuid", false)), List.of("id"),
+                List.of()));
+        DocumentedComponent partitioned = componentOf(orders, "orders-intake")
+                .withArtifacts(new DatabaseSchema("orders_db", "1.2.3", tables),
+                        componentOf(orders, "orders-intake").api());
+        orders = orders(partitioned);
+        context = contextOf(orders, LIMITS);
+
+        generate(partitioned);
+
+        String page = read("component-architecture/5-building-block-view/database-schema.md");
+        assertThat(page).contains("### `event_*`")
+                .contains("2 tables share this name pattern and this shape, `_v1` to `_v2`.")
+                .contains("2 foreign keys are declared by only some of these tables, so this entry does not "
+                          + "show them.")
+                .contains("| `ref_id` | `uuid` | no | - |")
+                .doesNotContain("\"event_*\" }o--||")
+                .doesNotContain("FK to `orders_order`")
+                .doesNotContain("FK to `orders_party`");
+    }
+
     /** The entities of a group are bounded too, and the entry says how many it did not list. */
     @Test
     void theDatabaseSchemaPage_whenAGroupHasMoreEntitiesThanItMayList_thenItSaysHowMany() throws IOException {

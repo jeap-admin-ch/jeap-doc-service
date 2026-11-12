@@ -102,10 +102,32 @@ public record DatabaseSchema(String name, String version, List<SchemaTable> tabl
         for (TableGroups.Group group : grouped.groups()) {
             entries.add(TableGroups.withSharedKeys(group, resolved::entryOf));
         }
-        entries.addAll(collapsed);
+        Map<String, List<SchemaTable>> shardsByFamily = new HashMap<>();
+        for (SchemaTable table : grouped.remaining()) {
+            String family = entryByTable.get(folded(table.name()));
+            if (family != null) {
+                shardsByFamily.computeIfAbsent(folded(family), ignored -> new ArrayList<>()).add(table);
+            }
+        }
+        for (SchemaTable entry : collapsed) {
+            entries.add(entry.shards() == null ? entry
+                    : withSharedKeys(entry, shardsByFamily.get(folded(entry.name())), resolved));
+        }
         entries.sort(Comparator.comparing(SchemaTable::name, String.CASE_INSENSITIVE_ORDER));
         return new Entries(List.copyOf(entries), resolved.entryByTable(), resolved.entryByName(),
                 resolved.groups());
+    }
+
+    /**
+     * A family with only the foreign keys every shard declares, and a count of the others. The shards are in
+     * the upstream's order, as {@link ShardFamilies} took its representative's keys from the first of them.
+     */
+    private static SchemaTable withSharedKeys(SchemaTable family, List<SchemaTable> shards, Entries entries) {
+        SharedKeys keys = SharedKeys.of(shards, entries::entryOf);
+        Shards collapsed = family.shards();
+        return new SchemaTable(family.name(), family.columns(), family.primaryKeyColumns(), keys.kept(),
+                new Shards(collapsed.count(), collapsed.firstSuffix(), collapsed.lastSuffix(), keys.partial()),
+                null);
     }
 
     /**

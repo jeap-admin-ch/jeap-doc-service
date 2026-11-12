@@ -19,6 +19,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   so a table partitioned by month no longer lists its first months one by one.
 - The Key column of a database schema page names the entry a foreign key points at - the family of
   partitions or the configured group - rather than one of its tables, as the arrow on the diagram does.
+- A family of partitions shows the foreign keys all of its tables declare, and says how many keys only some
+  of them declare, instead of showing the keys of its first table as the family's.
 
 ## [4.10.0] - 2026-11-11
 

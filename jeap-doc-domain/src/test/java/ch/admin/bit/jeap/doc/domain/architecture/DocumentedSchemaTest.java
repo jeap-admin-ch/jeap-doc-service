@@ -198,6 +198,70 @@ class DocumentedSchemaTest {
                 .containsExactly("id_<entity>_<yymm>");
     }
 
+    private static SchemaTable familyEntry(DocumentedSchema view) {
+        return view.documented().stream().filter(table -> table.shards() != null).findFirst().orElseThrow();
+    }
+
+    /**
+     * <b>Two tables make a family, and they need not point at the same table.</b> {@code event_v1} and
+     * {@code event_v2} share their columns and collapse, but a family showing the first one's key would tell
+     * the reader that both point at {@code orders_a}. It shows neither key, and says how many it left out.
+     */
+    @Test
+    void documented_whenTheShardsOfAFamilyPointAtDifferentTables_thenItShowsNoneOfThoseKeysAndCountsThem() {
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(List.of(table("event_v1", foreignKeyTo("orders_a")),
+                table("event_v2", foreignKeyTo("orders_b")), table("orders_a"), table("orders_b"))), 100, 200);
+
+        SchemaTable family = familyEntry(view);
+        assertThat(family.name()).isEqualTo("event_*");
+        assertThat(family.foreignKeys()).isEmpty();
+        assertThat(family.shards()).isEqualTo(new Shards(2, "_v1", "_v2", 2));
+    }
+
+    /** A key only some shards declare - added in a later partition, say - is not shown either. */
+    @Test
+    void documented_whenOnlySomeShardsDeclareAKey_thenTheFamilyDoesNotShowIt() {
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(List.of(table("log_1"),
+                table("log_2", foreignKeyTo("orders_a")), table("orders_a"))), 100, 200);
+
+        assertThat(familyEntry(view).foreignKeys()).isEmpty();
+        assertThat(familyEntry(view).shards().partialKeys()).isEqualTo(1);
+    }
+
+    /**
+     * <b>Real partitions keep their keys</b>: every child partition points at the counterpart partition of
+     * its parent, which are different tables and one entry - so the key is every shard's, and its arrow
+     * reaches the parent's family.
+     */
+    @Test
+    void documented_whenEveryShardPointsAtItsCounterpartInAnotherFamily_thenTheFamilyKeepsTheKey() {
+        List<SchemaTable> tables = new ArrayList<>();
+        for (int partition = 1; partition <= 3; partition++) {
+            tables.add(table("line_" + partition, foreignKeyTo("order_" + partition)));
+            tables.add(table("order_" + partition));
+        }
+
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(tables), 100, 200);
+
+        SchemaTable lines = view.documented().stream().filter(table -> table.name().equals("line_*")).findFirst()
+                .orElseThrow();
+        assertThat(lines.foreignKeys()).extracting(key -> view.drawnEntityNameOf(key.referencedTableName()))
+                .containsExactly("order_*");
+        assertThat(lines.shards().partialKeys()).isZero();
+    }
+
+    /** Shards pointing at one another point at their own family, and keep the key. */
+    @Test
+    void documented_whenTheShardsOfAFamilyPointAtEachOther_thenTheKeyReachesTheFamilyItself() {
+        DocumentedSchema view = DocumentedSchema.of(schemaOf(List.of(table("tree_1", foreignKeyTo("tree_2")),
+                table("tree_2", foreignKeyTo("tree_1")))), 100, 200);
+
+        assertThat(familyEntry(view).foreignKeys())
+                .extracting(key -> view.drawnEntityNameOf(key.referencedTableName()))
+                .containsExactly("tree_*");
+        assertThat(familyEntry(view).shards().partialKeys()).isZero();
+    }
+
     /** A schema of nothing but machinery has nothing to document, and the page says so instead of drawing. */
     @Test
     void of_whenASchemaIsNothingButMachinery_thenItIsEmpty() {

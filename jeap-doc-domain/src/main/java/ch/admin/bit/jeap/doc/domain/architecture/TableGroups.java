@@ -3,11 +3,9 @@ package ch.admin.bit.jeap.doc.domain.architecture;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -90,44 +88,18 @@ final class TableGroups {
     }
 
     /**
-     * The entry with only the foreign keys every one of its tables declares, and a count of the others.
-     * <p>
-     * <b>Compared here, unlike a family's.</b> The partitions of one table point at the counterpart partition
-     * of their parent, which is the same entry. A group spans several entities, whose keys can point at
-     * different tables, and an entry that showed the first table's keys would be wrong about the others. Two
-     * keys are the same where their columns are and where the tables they point at resolve to the same entry -
-     * which is only known once the partitions are collapsed, so this runs after them.
+     * The entry with only the foreign keys every one of its tables declares, and a count of the others - see
+     * {@link SharedKeys}. The entities of a group can point at different tables, so this matters more for a
+     * group than for the partitions of one table.
      *
      * @param entryOf the name of the entry that stands for a table
      */
     static SchemaTable withSharedKeys(Group group, UnaryOperator<String> entryOf) {
-        Set<String> shared = null;
-        Set<String> declared = new HashSet<>();
-        for (SchemaTable table : group.tables()) {
-            Set<String> keys = new HashSet<>();
-            table.foreignKeys().forEach(key -> keys.add(identityOf(key, entryOf)));
-            declared.addAll(keys);
-            if (shared == null) {
-                shared = keys;
-            } else {
-                shared.retainAll(keys);
-            }
-        }
-        Set<String> everywhere = shared == null ? Set.of() : shared;
+        SharedKeys keys = SharedKeys.of(group.tables(), entryOf);
         SchemaTable entry = group.entry();
-        List<SchemaForeignKey> kept = group.tables().getFirst().foreignKeys().stream()
-                .filter(key -> everywhere.contains(identityOf(key, entryOf)))
-                .toList();
         GroupedTables tables = entry.group();
-        return new SchemaTable(entry.name(), entry.columns(), entry.primaryKeyColumns(), kept, null,
-                new GroupedTables(tables.tables(), tables.members(), tables.differentShape(),
-                        declared.size() - everywhere.size()));
-    }
-
-    private static String identityOf(SchemaForeignKey key, UnaryOperator<String> entryOf) {
-        String target = key.referencedTableName() == null ? "" : entryOf.apply(key.referencedTableName());
-        return (String.join(",", key.columnNames()) + "->" + target + "("
-                + String.join(",", key.referencedColumnNames()) + ")").toLowerCase(Locale.ROOT);
+        return new SchemaTable(entry.name(), entry.columns(), entry.primaryKeyColumns(), keys.kept(), null,
+                new GroupedTables(tables.tables(), tables.members(), tables.differentShape(), keys.partial()));
     }
 
     /**

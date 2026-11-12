@@ -9,6 +9,13 @@ package ch.admin.bit.jeap.doc.domain.architecture;
  * @param count       how many tables were collapsed into this one
  * @param firstSuffix the lowest partition key, with its separator - {@code _1607}
  * @param lastSuffix  the highest
+ * @param partialKeys how many foreign keys only some of the tables declare. The entry shows the keys all of
+ *                    them declare - see {@link SharedKeys} - and the page says how many it left out
  */
-public record Shards(int count, String firstSuffix, String lastSuffix) {
+public record Shards(int count, String firstSuffix, String lastSuffix, int partialKeys) {
+
+    /** A family whose keys have not been compared yet, or whose tables all declare the same ones. */
+    public Shards(int count, String firstSuffix, String lastSuffix) {
+        this(count, firstSuffix, lastSuffix, 0);
+    }
 }

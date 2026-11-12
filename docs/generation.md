@@ -465,7 +465,7 @@ A family is recognised by two signals, and the second is what makes the first sa
 | signal | what it is |
 | ------ | ----------- |
 | the stem | the name without its last segment, where that segment looks like a partition key - `_202609`, `_20260904`, `_54`, `_ym110` |
-| the column signature | the ordered columns with their types and nullability, and the primary key. Shards of one table are identical, because the database generated them from one definition. The **foreign keys are deliberately not compared**: a hand-sharded child table often carries a reference per shard, and the entry that stands for the family shows the arrows of one shard |
+| the column signature | the ordered columns with their types and nullability, and the primary key. Shards of one table are identical, because the database generated them from one definition. The **foreign keys are deliberately not compared**: a hand-sharded child table often carries a reference per shard. The entry that stands for the family shows the keys **every** shard declares - a key into the counterpart shard of a parent is the same key in each, because both shards are one entry - and says how many keys only some of its shards declare |
 
 **Two tables of one stem make a family**, so a table partitioned by month is grouped from its second month on.
 Two tables kept apart on purpose with identical columns, such as `audit_2024` and `audit_2025`, are grouped too,
