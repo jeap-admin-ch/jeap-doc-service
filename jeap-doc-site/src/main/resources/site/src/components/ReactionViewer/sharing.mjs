@@ -10,6 +10,34 @@ const fail = () => { throw new Error('This view cannot be restored on the curren
 const json = value => JSON.stringify(value);
 const text = value => typeof value === 'string' && value.length > 0;
 
+// Snapshots and sessions are immutable. Weak keys release their indexes with the snapshot/view.
+const graphCaches = new WeakMap(), sessionPayloads = new WeakMap();
+function cacheOf(graph) {
+    if (!graphCaches.has(graph)) graphCaches.set(graph, {references: new Map(), entries: new Map(), indexes: new Map()});
+    return graphCaches.get(graph);
+}
+function uniqueIndex(graph, kind) {
+    const indexes = cacheOf(graph).indexes;
+    if (!indexes.has(kind)) {
+        const index = new Map();
+        const add = (key, id) => index.set(key, index.has(key) ? null : id);
+        if (kind === 'interface') {
+            for (const node of graph.nodes.values()) if (!node.reaction) add(json(interfaceIdentity(node)), node.id);
+        } else if (kind === 'group') {
+            for (const id of graph.groups.keys()) {
+                // An unidentifiable group must not prevent sharing unrelated targets.
+                try { add(json(groupReference(graph, id)), id); } catch { /* Not a shareable target. */ }
+            }
+        } else {
+            for (const id of graph.groups.get(kind).members) {
+                try { add(json(reactionReference(graph, id)), id); } catch { /* Not a shareable target. */ }
+            }
+        }
+        indexes.set(kind, index);
+    }
+    return indexes.get(kind);
+}
+
 function fields(value, keys) {
     if (!value || typeof value !== 'object' || Array.isArray(value)
         || Object.keys(value).some(key => !keys.includes(key))) fail();
@@ -53,10 +81,13 @@ function reactionReference(graph, id) {
 
 /** Frequencies and mutable reaction IDs never identify a shared target. Ambiguity fails closed. */
 export function referenceOf(graph, id) {
+    const references = cacheOf(graph).references;
+    if (references.has(id)) return references.get(id);
     const node = graph.nodes.get(id);
     const ref = graph.groups.has(id) ? groupReference(graph, id) : node?.reaction ? reactionReference(graph, id)
         : node ? {kind: 'interface', key: node.identity.key, identity: interfaceIdentity(node) ?? fail()} : fail();
     if (resolveReference(graph, ref) !== id) fail();
+    references.set(id, ref);
     return ref;
 }
 
@@ -65,31 +96,31 @@ export function resolveReference(graph, ref) {
     if (ref.kind === 'interface') {
         fields(ref, ['kind', 'key', 'identity']);
         if (!text(ref.key) || !ref.identity) fail();
-        const matches = [...graph.nodes.values()].filter(node => !node.reaction
-            && json(interfaceIdentity(node)) === json(ref.identity));
-        if (matches.length !== 1) fail();
-        return matches[0].id;
+        return uniqueIndex(graph, 'interface').get(json(ref.identity)) ?? fail();
     }
-    let candidates;
     if (ref.kind === 'group') {
         fields(ref, ['kind', 'system', 'component', 'key', 'trigger']);
-        candidates = [...graph.groups.keys()].filter(id => json(groupReference(graph, id)) === json(ref));
-    } else if (ref.kind === 'reaction') {
+        return uniqueIndex(graph, 'group').get(json(ref)) ?? fail();
+    }
+    if (ref.kind === 'reaction') {
         fields(ref, ['kind', 'group', 'trigger', 'actions', 'model', 'status']);
-        // Resolve the group first, so an ambiguous standalone group cannot choose a member by accident.
+        // Ambiguous standalone groups cannot choose a member by accident.
         const group = resolveReference(graph, ref.group);
-        candidates = graph.groups.get(group).members.filter(id => json(reactionReference(graph, id)) === json(ref));
-    } else return fail();
-    if (candidates.length !== 1) fail();
-    return candidates[0];
+        return uniqueIndex(graph, group).get(json(ref)) ?? fail();
+    }
+    return fail();
 }
 
 export function entryReference(graph, entry, reference = id => referenceOf(graph, id)) {
     if (['INTERFACE', 'REACTION', 'GROUP'].includes(entry.kind)) return {kind: entry.kind, target: reference(entry.id)};
     if (entry.kind === 'SYSTEM') return {kind: entry.kind, system: entry.system};
     if (entry.kind === 'COMPONENT') return {kind: entry.kind, system: entry.system, component: entry.component};
-    if (entry.kind === 'MESSAGE') return {kind: entry.kind, targets: [...startHistory(graph, entry).state.pins]
-        .map(reference).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)};
+    if (entry.kind === 'MESSAGE') {
+        const entries = cacheOf(graph).entries, key = json(entry);
+        if (!entries.has(key)) entries.set(key, {kind: entry.kind, targets: [...startHistory(graph, entry).state.pins]
+            .map(reference).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)});
+        return entries.get(key);
+    }
     return fail();
 }
 
@@ -153,38 +184,65 @@ function decodeAction(graph, state, step) {
 export async function shareLink(graph, session, context, viewer, location, viewport) {
     if (session.steps.length > MAX_REPLAY_STEPS) throw new Error('This view has too many steps to share (maximum 2,048).');
     const presentation = sharedPresentation(viewport);
-    if (presentation && !validPresentation(presentation)) fail();
-    const references = new Map();
-    const reference = id => {
-        if (!references.has(id)) references.set(id, referenceOf(graph, id));
-        return references.get(id);
-    };
-    const payload = {version: 3, context, viewer: entryReference(graph, viewer, reference),
-        entry: entryReference(graph, session.entry, reference), steps: session.steps.map(action => encodeAction(graph, action, reference)),
-        ...(presentation ? {presentation} : {})};
-    resolveEntry(graph, payload.viewer);
-    resolveEntry(graph, payload.entry);
-    const encoded = await encodeLinkText(json(compactState(payload)));
+    if (presentation && !validPresentation(presentation)) throw new Error('This view cannot be shared: its viewport is invalid.');
+    const key = json([context, viewer]);
+    let cached = sessionPayloads.get(session);
+    if (!cached || cached.graph !== graph || cached.key !== key) {
+        try {
+            const payload = {version: 1, context, viewer: entryReference(graph, viewer),
+                entry: entryReference(graph, session.entry),
+                steps: session.steps.map(action => encodeAction(graph, action, id => referenceOf(graph, id)))};
+            resolveEntry(graph, payload.viewer);
+            resolveEntry(graph, payload.entry);
+            cached = {graph, key, compact: compactState(payload)};
+            sessionPayloads.set(session, cached);
+        } catch {
+            throw new Error('This view cannot be shared: an entry or target is not uniquely identifiable on the current graph.');
+        }
+    }
+    const compact = {...cached.compact, ...(presentation ? {p: [presentation.zoom, presentation.center.x, presentation.center.y]} : {})};
+    const encoded = await encodeLinkText(json(compact));
     const url = new URL(location);
     url.hash = LINK_PREFIX + encoded;
     if (url.href.length > MAX_LINK_LENGTH) throw new Error('This view is too large to share as a link (maximum 16,384 characters).');
     return url.href;
 }
 
+function matchesViewer(graph, linked, viewer) {
+    if (linked?.kind !== viewer.kind) return false;
+    if (viewer.kind === 'MESSAGE') {
+        // The variant still identifies its viewer even if its interface disappeared from the snapshot.
+        return Array.isArray(linked.targets) && linked.targets.length > 0 && linked.targets.every(target =>
+            json(target.identity?.message) === json([viewer.message, viewer.variant ?? '']));
+    }
+    const semantic = value => JSON.stringify(value, function(key, item) {
+        return key === 'key' && this.kind === 'interface' ? undefined : item;
+    });
+    return semantic(linked) === semantic(entryReference(graph, viewer));
+}
+
 /** Replay is atomic. The URL script is separate from the recipient's empty undo buffer. */
 export async function restoreLink(graph, hash, context, viewer) {
     if (!hash.startsWith(LINK_PREFIX)) return null;
+    let payload;
     try {
         const encoded = hash.slice(LINK_PREFIX.length);
         if (!encoded || hash.length > MAX_LINK_LENGTH) fail();
-        const payload = expandState(JSON.parse(await decodeLinkText(encoded)));
-        fields(payload, ['version', 'context', 'viewer', 'entry', 'steps', ...([2, 3].includes(payload.version) ? ['presentation'] : [])]);
-        if (![1, 2, 3].includes(payload.version) || json(payload.context) !== json(context) || !Array.isArray(payload.steps)
+        payload = expandState(JSON.parse(await decodeLinkText(encoded)));
+    } catch {
+        const error = new Error('This view cannot be restored on the current graph.');
+        error.unaddressed = true;
+        throw error;
+    }
+    try {
+        // Compare semantic viewer identities before resolving the entry, context or replay targets.
+        // Upstream keys may change while the same message variant remains on the page.
+        if (!matchesViewer(graph, payload.viewer, viewer)) return null;
+        if (payload.version !== 1 || json(payload.context) !== json(context) || !Array.isArray(payload.steps)
             || payload.steps.length > MAX_REPLAY_STEPS) fail();
         if ('presentation' in payload && !validPresentation(payload.presentation)) fail();
-        const linkedViewer = resolveEntry(graph, payload.viewer);
+        resolveEntry(graph, payload.viewer);
         const entry = resolveEntry(graph, payload.entry);
-        if (json(entryReference(graph, linkedViewer)) !== json(entryReference(graph, viewer))) return null;
         let session = startHistory(graph, entry);
         for (const step of payload.steps) {
             const action = decodeAction(graph, session.state, step);

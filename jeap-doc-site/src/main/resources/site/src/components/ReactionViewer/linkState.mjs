@@ -9,7 +9,7 @@ function fields(value, keys) {
 
 /** Intern entries and targets once; each ordered step carries an opcode and reference indices. */
 export function compactState(state) {
-    if (state.version !== 3 || !Array.isArray(state.steps) || state.steps.length > MAX_REPLAY_STEPS) invalid();
+    if (state.version !== 1 || !Array.isArray(state.steps) || state.steps.length > MAX_REPLAY_STEPS) invalid();
     const references = [], indices = new Map();
     const intern = value => {
         const key = JSON.stringify(value);
@@ -17,7 +17,7 @@ export function compactState(state) {
         return indices.get(key);
     };
     const {site, environment, baseUrl, path} = state.context;
-    const compact = {v: 4, c: [site, environment, baseUrl, path], r: references,
+    const compact = {v: 1, c: [site, environment, baseUrl, path], r: references,
         w: intern(state.viewer), e: intern(state.entry), s: state.steps.map(step => {
             const opcode = actions.indexOf(step.type);
             if (opcode < 0) return invalid();
@@ -34,9 +34,9 @@ export function compactState(state) {
     return compact;
 }
 
-/** Expand transport structure before applying the same semantic validation as older links. */
+/** Expand the single supported transport structure before semantic validation. */
 export function expandState(compact) {
-    if (!compact || compact.v !== 4) return compact;
+    if (!compact || compact.v !== 1) return invalid();
     fields(compact, ['v', 'c', 'r', 'w', 'e', 's', 'p']);
     if (!Array.isArray(compact.c) || compact.c.length !== 4 || compact.c.some(value => typeof value !== 'string')
         || !Array.isArray(compact.r) || !Array.isArray(compact.s) || compact.s.length > MAX_REPLAY_STEPS) invalid();
@@ -47,7 +47,7 @@ export function expandState(compact) {
         return value;
     };
     const [site, environment, baseUrl, path] = compact.c;
-    const state = {version: 3, context: {site, environment, baseUrl, path}, viewer: reference(compact.w),
+    const state = {version: 1, context: {site, environment, baseUrl, path}, viewer: reference(compact.w),
         entry: reference(compact.e), steps: compact.s.map(step => {
             if (!Array.isArray(step) || !Number.isInteger(step[0]) || !actions[step[0]]) return invalid();
             const type = actions[step[0]];

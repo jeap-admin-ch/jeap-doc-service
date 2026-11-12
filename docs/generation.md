@@ -1178,7 +1178,7 @@ Original node identities and group metadata remain structured fields. Restore ta
 selection use structured identities rather than strings containing further encoded JSON. This removes the
 nested escaping of internal IDs while retaining normal JSON escaping for quotes, backslashes and line breaks
 in actual text values. It changes the readable source export, not the published graph or shared-link format.
-Copy source uses the same three-second toolbar feedback as Share link, with **Code wurde kopiert** after a
+Copy source uses the same three-second toolbar feedback as Share link, with **Code copied** after a
 successful copy. Clipboard failure selects the source text for manual copying and shows no success message.
 
 Right-click any node to pin or unpin it, hide it, or hide the downstream subgraph. A red pin badge marks pinned elements without changing their ownership border; the legend explains the badge.
@@ -1319,7 +1319,7 @@ and the viewer shows the reason; the current graph remains usable.
 **Share link** generates the current link immediately, offers it in a selectable field and copies it to the
 clipboard where the browser permits. Both automatic and manual updates replace the browser address without
 navigating, adding a browser-history entry or resetting the live viewers, their viewport or undo history.
-Successful copying shows **Link wurde kopiert**
+Successful copying shows **Link copied**
 beside the toolbar for three seconds. If copying is denied, the address and selectable link remain available
 without claiming clipboard success. Later exploration updates the address automatically.
 It shares one viewer, including the selected message variant on a page with several viewers. Other viewers
@@ -1330,7 +1330,7 @@ canvas size changes the pixel pan to keep that point centred. Individual node po
 undo buffer are not included. The replay script retains
 steps beyond the 100-entry undo buffer; Back branches that script along with the view.
 
-The compact JSON format is version 4. A shared reference table stores each entry or target once; ordered
+The compact JSON format is version 1. A shared reference table stores each entry or target once; ordered
 steps contain numeric opcodes and indices into that table. These indices address the link's own dictionary,
 not upstream graph IDs. The context is a tuple of site, environment, base URL and page path. The viewer and
 initial entry use dictionary indices; the optional viewport is a tuple of zoom and centre coordinates.
@@ -1343,9 +1343,8 @@ Their API does not expose a compression level. Compression preserves the exact c
 not parse or reserialize that text. The format compaction preserves the semantic state, rather than the
 whitespace or number spelling of an earlier JSON representation.
 
-Uncompressed semantic links remain readable where their targets carry enough identity information to
-resolve safely. Key-only interface references are refused because upstream IDs can be reused. Links
-without a viewport start with a fitted view. Unsupported or malformed compressed links fail with the same
+Only the compact version 1 payload behind `d1.` is accepted. Interface references require semantic
+identity because upstream IDs can be reused. Links without a viewport start with a fitted view. Unsupported or malformed compressed links fail with the same
 restoration message as a failed replay. The documentation remains usable.
 
 The complete URL may contain at most 16,384 characters. The decoded compact JSON is limited to 256 KiB,
@@ -1374,3 +1373,9 @@ replayed view is published: the ordinary page entry remains usable. Changed freq
 alone do not invalidate a unique semantic target. Changed interface IDs are handled the same way. Changed
 graph contents can invalidate a link; links carry
 no historical snapshot and promise no best-effort recovery.
+
+Sharing an unidentifiable entry or target reports **This view cannot be shared: an entry or target is not
+uniquely identifiable on the current graph.** Back can undo the action that introduced it. Restoration
+failures appear only on the addressed viewer; undecodable links produce one notice per page.
+Identity indexes are retained per graph snapshot and compact semantic payloads per session, so pan and
+zoom only replace the viewport tuple before compression.

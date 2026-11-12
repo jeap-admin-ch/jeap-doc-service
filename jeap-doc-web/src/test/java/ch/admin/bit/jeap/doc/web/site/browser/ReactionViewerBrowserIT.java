@@ -581,7 +581,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                 }
                 """)).isEqualTo(true);
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Copy source")).click();
-        var feedback = viewer.getByText("Code wurde kopiert", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true));
+        var feedback = viewer.getByText("Code copied", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true));
         assertThat(feedback).isVisible();
         assertThat(feedback).hasAttribute("role", "status");
         assertThat(viewer.locator("section[aria-label='Graph source'] [role='status']")).hasCount(0);
@@ -1429,7 +1429,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
 
         String link = sharedLink(first);
 
-        var feedback = first.getByText("Link wurde kopiert", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true));
+        var feedback = first.getByText("Link copied", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true));
         assertThat(feedback).isVisible();
         assertThat(feedback).hasAttribute("role", "status");
         org.assertj.core.api.Assertions.assertThat(page.evaluate("window.copiedReactionLink")).isEqualTo(link);
@@ -1440,7 +1440,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         awaitSemanticProjection(page, 0, collapsed);
         awaitSemanticProjection(page, 1, other);
         awaitPresentation(page, 0, viewport, true);
-        assertThat(viewers.nth(1).getByText("Link wurde kopiert")).hasCount(0);
+        assertThat(viewers.nth(1).getByText("Link copied")).hasCount(0);
         assertThat(first.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isEnabled();
         assertThat(feedback).hasCount(0);
         first.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
@@ -1478,7 +1478,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         org.assertj.core.api.Assertions.assertThat(page.evaluate("window.automaticClipboardWrites")).isEqualTo(0);
         org.assertj.core.api.Assertions.assertThat(page.evaluate("history.length")).isEqualTo(historyLength);
         org.assertj.core.api.Assertions.assertThat(page.evaluate("window.automaticAddressDocument")).isEqualTo("same-document");
-        assertThat(viewer.getByText("Link wurde kopiert")).hasCount(0);
+        assertThat(viewer.getByText("Link copied")).hasCount(0);
         try (var fresh = context.browser().newContext()) {
             var document = fresh.newPage();
             document.navigate(current);
@@ -1546,7 +1546,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                         const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
                         const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
                         const state = JSON.parse(await new Response(stream).text());
-                        return state.v === 4 && state.s.length === expected.steps
+                        return state.v === 1 && state.s.length === expected.steps
                             && (!('variant' in expected) || state.r[state.w].targets[0].identity.message[1] === expected.variant);
                     } catch { return false; }
                 }
@@ -1583,7 +1583,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         showReactionViewer(0);
         var viewer = page.locator("section[aria-label='Reaction chains']");
         String link = sharedLink(viewer);
-        assertThat(viewer.getByText("Link wurde kopiert")).hasCount(0);
+        assertThat(viewer.getByText("Link copied")).hasCount(0);
         assertThat(viewer.getByText("Copy the shared view link below.", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true))).isVisible();
         page.reload();
         showReactionViewer(0);
@@ -1606,6 +1606,52 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         awaitSemanticProjection(page, 0, initial);
         assertThat(page.locator("article h1")).isVisible();
         assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void invalidLinksReportOnceAndStaleLinksOnlyInTheirMessageViewer() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        showReactionViewer(1);
+        var viewers = page.locator("section[aria-label='Reaction chains']");
+        String link = sharedLink(viewers.first());
+        String stale = (String) page.evaluate("""
+                async link => {
+                    const url = new URL(link), token = url.hash.split('d1.')[1];
+                    const bytes = Uint8Array.from(atob(token.replaceAll('-', '+').replaceAll('_', '/')), c => c.charCodeAt(0));
+                    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+                    const state = JSON.parse(await new Response(stream).text());
+                    state.c[1] = 'missing-environment';
+                    const compressed = new Blob([JSON.stringify(state)]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+                    const result = new Uint8Array(await new Response(compressed).arrayBuffer());
+                    url.hash = '#reaction-view=d1.' + btoa(Array.from(result, byte => String.fromCharCode(byte)).join(''))
+                        .replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+                    return url.href;
+                }
+                """, link);
+        page.navigate(stale);
+        showReactionViewer(0);
+        showReactionViewer(1);
+        assertThat(viewers.first().getByText("This view cannot be restored on the current graph.")).isVisible();
+        assertThat(viewers.nth(1).getByText("This view cannot be restored on the current graph.")).hasCount(0);
+
+        String trailing = (String) page.evaluate("""
+                link => {
+                    const url = new URL(link), token = url.hash.split('d1.')[1];
+                    const bytes = atob(token.replaceAll('-', '+').replaceAll('_', '/')) + 'trailing';
+                    url.hash = '#reaction-view=d1.' + btoa(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+                    return url.href;
+                }
+                """, link);
+        for (String invalid : java.util.List.of(trailing, link.substring(0, link.length() - 8))) {
+            page.navigate(invalid);
+            showReactionViewer(0);
+            showReactionViewer(1);
+            assertThat(page.getByText("This view cannot be restored on the current graph.",
+                    new com.microsoft.playwright.Page.GetByTextOptions().setExact(true))).hasCount(1);
+            assertThat(page.locator("article h1")).isVisible();
+        }
         assertNothingWentWrongInTheBrowser();
     }
 

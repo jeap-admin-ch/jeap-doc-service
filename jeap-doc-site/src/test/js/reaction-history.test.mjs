@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {readGraph, identity} from '../../main/resources/site/src/components/ReactionViewer/model.mjs';
 import {startHistory, advanceHistory, backHistory, HISTORY_LIMIT} from '../../main/resources/site/src/components/ReactionViewer/history.mjs';
 import {shareLink, restoreLink, LINK_PREFIX, MAX_LINK_LENGTH, referenceOf} from '../../main/resources/site/src/components/ReactionViewer/sharing.mjs';
-import {decodeLinkText} from '../../main/resources/site/src/components/ReactionViewer/linkCodec.mjs';
-import {expandState, MAX_REPLAY_STEPS} from '../../main/resources/site/src/components/ReactionViewer/linkState.mjs';
+import {decodeLinkText, encodeLinkText} from '../../main/resources/site/src/components/ReactionViewer/linkCodec.mjs';
+import {compactState, expandState, MAX_REPLAY_STEPS} from '../../main/resources/site/src/components/ReactionViewer/linkState.mjs';
 import {sharedPresentation, validPresentation, presentationPan} from '../../main/resources/site/src/components/ReactionViewer/presentation.mjs';
 
 const iid = key => identity({nodeType: 'INTERFACE', key});
@@ -32,7 +32,7 @@ const graph = () => read(fixture());
 const link = (g, session, viewer = entry) => shareLink(g, session, context, viewer, location);
 const restore = async (g, url, viewer = entry, scope = context) => restoreLink(g, new URL(await url).hash, scope, viewer);
 const apply = (g, session, type, id, extra = {}) => advanceHistory(g, session, {type, id, ...extra});
-const encode = payload => location + LINK_PREFIX + Buffer.from(JSON.stringify(payload)).toString('base64url');
+const encode = async payload => location + LINK_PREFIX + await encodeLinkText(JSON.stringify(compactState(payload)));
 const payloadOf = async url => expandState(JSON.parse(await decodeLinkText(new URL(await url).hash.slice(LINK_PREFIX.length))));
 
 test('combined actions, group state, superseded reveals, focus and reset each undo completely', async () => {
@@ -145,7 +145,7 @@ test('missing and ambiguous targets, missing entries and inapplicable steps reje
         await assert.rejects(() => restore(read(changed), url), /cannot be restored/);
     }
     const payload = await payloadOf(url);
-    payload.entry.system = 'absent';
+    payload.entry = {...payload.entry, system: 'absent'};
     await assert.rejects(() => restore(g, encode(payload)), /cannot be restored/);
     const hiddenTwice = await payloadOf(link(g, apply(g, startHistory(g, entry), 'hide', iid('generic'))));
     hiddenTwice.steps.push(hiddenTwice.steps[0]);
@@ -161,8 +161,8 @@ test('malformed and unsupported links fail safely and site, environment and base
     for (const change of [{site: 'another'}, {environment: 'prod'}, {baseUrl: '/'}, {path: '/another/'}]) {
         await assert.rejects(() => restore(g, url, entry, {...context, ...change}), /cannot be restored/);
     }
-    const payload = await payloadOf(url); payload.version = 99;
-    await assert.rejects(() => restore(g, encode(payload)), /cannot be restored/);
+    const unsupported = location + LINK_PREFIX + await encodeLinkText(JSON.stringify({v: 99}));
+    await assert.rejects(() => restore(g, unsupported), /cannot be restored/);
     assert.equal(await restoreLink(g, '#ordinary-heading', context, entry), null);
     assert.equal(await restore(g, url, {kind: 'MESSAGE', message: 'A', variant: ''}), null);
 });
@@ -176,7 +176,8 @@ test('message entries and variants use interface keys and preserve their initial
     const missing = fixture();
     missing.graph.nodes = missing.graph.nodes.filter(node => node.identity.key !== 'A');
     missing.graph.edges = missing.graph.edges.filter(edge => edge.source.key !== 'A');
-    await assert.rejects(() => restore(read(missing), url, {kind: 'MESSAGE', message: 'different-variant', variant: ''}), /cannot be restored/);
+    assert.equal(await restore(read(missing), url, {kind: 'MESSAGE', message: 'different-variant', variant: ''}), null);
+    await assert.rejects(() => restore(read(missing), url, messageEntry), /cannot be restored/);
 });
 
 function renameInterfaces(payload, names) {
@@ -222,10 +223,10 @@ test('a reused key with no remaining semantic target fails, and identical candid
     await assert.rejects(() => restore(read(duplicate), url), /cannot be restored/);
 });
 
-test('old key-only interface references are refused because reused IDs cannot be checked safely', async () => {
+test('interface references without semantic identity are refused', async () => {
     const g = graph(), payload = await payloadOf(link(g, apply(g, startHistory(g, entry), 'pin', iid('A'))));
     delete payload.steps[0].target.identity;
-    for (const version of [1, 2, 3]) await assert.rejects(() => restore(g, encode({...payload, version})), /cannot be restored/);
+    await assert.rejects(() => restore(g, encode(payload)), /cannot be restored/);
 });
 
 test('links retain zoom and the centred model point across different canvas dimensions', async () => {
@@ -238,9 +239,7 @@ test('links retain zoom and the centred model point across different canvas dime
     assert.deepEqual(presentationPan(restored.presentation, 1400, 900), {x: -20, y: 223});
     assert.deepEqual(presentationPan(viewport, 1400, 900), viewport.pan);
     assert.equal(restored.history.length, 0);
-    assert.equal((await payloadOf(url)).version, 3);
-    const legacy = await payloadOf(link(g, session)); legacy.version = 1;
-    assert.deepEqual(await restore(g, encode(legacy)), session);
+    assert.equal((await payloadOf(url)).version, 1);
 });
 
 test('invalid shared presentation is rejected atomically instead of changing zoom or view state', async () => {
@@ -250,7 +249,11 @@ test('invalid shared presentation is rejected atomically instead of changing zoo
         {zoom: 4, center: {x: 0, y: 0}}, {zoom: 1, center: {x: '0', y: 0}},
         {zoom: 1, center: {x: 1e12, y: 0}}, {zoom: 1, center: {x: 0, y: 0, extra: true}},
         {zoom: 1, center: {x: 0, y: 0}, extra: true}]) {
-        await assert.rejects(() => restore(g, encode({...payload, presentation})), /cannot be restored/);
+        const packed = compactState(payload);
+        packed.p = presentation && presentation.center ? [presentation.zoom, presentation.center.x, presentation.center.y] : null;
+        if (presentation?.extra || presentation?.center?.extra) packed.p.push(true);
+        const invalid = location + LINK_PREFIX + await encodeLinkText(JSON.stringify(packed));
+        await assert.rejects(() => restore(g, invalid), /cannot be restored/);
     }
     assert.equal(validPresentation({zoom: Infinity, center: {x: 0, y: 0}}), false);
     assert.equal(sharedPresentation(null), undefined);
@@ -291,7 +294,7 @@ test('oversize sharing reports a limit instead of truncating the state, and Unic
     assert.throws(() => referenceOf(read(duplicate), rid('r1')), /cannot be restored/);
 });
 
-test('a long compressed replay stays independent of the undo buffer and old uncompressed semantic links still work', async () => {
+test('a long compressed replay stays independent of the undo buffer', async () => {
     const g = graph();
     let session = startHistory(g, entry);
     for (let i = 0; i < 1000; i++) session = apply(g, session, 'pin', iid('A'));
@@ -302,6 +305,43 @@ test('a long compressed replay stays independent of the undo buffer and old unco
     assert.deepEqual(restored.state, session.state);
     assert.equal(restored.steps.length, 1000);
     assert.equal(restored.history.length, 0);
-    const uncompressed = await payloadOf(link(g, apply(g, startHistory(g, entry), 'pin', iid('A'))));
-    assert.deepEqual((await restore(g, encode(uncompressed))).state.pins, new Set([iid('A')]));
+
+});
+
+
+test('stale targets and context errors are reported only by the addressed viewer', async () => {
+    const g = graph(), viewer = {kind: 'MESSAGE', message: 'A', variant: ''};
+    const session = apply(g, startHistory(g, viewer), 'pin', rid('r1'));
+    const payload = await payloadOf(link(g, session, viewer));
+    payload.steps[0].target.status = 'MISSING';
+    const url = encode(payload);
+    assert.equal(await restore(g, url, entry), null);
+    await assert.rejects(() => restore(g, url, viewer), /cannot be restored/);
+    assert.equal(await restore(g, link(g, session, viewer), entry, {...context, environment: 'wrong'}), null);
+    await assert.rejects(() => restoreLink(g, LINK_PREFIX + 'invalid', context, viewer), error => error.unaddressed === true);
+});
+
+test('unidentifiable targets report a sharing error and Back makes the view shareable again', async () => {
+    const data = fixture();
+    const original = data.graph.nodes.find(node => node.identity.key === 'r1');
+    data.graph.nodes.push({...structuredClone(original), identity: {nodeType: 'REACTION', key: 'copy'}});
+    data.graph.edges.push(...data.graph.edges.filter(edge => edge.source.key === 'r1' || edge.target.key === 'r1')
+        .map(edge => JSON.parse(JSON.stringify(edge).replaceAll('r1', 'copy'))));
+    const g = read(data), initial = startHistory(g, entry), session = apply(g, initial, 'pin', rid('r1'));
+    await assert.rejects(() => link(g, session), /cannot be shared:.*not uniquely identifiable/);
+    assert.deepEqual((await restore(g, link(g, backHistory(session)))).state, initial.state);
+});
+
+test('pan and zoom reuse the semantic payload without reading targets or projecting entries again', async () => {
+    const g = graph(), viewer = {kind: 'MESSAGE', message: 'A', variant: ''};
+    const session = apply(g, startHistory(g, viewer), 'pin', rid('r1'));
+    const first = await payloadOf(link(g, session, viewer));
+    const get = g.nodes.get;
+    g.nodes.get = () => { throw new Error('A presentation update must not read graph nodes'); };
+    let second;
+    try {
+        second = await payloadOf(shareLink(g, session, {...context}, {...viewer}, location,
+            {zoom: 1.5, pan: {x: 30, y: 60}, width: 900, height: 600}));
+    } finally { g.nodes.get = get; }
+    assert.deepEqual(second, {...first, presentation: {zoom: 1.5, center: {x: 280, y: 160}}});
 });

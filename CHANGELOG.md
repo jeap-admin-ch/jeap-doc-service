@@ -14,13 +14,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Restore zoom, pan and node positions from before the action with viewer Back. Shared links retain zoom
   and the centred graph point across different canvas sizes.
 - Shorten shared links with a deduplicated reference table, compact step tuples and native DEFLATE raw
-  compression before Base64URL encoding. Read existing semantic links and bound decoded data to 256 KiB
+  compression before Base64URL encoding. Accept one versioned format and bound decoded data to 256 KiB
   and replay to 2,048 steps, independently of the 100-step undo buffer.
 - Show a brief copy confirmation beside the reaction viewer's toolbar. Sharing updates the browser address
   without reloading, adding a navigation entry or resetting either viewer's state and undo history.
 - Update the address automatically after semantic actions, zoom and pan, with a 250 ms debounce. The last
-  interacted viewer owns the link; stale encoders cannot overwrite it. Validate repeated targets once per
-  generation and remove a stale link if the current view cannot be encoded.
+  interacted viewer owns the link; stale encoders cannot overwrite it. Cache semantic targets per graph and the compact payload per
+  session and remove a stale link if the current view cannot be encoded.
 - Group reaction-viewer controls from left to right by history, sharing/source and view, with wider separator
   spacing and view controls ordered as zoom, Fit all, minimap and full screen. Use the same brief copy confirmation
   for links and JSON source. Export readable JSON with local element IDs and structured hidden references

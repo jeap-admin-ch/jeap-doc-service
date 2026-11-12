@@ -9,7 +9,7 @@ import {useEnvironment, routePrefixOf} from '../../data/environments';
 import {readGraph, availableReaction, project, labelOf, focusedReactionCount, visibleReactionRows} from './model.mjs';
 import styles from './styles.module.css';
 import {hiddenMarkers} from './visibility.mjs';
-import {AddressUpdates, SnapshotRequests} from './SnapshotProvider';
+import {AddressUpdates, SnapshotRequests, RestoreNotices} from './SnapshotProvider';
 import Legend from './Legend';
 import HiddenContent from './HiddenContent';
 import {advanceHistory, backHistory, startHistory} from './history.mjs';
@@ -53,6 +53,7 @@ function EnvironmentReactionViewer({entry, environment}) {
     const sharedHash = hash.startsWith(LINK_PREFIX) ? hash : '';
     const {colorMode} = useColorMode();
     const requests = useContext(SnapshotRequests);
+    const restoreNotices = useContext(RestoreNotices);
     const addressUpdates = useContext(AddressUpdates);
     const addressOwner = useRef({}).current;
     const addressPath = useRef(pathname), addressState = useRef(null);
@@ -123,12 +124,19 @@ function EnvironmentReactionViewer({entry, environment}) {
             try {
                 session = await restoreLink(graph, sharedHash,
                     {site: docSite, environment: environment.id, baseUrl, path: window.location.pathname}, entry) ?? session;
-            } catch (error) { if (!disposed) setNotice(error.message); }
+            } catch (error) {
+                if (!disposed) {
+                    if (!error.unaddressed || !restoreNotices.has(sharedHash) || restoreNotices.get(sharedHash) === addressOwner) {
+                        if (error.unaddressed) restoreNotices.set(sharedHash, addressOwner);
+                        setNotice(error.message);
+                    }
+                }
+            }
             if (disposed) return;
             setSnapshot({key: viewKey, graph, session});
         }).catch(() => { if (!disposed) setFailed(true); });
         return () => { disposed = true; };
-    }, [requests, url, docSite, environment.id, baseUrl, entry, sharedHash, viewKey]);
+    }, [requests, url, docSite, environment.id, baseUrl, entry, sharedHash, viewKey, restoreNotices]);
     const session = editedView?.key === viewKey ? editedView.session : snapshot?.session;
     addressState.current = {snapshot, session, viewKey, entry, docSite, environment: environment.id, baseUrl};
     const generateAddress = () => {
@@ -249,7 +257,7 @@ function EnvironmentReactionViewer({entry, environment}) {
             setSharedLink(link);
             try {
                 await navigator.clipboard.writeText(link);
-                if (request === shareRequest.current) { setCopyFeedback({message: 'Link wurde kopiert'}); setNotice(''); }
+                if (request === shareRequest.current) { setCopyFeedback({message: 'Link copied'}); setNotice(''); }
             }
             catch { if (request === shareRequest.current) setNotice('Copy the shared view link below.'); }
         } catch (error) { if (request === shareRequest.current) { setSharedLink(''); setNotice(error.message); } }
@@ -322,7 +330,7 @@ function EnvironmentReactionViewer({entry, environment}) {
                 onMouseLeave={() => setHover(null)} onKeyDown={onKeyDown}/>
             {minimapOpen && !sourceOpen && renderer && <Minimap id={minimapId} renderer={renderer}/>}
             {sourceOpen && <SourceView id={sourceId} source={source}
-                onCopyStart={() => setCopyFeedback(null)} onCopied={() => setCopyFeedback({message: 'Code wurde kopiert'})}
+                onCopyStart={() => setCopyFeedback(null)} onCopied={() => setCopyFeedback({message: 'Code copied'})}
                 onClose={() => { setSourceOpen(false); sourceToggle.current?.focus(); }}/>
             }
             {hover && !menu && !sourceOpen && <Tooltip id={tooltipId} hover={hover}/>}
