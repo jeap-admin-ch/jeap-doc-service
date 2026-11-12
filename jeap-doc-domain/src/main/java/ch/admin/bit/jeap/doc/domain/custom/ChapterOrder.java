@@ -136,17 +136,32 @@ public final class ChapterOrder {
      * cycle of one. Only possible for a set stored before the validation that refuses it existed.
      */
     private static Set<String> cyclicReferences(List<Item> items) {
-        Map<String, Item> byName = new HashMap<>();
-        items.forEach(item -> byName.putIfAbsent(item.name(), item));
+        Map<String, String> referenceOf = new HashMap<>();
+        items.forEach(item -> referenceOf.putIfAbsent(item.name(), item.reference()));
+        return namesInACycle(referenceOf);
+    }
 
+    /**
+     * The names whose reference, followed as far as it goes, loops back on itself - a self-reference is a
+     * cycle of one, and a reference to a name this map does not have as a key is followed no further, which
+     * is what a reference to a generated sibling or to nothing at all does: neither ever has a reference of
+     * its own.
+     * <p>
+     * <b>The one definition of a cycle.</b> This class uses it while placing the items of an already-taken-
+     * over set; {@code OrderValidation} uses the exact same one to refuse a set that would introduce one,
+     * before anything is stored - combining this set's own references with what is already stored.
+     *
+     * @param referenceOf one name to the name it names, or absent for a name with no reference of its own
+     */
+    public static Set<String> namesInACycle(Map<String, String> referenceOf) {
         Set<String> cyclic = new HashSet<>();
         Set<String> settled = new HashSet<>();
-        for (Item item : items) {
-            if (settled.contains(item.name())) {
+        for (String start : referenceOf.keySet()) {
+            if (settled.contains(start)) {
                 continue;
             }
             List<String> path = new ArrayList<>();
-            String current = item.name();
+            String current = start;
             while (current != null && !settled.contains(current)) {
                 int loopStart = path.indexOf(current);
                 if (loopStart >= 0) {
@@ -154,13 +169,26 @@ public final class ChapterOrder {
                     break;
                 }
                 path.add(current);
-                Item node = byName.get(current);
-                String next = node == null ? null : node.reference();
-                current = next != null && byName.containsKey(next) ? next : null;
+                String next = referenceOf.get(current);
+                current = next != null && referenceOf.containsKey(next) ? next : null;
             }
             settled.addAll(path);
         }
         return cyclic;
+    }
+
+    /**
+     * The name another item's {@code sidebar_after} / {@code sidebar_before} would give to reach a page of
+     * this file name - without its extension and its leading number, the way every reference is read.
+     * <p>
+     * Shared with {@code OrderValidation}, which needs the exact same name before a page is ever stored, to
+     * tell whether a reference names a page this set or the stored one actually has.
+     */
+    public static String nameOf(String fileName) {
+        String extension = "." + DocumentationPaths.MARKDOWN_EXTENSION;
+        String withoutExtension = fileName.endsWith(extension)
+                ? fileName.substring(0, fileName.length() - extension.length()) : fileName;
+        return NumberPrefixes.stripped(withoutExtension);
     }
 
     /** Walks the tree once: a node's before-group, the node, then its after-group - recursively. */
@@ -205,14 +233,6 @@ public final class ChapterOrder {
         static Item of(Microsite microsite) {
             return new Item(microsite.fileName(), Microsite.SEGMENT + "/" + microsite.topic(),
                     microsite.sortKey(), microsite.hint());
-        }
-
-        /** The name another item's {@code sidebar_after} / {@code sidebar_before} would give to reach this page. */
-        private static String nameOf(String fileName) {
-            String extension = "." + DocumentationPaths.MARKDOWN_EXTENSION;
-            String withoutExtension = fileName.endsWith(extension)
-                    ? fileName.substring(0, fileName.length() - extension.length()) : fileName;
-            return NumberPrefixes.stripped(withoutExtension);
         }
 
         /** A page with no title is ordered by its file name, exactly as the upload ordered it. */

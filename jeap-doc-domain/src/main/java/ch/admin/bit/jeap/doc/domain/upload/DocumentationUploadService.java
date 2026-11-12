@@ -236,7 +236,7 @@ public class DocumentationUploadService {
         if (!report.isValid()) {
             throw recordRejectedBundle(upload, InvalidUploadException.structureInvalid(report));
         }
-        orderValidation.check(report, descriptor.placement(), received.paths(), received)
+        orderValidation.check(report, descriptor.placement(), descriptor.site(), received.paths(), received)
                 .ifPresent(orderReport -> {
                     throw recordRejectedBundle(upload, InvalidUploadException.structureInvalid(orderReport));
                 });

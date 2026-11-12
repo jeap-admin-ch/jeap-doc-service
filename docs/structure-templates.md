@@ -96,6 +96,18 @@ template calls the writer while it walks its own chapters, which keeps it one pa
 
 **A template never sees an uploaded page's bytes.** It is told which chapters carry pages, not what they say.
 
+### A chapter's landing page lists its own contents
+
+**A page with `doc_chapter_contents: true` in its front matter gets an *In this chapter* list below it**,
+rendered by the site template from the sidebar category the page sits in - not written into the page by the
+template. That is what keeps the list from ever naming a page the build dropped, and what gives it the same
+order `ChapterOrder` gave the sidebar, generated siblings, uploaded pages and microsites alike.
+
+A template sets the flag on every page that is a chapter's own landing page, generated or the fallback for a
+chapter the template generates nothing into - arc42 does this in `Arc42ChapterIndexPage` and in each chapter's
+own index writer. It does not list the chapter's items itself: a fixed list written into the page would
+duplicate the sidebar and could point at a page the build left out.
+
 ## Numbered chapters, or not
 
 arc42 numbers its chapters and the numbers are part of the method, so they belong in the folder, in the label

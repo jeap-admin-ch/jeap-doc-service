@@ -19,6 +19,10 @@ import java.nio.file.Path;
  * Two kinds of chapter need it: one a team filled and the service generates nothing into, and one whose only
  * generated page is not its index - chapter 1 of a subject the architecture model does not hold, or of a
  * library.
+ * <p>
+ * <b>{@code doc_chapter_contents} is every chapter landing page's, this one included.</b> The site template
+ * renders the chapter's items below it, read off the sidebar rather than written here - so the list is always
+ * the sidebar's own order and can never link to a page the build dropped.
  */
 final class Arc42ChapterIndexPage {
 
@@ -36,13 +40,12 @@ final class Arc42ChapterIndexPage {
             return;
         }
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(fromTheModel
+                .frontMatter((fromTheModel
                         ? Arc42Pages.generated(chapter.label(), 0, context)
                         : Arc42Pages.generatedWithoutTheModel(chapter.label(), 0, context))
+                        .put("doc_chapter_contents", true))
                 .heading(1, chapter.label())
-                .paragraph(Md.text(Arc42Chapters.summaryOf(chapter)))
-                .paragraph("The pages in this chapter are available in the navigation alongside this "
-                           + "page.");
+                .paragraph(Md.text(Arc42Chapters.summaryOf(chapter)));
         Arc42Pages.write(chapterDirectory, Arc42Pages.INDEX, page);
     }
 }

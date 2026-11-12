@@ -173,11 +173,27 @@ final `sidebar_position` itself, past whatever the template generates into the c
 tie between two equal positions by file name, which is the one thing assigning a position is meant to take
 out of it, and a declared position is honoured among the items that share it rather than published verbatim.
 
-**The shape of `sidebar_position`, `sidebar_after` and `sidebar_before` is checked at upload**, before a page
-is published: a position has to be a finite number, and a reference a single, non-blank name - see
-[the validation rules](upload-validation.md#a-pages-own-placement). **Whether a reference names a real
-sibling is not checked yet** - a typo in `sidebar_after` is read as if the page named nothing, and sorts by
-title at the end of the chapter instead of where it meant to be.
+**`sidebar_position`, `sidebar_after` and `sidebar_before` are checked at upload**, before a page is
+published: a position has to be a finite number, a reference a single, non-blank name, and - for a system's, a
+component's or a library's documentation - a reference has to name a page of the same chapter of this set, a
+generated sibling of it, a page of the chapter's currently stored set, or a currently stored microsite of it; a
+set of references must not introduce a cycle. See [the validation rules](upload-validation.md#a-pages-own-placement).
+
+**A page already stored with a reference that names nothing, or that sits in a cycle, is the one case
+`ChapterOrder` still has to handle on its own** - a set taken over before these checks existed. Such a page is
+an orphan: it sorts by title at the end of the chapter, after every free item, instead of where it meant to be.
+
+## A chapter's landing page lists its own contents
+
+**Every chapter landing page lists the chapter's contents, in exactly the order above.** The list is rendered
+from the sidebar by the site template rather than written into the page: it is always the same items, order
+and labels as the navigation, and it can never link to a page the build left out - a link written into the
+page instead could, and would fail the build of the whole part.
+
+A page gets the list below it when its front matter carries `doc_chapter_contents: true`. An upload cannot
+set that key - every `doc_*` key is outside the front-matter allowlist - so only a chapter's own generated
+landing page, or the fallback the service writes for a chapter it generates nothing into, ever shows one. A
+chapter holding only uploaded pages gets exactly that fallback, and lists them all the same.
 
 ## A subject the architecture model does not know
 

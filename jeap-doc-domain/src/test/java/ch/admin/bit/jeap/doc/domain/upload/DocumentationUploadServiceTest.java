@@ -25,6 +25,7 @@ import ch.admin.bit.jeap.doc.domain.port.DocumentationSubjectRepository;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationUploadRepository;
 import ch.admin.bit.jeap.doc.domain.port.StoredBundle;
 import ch.admin.bit.jeap.doc.domain.port.UploadClaim;
+import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -94,7 +95,8 @@ class DocumentationUploadServiceTest {
         metrics = new RecordingUploadMetrics();
         DocumentationSites sites = new DocumentationSites(new SiteProperties());
         service = new DocumentationUploadService(uploadRepository, subjectRepository, bundles, documentation,
-                documentationStorage, validation, new OrderValidation(), new UploadProperties(),
+                documentationStorage, validation, new OrderValidation(new StructureTemplates(List.of()),
+                documentation), new UploadProperties(),
                 new CustomProperties(), sites, siteUploadRulesOf(sites), htmlText, new SearchProperties(),
                 buildTrigger, metrics, Clock.fixed(NOW, ZoneOffset.UTC));
     }

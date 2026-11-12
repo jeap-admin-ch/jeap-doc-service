@@ -110,11 +110,11 @@ final class Arc42ComponentPages {
         // No content, no page: a component that exchanges nothing gets no chapter 3.
         boolean contextAndScope = !componentContext.isEmpty();
         if (contextAndScope) {
-            writeContextAndScope(template, system, component, componentContext, context, paths, structure);
+            writeContextAndScope(template, system, component, componentContext, context, structure);
         }
         boolean buildingBlockView =
-                writeBuildingBlockView(template, system, component, context, paths, structure);
-        boolean runtimeView = writeRuntimeView(template, system, component, context, paths, structure);
+                writeBuildingBlockView(template, system, component, context, structure);
+        boolean runtimeView = writeRuntimeView(template, system, component, context, structure);
 
         List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
                 documented.customChaptersOfComponent(component.slug()));
@@ -195,7 +195,8 @@ final class Arc42ComponentPages {
         Path directory = Arc42Pages.chapterDirectory(template, structure, INTRODUCTION);
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(INTRODUCTION.label(), 0, context)
-                        .put("description", component.description()))
+                        .put("description", component.description())
+                        .put("doc_chapter_contents", true))
                 .heading(1, INTRODUCTION.label())
                 .paragraph(Md.text(component.description()));
 
@@ -223,16 +224,14 @@ final class Arc42ComponentPages {
     /** Chapter 3: what the component talks to. The diagram is a page of its own, like the system's. */
     private static void writeContextAndScope(Arc42Template template, DocumentedSystem system,
                                              DocumentedComponent component, ComponentContext componentContext,
-                                             GenerationContext context, DocumentationPaths.ComponentPaths paths,
-                                             Path structure)
+                                             GenerationContext context, Path structure)
             throws IOException {
         Path directory = Arc42Pages.chapterDirectory(template, structure, CONTEXT_AND_SCOPE);
         MarkdownWriter index = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(CONTEXT_AND_SCOPE.label(), 0, context))
+                .frontMatter(Arc42Pages.generated(CONTEXT_AND_SCOPE.label(), 0, context)
+                        .put("doc_chapter_contents", true))
                 .heading(1, CONTEXT_AND_SCOPE.label())
-                .paragraph(Md.sentence("What {} talks to, and about what.", Md.code(component.name())))
-                .bulletList(List.of(Md.link(paths.page(CONTEXT_AND_SCOPE, COMPONENT_CONTEXT_VIEW_PAGE),
-                        CONTEXT_VIEW_LABEL)));
+                .paragraph(Md.sentence("What {} talks to, and about what.", Md.code(component.name())));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         writeContextView(template, system, component, componentContext, context, directory);
@@ -288,7 +287,7 @@ final class Arc42ComponentPages {
      */
     private static boolean writeBuildingBlockView(Arc42Template template, DocumentedSystem system,
                                                   DocumentedComponent component, GenerationContext context,
-                                                  DocumentationPaths.ComponentPaths paths, Path structure)
+                                                  Path structure)
             throws IOException {
         List<ContractedMessage> messages = contractedMessagesOf(system, component, context);
         boolean database = component.databaseSchema() != null || component.schema() != null;
@@ -298,24 +297,20 @@ final class Arc42ComponentPages {
         }
         Path directory = Arc42Pages.chapterDirectory(template, structure, BUILDING_BLOCK_VIEW);
 
-        List<Markdown> contents = new ArrayList<>();
         if (database) {
             writeDatabaseSchema(template, component, context, directory);
-            contents.add(Md.link(paths.page(BUILDING_BLOCK_VIEW, DATABASE_SCHEMA_PAGE), DATABASE_SCHEMA_LABEL));
         }
         if (restApi) {
             writeRestApi(template, component, context, directory);
-            contents.add(Md.link(paths.page(BUILDING_BLOCK_VIEW, REST_API_PAGE), REST_API_LABEL));
         }
         if (!messages.isEmpty()) {
             writeMessages(template, system, component, messages, context, directory);
-            contents.add(Md.link(paths.page(BUILDING_BLOCK_VIEW, MESSAGES_PAGE), MESSAGES_LABEL));
         }
 
         MarkdownWriter index = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context))
+                .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context)
+                        .put("doc_chapter_contents", true))
                 .heading(1, BUILDING_BLOCK_VIEW.label());
-        index.bulletList(contents);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
         return true;
     }
@@ -1104,8 +1099,7 @@ final class Arc42ComponentPages {
      * to gets no page rather than an empty one, and the landing page links only the chapters this run wrote.
      */
     private static boolean writeRuntimeView(Arc42Template template, DocumentedSystem system, DocumentedComponent component,
-                                            GenerationContext context,
-                                            DocumentationPaths.ComponentPaths paths, Path structure)
+                                            GenerationContext context, Path structure)
             throws IOException {
         ReactionView reactions = context.reactions().ofComponent(component.name());
         if (reactions.isEmpty()) {
@@ -1114,11 +1108,10 @@ final class Arc42ComponentPages {
         Path directory = Arc42Pages.chapterDirectory(template, structure, RUNTIME_VIEW);
 
         MarkdownWriter index = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(RUNTIME_VIEW.label(), 0, context))
+                .frontMatter(Arc42Pages.generated(RUNTIME_VIEW.label(), 0, context)
+                        .put("doc_chapter_contents", true))
                 .heading(1, RUNTIME_VIEW.label())
-                .paragraph(Md.sentence("The runtime behavior of {}.", Md.code(component.name())))
-                .bulletList(List.of(Md.link(paths.page(RUNTIME_VIEW, COMPONENT_REACTIONS_PAGE),
-                        COMPONENT_REACTIONS_LABEL)));
+                .paragraph(Md.sentence("The runtime behavior of {}.", Md.code(component.name())));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         MarkdownWriter page = new MarkdownWriter()

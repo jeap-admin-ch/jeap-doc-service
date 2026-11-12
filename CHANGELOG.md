@@ -12,15 +12,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or place itself directly before or after one named item - a generated sibling included - with
   `sidebar_after` or `sidebar_before`. Checked at upload: `sidebar_position` has to be a finite number, and
   at most one reference key may be given, as a single non-blank name; neither reference key is accepted on a
-  static site's page. Whether a reference names a real sibling is not checked yet.
+  static site's page.
+- For a system's, a component's or a library's documentation, an uploaded page's `sidebar_after` or
+  `sidebar_before` is checked against what the chapter would actually hold: this upload's own pages, the
+  template's generated siblings, and the chapter's currently stored pages and microsites
+  (`UNKNOWN_REFERENCE`), and a set of references - this upload's own and what is already stored alike - must
+  not introduce a cycle (`CYCLIC_ORDER`).
 - An HTML microsite upload may name the same placement with the `sidebar-position`, `sidebar-after` and
   `sidebar-before` parameters - it has no front matter of its own to carry them in. Refused for any other
   `source-format`.
+- Every chapter landing page lists the chapter's contents - generated, uploaded and microsite pages alike -
+  in the sidebar's own order. The list is rendered from the sidebar by the site template, never written into
+  the page, so it can never link to a page the build left out.
 
 ### Changed
 - Migration `V1_13_0` adds nullable `order_position`, `order_direction` and `order_reference` to
   `custom_page` and `custom_set`, and nullable `sidebar_position`, `sidebar_after` and `sidebar_before` to
   `documentation_upload`.
+- arc42's chapter landing pages no longer write a fixed bullet list repeating their generated siblings' links,
+  or the sentence saying a chapter's pages are in the navigation - the rendered chapter-contents list replaces
+  both.
 
 ## [4.12.0] - 2026-11-12
 

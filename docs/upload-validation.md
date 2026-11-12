@@ -117,10 +117,12 @@ receives a list of paths and no byte of any file's content.
 | `sidebar_position` is a finite number - an integer or a decimal, not quoted | `INVALID_POSITION` |
 | At most one of `sidebar_after` and `sidebar_before` is given, and the one that is names a single, non-blank name | `INVALID_REFERENCE` |
 | Neither reference key is given on a static site's page - its pages are ordered by Docusaurus itself, with no chapter to place one next to | `INVALID_REFERENCE` |
+| `sidebar_after` or `sidebar_before` names a page of the same chapter of this set, a generated sibling of it, a page of the chapter's currently stored set, or a currently stored microsite of it | `UNKNOWN_REFERENCE` |
+| A page's reference, followed from item to item - this set's own and what is currently stored for the same chapter alike - does not loop back to itself | `CYCLIC_ORDER` |
 
-**Whether a reference names a real sibling is not checked yet.** `sidebar_after: tpyo-of-a-page` is accepted
-here and read as if the page named nothing, by `ChapterOrder` - this page is still left to be caught by hand
-until that check exists too.
+**The cross-reference checks run only for a system's, a component's or a library's documentation.** A static
+site's pages carry no reference at all - `INVALID_REFERENCE` already refuses one - so `UNKNOWN_REFERENCE` and
+`CYCLIC_ORDER` never apply to one.
 
 ## arc42
 
@@ -298,6 +300,8 @@ as a whole.
 | `UNKNOWN_LOCATION` | *Set-level.* An HTML upload embedded at something that is not a chapter |
 | `INVALID_POSITION` | `sidebar_position` is there and is not a finite number |
 | `INVALID_REFERENCE` | `sidebar_after` and `sidebar_before` both given, one of them given with a value that is not a single, non-blank name, or either given on a static site's page |
+| `UNKNOWN_REFERENCE` | `sidebar_after` or `sidebar_before` names something that is not a page of the same chapter, a generated sibling of it, a page of the chapter's currently stored set, or a currently stored microsite of it |
+| `CYCLIC_ORDER` | A page's reference, followed from item to item, loops back to itself - a self-reference is a cycle of one |
 
 ## Adding a template
 

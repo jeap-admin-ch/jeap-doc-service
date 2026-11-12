@@ -170,7 +170,8 @@ final class Arc42SystemPages {
                                                              GenerationContext context, Path buildingBlock)
             throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context))
+                .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context)
+                        .put("doc_chapter_contents", true))
                 .heading(1, BUILDING_BLOCK_VIEW.label())
                 .paragraph(Md.sentence("The parts of {} that are documented. The architecture model of this "
                                        + "environment does not hold this system, so how it is decomposed is "
@@ -251,7 +252,8 @@ final class Arc42SystemPages {
         Path directory = Arc42Pages.chapterDirectory(template, structure, INTRODUCTION);
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(INTRODUCTION.label(), 0, context)
-                        .put("description", system.description()))
+                        .put("description", system.description())
+                        .put("doc_chapter_contents", true))
                 .heading(1, INTRODUCTION.label())
                 .paragraphOrNothing(Md.text(system.description()),
                         "The architecture repository holds no description of this system.");
@@ -291,12 +293,11 @@ final class Arc42SystemPages {
         Path directory = Arc42Pages.chapterDirectory(template, structure, CONTEXT_AND_SCOPE);
 
         MarkdownWriter index = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(CONTEXT_AND_SCOPE.label(), 0, context))
+                .frontMatter(Arc42Pages.generated(CONTEXT_AND_SCOPE.label(), 0, context)
+                        .put("doc_chapter_contents", true))
                 .heading(1, CONTEXT_AND_SCOPE.label())
                 .paragraph(Md.sentence("Which external systems and actors interact with {}, and what "
-                                       + "information or data is exchanged.", Md.code(system.name())))
-                .bulletList(List.of(Md.link(DocumentationPaths.page(system.slug(), SYSTEM_SEGMENT,
-                        CONTEXT_AND_SCOPE, CONTEXT_VIEW_PAGE), CONTEXT_VIEW_LABEL)));
+                                       + "information or data is exchanged.", Md.code(system.name())));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         MarkdownWriter view = new MarkdownWriter()
@@ -345,33 +346,11 @@ final class Arc42SystemPages {
                 context, directory);
 
         MarkdownWriter index = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context))
+                .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context)
+                        .put("doc_chapter_contents", true))
                 .heading(1, BUILDING_BLOCK_VIEW.label())
                 .paragraph(Md.sentence("How {} is decomposed, and what flows between its parts.",
                         Md.code(system.name())));
-        List<Markdown> contents = new ArrayList<>();
-        // The whitebox view draws the components, so a system with none gets no whitebox page.
-        if (!system.components().isEmpty()) {
-            contents.add(Md.link(DocumentationPaths.page(system.slug(), SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW,
-                    WHITEBOX_PAGE), "Whitebox View " + system.name()));
-        }
-        if (!documented.components().isEmpty()) {
-            contents.add(Md.link(DocumentationPaths.group(system.slug(), SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW,
-                    DocumentationPaths.COMPONENTS_SEGMENT), COMPONENTS_LABEL));
-        }
-        if (!documented.libraries().isEmpty()) {
-            contents.add(Md.link(DocumentationPaths.group(system.slug(), SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW,
-                    DocumentationPaths.LIBRARIES_SEGMENT), Arc42LibraryPages.LIBRARIES_LABEL));
-        }
-        if (events) {
-            contents.add(Md.link(DocumentationPaths.group(system.slug(), SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW,
-                    Arc42MessagePages.EVENTS), "Events"));
-        }
-        if (commands) {
-            contents.add(Md.link(DocumentationPaths.group(system.slug(), SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW,
-                    Arc42MessagePages.COMMANDS), "Commands"));
-        }
-        index.bulletList(contents);
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         if (!system.components().isEmpty()) {
@@ -695,11 +674,10 @@ final class Arc42SystemPages {
         Path directory = Arc42Pages.chapterDirectory(template, structure, RUNTIME_VIEW);
 
         MarkdownWriter index = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(RUNTIME_VIEW.label(), 0, context))
+                .frontMatter(Arc42Pages.generated(RUNTIME_VIEW.label(), 0, context)
+                        .put("doc_chapter_contents", true))
                 .heading(1, RUNTIME_VIEW.label())
-                .paragraph(Md.sentence("How {} behaves while it runs.", Md.code(system.name())))
-                .bulletList(List.of(Md.link(DocumentationPaths.page(system.slug(), SYSTEM_SEGMENT,
-                        RUNTIME_VIEW, SYSTEM_REACTIONS_PAGE), SYSTEM_REACTIONS_LABEL)));
+                .paragraph(Md.sentence("How {} behaves while it runs.", Md.code(system.name())));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         MarkdownWriter page = new MarkdownWriter()

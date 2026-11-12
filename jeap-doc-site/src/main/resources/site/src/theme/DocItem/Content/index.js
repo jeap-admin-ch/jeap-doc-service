@@ -1,24 +1,67 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import Content from '@theme-original/DocItem/Content';
+import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import {useDoc} from '@docusaurus/plugin-content-docs/client';
+import {useCurrentSidebarCategory, useDoc} from '@docusaurus/plugin-content-docs/client';
 import {useColorMode} from '@docusaurus/theme-common';
 import {useLocation} from '@docusaurus/router';
 import styles from './styles.module.css';
 
 /**
- * Shows an uploaded HTML microsite in a frame, in place of the page's body.
+ * Shows an uploaded HTML microsite in a frame, in place of the page's body, or lists a chapter's contents
+ * below it.
  *
  * A page the doc service generated for a microsite carries `doc_microsite_url` in its front matter and nothing
  * else: the documentation itself is served from its own prefix, with an opaque origin and a policy that
- * sandboxes it. Every other page renders as it always did.
+ * sandboxes it. A chapter's landing page carries `doc_chapter_contents` instead - every other page renders as
+ * it always did.
  */
 export default function ContentWrapper(props) {
     const {frontMatter} = useDoc();
-    if (!frontMatter?.doc_microsite_url) {
-        return <Content {...props}/>;
+    if (frontMatter?.doc_microsite_url) {
+        return <Microsite frontMatter={frontMatter} {...props}/>;
     }
-    return <Microsite frontMatter={frontMatter} {...props}/>;
+    if (frontMatter?.doc_chapter_contents) {
+        return (
+            <>
+                <Content {...props}/>
+                <ChapterContents/>
+            </>
+        );
+    }
+    return <Content {...props}/>;
+}
+
+/**
+ * The chapter's contents, in the order the sidebar shows them - generated, uploaded and microsite pages alike.
+ * <p>
+ * <b>Rendered from the sidebar, never from the page's own Markdown.</b> The list then always has the same
+ * items, order and labels as the navigation, it follows {@code ChapterOrder} for free, and it can never link
+ * to a page the build dropped - a page linked from Markdown instead would fail the whole part's build through
+ * {@code onBrokenLinks: 'throw'}.
+ * <p>
+ * <b>A {@link Link} per item, with the sidebar label as text only</b> - the same rule {@code tableControls.js}
+ * follows: nothing here is markup built from page data. Rendered on the server too, so Pagefind indexes it,
+ * and nothing at all for a chapter whose category holds no item.
+ */
+function ChapterContents() {
+    const category = useCurrentSidebarCategory();
+    const items = category.items.filter((item) => item.href);
+    if (items.length === 0) {
+        return null;
+    }
+    return (
+        <div className="markdown">
+            <h2>In this chapter</h2>
+            <ul>
+                {items.map((item) => (
+                    <li key={item.href}>
+                        <Link to={item.href}>{item.label}</Link>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
 }
 
 /** The largest a microsite may make its own frame: four screens, however tall it says it is. */

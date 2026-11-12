@@ -353,16 +353,24 @@ class Arc42ComponentTreeTest {
                 .contains("component \"shipping\"");
     }
 
-    /** Chapter 5 lists the three pages that exist, and links to each of them. */
+    /**
+     * Chapter 5 writes the three pages that exist - the chapter's own index lists them through the site's
+     * sidebar now, not through a link written here, so what this still checks is that the pages themselves
+     * are there, each at the route the sidebar would resolve.
+     */
     @Test
     void chapterFive_listsTheDataAndTheInterfaces() throws IOException {
         generate();
 
         assertThat(read("component-architecture/5-building-block-view/index.md"))
                 .contains("# 5. Building Block View")
-                .contains(STRUCTURE_URL + "building-block-view/database-schema/")
-                .contains(STRUCTURE_URL + "building-block-view/rest-api/")
-                .contains(STRUCTURE_URL + "building-block-view/messages/");
+                .contains("doc_chapter_contents: true");
+        assertThat(componentDirectory.resolve("component-architecture/5-building-block-view/database-schema.md"))
+                .exists();
+        assertThat(componentDirectory.resolve("component-architecture/5-building-block-view/rest-api.md"))
+                .exists();
+        assertThat(componentDirectory.resolve("component-architecture/5-building-block-view/messages.md"))
+                .exists();
     }
 
     /**
@@ -775,7 +783,8 @@ class Arc42ComponentTreeTest {
      * <b>The page is written as soon as the model says there is a schema</b>, the way the REST API page is.
      * Between an architecture import and the replication of the schema there would otherwise be no entry in
      * the chapter at all, and a reader would have no way to tell a schema that has not arrived from a
-     * component that keeps no data.
+     * component that keeps no data. The read below succeeding is the proof: a page that goes missing would
+     * fail it before any assertion runs.
      */
     @Test
     void theDatabaseSchemaPage_whenNoSchemaWasReplicated_thenItSaysSoAndWhatFixesIt()
@@ -802,9 +811,6 @@ class Arc42ComponentTreeTest {
                 .describedAs("and nothing that would need the replicated copy")
                 .doesNotContain("```plantuml")
                 .doesNotContain("## Tables");
-        assertThat(read("component-architecture/5-building-block-view/index.md"))
-                .describedAs("the chapter still lists it, so nothing goes missing silently")
-                .contains(STRUCTURE_URL + "building-block-view/database-schema/");
     }
 
     /** A component the model gives no schema at all gets no page and no entry in the chapter. */

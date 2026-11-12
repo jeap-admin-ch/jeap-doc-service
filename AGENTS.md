@@ -178,7 +178,9 @@ to - that would be the raw HTML the escaping keeps out. `DetailsBrowserIT` check
 - again taking no attribute from the page. `GroupedTableBrowserIT` checks it. **`src/clientModules/tableControls.js` sorts and filters tables in the
 browser**, and the same rule holds there: it moves the nodes a table has, marks matches on text nodes only, and
 never assigns markup built from page text. It skips a table with `rowspan` or `colspan` in its body, so a grouped
-table keeps its groups. `TableControlsBrowserIT` checks it. An uploaded file a
+table keeps its groups. `TableControlsBrowserIT` checks it. **`theme/DocItem/Content`'s chapter-contents list is
+the same again**: it reads `useCurrentSidebarCategory()` and renders each item's sidebar label as text inside a
+`Link`, never as markup built from it. `ChapterContentsBrowserIT` checks it. An uploaded file a
 browser renders as a document - an SVG - is a second path to the same place, and `SiteHeaders` sandboxes it.
 
 ### A microsite is contained by its origin, not by a list

@@ -994,18 +994,17 @@ class Arc42SystemTreeTest {
         Path structure = content.resolve("systems/lonely/system-architecture");
         assertThat(structure.resolve("5-building-block-view/events")).exists();
         assertThat(structure.resolve("5-building-block-view/whitebox-view.md")).doesNotExist();
-        assertThat(Files.readString(structure.resolve("5-building-block-view/index.md")))
-                .doesNotContain("whitebox-view")
-                .contains("building-block-view/events/");
     }
 
     /**
-     * The link to a message group and the group itself are one decision, not two.
+     * A system that defines no message of a kind gets no group for it: a link into a directory nothing wrote
+     * fails the build of every site of the environment, not just this page. Which messages get a page is not
+     * decided here - every message the model holds does, because the importer has already refused every name
+     * that could not be one.
      * <p>
-     * A system that defines no message of a kind gets no group for it, and no link to one: a link into a
-     * directory nothing wrote fails the build of every site of the environment, not just this page. Which
-     * messages get a page is not decided here - every message the model holds does, because the importer has
-     * already refused every name that could not be one.
+     * The chapter's own index names no sibling any more - the site's sidebar does, and only for a group that
+     * is actually there - so what this still checks is the one thing a dropped group's absence actually
+     * guarantees: no folder, no page in it.
      */
     @Test
     void aSystemWithoutEvents_getsNeitherTheGroupNorALinkToIt() throws IOException {
@@ -1023,7 +1022,6 @@ class Arc42SystemTreeTest {
         Path view = content.resolve("systems/quiet/system-architecture/5-building-block-view");
         assertThat(view.resolve("events")).doesNotExist();
         assertThat(view.resolve("commands/quiet-ping-command.md")).exists();
-        assertThat(Files.readString(view.resolve("index.md"))).doesNotContain("Events").contains("Commands");
     }
 
     /** The page is written under the slug the importer handed out, and nothing here derives one. */
