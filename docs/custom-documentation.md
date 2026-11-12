@@ -195,6 +195,31 @@ set that key - every `doc_*` key is outside the front-matter allowlist - so only
 landing page, or the fallback the service writes for a chapter it generates nothing into, ever shows one. A
 chapter holding only uploaded pages gets exactly that fallback, and lists them all the same.
 
+## Groups
+
+**A folder directly below a chapter that holds at least one page is a group** - one level; a page inside a
+group's own folder is refused before this ever matters. A folder holding only assets is not a group, and stays
+an asset folder exactly as before.
+
+**A group's label and placement come from its own landing page** - `index.md`, `readme.md`, or a page named
+like the group's folder, by the same rule a chapter's landing page is read by. That page's `title` is the
+group's label, and its `sidebar_position` / `sidebar_after` / `sidebar_before` place the *group* - not the
+page - among the other items of the chapter: a generated sibling, an uploaded page, a microsite, or another
+group, by its stripped folder name. Without an uploaded landing page, the group is labelled by its own folder's
+stripped name and placed among the items with no reference, and the site generator writes a landing page for
+it instead. **Either way, the landing page carries `doc_chapter_contents: true`** - added by the site
+generator, since every `doc_*` key is outside the front-matter allowlist and an upload cannot set it itself -
+so the same component lists the group's pages below it, uploaded landing page or generated one alike.
+
+**A reference inside a group names only that group's own pages.** It cannot reach a page of the chapter, a
+generated sibling, a microsite, or another group - moving a page between levels means moving the file, not
+rewriting a reference. The group's own pages are ordered among themselves exactly as a chapter's own are,
+with no generated sibling and no microsite of their own to place themselves around.
+
+A group starts collapsed in the sidebar. See [the upload rules](upload-validation.md#groups) for what is
+refused - at most one landing page, no two pages of one group at one route, and a group's own stripped name
+kept apart from every document of its chapter.
+
 ## A subject the architecture model does not know
 
 A team can write documentation before anything is deployed. Then the architecture model holds no such system

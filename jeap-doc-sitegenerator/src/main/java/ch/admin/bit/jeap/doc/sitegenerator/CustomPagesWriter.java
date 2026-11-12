@@ -10,6 +10,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
 import ch.admin.bit.jeap.doc.domain.custom.Microsite;
+import ch.admin.bit.jeap.doc.domain.custom.PageGroup;
 import ch.admin.bit.jeap.doc.domain.custom.UploadedFrontMatter;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
@@ -17,6 +18,9 @@ import ch.admin.bit.jeap.doc.domain.template.ReservedNames;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
+import ch.admin.bit.jeap.doc.markdown.CategoryFile;
+import ch.admin.bit.jeap.doc.markdown.FrontMatter;
+import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
@@ -109,23 +113,92 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
             return 0;
         }
         List<CustomPage> pages = set.get().pagesOf(chapterFolder);
-        // One order over everything in this chapter - the siblings this template generated into it, the
-        // uploaded pages and the microsites - so a microsite sits among the pages by its label rather than
-        // after all of them, and an uploaded item placed next to a generated sibling lands next to it.
+        List<PageGroup> groups = set.get().groupsOf(chapterFolder);
+        // One order over everything directly in this chapter - the siblings this template generated into it,
+        // the uploaded pages, the microsites and the groups - so a microsite or a group sits among the pages
+        // by its label rather than after all of them, and an uploaded item placed next to a generated sibling
+        // lands next to it. A group's own pages are not here; see writeGroupInto.
         ChapterOrder order = ChapterOrder.of(presentSiblingsOf(chapterFolder, subject.kind(), chapterDirectory),
-                pages, micrositesOf(subject, chapterFolder));
+                pages, micrositesOf(subject, chapterFolder), groups);
         int written = 0;
         for (CustomPage page : pages) {
             if (write(set.get(), page, order.positionOf(page), chapterDirectory)) {
                 written++;
             }
         }
+        for (PageGroup group : groups) {
+            written += writeGroupInto(set.get(), group, order.positionOf(group), chapterDirectory);
+        }
         // The assets beside them. They are not pages and are not counted, but a page that shows one needs it
-        // at the same place relative to itself.
+        // at the same place relative to itself - a group's own assets included, since CustomPage.fileName
+        // already carries the group folder they lie in.
         for (CustomPage asset : set.get().assetsOf(chapterFolder)) {
             write(set.get(), asset, 0, chapterDirectory);
         }
         return written;
+    }
+
+    /**
+     * Writes one group: its {@code _category_.json}, its own pages in their own order, and its landing page -
+     * the one a team uploaded, or a generated one listing the group's contents where none was.
+     *
+     * @return how many of the group's own pages were written, its landing page included where it was
+     * uploaded - the generated fallback is not counted, the same way an asset is not
+     */
+    private int writeGroupInto(CustomSet set, PageGroup group, int position, Path chapterDirectory) {
+        Path groupDirectory = chapterDirectory.resolve(group.folder());
+        writeGroupCategory(group, position, groupDirectory);
+        ChapterOrder order = ChapterOrder.of(group.pages(), List.of());
+        int written = 0;
+        for (CustomPage page : group.pages()) {
+            if (write(set, page, order.positionOf(page), chapterDirectory)) {
+                written++;
+            }
+        }
+        Optional<CustomPage> landingPage = group.landingPage();
+        if (landingPage.isPresent()) {
+            // Not ordered: Docusaurus reads this as the category's own page, never as a sibling of the
+            // group's other pages, so no position of its own means anything to it.
+            if (write(set, landingPage.get(), 0, chapterDirectory, true)) {
+                written++;
+            }
+        } else {
+            writeGeneratedLandingPage(group, groupDirectory);
+        }
+        return written;
+    }
+
+    /** The group's {@code _category_.json}: its label, its place among the chapter's own items, collapsed. */
+    private static void writeGroupCategory(PageGroup group, int position, Path groupDirectory) {
+        try {
+            Files.createDirectories(groupDirectory);
+            Files.writeString(groupDirectory.resolve(CategoryFile.NAME), CategoryFile.of(group.label(), position),
+                    StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * The landing page of a group that has pages but none of its own, the same reason
+     * {@code Arc42ChapterIndexPage} writes one for a chapter - a reader who opens the group has to land on
+     * something. {@code doc_chapter_contents} is what makes the site template list the group's pages below it,
+     * read off the sidebar rather than written here.
+     */
+    private static void writeGeneratedLandingPage(PageGroup group, Path groupDirectory) {
+        MarkdownWriter page = new MarkdownWriter()
+                .frontMatter(FrontMatter.frontMatter()
+                        .put("title", group.label())
+                        .put("doc_status", "generated")
+                        .put("doc_chapter_contents", true))
+                .heading(1, group.label());
+        try {
+            Files.createDirectories(groupDirectory);
+            Files.writeString(groupDirectory.resolve(DocumentationPaths.INDEX_SEGMENT + "."
+                               + DocumentationPaths.MARKDOWN_EXTENSION), page.text(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /**
@@ -198,6 +271,18 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
      * one part, and the log line says which.
      */
     private boolean write(CustomSet set, CustomPage page, int position, Path chapterDirectory) {
+        return write(set, page, position, chapterDirectory, false);
+    }
+
+    /**
+     * @param isGroupLandingPage whether this is the page a team uploaded as its group's own landing page -
+     *                           {@code doc_chapter_contents} is added to it the same way it is to a
+     *                           generated one, so the site template lists the group's pages below it. An
+     *                           upload cannot set that key itself: every {@code doc_*} key is outside the
+     *                           front-matter allowlist.
+     */
+    private boolean write(CustomSet set, CustomPage page, int position, Path chapterDirectory,
+                          boolean isGroupLandingPage) {
         if (abandoned.contains(set.id()) || !mayLieWhereItIsWritten(set, page, chapterDirectory)) {
             return false;
         }
@@ -243,7 +328,8 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
             if (page.asset()) {
                 Files.write(file, bytes);
             } else {
-                Files.writeString(file, pageOf(set, position, uploaded.get()), StandardCharsets.UTF_8);
+                Files.writeString(file, pageOf(set, position, uploaded.get(), isGroupLandingPage),
+                        StandardCharsets.UTF_8);
             }
             return true;
         } catch (IOException e) {
@@ -346,12 +432,15 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
      * quoting is {@link UploadedFrontMatter}'s: a repository URL holds a colon, a title may hold anything,
      * and an instant written plainly would be read back as a date.
      */
-    private String pageOf(CustomSet set, int position, String uploaded) {
+    private String pageOf(CustomSet set, int position, String uploaded, boolean isGroupLandingPage) {
         CustomProvenance provenance = set.provenance();
         Map<String, Object> generated = UploadedFrontMatter.keys();
         // The position ChapterOrder assigned: already absolute, already past whatever this template
         // generated into the chapter, and already placed next to a sibling the page named one.
         generated.put("sidebar_position", position);
+        if (isGroupLandingPage) {
+            generated.put("doc_chapter_contents", true);
+        }
         generated.put("doc_status", DOC_STATUS);
         generated.put("doc_source", "upload");
         generated.put("doc_source_repository", provenance.sourceRepository());

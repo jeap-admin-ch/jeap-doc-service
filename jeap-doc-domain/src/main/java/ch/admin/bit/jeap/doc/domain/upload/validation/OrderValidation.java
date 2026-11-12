@@ -10,6 +10,8 @@ import ch.admin.bit.jeap.doc.domain.custom.UploadedTitles;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
+import ch.admin.bit.jeap.doc.domain.template.NumberPrefixes;
+import ch.admin.bit.jeap.doc.domain.template.ReservedNames;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
@@ -46,6 +48,10 @@ import java.util.Set;
  * <p>
  * <b>A static site's pages cannot reference anything</b> - {@link #referenceFindingOf} already refuses that -
  * so the cross-reference checks below never run for one.
+ * <p>
+ * <b>A group is checked at its own level.</b> Its landing page's reference places the group among the
+ * chapter's own items, exactly as a page's does; the rest of its pages place themselves among that group's
+ * own, and nothing outside it - not a page of the chapter, not a generated sibling, not another group.
  */
 @Service
 @RequiredArgsConstructor
@@ -185,24 +191,61 @@ public class OrderValidation {
         return findings;
     }
 
-    /** The findings of one chapter: every reference its pages name, checked against what that chapter holds. */
+    /**
+     * One group of this upload's own tree, split the way {@link PageGroup} splits a stored one: its landing
+     * page, if it named one, apart from the rest - because the landing page's own reference places the
+     * <i>group</i> among the chapter's items, while the rest place themselves among the group's own.
+     */
+    private record GroupSplit(String name, String landingPath, List<String> ownPages) {
+    }
+
+    /**
+     * The findings of one chapter: every reference its pages, its groups and their own pages name, each
+     * checked against what its own level holds - a reference inside a group names only that group's own
+     * pages, never a page or a sibling of the chapter around it, the same separation {@link ChapterOrder}
+     * keeps between a chapter's own order and a group's.
+     */
     private List<StructureFinding> chapterFindings(StructureTemplate template, StructureChapter chapter,
                                                     CustomSubject subject, CustomDocumentation storedMarkdown,
                                                     CustomDocumentation stored, String chapterFolder,
                                                     List<String> paths, Map<String, OrderHint> hintOfPath) {
+        List<String> rootPaths = new ArrayList<>();
+        Map<String, List<String>> pathsByGroup = new LinkedHashMap<>();
+        for (String path : paths) {
+            String[] segments = path.split("/");
+            if (segments.length == 2) {
+                rootPaths.add(path);
+            } else {
+                pathsByGroup.computeIfAbsent(segments[1], key -> new ArrayList<>()).add(path);
+            }
+        }
+        List<GroupSplit> groups = pathsByGroup.entrySet().stream()
+                .map(entry -> splitOf(entry.getKey(), entry.getValue(), hintOfPath))
+                .toList();
+
         Set<String> known = new HashSet<>(template.generatedSiblings(chapter, subject.kind()));
         Map<String, String> referenceOf = new HashMap<>();
-
-        for (String path : paths) {
+        for (String path : rootPaths) {
             String name = ChapterOrder.nameOf(fileNameOf(path));
             known.add(name);
             addReference(referenceOf, name, hintOfPath.get(path));
+        }
+        for (GroupSplit group : groups) {
+            known.add(group.name());
+            if (group.landingPath() != null) {
+                addReference(referenceOf, group.name(), hintOfPath.get(group.landingPath()));
+            }
         }
         storedMarkdown.setOf(subject).map(set -> set.pagesOf(chapterFolder)).orElse(List.of())
                 .forEach(page -> {
                     String name = ChapterOrder.nameOf(page.fileName());
                     known.add(name);
                     addReference(referenceOf, name, page.hint());
+                });
+        storedMarkdown.setOf(subject).map(set -> set.groupsOf(chapterFolder)).orElse(List.of())
+                .forEach(storedGroup -> {
+                    known.add(storedGroup.name());
+                    addReference(referenceOf, storedGroup.name(), storedGroup.hint());
                 });
         for (Microsite microsite : stored.micrositesOf(subject, template.id(), chapterFolder)) {
             String name = Microsite.SEGMENT + "/" + microsite.topic();
@@ -211,26 +254,98 @@ public class OrderValidation {
         }
 
         List<StructureFinding> findings = new ArrayList<>();
-        for (String path : paths) {
-            OrderHint hint = hintOfPath.get(path);
-            String reference = hint == null ? null : hint.reference();
-            if (reference != null && !known.contains(reference)) {
-                findings.add(StructureFinding.of(FindingCode.UNKNOWN_REFERENCE, path,
-                        ("'%s' is not a page of this chapter, a generated sibling of it, or a page or "
-                         + "microsite currently stored for it.").formatted(reference)));
+        for (String path : rootPaths) {
+            unknownReferenceFindingOf(path, hintOfPath.get(path), known).ifPresent(findings::add);
+        }
+        for (GroupSplit group : groups) {
+            if (group.landingPath() != null) {
+                unknownReferenceFindingOf(group.landingPath(), hintOfPath.get(group.landingPath()), known)
+                        .ifPresent(findings::add);
             }
+            findings.addAll(groupFindings(group, hintOfPath));
         }
 
         Set<String> cyclic = ChapterOrder.namesInACycle(referenceOf);
         if (!cyclic.isEmpty()) {
-            for (String path : paths) {
+            for (String path : rootPaths) {
                 if (cyclic.contains(ChapterOrder.nameOf(fileNameOf(path)))) {
-                    findings.add(StructureFinding.of(FindingCode.CYCLIC_ORDER, path,
-                            "This page's reference, followed from page to page, loops back to this one."));
+                    findings.add(cyclicOrderFindingOf(path));
+                }
+            }
+            for (GroupSplit group : groups) {
+                if (group.landingPath() != null && cyclic.contains(group.name())) {
+                    findings.add(cyclicOrderFindingOf(group.landingPath()));
                 }
             }
         }
         return findings;
+    }
+
+    /**
+     * The findings of one group: every reference its own pages name, checked against that group's own pages
+     * alone - never a page of the chapter around it, a generated sibling, a microsite, or another group's.
+     * <p>
+     * <b>Not augmented with what is currently stored.</b> The chapter-level check reads the currently stored
+     * set because a page may cross between a markdown set and a microsite of the same chapter; a group has
+     * no such counterpart, and the plan this follows names only a group's own pages as what a reference inside
+     * it may reach.
+     */
+    private List<StructureFinding> groupFindings(GroupSplit group, Map<String, OrderHint> hintOfPath) {
+        Set<String> known = new HashSet<>();
+        Map<String, String> referenceOf = new HashMap<>();
+        for (String path : group.ownPages()) {
+            String name = ChapterOrder.nameOf(fileNameOf(path));
+            known.add(name);
+            addReference(referenceOf, name, hintOfPath.get(path));
+        }
+        List<StructureFinding> findings = new ArrayList<>();
+        for (String path : group.ownPages()) {
+            unknownReferenceFindingOf(path, hintOfPath.get(path), known).ifPresent(findings::add);
+        }
+        Set<String> cyclic = ChapterOrder.namesInACycle(referenceOf);
+        if (!cyclic.isEmpty()) {
+            for (String path : group.ownPages()) {
+                if (cyclic.contains(ChapterOrder.nameOf(fileNameOf(path)))) {
+                    findings.add(cyclicOrderFindingOf(path));
+                }
+            }
+        }
+        return findings;
+    }
+
+    private static Optional<StructureFinding> unknownReferenceFindingOf(String path, OrderHint hint,
+                                                                         Set<String> known) {
+        String reference = hint == null ? null : hint.reference();
+        if (reference == null || known.contains(reference)) {
+            return Optional.empty();
+        }
+        return Optional.of(StructureFinding.of(FindingCode.UNKNOWN_REFERENCE, path,
+                ("'%s' is not a page of this chapter or group, a generated sibling of it, or a page or "
+                 + "microsite currently stored for it.").formatted(reference)));
+    }
+
+    private static StructureFinding cyclicOrderFindingOf(String path) {
+        return StructureFinding.of(FindingCode.CYCLIC_ORDER, path,
+                "This page's reference, followed from item to item, loops back to this one.");
+    }
+
+    /**
+     * Splits one group's own paths into its landing page, if it named one by the same rule a stored group's
+     * is read by, and the rest.
+     */
+    private static GroupSplit splitOf(String groupFolder, List<String> groupPaths,
+                                      Map<String, OrderHint> hintOfPath) {
+        String landingPath = null;
+        List<String> ownPages = new ArrayList<>();
+        for (String path : groupPaths) {
+            String withoutExtension = ReservedNames.withoutItsExtension(fileNameOf(path));
+            if (landingPath == null && ReservedNames.isLandingPageName(withoutExtension, groupFolder)) {
+                landingPath = path;
+            } else {
+                ownPages.add(path);
+            }
+        }
+        return new GroupSplit(NumberPrefixes.stripped(groupFolder), landingPath, List.copyOf(ownPages));
     }
 
     /** One name's outgoing reference, if it has one - a name with none is never a key, which is terminal. */

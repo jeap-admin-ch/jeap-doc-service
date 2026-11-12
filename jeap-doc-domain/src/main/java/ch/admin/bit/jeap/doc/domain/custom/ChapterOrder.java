@@ -30,6 +30,11 @@ import java.util.Set;
  * <p>
  * A chapter with no generated sibling, no reference and no position comes out exactly as the upload numbered
  * it: the sort is the same one {@link UploadedSet} applies, so nothing about markdown changes.
+ * <p>
+ * <b>A group is one more item of the chapter</b>, ordered by its landing page's hint and its label exactly as
+ * a page is - but its own pages are never passed in here with it. Their order is a separate call over
+ * {@link PageGroup#pages}, with no siblings and no microsites: one order per level, because a reference inside
+ * a group names only that group's own pages, never a page or a sibling of the chapter around it.
  */
 public final class ChapterOrder {
 
@@ -54,28 +59,50 @@ public final class ChapterOrder {
     /**
      * The order of a chapter into which this template generates nothing, or for which the generated siblings
      * are not known - a static set of pages and microsites, numbered as the upload assigned it.
+     * <p>
+     * No groups either: a group's own order is computed by a call of its own, over its own pages alone - see
+     * the class comment.
      *
      * @param pages      the uploaded pages of that chapter, assets not among them
      * @param microsites the microsites embedded in it
      */
     public static ChapterOrder of(List<CustomPage> pages, List<Microsite> microsites) {
-        return of(List.of(), pages, microsites);
+        return of(List.of(), pages, microsites, List.of());
     }
 
     /**
      * The order of one chapter: the siblings this template generates into it, present in this environment and
-     * in the template's own order, and everything a team uploaded beside them.
+     * everything a team uploaded beside them - its pages, its microsites and its groups.
      *
      * @param presentSiblings the siblings this template generates into the chapter that exist in this
-     *                        environment, in the template's order
-     * @param pages           the uploaded pages of that chapter, assets not among them
+     *                        environment, in the template's own order
+     * @param pages           the pages directly in that chapter, assets and a group's own pages not among them
      * @param microsites      the microsites embedded in it
      */
     public static ChapterOrder of(List<PresentSibling> presentSiblings, List<CustomPage> pages,
                                   List<Microsite> microsites) {
+        return of(presentSiblings, pages, microsites, List.of());
+    }
+
+    /**
+     * The order of one chapter, groups included: a group is one item among the chapter's own, placed by its
+     * landing page's hint and sorted by its label - exactly as a page is placed by its own. A group's own
+     * pages are not here; they are ordered by a separate call over {@link PageGroup#pages}, because a
+     * reference inside a group names only that group's own pages and nothing at the chapter's level - one
+     * order per level, never a tree of them.
+     *
+     * @param presentSiblings the siblings this template generates into the chapter that exist in this
+     *                        environment, in the template's own order
+     * @param pages           the pages directly in that chapter, assets and a group's own pages not among them
+     * @param microsites      the microsites embedded in it
+     * @param groups          the groups of that chapter - a folder below it holding at least one page
+     */
+    public static ChapterOrder of(List<PresentSibling> presentSiblings, List<CustomPage> pages,
+                                  List<Microsite> microsites, List<PageGroup> groups) {
         List<Item> items = new ArrayList<>();
         pages.forEach(page -> items.add(Item.of(page)));
         microsites.forEach(microsite -> items.add(Item.of(microsite)));
+        groups.forEach(group -> items.add(Item.of(group)));
 
         Set<String> validTargets = new HashSet<>();
         presentSiblings.forEach(sibling -> validTargets.add(sibling.name()));
@@ -119,6 +146,11 @@ public final class ChapterOrder {
     /** Where this microsite's page goes, in the same numbering. */
     public int positionOf(Microsite microsite) {
         return positions.getOrDefault(microsite.fileName(), 1);
+    }
+
+    /** Where this group's {@code _category_.json} goes, in the same numbering. */
+    public int positionOf(PageGroup group) {
+        return positions.getOrDefault(group.folder(), 1);
     }
 
     /** Where a generated sibling goes, or nothing if this environment does not present it. */
@@ -181,6 +213,11 @@ public final class ChapterOrder {
      * The name another item's {@code sidebar_after} / {@code sidebar_before} would give to reach a page of
      * this file name - without its extension and its leading number, the way every reference is read.
      * <p>
+     * <b>Of the last segment alone.</b> A page's {@link CustomPage#fileName} carries the folder it is grouped
+     * into, if any - {@code sap-interfaces/bestellungen.md} - and a reference inside that group names only
+     * {@code bestellungen}, never the group's own name: a group is opaque from inside it, the same way the
+     * chapter around it is.
+     * <p>
      * Shared with {@code OrderValidation}, which needs the exact same name before a page is ever stored, to
      * tell whether a reference names a page this set or the stored one actually has.
      */
@@ -188,7 +225,9 @@ public final class ChapterOrder {
         String extension = "." + DocumentationPaths.MARKDOWN_EXTENSION;
         String withoutExtension = fileName.endsWith(extension)
                 ? fileName.substring(0, fileName.length() - extension.length()) : fileName;
-        return NumberPrefixes.stripped(withoutExtension);
+        int slash = withoutExtension.lastIndexOf('/');
+        String lastSegment = slash < 0 ? withoutExtension : withoutExtension.substring(slash + 1);
+        return NumberPrefixes.stripped(lastSegment);
     }
 
     /** Walks the tree once: a node's before-group, the node, then its after-group - recursively. */
@@ -233,6 +272,10 @@ public final class ChapterOrder {
         static Item of(Microsite microsite) {
             return new Item(microsite.fileName(), Microsite.SEGMENT + "/" + microsite.topic(),
                     microsite.sortKey(), microsite.hint());
+        }
+
+        static Item of(PageGroup group) {
+            return new Item(group.folder(), group.name(), group.label(), group.hint());
         }
 
         /** A page with no title is ordered by its file name, exactly as the upload ordered it. */

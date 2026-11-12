@@ -312,6 +312,16 @@ requires goes there too**, and `./mvnw verify` over the whole build is what says
   name where the validation folds the landing-page names and strips the number prefix a document loses, so
   it let through exactly the page it exists to catch.
 
+- **A folder directly below a chapter that holds a page is a group - one level, and nothing deeper.** It is
+  labelled and placed by its own landing page (`index`, `readme`, or a page named like the folder, the exact
+  rule a chapter's landing page is read by), or by its folder's stripped name and a generated fallback where
+  none was uploaded. `PageGroup` is the record both `ChapterOrder` and `CustomPagesWriter` read; `CustomSet`
+  builds it, splitting a group's landing page from the rest. **A reference resolves within its own level.** A
+  page inside a group may reference only another page of that same group - never a page of the chapter, a
+  generated sibling, a microsite, or another group - so `OrderValidation` and `ChapterOrder` both run two
+  separate calls, one for the chapter's own items and one per group, rather than one call over a tree: a
+  group is opaque from outside it, the same way the chapter is from outside the site.
+
 - **The front matter of an uploaded page is parsed as YAML, not read line by line.** `UploadedFrontMatter` is
   the only place that reads or writes it - `UploadedTitles` asks it too - and it is why `snakeyaml` is the one
   dependency the domain declares beyond the starter. A hand-rolled reader is a second implementation of the

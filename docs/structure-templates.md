@@ -108,6 +108,15 @@ chapter the template generates nothing into - arc42 does this in `Arc42ChapterIn
 own index writer. It does not list the chapter's items itself: a fixed list written into the page would
 duplicate the sidebar and could point at a page the build left out.
 
+### Groups are not a template's concern
+
+A folder a team uploaded directly below a chapter, holding at least one page, is a group - one level, labelled
+and placed by its own landing page, or by its folder's name and a fallback landing page where none was
+uploaded. `CustomPages.writeInto` writes a group's `_category_.json`, its pages and its landing page; a
+template never sees one, the same way it never sees a page's bytes. A template only has to declare that a
+folder directly below a chapter is allowed to hold a page at all, which it already does by generating nothing
+of its own at that depth - see the upload rules in `docs/upload-validation.md#groups`.
+
 ## Numbered chapters, or not
 
 arc42 numbers its chapters and the numbers are part of the method, so they belong in the folder, in the label

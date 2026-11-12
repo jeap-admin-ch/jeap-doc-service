@@ -24,6 +24,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Every chapter landing page lists the chapter's contents - generated, uploaded and microsite pages alike -
   in the sidebar's own order. The list is rendered from the sidebar by the site template, never written into
   the page, so it can never link to a page the build left out.
+- A folder directly below a chapter that holds at least one page is now a group - one level, reusing the
+  chapter's own rules one level down. Its label and its place among the chapter's own items come from its own
+  landing page (`index.md`, `readme.md`, or a page named like the folder); without one, the group is labelled
+  by its folder and a fallback landing page is generated instead. Either way the landing page lists the
+  group's contents below it, the same way a chapter's own does. A reference inside a group resolves only
+  against that group's own pages. New findings `UNKNOWN_REFERENCE` and `CYCLIC_ORDER` apply at a group's own
+  level too, and `COLLIDING_NAME` now also covers a group's stripped name against a document of its chapter,
+  and two pages of one group at one route.
 
 ### Changed
 - Migration `V1_13_0` adds nullable `order_position`, `order_direction` and `order_reference` to

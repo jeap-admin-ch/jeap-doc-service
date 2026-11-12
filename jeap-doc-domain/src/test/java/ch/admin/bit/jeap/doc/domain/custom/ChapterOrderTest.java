@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.domain.custom;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -44,6 +45,10 @@ class ChapterOrderTest {
 
     private static ChapterOrder.PresentSibling sibling(String name, int position) {
         return new ChapterOrder.PresentSibling(name, position);
+    }
+
+    private static PageGroup group(String folder, String label, OrderHint hint) {
+        return new PageGroup(folder, label, hint, List.of(), Optional.empty());
     }
 
     /**
@@ -215,5 +220,61 @@ class ChapterOrderTest {
         ChapterOrder order = ChapterOrder.of(List.of(selfReferencing, normal), List.of());
 
         assertThat(order.positionOf(normal)).isLessThan(order.positionOf(selfReferencing));
+    }
+
+    /** A group is one more item of the chapter, ordered by its label exactly as a page or a microsite is. */
+    @Test
+    void aGroup_isOrderedByItsLabelAmongPagesAndMicrosites() {
+        PageGroup group = group("sap-interfaces", "Mid", OrderHint.NONE);
+
+        ChapterOrder order = ChapterOrder.of(List.of(),
+                List.of(page("alpha.md", "Alpha", 1), page("zulu.md", "Zulu", 2)), List.of(), List.of(group));
+
+        assertThat(order.positionOf(page("alpha.md", "Alpha", 1))).isLessThan(order.positionOf(group));
+        assertThat(order.positionOf(group)).isLessThan(order.positionOf(page("zulu.md", "Zulu", 2)));
+    }
+
+    @Test
+    void anItem_canPlaceItselfRelativeToAGroup() {
+        PageGroup group = group("sap-interfaces", "SAP Interfaces", OrderHint.NONE);
+        CustomPage notes = page("notes.md", "Notes", after("sap-interfaces"));
+
+        ChapterOrder order = ChapterOrder.of(List.of(), List.of(notes), List.of(), List.of(group));
+
+        assertThat(order.positionOf(notes)).isGreaterThan(order.positionOf(group));
+    }
+
+    /** A group's own placement comes from its landing page's hint, read by whoever builds the {@link PageGroup}. */
+    @Test
+    void aGroup_canPlaceItselfRelativeToAGeneratedSibling() {
+        PageGroup group = group("sap-interfaces", "SAP Interfaces", before("system-context-view"));
+
+        ChapterOrder order = ChapterOrder.of(List.of(sibling("system-context-view", 1_000_000)),
+                List.of(), List.of(), List.of(group));
+
+        assertThat(order.positionOf(group)).isLessThan(1_000_000);
+    }
+
+    /**
+     * One order per level: a group's own pages are ordered by a call of their own, with no generated siblings
+     * and no microsites - never by the chapter's own call, which never sees them.
+     */
+    @Test
+    void aGroupsOwnPages_areOrderedByACallOfTheirOwn() {
+        CustomPage orders = new CustomPage("6-runtime-view", "sap-interfaces/orders.md", "Orders", 0, false,
+                OrderHint.NONE);
+        CustomPage invoices = new CustomPage("6-runtime-view", "sap-interfaces/invoices.md", "Invoices", 0, false,
+                after("orders"));
+
+        ChapterOrder groupOrder = ChapterOrder.of(List.of(invoices, orders), List.of());
+
+        assertThat(groupOrder.positionOf(orders)).isLessThan(groupOrder.positionOf(invoices));
+    }
+
+    /** A reference inside a group names only the page it means, never the group's own folder. */
+    @Test
+    void nameOf_isTheLastSegmentAlone() {
+        assertThat(ChapterOrder.nameOf("sap-interfaces/01-foo.md")).isEqualTo("foo");
+        assertThat(ChapterOrder.nameOf("01-foo.md")).isEqualTo("foo");
     }
 }

@@ -59,9 +59,20 @@ public final class ReservedNames {
      * @param name a file name with its extension already taken off
      */
     public static boolean isLandingPageName(String name, StructureChapter chapter) {
+        return isLandingPageName(name, chapter.folder());
+    }
+
+    /**
+     * The same rule, asked of a plain folder name rather than a chapter - what a group's own landing page is
+     * named, by the same Docusaurus rule that decides a chapter's.
+     *
+     * @param name   a file name with its extension already taken off
+     * @param folder the folder the file lies in, directly - a chapter's own, or a group's
+     */
+    public static boolean isLandingPageName(String name, String folder) {
         String folded = name.toLowerCase(Locale.ROOT);
         return LANDING_PAGE_NAMES.contains(folded)
-               || folded.equals(chapter.folder().toLowerCase(Locale.ROOT));
+               || folded.equals(folder.toLowerCase(Locale.ROOT));
     }
 
     /**

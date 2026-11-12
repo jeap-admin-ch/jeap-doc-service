@@ -56,10 +56,10 @@ These rules are the doc service's, whatever template an upload names.
 | 1 | The path is relative and normalized: no leading `/`, no `..`, no `.`, no empty segment, no backslash, no control character, no trailing `/`, at most 1024 characters | `INVALID_PATH` |
 | 2 | No path appears twice | `DUPLICATE_PATH` |
 | 3 | The path has at least two segments - a file at the root of the set belongs to no chapter, so nothing publishes it | `FILE_OUTSIDE_CHAPTER` |
-| 4 | A page lies directly in its chapter. An asset may lie in a folder inside the chapter, at most five folders below it | `NESTED_FOLDER` |
+| 4 | A page lies directly in its chapter, or in one group folder below it - see [Groups](#groups). An asset may lie deeper, at most five folders below the chapter | `NESTED_FOLDER` |
 | 5 | No file or folder name begins with `.` or `_` - see below | `HIDDEN_NAME`, `UNPUBLISHABLE_NAME` |
 | 6 | No file name is one the site generator reads as the chapter's landing page - `index`, `readme` or the chapter folder's own name, in any case - because the doc service writes that page. No folder right below the chapter carries a name the doc service writes there | `RESERVED_NAME` |
-| 7 | No two documents of one chapter carry the same name once a leading number is taken off it - see below - and no file has the path of a folder another file of the set lies in | `COLLIDING_NAME` |
+| 7 | No two documents of one chapter, or of one group, carry the same name once a leading number is taken off it - see below - and no file has the path of a folder another file of the set lies in | `COLLIDING_NAME` |
 | 8 | The set holds at least one path that was not ignored | `EMPTY_TREE` |
 
 Rules 3 to 7 are about a *chapter*, so they apply to a Markdown upload and not to an HTML one, which follows
@@ -124,6 +124,42 @@ receives a list of paths and no byte of any file's content.
 site's pages carry no reference at all - `INVALID_REFERENCE` already refuses one - so `UNKNOWN_REFERENCE` and
 `CYCLIC_ORDER` never apply to one.
 
+## Groups
+
+A folder directly below a chapter that holds at least one page is a group - one level, and reusing the
+chapter's own rules one level down. A folder deeper down, or one holding assets only, is not: the former is
+`NESTED_FOLDER`, the latter is exactly what a folder beside a page has always been.
+
+**A group's label and placement live in its own landing page** - `index.md`, `readme.md` or a page named like
+the group's folder, in any case, the same rule a chapter's landing page is read by. Its `title` is the group's
+label, and its `sidebar_position`, `sidebar_after` or `sidebar_before` place the *group* among the chapter's
+own items - a page, a generated sibling, a microsite or another group. A group with no uploaded landing page is
+labelled by its own folder's stripped name and placed among the items with no reference; the site generator
+writes a fallback landing page for it, listing its contents exactly as a chapter's own fallback does.
+
+**A reference resolves within its own level, never across it:**
+- At the chapter's level, `sidebar_after` / `sidebar_before` may name a page of the chapter, a generated
+  sibling, a microsite, or a group - by its stripped folder name.
+- Inside a group, a page's reference may name only another page of that same group. It cannot reach a page of
+  the chapter, a generated sibling, a microsite, or another group's page - moving a page between levels means
+  moving the file.
+
+A group's own rules, on top of the ones above:
+- **At most one landing page.** An index, a README, or a page named like the group's folder are all read as
+  the same document, so two of them collide at one route - `COLLIDING_NAME`.
+- **No two pages of one group carry the same name once a leading number is taken off it**, the landing page's
+  identity included - `COLLIDING_NAME`.
+- **A group's own stripped name may not be the one a document of its chapter already has** - a page named
+  `sap-interfaces.md` beside a group folder `sap-interfaces/` is one route - `COLLIDING_NAME`. Two groups whose
+  stripped names collide are refused the same way.
+- **A group folder right below the chapter may not carry a name the doc service writes there itself**, exactly
+  as rule 6 above - `RESERVED_NAME`.
+- **`_category_.json` stays refused inside a group too**: the doc service writes it from the landing page's
+  front matter, or from the generated fallback where there is none.
+
+A page inside a group collides with nothing the chapter itself generates: a page named `whitebox-view.md`
+inside a group is at a URL of its own, below the group's, never at the chapter's own generated route.
+
 ## arc42
 
 The template every jEAP repository uses today. Its rules are its own declarations - see
@@ -161,8 +197,8 @@ it with `jeap.doc.custom.additional-asset-extensions` - see [Configuration](conf
 **An image lies beside the page that shows it, or in a folder inside the chapter.**
 `5-building-block-view/overview.png` next to `5-building-block-view/design.md` is referenced as
 `![Overview](overview.png)`, and `5-building-block-view/img/overview.png` as `![Overview](img/overview.png)`.
-A folder holds assets only, and at most five folders deep: a page in a folder is a `NESTED_FOLDER` finding,
-because a folder of pages would become a section of the navigation that the template does not have.
+A folder directly below the chapter may hold a page too - it is then a [group](#groups) - but a folder deeper
+down holds assets only, and at most five folders below the chapter: a page there is a `NESTED_FOLDER` finding.
 
 A folder is a name like a file's. **The folder right below the chapter may not carry a name the doc service
 writes into that chapter** - `5-building-block-view/components/overview.png` in a system's set would put the
@@ -288,12 +324,12 @@ as a whole.
 | `DUPLICATE_PATH` | The same path appears more than once |
 | `FILE_OUTSIDE_CHAPTER` | A file at the root of the set, belonging to no chapter |
 | `UNKNOWN_CHAPTER` | The first segment is not a chapter of the template |
-| `NESTED_FOLDER` | A page in a folder inside a chapter, or an asset more than five folders below it |
+| `NESTED_FOLDER` | A page more than one folder below its chapter, or an asset more than five folders below it |
 | `HIDDEN_NAME` | A file or folder name beginning with a dot |
 | `UNPUBLISHABLE_NAME` | A file or folder name beginning with an underscore |
 | `FORBIDDEN_EXTENSION` | An extension the template does not take, or one a microsite refuses |
 | `RESERVED_NAME` | A document of a name the doc service generates into that chapter, or one the site generator reads as the chapter's landing page - a leading number is taken off the name first. Or a folder right below the chapter of such a name |
-| `COLLIDING_NAME` | Two documents of one chapter that the site generator would publish at one URL, because a leading number is not part of a page's name. Or a file at the path of a folder another file of the set lies in |
+| `COLLIDING_NAME` | Two documents of one chapter, or of one group, that the site generator would publish at one URL, because a leading number is not part of a page's name - a group's own stripped name included. Or a file at the path of a folder another file of the set lies in |
 | `UNKNOWN_TEMPLATE` | *Set-level.* No template of that name exists; the message names the ones that do |
 | `EMPTY_TREE` | *Set-level.* Nothing in the set would be published |
 | `MISSING_ENTRY_POINT` | *Set-level.* An HTML upload with no `index.html` at its root |

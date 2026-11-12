@@ -1,7 +1,10 @@
 package ch.admin.bit.jeap.doc.domain.custom;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * One documentation set, as it is currently published.
@@ -51,12 +54,43 @@ public record CustomSet(
         return key.subject();
     }
 
-    /** The pages of one chapter, in the order the navigation shows them. */
+    /**
+     * The pages directly in one chapter, in the order the navigation shows them - a page inside a group is
+     * not among them, because it is not a sibling of the chapter's own items.
+     */
     public List<CustomPage> pagesOf(String chapterFolder) {
         return pages.stream()
-                .filter(page -> page.chapter().equals(chapterFolder) && !page.asset())
+                .filter(page -> page.chapter().equals(chapterFolder) && !page.asset() && !isGrouped(page))
                 .sorted(Comparator.comparingInt(CustomPage::position))
                 .toList();
+    }
+
+    /**
+     * The groups of one chapter: every folder directly below it that holds at least one page, each with its
+     * own landing page separated out already - see {@link PageGroup}.
+     * <p>
+     * A folder holding only assets is not among them; it stays an asset folder, as it always was.
+     */
+    public List<PageGroup> groupsOf(String chapterFolder) {
+        Map<String, List<CustomPage>> byFolder = new LinkedHashMap<>();
+        for (CustomPage page : pages) {
+            if (!page.chapter().equals(chapterFolder) || page.asset() || !isGrouped(page)) {
+                continue;
+            }
+            byFolder.computeIfAbsent(groupFolderOf(page), key -> new ArrayList<>()).add(page);
+        }
+        List<PageGroup> groups = new ArrayList<>();
+        byFolder.forEach((folder, pagesInGroup) -> groups.add(PageGroup.of(folder, pagesInGroup)));
+        return groups;
+    }
+
+    /** Whether this page lies in a group folder rather than directly in its chapter. */
+    private static boolean isGrouped(CustomPage page) {
+        return page.fileName().indexOf('/') > 0;
+    }
+
+    private static String groupFolderOf(CustomPage page) {
+        return page.fileName().substring(0, page.fileName().indexOf('/'));
     }
 
     /**

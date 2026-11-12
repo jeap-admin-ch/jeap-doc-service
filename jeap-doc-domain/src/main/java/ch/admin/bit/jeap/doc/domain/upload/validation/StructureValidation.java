@@ -315,6 +315,7 @@ public class StructureValidation {
         List<StructureFinding> findings = new ArrayList<>();
         Set<String> duplicated = duplicatesOf(checked);
         Set<String> colliding = collidingDocumentsOf(checked);
+        Set<String> collidingInGroup = collidingGroupDocumentsOf(checked);
         Set<String> folders = foldersOf(checked);
         // Distinct, so a path that appears three times is one finding rather than three - and so that a
         // second guard against reporting it twice is not needed.
@@ -339,7 +340,7 @@ public class StructureValidation {
             }
             if (segments.length > 2) {
                 Optional<StructureFinding> folderFinding =
-                        folderFinding(path, segments, template, chapter.get(), placement);
+                        folderFinding(path, segments, template, chapter.get(), placement, colliding);
                 if (folderFinding.isPresent()) {
                     findings.add(folderFinding.get());
                     continue;
@@ -352,28 +353,40 @@ public class StructureValidation {
                          + "or the folder.").formatted(segments[segments.length - 1])));
                 continue;
             }
-            nameFinding(path, segments[segments.length - 1], template, allowed, chapter.get(), placement,
-                    colliding).ifPresent(findings::add);
+            Optional<StructureFinding> finding;
+            if (segments.length == 2) {
+                finding = nameFinding(path, segments[1], template, allowed, chapter.get(), placement, colliding);
+            } else if (segments.length == 3) {
+                // Directly inside a group: its own name may collide with another page of that group.
+                finding = groupNameFinding(path, segments, allowed, collidingInGroup);
+            } else {
+                // An asset deeper inside a group. Its depth and its folders' names are already checked above;
+                // nothing this far down can collide with anything else in the chapter.
+                finding = basicFileFinding(path, segments[segments.length - 1], allowed);
+            }
+            finding.ifPresent(findings::add);
         }
         return findings;
     }
 
     /**
-     * The rules about the folders between a chapter and a file: only an asset lies in one, not too deep, each
-     * folder's name follows the rules of a file's name, and the folder right below the chapter is not one of
-     * the names the doc service writes there itself.
+     * The rules about the folders between a chapter and a file: a page lies directly in its chapter or in one
+     * group folder below it, an asset may lie deeper but not too deep, each folder's name follows the rules
+     * of a file's name, and the folder right below the chapter is not one of the names the doc service writes
+     * there itself nor the stripped name of a document the chapter already has.
      */
     private static Optional<StructureFinding> folderFinding(String path, String[] segments,
                                                             StructureTemplate template, StructureChapter chapter,
-                                                            DocumentationPlacement placement) {
+                                                            DocumentationPlacement placement, Set<String> colliding) {
         String name = segments[segments.length - 1];
         int depth = segments.length - 2;
-        if (DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(name))) {
+        boolean markdown = DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(name));
+        if (markdown && depth > 1) {
             return Optional.of(StructureFinding.of(FindingCode.NESTED_FOLDER, path,
-                    ("'%s' is a page in the folder '%s'. A page lies directly in its chapter; a folder inside "
-                     + "a chapter holds assets only.").formatted(name, segments[1])));
+                    ("'%s' is a page %d folders below its chapter. A page lies directly in its chapter, or in "
+                     + "one group folder below it.").formatted(name, depth)));
         }
-        if (depth > MarkdownAssetRules.MAX_FOLDER_DEPTH) {
+        if (!markdown && depth > MarkdownAssetRules.MAX_FOLDER_DEPTH) {
             return Optional.of(StructureFinding.of(FindingCode.NESTED_FOLDER, path,
                     "'%s' is %d folders below its chapter, and at most %d are allowed."
                             .formatted(name, depth, MarkdownAssetRules.MAX_FOLDER_DEPTH)));
@@ -385,12 +398,64 @@ public class StructureValidation {
             }
         }
         // Only the first folder: below it the tree is the set's own, and a generated group such as
-        // 'components' is a folder of the chapter, so an asset folder of that name would write into it.
+        // 'components' is a folder of the chapter, so an asset folder - or a group - of that name would write
+        // into it.
         if (ReservedNames.isTaken(template, chapter, placement.subject(), segments[1])) {
             return Optional.of(StructureFinding.of(FindingCode.RESERVED_NAME, path,
                     ("'%s' is a name the doc service writes into %s itself, and a folder of that name would put "
                      + "this file among what it generates. Rename the folder.")
                             .formatted(segments[1], chapter.folder())));
+        }
+        // A group is one item of its chapter, exactly as a page is, so its stripped name may not be the one a
+        // document of that chapter already has - a page named like its own group's folder included.
+        if (depth == 1 && colliding.contains(documentKeyOf(chapter.folder(), NumberPrefixes.stripped(segments[1])))) {
+            return Optional.of(StructureFinding.of(FindingCode.COLLIDING_NAME, path,
+                    ("'%s' is published at the URL of a document of %s. A leading number is not part of a "
+                     + "group's URL either, so the two would be one route. Rename the folder or the document.")
+                            .formatted(segments[1], chapter.folder())));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * The rules about a page inside a group's own folder: hidden, unpublishable, its extension, and whether
+     * it is published at the route of another page of the same group - a second landing page among them.
+     * <p>
+     * <b>Not {@link #nameFinding}.</b> A group generates nothing of its own, so none of the chapter's reserved
+     * names apply to a page inside it - a page named {@code whitebox-view.md} inside a group is at a URL of
+     * its own, below the group's, and collides with nothing the chapter generates.
+     */
+    private static Optional<StructureFinding> groupNameFinding(String path, String[] segments, Set<String> allowed,
+                                                                Set<String> collidingInGroup) {
+        String name = segments[segments.length - 1];
+        Optional<StructureFinding> basic = basicFileFinding(path, name, allowed);
+        if (basic.isPresent()) {
+            return basic;
+        }
+        if (!DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(name))) {
+            return Optional.empty();
+        }
+        if (collidingInGroup.contains(groupDocumentKeyOf(segments))) {
+            return Optional.of(StructureFinding.of(FindingCode.COLLIDING_NAME, path,
+                    ("'%s' is published at the URL of another page of the group '%s', or both are read as the "
+                     + "group's own landing page - an index, a README or a page named like the group's folder "
+                     + "is that. A leading number is not part of either page's URL. Rename one of them.")
+                            .formatted(name, segments[1])));
+        }
+        return Optional.empty();
+    }
+
+    /** A file's own name, hidden or unpublishable, and whether its extension is one this set may carry. */
+    private static Optional<StructureFinding> basicFileFinding(String path, String name, Set<String> allowed) {
+        Optional<StructureFinding> prefix = prefixFinding(path, name, "file");
+        if (prefix.isPresent()) {
+            return prefix;
+        }
+        String extension = extensionOf(name);
+        if (extension == null || !allowed.contains(extension)) {
+            return Optional.of(StructureFinding.of(FindingCode.FORBIDDEN_EXTENSION, path,
+                    ("'%s' is not a file this chapter is written with. The extensions it takes are on this "
+                     + "report.").formatted(extension == null ? name : "." + extension)));
         }
         return Optional.empty();
     }
@@ -595,7 +660,7 @@ public class StructureValidation {
     }
 
     /**
-     * The documents of one chapter that two different file names would publish at one route, as
+     * The documents of one chapter, and its groups, that two different names would publish at one route, as
      * {@code <chapter>/<document>}.
      * <p>
      * Two file names, because an identical path is {@link FindingCode#DUPLICATE_PATH} and is reported as that:
@@ -605,28 +670,70 @@ public class StructureValidation {
      * Markdown only. An image is served under the name it has, so an image and a document of one name are two
      * different things at two different URLs - which is the same reason the reserved names are checked for
      * documents alone.
+     * <p>
+     * <b>A group occupies its stripped name once</b>, however many pages it holds - its own landing page is
+     * published at that very route, the same one a page named like it would take. Every page of the group
+     * marks the same identity, so one group with ten pages is not read as ten occurrences of it.
      */
     @SuppressWarnings("java:S135") // Guard clauses: one continue per kind of path this rule does not look at.
     private static Set<String> collidingDocumentsOf(List<String> paths) {
         Set<String> seen = new HashSet<>();
         Set<String> twice = new HashSet<>();
+        Set<String> groupsSeen = new HashSet<>();
         for (String path : new LinkedHashSet<>(paths)) {
             String[] segments = path.split("/");
-            if (segments.length != 2) {
+            String key;
+            if (segments.length == 2) {
+                String name = segments[1];
+                String extension = extensionOf(name);
+                if (!DocumentationPaths.MARKDOWN_EXTENSION.equals(extension)) {
+                    continue;
+                }
+                String document = NumberPrefixes.stripped(name.substring(0, name.length() - extension.length() - 1));
+                key = documentKeyOf(segments[0], document);
+            } else if (segments.length == 3 && groupsSeen.add(segments[0] + "/" + segments[1])
+                       && DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(segments[2]))) {
+                key = documentKeyOf(segments[0], NumberPrefixes.stripped(segments[1]));
+            } else {
                 continue;
             }
-            String name = segments[1];
-            String extension = extensionOf(name);
-            if (!DocumentationPaths.MARKDOWN_EXTENSION.equals(extension)) {
-                continue;
-            }
-            String document = NumberPrefixes.stripped(name.substring(0, name.length() - extension.length() - 1));
-            String key = documentKeyOf(segments[0], document);
             if (!seen.add(key)) {
                 twice.add(key);
             }
         }
         return twice;
+    }
+
+    /**
+     * The pages of one group that two different names inside it would publish at one route, as
+     * {@code <chapter>/<group>/<identity>} - its own landing page a route of its own, exactly as a chapter's
+     * own is.
+     */
+    private static Set<String> collidingGroupDocumentsOf(List<String> paths) {
+        Set<String> seen = new HashSet<>();
+        Set<String> twice = new HashSet<>();
+        for (String path : new LinkedHashSet<>(paths)) {
+            String[] segments = path.split("/");
+            if (segments.length != 3 || !DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(segments[2]))) {
+                continue;
+            }
+            String key = groupDocumentKeyOf(segments);
+            if (!seen.add(key)) {
+                twice.add(key);
+            }
+        }
+        return twice;
+    }
+
+    /** How a page inside a group is identified in {@link #collidingGroupDocumentsOf}: its own route within it. */
+    private static String groupDocumentKeyOf(String[] segments) {
+        String name = segments[2];
+        String extension = extensionOf(name);
+        String fileName = name.substring(0, name.length() - extension.length() - 1);
+        String identity = ReservedNames.isLandingPageName(fileName, segments[1])
+                ? "landing"
+                : "doc:" + NumberPrefixes.stripped(fileName).toLowerCase(Locale.ROOT);
+        return segments[0] + "/" + segments[1] + "/" + identity;
     }
 
     /** How a document of a chapter is named in {@link #collidingDocumentsOf}. */

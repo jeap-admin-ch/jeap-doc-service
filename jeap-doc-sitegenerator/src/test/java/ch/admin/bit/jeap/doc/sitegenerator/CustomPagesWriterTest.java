@@ -375,6 +375,82 @@ class CustomPagesWriterTest {
         assertThat(chapterDirectory.resolve("img/overview.png")).isRegularFile();
     }
 
+    /**
+     * A group's landing page is published as it was uploaded, and its own label - read off that page, not
+     * guessed from the folder - goes into the group's {@code _category_.json}.
+     */
+    @Test
+    void writeInto_whenAGroupHasAnUploadedLandingPage_thenItsLabelAndPagesArePublished() throws IOException {
+        CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
+                page("1-intro", "why.md", "Why", 1),
+                new CustomPage("1-intro", "sap-interfaces/index.md", "SAP Interfaces", 0, false, OrderHint.NONE),
+                new CustomPage("1-intro", "sap-interfaces/orders.md", "Orders", 0, false, OrderHint.NONE));
+        InMemoryStorage storage = new InMemoryStorage()
+                .with(set, "1-intro/why.md", "# Why\n")
+                .with(set, "1-intro/sap-interfaces/index.md", "# SAP Interfaces\n")
+                .with(set, "1-intro/sap-interfaces/orders.md", "# Orders\n");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
+            writer.writeInto(SYSTEM, "1-intro", chapterDirectory);
+        }
+
+        assertThat(chapterDirectory.resolve("sap-interfaces/orders.md")).exists();
+        assertThat(chapterDirectory.resolve("sap-interfaces/index.md"))
+                .describedAs("the uploaded landing page is published, not a generated one")
+                .exists();
+        assertThat(Files.readString(chapterDirectory.resolve("sap-interfaces/_category_.json")))
+                .contains("\"label\": \"SAP Interfaces\"");
+    }
+
+    /**
+     * An upload cannot set {@code doc_chapter_contents} itself - every {@code doc_*} key is outside the
+     * front-matter allowlist - so the writer adds it to an uploaded landing page the same way it does to a
+     * generated one, or the group's own contents would list below a generated fallback but not below a
+     * landing page a team actually wrote.
+     */
+    @Test
+    void writeInto_whenAGroupsLandingPageIsUploaded_thenItAlsoListsTheGroupsContents() throws IOException {
+        CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
+                new CustomPage("1-intro", "sap-interfaces/index.md", "SAP Interfaces", 0, false, OrderHint.NONE),
+                new CustomPage("1-intro", "sap-interfaces/orders.md", "Orders", 0, false, OrderHint.NONE));
+        InMemoryStorage storage = new InMemoryStorage()
+                .with(set, "1-intro/sap-interfaces/index.md", "# SAP Interfaces\n")
+                .with(set, "1-intro/sap-interfaces/orders.md", "# Orders\n");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
+            writer.writeInto(SYSTEM, "1-intro", chapterDirectory);
+        }
+
+        assertThat(Files.readString(chapterDirectory.resolve("sap-interfaces/index.md")))
+                .contains("doc_chapter_contents: true");
+    }
+
+    /**
+     * Without an uploaded landing page the group still needs one to open onto, generated with the same
+     * {@code doc_chapter_contents} flag a chapter's own fallback carries, so the site template lists the
+     * group's pages below it.
+     */
+    @Test
+    void writeInto_whenAGroupHasNoUploadedLandingPage_thenAGeneratedOneListsItsPages() throws IOException {
+        CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
+                page("1-intro", "why.md", "Why", 1),
+                new CustomPage("1-intro", "sap-interfaces/orders.md", "Orders", 0, false, OrderHint.NONE));
+        InMemoryStorage storage = new InMemoryStorage()
+                .with(set, "1-intro/why.md", "# Why\n")
+                .with(set, "1-intro/sap-interfaces/orders.md", "# Orders\n");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
+            writer.writeInto(SYSTEM, "1-intro", chapterDirectory);
+        }
+
+        assertThat(Files.readString(chapterDirectory.resolve("sap-interfaces/index.md")))
+                .contains("title: \"sap-interfaces\"")
+                .contains("doc_status: \"generated\"")
+                .contains("doc_chapter_contents: true");
+        assertThat(Files.readString(chapterDirectory.resolve("sap-interfaces/_category_.json")))
+                .contains("\"label\": \"sap-interfaces\"");
+    }
+
     /** A folder the template generates into the chapter is its own, and an asset is not written into it. */
     @Test
     void writeInto_whenAnAssetLiesInAFolderTheTemplateGenerates_thenItIsNotWritten() {

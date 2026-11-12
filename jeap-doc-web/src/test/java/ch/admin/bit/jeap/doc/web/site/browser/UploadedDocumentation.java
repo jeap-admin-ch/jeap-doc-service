@@ -86,6 +86,19 @@ final class UploadedDocumentation {
             ```
             """;
 
+    /** The chapter a group is uploaded into - see {@code GroupBrowserIT}. */
+    static final String GROUP_CHAPTER = "9-architecture-decision-records";
+
+    /** The group's own folder, and the label its uploaded landing page names. */
+    static final String GROUP_FOLDER = "decisions";
+    static final String GROUP_LABEL = "Key decisions";
+
+    /** The group's own pages, titled so the second comes out first if ordering ever fell back to the title. */
+    static final String GROUP_PAGE_ONE = "automated-testing";
+    static final String GROUP_PAGE_ONE_TITLE = "Automated testing";
+    static final String GROUP_PAGE_TWO = "message-contracts";
+    static final String GROUP_PAGE_TWO_TITLE = "Zzz message contract versioning";
+
     /** An uploaded page with a table of 18 terms, in the constraints chapter - see {@code TableControlsBrowserIT}. */
     static final String TERMS_PAGE = "terms";
 
@@ -226,7 +239,11 @@ final class UploadedDocumentation {
                         new Page("aaa-second.md", "Z is for the last word")),
                 "2-constraints", List.of(new Page("given.md", "What was given"),
                         new Page(RAW_HTML_PAGE + ".md", "Raw HTML as it was uploaded", RAW_HTML_BODY),
-                        new Page(TERMS_PAGE + ".md", "Terms of the trade", TERMS_BODY))));
+                        new Page(TERMS_PAGE + ".md", "Terms of the trade", TERMS_BODY)),
+                GROUP_CHAPTER, List.of(
+                        new Page(GROUP_FOLDER + "/index.md", GROUP_LABEL),
+                        new Page(GROUP_FOLDER + "/" + GROUP_PAGE_ONE + ".md", GROUP_PAGE_ONE_TITLE),
+                        new Page(GROUP_FOLDER + "/" + GROUP_PAGE_TWO + ".md", GROUP_PAGE_TWO_TITLE))));
         pages.put(new CustomSubject(Site.DEFAULT_SITE, SubjectKind.LIBRARY, system, library), Map.of(
                 "12-glossary", List.of(new Page("terms.md", "The terms of the client"))));
         List<CustomSet> sets = new ArrayList<>(setsOf(pages));
@@ -315,19 +332,76 @@ final class UploadedDocumentation {
         public int writeInto(CustomSubject subject, String chapterFolder, Path chapterDirectory) {
             List<Page> inChapter = pages.getOrDefault(subject, Map.of())
                     .getOrDefault(chapterFolder, List.of());
-            List<Page> sorted = inChapter.stream()
+            List<Page> rootPages = inChapter.stream()
+                    .filter(page -> !page.fileName().contains("/")).toList();
+            List<Page> sorted = rootPages.stream()
                     .sorted(java.util.Comparator.comparing(Page::title)).toList();
             for (int i = 0; i < sorted.size(); i++) {
-                write(sorted.get(i), i + 1, chapterDirectory);
+                write(sorted.get(i), i + 1, chapterDirectory, false);
             }
+            writeGroupsInto(inChapter, sorted.size() + 1, chapterDirectory);
             return sorted.size();
         }
 
-        private void write(Page page, int position, Path directory) {
+        /**
+         * A group written the way {@code CustomPagesWriter} really writes one: its {@code _category_.json},
+         * its landing page - the one named {@code index.md} within the folder - and its other pages, ordered
+         * by their titles among themselves.
+         */
+        private void writeGroupsInto(List<Page> inChapter, int firstPosition, Path chapterDirectory) {
+            Map<String, List<Page>> byFolder = new LinkedHashMap<>();
+            for (Page page : inChapter) {
+                int slash = page.fileName().indexOf('/');
+                if (slash > 0) {
+                    byFolder.computeIfAbsent(page.fileName().substring(0, slash), key -> new ArrayList<>())
+                            .add(page);
+                }
+            }
+            int position = firstPosition;
+            for (Map.Entry<String, List<Page>> group : byFolder.entrySet()) {
+                writeGroup(group.getKey(), group.getValue(), position++, chapterDirectory);
+            }
+        }
+
+        private void writeGroup(String folder, List<Page> groupPages, int position, Path chapterDirectory) {
+            Page landing = groupPages.stream()
+                    .filter(page -> page.fileName().equals(folder + "/index.md"))
+                    .findFirst().orElseThrow();
+            List<Page> rest = groupPages.stream().filter(page -> page != landing)
+                    .sorted(java.util.Comparator.comparing(Page::title)).toList();
+            Path groupDirectory = chapterDirectory.resolve(folder);
+            try {
+                Files.createDirectories(groupDirectory);
+                Files.writeString(groupDirectory.resolve("_category_.json"), """
+                        {
+                          "label": "%s",
+                          "position": %d
+                        }
+                        """.formatted(landing.title(), position), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            // Not ordered, the same reason CustomPagesWriter does not order a group's own landing page:
+            // Docusaurus reads it as the category's own page, never as a sibling of the group's others.
+            write(landing, 0, chapterDirectory, true);
+            for (int i = 0; i < rest.size(); i++) {
+                write(rest.get(i), i + 1, chapterDirectory, false);
+            }
+        }
+
+        /**
+         * @param isGroupLandingPage whether this is a group's own landing page, which carries
+         *                           {@code doc_chapter_contents} the way {@code CustomPagesWriter} adds it -
+         *                           an upload cannot set that key itself.
+         */
+        private void write(Page page, int position, Path directory, boolean isGroupLandingPage) {
             // The values as they are: what the published block looks like is the front matter's own
             // business, exactly as it is for the writer this stands in for.
             Map<String, Object> generated = UploadedFrontMatter.keys();
             generated.put("sidebar_position", position);
+            if (isGroupLandingPage) {
+                generated.put("doc_chapter_contents", true);
+            }
             generated.put("doc_status", "custom");
             generated.put("doc_source", "upload");
             generated.put("doc_source_repository", REPOSITORY);

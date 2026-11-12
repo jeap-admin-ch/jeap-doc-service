@@ -295,13 +295,19 @@ class StructureValidationTest {
                 .contains("Did you mean '1-intro'?");
     }
 
+    /** A folder holding a page is a group - one level, reusing the chapter's own rules one level down. */
     @Test
-    void aPageInAFolderInsideAChapter_isRefused() {
-        StructureReport report = validate(systemDocs(), "5-building-block-view/notes/design.md");
+    void aPageInAFolderInsideAChapter_isAccepted() {
+        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/notes/design.md"))).isEmpty();
+    }
+
+    @Test
+    void aPageTwoFoldersInsideAChapter_isRefused() {
+        StructureReport report = validate(systemDocs(), "5-building-block-view/notes/sub/design.md");
 
         assertThat(codesOf(report)).containsExactly(FindingCode.NESTED_FOLDER);
-        assertThat(report.findings().getFirst().message()).contains("notes").contains("assets only");
-        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/notes/DESIGN.MD")))
+        assertThat(report.findings().getFirst().message()).contains("design.md");
+        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/notes/sub/DESIGN.MD")))
                 .describedAs("the extension is folded")
                 .containsExactly(FindingCode.NESTED_FOLDER);
     }
@@ -371,6 +377,78 @@ class StructureValidationTest {
                 .isEmpty();
         assertThat(validate(componentDocs(), "5-building-block-view/whitebox-view/x.png").findings())
                 .describedAs("and what is reserved depends on the kind of subject, as for a page")
+                .isEmpty();
+    }
+
+    @Test
+    void aWellFormedGroup_isAccepted() {
+        assertThat(codesOf(validate(systemDocs(),
+                "5-building-block-view/sap-interfaces/index.md",
+                "5-building-block-view/sap-interfaces/orders.md",
+                "5-building-block-view/sap-interfaces/invoices.md"))).isEmpty();
+    }
+
+    /**
+     * A group is one item of its chapter, exactly as a page is: its stripped name may not be the one a
+     * document of that chapter already has.
+     */
+    @Test
+    void aGroupsStrippedNameCollidingWithAPageOfTheChapter_isRefused() {
+        StructureReport report = validate(systemDocs(),
+                "5-building-block-view/sap-interfaces.md",
+                "5-building-block-view/sap-interfaces/index.md");
+
+        assertThat(report.findings())
+                .extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactlyInAnyOrder(
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/index.md"));
+    }
+
+    @Test
+    void twoGroupsWithTheSameStrippedName_collide() {
+        StructureReport report = validate(systemDocs(),
+                "5-building-block-view/sap-interfaces/index.md",
+                "5-building-block-view/02-sap-interfaces/index.md");
+
+        assertThat(report.findings())
+                .extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactlyInAnyOrder(
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/index.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/02-sap-interfaces/index.md"));
+    }
+
+    @Test
+    void twoPagesOfOneGroupAtOneRoute_collide() {
+        StructureReport report = validate(systemDocs(),
+                "5-building-block-view/sap-interfaces/foo.md",
+                "5-building-block-view/sap-interfaces/01-foo.md");
+
+        assertThat(report.findings())
+                .extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactlyInAnyOrder(
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/foo.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/01-foo.md"));
+    }
+
+    /** An index and a README are both the group's own landing page - one document, two names for it. */
+    @Test
+    void aGroupWithTwoLandingPages_collide() {
+        StructureReport report = validate(systemDocs(),
+                "5-building-block-view/sap-interfaces/index.md",
+                "5-building-block-view/sap-interfaces/readme.md");
+
+        assertThat(report.findings())
+                .extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactlyInAnyOrder(
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/index.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/readme.md"));
+    }
+
+    /** A page inside a group collides with nothing the chapter itself generates - a different route. */
+    @Test
+    void aPageInsideAGroupNamedLikeAGeneratedSibling_isAccepted() {
+        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/sap-interfaces/whitebox-view.md")))
                 .isEmpty();
     }
 

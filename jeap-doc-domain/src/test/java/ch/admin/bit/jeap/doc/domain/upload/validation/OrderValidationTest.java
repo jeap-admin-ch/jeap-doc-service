@@ -384,6 +384,107 @@ class OrderValidationTest {
                 .containsExactly(tuple(FindingCode.CYCLIC_ORDER, "1-intro/a.md"));
     }
 
+    @Test
+    void check_whenAGroupsLandingPageReferencesAGeneratedSibling_thenNothing() {
+        storesNothing();
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/sap-interfaces/index.md", "---\nsidebar_after: intro\n---\n\n# SAP Interfaces\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/sap-interfaces/index.md"), bundle);
+
+        assertThat(report).isEmpty();
+    }
+
+    @Test
+    void check_whenAGroupsLandingPageReferencesNothingKnown_thenUnknownReference() {
+        storesNothing();
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/sap-interfaces/index.md", "---\nsidebar_after: nonexistent\n---\n\n# SAP Interfaces\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/sap-interfaces/index.md"), bundle);
+
+        assertThat(report).isPresent();
+        assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactly(tuple(FindingCode.UNKNOWN_REFERENCE, "1-intro/sap-interfaces/index.md"));
+    }
+
+    @Test
+    void check_whenAChapterItemReferencesAGroupByItsStrippedName_thenNothing() {
+        storesNothing();
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/sap-interfaces/index.md", "---\ntitle: SAP Interfaces\n---\n\n# SAP Interfaces\n",
+                "1-intro/goals.md", "---\nsidebar_after: sap-interfaces\n---\n\n# Goals\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/sap-interfaces/index.md", "1-intro/goals.md"), bundle);
+
+        assertThat(report).isEmpty();
+    }
+
+    /** A group is opaque from outside it: a page of the chapter cannot be reached from inside the group. */
+    @Test
+    void check_whenAGroupPageReferencesAChapterItem_thenUnknownReference() {
+        storesNothing();
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/goals.md", "---\ntitle: Goals\n---\n\n# Goals\n",
+                "1-intro/sap-interfaces/orders.md", "---\nsidebar_after: goals\n---\n\n# Orders\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/goals.md", "1-intro/sap-interfaces/orders.md"), bundle);
+
+        assertThat(report).isPresent();
+        assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactly(tuple(FindingCode.UNKNOWN_REFERENCE, "1-intro/sap-interfaces/orders.md"));
+    }
+
+    /** Nor can a page of one group be reached from inside another: each group is checked at its own level. */
+    @Test
+    void check_whenAGroupPageReferencesAnotherGroupsPage_thenUnknownReference() {
+        storesNothing();
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/sales/orders.md", "---\ntitle: Orders\n---\n\n# Orders\n",
+                "1-intro/support/tickets.md", "---\nsidebar_after: orders\n---\n\n# Tickets\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/sales/orders.md", "1-intro/support/tickets.md"), bundle);
+
+        assertThat(report).isPresent();
+        assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactly(tuple(FindingCode.UNKNOWN_REFERENCE, "1-intro/support/tickets.md"));
+    }
+
+    @Test
+    void check_whenAGroupPageReferencesASiblingOfTheSameGroup_thenNothing() {
+        storesNothing();
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/sap-interfaces/orders.md", "---\ntitle: Orders\n---\n\n# Orders\n",
+                "1-intro/sap-interfaces/invoices.md", "---\nsidebar_after: orders\n---\n\n# Invoices\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/sap-interfaces/orders.md", "1-intro/sap-interfaces/invoices.md"), bundle);
+
+        assertThat(report).isEmpty();
+    }
+
+    @Test
+    void check_whenTwoGroupPagesReferenceEachOther_thenBothAreCyclicOrder() {
+        storesNothing();
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/sap-interfaces/a.md", "---\nsidebar_after: b\n---\n\n# A\n",
+                "1-intro/sap-interfaces/b.md", "---\nsidebar_after: a\n---\n\n# B\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/sap-interfaces/a.md", "1-intro/sap-interfaces/b.md"), bundle);
+
+        assertThat(report).isPresent();
+        assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactlyInAnyOrder(
+                        tuple(FindingCode.CYCLIC_ORDER, "1-intro/sap-interfaces/a.md"),
+                        tuple(FindingCode.CYCLIC_ORDER, "1-intro/sap-interfaces/b.md"));
+    }
+
     /** A small template of this test's own: arc42's twelve chapters would only make every case longer. */
     private static final class TestTemplate implements StructureTemplate {
 
