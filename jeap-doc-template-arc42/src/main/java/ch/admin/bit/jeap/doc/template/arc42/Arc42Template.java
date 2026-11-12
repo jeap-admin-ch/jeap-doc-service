@@ -151,7 +151,8 @@ public class Arc42Template implements StructureTemplate {
     }
 
     /**
-     * What this template writes into a chapter for a system, a component or a library.
+     * What this template writes into a chapter for a system, a component or a library, in the order it writes
+     * them.
      * <p>
      * <b>Every name is the constant the writer uses</b>, so this is a declaration rather than a second list:
      * a page renamed in {@code Arc42SystemPages} or {@code Arc42ComponentPages} is renamed here with it. That
@@ -163,53 +164,58 @@ public class Arc42Template implements StructureTemplate {
      * architecture model happens to hold that subject. This is a declaration read by the upload validation,
      * which knows nothing about a landscape - a name reserved only while the model is silent would let an
      * import decide whether one and the same upload is valid.
+     * <p>
+     * <b>The order is the one every generated page's own {@code sidebar_position} is numbered from</b>, through
+     * {@link #siblingPosition} - a page renamed or reordered here changes both at once, which is the point.
      */
     @Override
-    public Set<String> generatedNames(StructureChapter chapter, SubjectKind subject) {
+    public List<String> generatedSiblings(StructureChapter chapter, SubjectKind subject) {
         if (chapter == null || subject == null) {
-            return Set.of();
+            return List.of();
         }
         return switch (subject) {
             case SYSTEM -> generatedForSystem(chapter);
             case COMPONENT -> generatedForComponent(chapter);
             case LIBRARY -> generatedForLibrary(chapter);
-            case SITE -> Set.of();
+            case SITE -> List.of();
         };
     }
 
-    private static Set<String> generatedForSystem(StructureChapter chapter) {
+    private static List<String> generatedForSystem(StructureChapter chapter) {
         if (INTRODUCTION.equals(chapter)) {
-            return Set.of(Arc42UnknownSubjectPage.PAGE);
+            return List.of(Arc42UnknownSubjectPage.PAGE);
         }
         if (CONTEXT_AND_SCOPE.equals(chapter)) {
-            return Set.of(CONTEXT_VIEW_PAGE);
+            return List.of(CONTEXT_VIEW_PAGE);
         }
         if (BUILDING_BLOCK_VIEW.equals(chapter)) {
-            // The pages, and the folders beside them: a group and a page of the same name are one URL.
-            return Set.of(WHITEBOX_PAGE, DocumentationPaths.COMPONENTS_SEGMENT,
+            // The pages, and the folders beside them: a group and a page of the same name are one URL. The
+            // whitebox view first, then the two groups of building blocks, then the messages - the order
+            // every one of these pages is numbered by.
+            return List.of(WHITEBOX_PAGE, DocumentationPaths.COMPONENTS_SEGMENT,
                     DocumentationPaths.LIBRARIES_SEGMENT, Arc42MessagePages.EVENTS,
                     Arc42MessagePages.COMMANDS);
         }
         if (RUNTIME_VIEW.equals(chapter)) {
-            return Set.of(SYSTEM_REACTIONS_PAGE);
+            return List.of(SYSTEM_REACTIONS_PAGE);
         }
-        return Set.of();
+        return List.of();
     }
 
-    private static Set<String> generatedForComponent(StructureChapter chapter) {
+    private static List<String> generatedForComponent(StructureChapter chapter) {
         if (INTRODUCTION.equals(chapter)) {
-            return Set.of(Arc42UnknownSubjectPage.PAGE);
+            return List.of(Arc42UnknownSubjectPage.PAGE);
         }
         if (CONTEXT_AND_SCOPE.equals(chapter)) {
-            return Set.of(COMPONENT_CONTEXT_VIEW_PAGE);
+            return List.of(COMPONENT_CONTEXT_VIEW_PAGE);
         }
         if (BUILDING_BLOCK_VIEW.equals(chapter)) {
-            return Set.of(DATABASE_SCHEMA_PAGE, REST_API_PAGE, MESSAGES_PAGE);
+            return List.of(DATABASE_SCHEMA_PAGE, REST_API_PAGE, MESSAGES_PAGE);
         }
         if (RUNTIME_VIEW.equals(chapter)) {
-            return Set.of(COMPONENT_REACTIONS_PAGE);
+            return List.of(COMPONENT_REACTIONS_PAGE);
         }
-        return Set.of();
+        return List.of();
     }
 
     /**
@@ -218,8 +224,8 @@ public class Arc42Template implements StructureTemplate {
      * Reserved so that an upload carrying that name is refused at the API rather than colliding into a
      * duplicate route twenty minutes into a build.
      */
-    private static Set<String> generatedForLibrary(StructureChapter chapter) {
-        return INTRODUCTION.equals(chapter) ? Set.of(LIBRARY_OVERVIEW_PAGE) : Set.of();
+    private static List<String> generatedForLibrary(StructureChapter chapter) {
+        return INTRODUCTION.equals(chapter) ? List.of(LIBRARY_OVERVIEW_PAGE) : List.of();
     }
 
     /**

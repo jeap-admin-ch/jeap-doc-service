@@ -55,8 +55,8 @@ public final class UploadedSet {
      * <p>
      * <b>The order is assigned here rather than left to the site generator.</b> Docusaurus sorts the items of
      * a folder by their position and, where there is none, by their file name - so a page called
-     * {@code zebra.md} titled <i>Alpha</i> would come last. An upload may not set a position itself, which
-     * keeps the order in one place: this one.
+     * {@code zebra.md} titled <i>Alpha</i> would come last. A page without a placement of its own is ordered
+     * the same way; one that named a position or a reference is placed by {@link ChapterOrder} instead.
      *
      * @param paths  the files of the archive, as it lists them; the ones nobody wrote are dropped
      * @param bundle where a page's front matter is read from
@@ -77,9 +77,11 @@ public final class UploadedSet {
             String chapter = path.substring(0, slash);
             String fileName = path.substring(slash + 1);
             if (isAPage(fileName)) {
-                String title = UploadedTitles.titleOf(bundle.head(path, UploadedTitles.HEAD_BYTES));
+                byte[] head = bundle.head(path, UploadedTitles.HEAD_BYTES);
+                String title = UploadedTitles.titleOf(head);
+                OrderHint hint = UploadedTitles.hintOf(head);
                 byChapter.computeIfAbsent(chapter, key -> new ArrayList<>())
-                        .add(new CustomPage(chapter, fileName, title, 0, false));
+                        .add(new CustomPage(chapter, fileName, title, 0, false, hint));
             } else {
                 assets.add(new CustomPage(chapter, fileName, null, 0, true));
             }
@@ -93,24 +95,18 @@ public final class UploadedSet {
     /**
      * The pages of one chapter, numbered from one in the order of their titles.
      * <p>
-     * The file name decides where a page has no title, and it breaks the tie between two pages that have the
-     * same one - so the order of a chapter never depends on the order the archive happened to list it in.
+     * Delegates to {@link ChapterOrder} with no generated siblings, so there is one comparator for a chapter's
+     * order rather than two: the file name decides where a page has no title, and it breaks the tie between
+     * two pages that have the same one - so the order of a chapter never depends on the order the archive
+     * happened to list it in.
      */
     private static List<CustomPage> ordered(List<CustomPage> inChapter) {
-        List<CustomPage> sorted = inChapter.stream()
-                .sorted(Comparator.comparing(UploadedSet::sortKeyOf, String.CASE_INSENSITIVE_ORDER)
-                        .thenComparing(CustomPage::fileName))
+        ChapterOrder order = ChapterOrder.of(inChapter, List.of());
+        return inChapter.stream()
+                .sorted(Comparator.comparing(order::positionOf))
+                .map(page -> new CustomPage(page.chapter(), page.fileName(), page.title(), order.positionOf(page),
+                        false, page.hint()))
                 .toList();
-        List<CustomPage> numbered = new ArrayList<>();
-        for (int i = 0; i < sorted.size(); i++) {
-            CustomPage page = sorted.get(i);
-            numbered.add(new CustomPage(page.chapter(), page.fileName(), page.title(), i + 1, false));
-        }
-        return numbered;
-    }
-
-    private static String sortKeyOf(CustomPage page) {
-        return page.title() == null ? page.fileName() : page.title();
     }
 
     /** A page is what the site generator renders; everything else a set may carry is an asset beside one. */

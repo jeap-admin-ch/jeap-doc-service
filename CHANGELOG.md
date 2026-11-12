@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- An uploaded Markdown page may order itself among the other items of its chapter with `sidebar_position`,
+  or place itself directly before or after one named item - a generated sibling included - with
+  `sidebar_after` or `sidebar_before`. Checked at upload: `sidebar_position` has to be a finite number, and
+  at most one reference key may be given, as a single non-blank name; neither reference key is accepted on a
+  static site's page. Whether a reference names a real sibling is not checked yet.
+- An HTML microsite upload may name the same placement with the `sidebar-position`, `sidebar-after` and
+  `sidebar-before` parameters - it has no front matter of its own to carry them in. Refused for any other
+  `source-format`.
+
+### Changed
+- Migration `V1_13_0` adds nullable `order_position`, `order_direction` and `order_reference` to
+  `custom_page` and `custom_set`, and nullable `sidebar_position`, `sidebar_after` and `sidebar_before` to
+  `documentation_upload`.
+
 ## [4.12.0] - 2026-11-12
 
 ### Added

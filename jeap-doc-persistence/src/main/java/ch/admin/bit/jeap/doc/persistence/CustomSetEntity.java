@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.persistence;
 
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
 import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import jakarta.persistence.Column;
@@ -87,4 +88,18 @@ class CustomSetEntity {
 
     @Column(name = "uploaded_at", nullable = false)
     private Instant uploadedAt;
+
+    /**
+     * Where an HTML microsite asked to go among the other items of its chapter. Null for markdown, whose
+     * pages carry their own hint instead, and for a microsite that gave none.
+     */
+    @Column(name = "order_position")
+    private Double orderPosition;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "order_direction")
+    private OrderHint.Direction orderDirection;
+
+    @Column(name = "order_reference")
+    private String orderReference;
 }

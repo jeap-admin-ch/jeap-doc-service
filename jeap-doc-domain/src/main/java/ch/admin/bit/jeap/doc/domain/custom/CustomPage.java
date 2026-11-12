@@ -13,8 +13,16 @@ package ch.admin.bit.jeap.doc.domain.custom;
  * @param title    the title of the page, or null for an asset and for a page that carries none
  * @param position where the page goes among the pages of its chapter
  * @param asset    whether this is an asset rather than a page
+ * @param hint     where the page asked to go among the other items of its chapter; {@link OrderHint#NONE} for
+ *                 a page, and always, for an asset
  */
-public record CustomPage(String chapter, String fileName, String title, int position, boolean asset) {
+public record CustomPage(String chapter, String fileName, String title, int position, boolean asset,
+                          OrderHint hint) {
+
+    /** A page or asset with no declared placement among its siblings - every one before this hint existed. */
+    public CustomPage(String chapter, String fileName, String title, int position, boolean asset) {
+        this(chapter, fileName, title, position, asset, OrderHint.NONE);
+    }
 
     /** The path of the file inside the set, which is what the archive holds it under. */
     public String path() {

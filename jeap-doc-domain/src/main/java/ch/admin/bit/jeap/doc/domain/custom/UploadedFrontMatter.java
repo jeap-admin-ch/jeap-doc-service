@@ -32,6 +32,14 @@ import java.util.Set;
  * <b>The keys the upload may carry are kept and everything else is dropped.</b> An allowlist rather than a
  * blocklist is what makes that safe: a page cannot claim to be generated, or take over a route with
  * {@code slug}, by carrying the key itself.
+ * <p>
+ * <b>That a page's place is not the page's to decide is narrowed, not dropped, by {@code sidebar_position}.</b>
+ * A page still cannot claim an identity, a URL or a route that is not its own; what it may now say is where it
+ * stands among the siblings of its own chapter. {@code sidebar_after} and {@code sidebar_before} say the same
+ * kind of thing by naming a sibling rather than a number, but neither is in {@link #ALLOWED_KEYS}: a chapter
+ * page's own position is always the one {@link ch.admin.bit.jeap.doc.domain.custom.ChapterOrder} computed, and
+ * a reference exists only to compute that - it is read once, by {@link UploadedTitles#hintOf}, straight out
+ * of the unfiltered block, and is never itself a value a published page carries.
  */
 @Slf4j
 public final class UploadedFrontMatter {
@@ -41,15 +49,24 @@ public final class UploadedFrontMatter {
     /** Escaped rather than written: a raw one is invisible in an editor and in a diff. */
     private static final String BYTE_ORDER_MARK = "\uFEFF";
 
+    /** The one key read as a number rather than as text, because Docusaurus rejects a quoted one. */
+    private static final String SIDEBAR_POSITION_KEY = "sidebar_position";
+
     /**
      * The keys an uploaded page may say about itself.
      * <p>
      * The same list the doc workflow validates against. What is not here is refused there and dropped here,
      * which is two answers to one question - and the reason for both is the same: a page's identity, its URL
-     * and its place in the navigation are not the page's to decide.
+     * and its place in the navigation are not the page's to decide, except for {@code sidebar_position} among
+     * the siblings of its own chapter.
+     * <p>
+     * <b>A chapter page's kept value is only ever seen on a static site.</b> {@code CustomPagesWriter} always
+     * overwrites it with the absolute number {@link ch.admin.bit.jeap.doc.domain.custom.ChapterOrder} computed,
+     * so this allowlist is what lets a static site's own page keep the position it uploaded, unreplaced -
+     * Docusaurus orders a static site's pages natively, with nothing this service computes.
      */
     public static final Set<String> ALLOWED_KEYS =
-            Set.of("title", "description", "sidebar_label", "tags", "keywords");
+            Set.of("title", "description", "sidebar_label", "tags", "keywords", SIDEBAR_POSITION_KEY);
 
     /** The two the site reads as a list of strings; the rest it reads as one string. */
     private static final Set<String> LIST_KEYS = Set.of("tags", "keywords");
@@ -105,6 +122,9 @@ public final class UploadedFrontMatter {
         if (value == null || !ALLOWED_KEYS.contains(key)) {
             return Optional.empty();
         }
+        if (SIDEBAR_POSITION_KEY.equals(key)) {
+            return positionValueOf(value);
+        }
         if (LIST_KEYS.contains(key)) {
             if (!(value instanceof List<?> items) || items.stream().anyMatch(UploadedFrontMatter::isNotScalar)) {
                 return Optional.empty();
@@ -130,6 +150,43 @@ public final class UploadedFrontMatter {
      */
     private static String textOf(Object value) {
         return String.valueOf(value).strip();
+    }
+
+    /**
+     * {@code sidebar_position} as the number it has to be, not the text {@link EverythingIsText} read it as -
+     * a quoted {@code '3'} is a string, and Docusaurus throws on one where it needs a number.
+     * <p>
+     * A whole number is kept as one: a position almost always is, and {@code sidebar_position: 3} is what a
+     * team wrote, not {@code 3.0}. A number with a fractional part is kept as a decimal, which Docusaurus
+     * takes exactly as well - a page may sit at 2.5, between pages 2 and 3.
+     */
+    private static Optional<Object> positionValueOf(Object value) {
+        Double position = finiteNumberOf(value);
+        if (position == null) {
+            return Optional.empty();
+        }
+        double parsed = position;
+        return Optional.of(parsed == Math.rint(parsed) ? (Object) (long) parsed : (Object) parsed);
+    }
+
+    /**
+     * A scalar as the finite number it names, or nothing for one that is not a number, is infinite, or is not
+     * a scalar at all.
+     * <p>
+     * Shared with {@link UploadedTitles#hintOf}, which reads the same key before any upload check has run on
+     * it: a second parsing of what "a finite YAML number" means is the one that would eventually disagree
+     * with this one about a value at the edge of what either accepts.
+     */
+    static Double finiteNumberOf(Object value) {
+        if (isNotScalar(value)) {
+            return null;
+        }
+        try {
+            double parsed = Double.parseDouble(String.valueOf(value).strip());
+            return Double.isFinite(parsed) ? parsed : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static boolean isNotScalar(Object value) {

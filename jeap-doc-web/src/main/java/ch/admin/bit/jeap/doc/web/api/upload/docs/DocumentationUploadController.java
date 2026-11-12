@@ -100,6 +100,15 @@ class DocumentationUploadController {
             @RequestParam(name = "build-url", required = false) String buildUrl,
             @Parameter(description = "When the documents were generated, ISO-8601")
             @RequestParam(name = "generated-at", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime generatedAt,
+            @Parameter(description = "Where an HTML microsite goes among the items of its chapter that name "
+                                     + "no reference of their own; for source-format=html only")
+            @RequestParam(name = "sidebar-position", required = false) Double sidebarPosition,
+            @Parameter(description = "The item of its chapter an HTML microsite stands directly after; at "
+                                     + "most one of this and sidebar-before, and for source-format=html only")
+            @RequestParam(name = "sidebar-after", required = false) String sidebarAfter,
+            @Parameter(description = "The item of its chapter an HTML microsite stands directly before; at "
+                                     + "most one of this and sidebar-after, and for source-format=html only")
+            @RequestParam(name = "sidebar-before", required = false) String sidebarBefore,
             HttpServletRequest request) {
         DocumentationUploadDescriptor upload = DocumentationUploadDto.builder()
                 .site(site)
@@ -119,6 +128,9 @@ class DocumentationUploadController {
                 .version(version)
                 .buildUrl(buildUrl)
                 .generatedAt(generatedAt)
+                .sidebarPosition(sidebarPosition)
+                .sidebarAfter(sidebarAfter)
+                .sidebarBefore(sidebarBefore)
                 .build()
                 .toDescriptor();
 

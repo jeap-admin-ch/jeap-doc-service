@@ -20,6 +20,9 @@ import java.util.List;
  * @param sizeInBytes the size of that object
  * @param provenance  where the documents came from
  * @param pages       the files of the set, pages and assets alike
+ * @param hint        where an HTML microsite asked to go among the other items of its chapter, read from the
+ *                    upload parameters of the same three names; {@link OrderHint#NONE} for markdown, whose
+ *                    pages carry their own hint instead, and for a microsite that gave none
  */
 public record CustomSet(
         Long id,
@@ -30,10 +33,18 @@ public record CustomSet(
         String sha256,
         long sizeInBytes,
         CustomProvenance provenance,
-        List<CustomPage> pages) {
+        List<CustomPage> pages,
+        OrderHint hint) {
 
     public CustomSet {
         pages = pages == null ? List.of() : List.copyOf(pages);
+        hint = hint == null ? OrderHint.NONE : hint;
+    }
+
+    /** A set with no declared placement among its siblings - every one before this hint existed. */
+    public CustomSet(Long id, CustomSetKey key, String label, long revision, String objectKey, String sha256,
+                      long sizeInBytes, CustomProvenance provenance, List<CustomPage> pages) {
+        this(id, key, label, revision, objectKey, sha256, sizeInBytes, provenance, pages, OrderHint.NONE);
     }
 
     public CustomSubject subject() {

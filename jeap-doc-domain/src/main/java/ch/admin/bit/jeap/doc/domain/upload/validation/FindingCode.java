@@ -61,5 +61,15 @@ public enum FindingCode {
     RESERVED_PATH,
 
     /** The {@code location} an HTML upload is embedded at is not a chapter of the template. Set-level. */
-    UNKNOWN_LOCATION
+    UNKNOWN_LOCATION,
+
+    /** {@code sidebar_position} is there and is not a finite number. */
+    INVALID_POSITION,
+
+    /**
+     * {@code sidebar_after} and {@code sidebar_before} both given, one of them given with a value that is
+     * not a single non-blank string, or either given on a page of a static site, whose pages are ordered by
+     * Docusaurus itself rather than by a reference to a sibling.
+     */
+    INVALID_REFERENCE
 }

@@ -4,6 +4,7 @@ import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.Md;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
@@ -52,8 +53,9 @@ final class Arc42UnknownSubjectPage {
         List<StructureChapter> uploaded = Arc42CustomChapters.of(template,
                 system.customChaptersOfComponent(component.slug()));
         Path introduction = Arc42Pages.chapterDirectory(template, structure, INTRODUCTION);
+        int position = template.siblingPosition(INTRODUCTION, SubjectKind.COMPONENT, PAGE);
         Arc42Pages.write(introduction, PAGE + "." + DocumentationPaths.MARKDOWN_EXTENSION,
-                explanationFor(context, "component", component.name()));
+                explanationFor(context, position, "component", component.name()));
         // The chapter's own landing page: this one is a page in the chapter, not the chapter's index, and a
         // landing page that lists a chapter with no index fails the build on the link.
         Arc42ChapterIndexPage.writeUnlessGenerated(INTRODUCTION, context, introduction, false);
@@ -103,9 +105,10 @@ final class Arc42UnknownSubjectPage {
     }
 
     /** The one page, worded for whatever kind of subject it is about. */
-    private static MarkdownWriter explanationFor(GenerationContext context, String kind, String name) {
+    private static MarkdownWriter explanationFor(GenerationContext context, int position, String kind,
+                                                  String name) {
         return new MarkdownWriter()
-                .frontMatter(Arc42Pages.generatedWithoutTheModel(LABEL, 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel(LABEL, position, context))
                 .heading(1, LABEL)
                 .paragraph(Md.sentence("The architecture model for the {} environment does not currently "
                                        + "contain the {} {}. All documentation available on these pages has "
@@ -123,7 +126,8 @@ final class Arc42UnknownSubjectPage {
                                Path structureDirectory) throws IOException {
         Path directory = Arc42Pages.chapterDirectory(template, structureDirectory, INTRODUCTION);
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generatedWithoutTheModel(LABEL, 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel(LABEL,
+                        template.siblingPosition(INTRODUCTION, SubjectKind.SYSTEM, PAGE), context))
                 .heading(1, LABEL)
                 .paragraph(Md.sentence("The architecture model of the {} environment does not hold the "
                                        + "system {}. Everything on these pages was written by the team that "

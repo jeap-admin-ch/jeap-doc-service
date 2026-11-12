@@ -15,6 +15,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
@@ -50,13 +51,21 @@ class UploadValidationEnforcementIT extends DocServiceIntegrationTestBase {
     private CustomDocumentationRepository documentation;
 
     private static byte[] bundleOf(String... paths) {
+        Map<String, String> content = new LinkedHashMap<>();
+        for (String path : paths) {
+            content.put(path, "# a page");
+        }
+        return bundleOf(content);
+    }
+
+    private static byte[] bundleOf(Map<String, String> pathsToContent) {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
-            for (String path : paths) {
-                ZipEntry entry = new ZipEntry(path);
-                entry.setTime(0L);
-                zip.putNextEntry(entry);
-                zip.write("# a page".getBytes(StandardCharsets.UTF_8));
+            for (Map.Entry<String, String> entry : pathsToContent.entrySet()) {
+                ZipEntry zipEntry = new ZipEntry(entry.getKey());
+                zipEntry.setTime(0L);
+                zip.putNextEntry(zipEntry);
+                zip.write(entry.getValue().getBytes(StandardCharsets.UTF_8));
                 zip.closeEntry();
             }
         } catch (IOException e) {
@@ -66,11 +75,19 @@ class UploadValidationEnforcementIT extends DocServiceIntegrationTestBase {
     }
 
     private UUID refuse(String finding, String... paths) throws Exception {
+        return refuse(finding, bundleOf(paths));
+    }
+
+    private UUID refuse(String finding, Map<String, String> pathsToContent) throws Exception {
+        return refuse(finding, bundleOf(pathsToContent));
+    }
+
+    private UUID refuse(String finding, byte[] bundle) throws Exception {
         UUID uploadId = UUID.randomUUID();
         Map<String, String> parameters = systemDocs();
         parameters.put("system", SYSTEM);
 
-        mockMvc.perform(uploadOf(uploadId, parameters, bundleOf(paths))
+        mockMvc.perform(uploadOf(uploadId, parameters, bundle)
                         .with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("STRUCTURE_INVALID"))
@@ -96,6 +113,35 @@ class UploadValidationEnforcementIT extends DocServiceIntegrationTestBase {
     @Test
     void upload_ofAFileNoTemplateAccepts_isRefused() throws Exception {
         refuse("FORBIDDEN_EXTENSION", "1-intro/budget.xlsx");
+    }
+
+    /**
+     * <b>Blocked server-side, whatever sent it.</b> {@code jeap-python-pipeline-lib} checks the shape of
+     * {@code sidebar_position} too, but it is a client a caller can skip - this is the one check every upload
+     * goes through, so a value this service cannot read as a number is refused here regardless.
+     */
+    @Test
+    void upload_ofAPageWhoseSidebarPositionIsNotANumber_isRefused() throws Exception {
+        refuse("INVALID_POSITION", Map.of("1-intro/goals.md",
+                "---\nsidebar_position: banana\n---\n\n# Goals\n"));
+    }
+
+    @Test
+    void upload_ofAPageNamingBothSidebarAfterAndSidebarBefore_isRefused() throws Exception {
+        refuse("INVALID_REFERENCE", Map.of("1-intro/goals.md",
+                "---\nsidebar_after: intro\nsidebar_before: outro\n---\n\n# Goals\n"));
+    }
+
+    @Test
+    void upload_ofAPageWithoutAPlacement_isAccepted() throws Exception {
+        UUID uploadId = UUID.randomUUID();
+        Map<String, String> parameters = systemDocs();
+        parameters.put("system", SYSTEM);
+
+        mockMvc.perform(uploadOf(uploadId, parameters,
+                        bundleOf(Map.of("1-intro/goals.md", "---\ntitle: Goals\n---\n\n# Goals\n")))
+                        .with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
+                .andExpect(status().isCreated());
     }
 
     /**

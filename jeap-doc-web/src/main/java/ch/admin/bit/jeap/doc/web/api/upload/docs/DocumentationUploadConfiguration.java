@@ -30,7 +30,7 @@ class DocumentationUploadConfiguration implements WebMvcConfigurer {
     static final List<String> KNOWN_QUERY_PARAMETERS = List.of(
             "site", "type", "system", "component", "library", "template", "source-format", "location", "topic",
             "label", "source-repository", "source-revision", "source-ref", "source-timestamp", "version",
-            "build-url", "generated-at");
+            "build-url", "generated-at", "sidebar-position", "sidebar-after", "sidebar-before");
 
     /**
      * What the structure depends on, and nothing else - and the {@code site}, which a static site's tree is

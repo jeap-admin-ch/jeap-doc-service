@@ -4,6 +4,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomPage;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
 
 import java.util.List;
 
@@ -19,7 +20,8 @@ final class CustomDocumentationMapper {
                 new CustomProvenance(entity.getSourceRepository(), entity.getSourceRef(),
                         entity.getSourceRevision(), entity.getSourceTimestamp(), entity.getVersion(),
                         entity.getUploadedAt()),
-                pages.stream().map(CustomDocumentationMapper::toDomain).toList());
+                pages.stream().map(CustomDocumentationMapper::toDomain).toList(),
+                hintOf(entity.getOrderPosition(), entity.getOrderDirection(), entity.getOrderReference()));
     }
 
     static CustomSetKey keyOf(CustomSetEntity entity) {
@@ -30,7 +32,8 @@ final class CustomDocumentationMapper {
 
     static CustomPage toDomain(CustomPageEntity entity) {
         return new CustomPage(entity.getChapter(), entity.getFileName(), entity.getTitle(),
-                entity.getPosition(), entity.isAsset());
+                entity.getPosition(), entity.isAsset(),
+                hintOf(entity.getOrderPosition(), entity.getOrderDirection(), entity.getOrderReference()));
     }
 
     static CustomPageEntity toEntity(Long setId, CustomPage page) {
@@ -41,6 +44,15 @@ final class CustomDocumentationMapper {
         entity.setTitle(page.title());
         entity.setPosition(page.position());
         entity.setAsset(page.asset());
+        entity.setOrderPosition(page.hint().position());
+        entity.setOrderDirection(page.hint().direction());
+        entity.setOrderReference(page.hint().reference());
         return entity;
+    }
+
+    /** A row's three columns as the one hint they name, or {@link OrderHint#NONE} where all three are null. */
+    private static OrderHint hintOf(Double position, OrderHint.Direction direction, String reference) {
+        return position == null && direction == null && reference == null
+                ? OrderHint.NONE : new OrderHint(position, direction, reference);
     }
 }

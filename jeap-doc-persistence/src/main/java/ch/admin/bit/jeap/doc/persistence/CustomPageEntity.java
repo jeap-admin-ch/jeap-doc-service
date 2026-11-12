@@ -1,7 +1,10 @@
 package ch.admin.bit.jeap.doc.persistence;
 
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.PostLoad;
@@ -47,6 +50,17 @@ class CustomPageEntity implements Persistable<CustomPageEntity.Key> {
 
     @Column(nullable = false)
     private boolean asset;
+
+    /** Null for a page with no declared placement among its siblings - every one before this hint existed. */
+    @Column(name = "order_position")
+    private Double orderPosition;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "order_direction")
+    private OrderHint.Direction orderDirection;
+
+    @Column(name = "order_reference")
+    private String orderReference;
 
     /**
      * Whether this row is an insert.

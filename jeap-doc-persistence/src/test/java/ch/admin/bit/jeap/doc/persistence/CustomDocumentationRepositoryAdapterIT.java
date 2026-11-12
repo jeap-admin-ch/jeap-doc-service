@@ -6,6 +6,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
 import ch.admin.bit.jeap.doc.domain.custom.SubjectDeployment;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
@@ -61,6 +62,11 @@ class CustomDocumentationRepositoryAdapterIT extends PostgresTestContainerBase {
         return new CustomPage(chapter, fileName, title, position, false);
     }
 
+    private static CustomPage page(String chapter, String fileName, String title, int position,
+                                    OrderHint hint) {
+        return new CustomPage(chapter, fileName, title, position, false, hint);
+    }
+
     /** An HTML set, whose identity carries where it is embedded and whose label names it in the menu. */
     private CustomSetKey micrositeKey() {
         return new CustomSetKey(site, SubjectKind.COMPONENT, "orders", "orders-intake", SourceFormat.HTML,
@@ -68,9 +74,13 @@ class CustomDocumentationRepositoryAdapterIT extends PostgresTestContainerBase {
     }
 
     private static CustomSet micrositeOf(CustomSetKey key, long revision, String label) {
+        return micrositeOf(key, revision, label, OrderHint.NONE);
+    }
+
+    private static CustomSet micrositeOf(CustomSetKey key, long revision, String label, OrderHint hint) {
         return new CustomSet(null, key, label, revision, "current/docs/" + revision + "/bundle.zip", SHA256,
                 4096,
-                new CustomProvenance("orders-docs", "main", "cafebabe", NOW, "1.2.3", NOW), List.of());
+                new CustomProvenance("orders-docs", "main", "cafebabe", NOW, "1.2.3", NOW), List.of(), hint);
     }
 
     /**
@@ -86,6 +96,48 @@ class CustomDocumentationRepositoryAdapterIT extends PostgresTestContainerBase {
         Optional<CustomSet> stored = documentation.find(key);
         assertThat(stored).isPresent();
         assertThat(stored.get().label()).isEqualTo("Configuration Reference");
+    }
+
+    /**
+     * <b>A page's placement is a hint on its row, not a second table.</b> {@code ChapterOrder} reads it back
+     * exactly as the upload wrote it, so a position and a reference have to round-trip without rounding or
+     * truncation.
+     */
+    @Test
+    void replace_whenAPageNamesAPlacement_thenItRoundTrips() {
+        CustomSetKey key = systemKey();
+        OrderHint hint = new OrderHint(2.5, OrderHint.Direction.BEFORE, "system-context-view");
+
+        documentation.replace(setOf(key, 1, page("3-context-and-scope", "systemuebersicht.md", "Systemübersicht",
+                1, hint)));
+
+        CustomPage stored = documentation.find(key).orElseThrow().pages().get(0);
+        assertThat(stored.hint()).isEqualTo(hint);
+    }
+
+    /** A page that named no placement carries none back, the same as one stored before the hint existed. */
+    @Test
+    void replace_whenAPageNamesNoPlacement_thenItRoundTripsAsNone() {
+        CustomSetKey key = systemKey();
+
+        documentation.replace(setOf(key, 1, page("1-intro", "why.md", "Why", 1)));
+
+        assertThat(documentation.find(key).orElseThrow().pages().get(0).hint()).isEqualTo(OrderHint.NONE);
+    }
+
+    /**
+     * <b>A microsite's placement lives on the set, not on a page.</b> It has none of its own, so the upload
+     * parameters of the same three names are read onto the row {@link ch.admin.bit.jeap.doc.domain.custom
+     * .Microsite#of} builds its hint from.
+     */
+    @Test
+    void replace_whenTheSetIsAMicrositeWithAPlacement_thenItRoundTrips() {
+        CustomSetKey key = micrositeKey();
+        OrderHint hint = new OrderHint(null, OrderHint.Direction.AFTER, "database-schema");
+
+        documentation.replace(micrositeOf(key, 1, "Configuration Reference", hint));
+
+        assertThat(documentation.find(key).orElseThrow().hint()).isEqualTo(hint);
     }
 
     /** A team may rename its microsite, and what the menu shows is what the last upload called it. */

@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.upload;
 
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
 import lombok.Builder;
 
 import java.time.Instant;
@@ -36,6 +37,14 @@ import java.time.temporal.ChronoUnit;
  * @param version          the version of the component or library the documents belong to
  * @param buildUrl         the build that uploaded the documents
  * @param generatedAt      when the documents were generated
+ * @param sidebarPosition  where an HTML microsite asked to go among the items of its chapter that name no
+ *                         reference of their own; null for none, and refused for anything but HTML
+ * @param sidebarAfter     the name of the item of its chapter the microsite asked to stand directly after;
+ *                         null for none, and refused for anything but HTML. At most one of this and
+ *                         {@code sidebarBefore}
+ * @param sidebarBefore    the name of the item of its chapter the microsite asked to stand directly before;
+ *                         null for none, and refused for anything but HTML. At most one of this and
+ *                         {@code sidebarAfter}
  */
 @Builder
 public record DocumentationUploadDescriptor(
@@ -55,7 +64,10 @@ public record DocumentationUploadDescriptor(
         Instant sourceTimestamp,
         String version,
         String buildUrl,
-        Instant generatedAt) {
+        Instant generatedAt,
+        Double sidebarPosition,
+        String sidebarAfter,
+        String sidebarBefore) {
 
 
     private static final String PROVENANCE_REQUIRED = "to record where the documents came from";
@@ -70,6 +82,10 @@ public record DocumentationUploadDescriptor(
         // than it went in, and every retry of that upload would be answered as a different upload.
         sourceTimestamp = toStoredPrecision(sourceTimestamp);
         generatedAt = toStoredPrecision(generatedAt);
+        // A blank reference names nothing, the same as one that was not given at all - the one other optional
+        // parameter of a shape this precise, source-timestamp, binds to a type with no blank value to normalize.
+        sidebarAfter = blankToNull(sidebarAfter);
+        sidebarBefore = blankToNull(sidebarBefore);
         requireSlug(site, "site");
         // Where the documents belong, and the rules over it - shared with the structure validation, which is
         // a placement and nothing else. See DocumentationPlacement.
@@ -89,8 +105,20 @@ public record DocumentationUploadDescriptor(
         }
         if (sourceFormat == SourceFormat.HTML) {
             requireText(label, "label", "for HTML documents");
+            if (sidebarAfter != null && sidebarBefore != null) {
+                throw InvalidUploadException.invalidValue("sidebar-before", sidebarBefore,
+                        "no value together with sidebar-after - a microsite places itself next to at most "
+                        + "one other item of its chapter");
+            }
+            if (sidebarPosition != null && !Double.isFinite(sidebarPosition)) {
+                throw InvalidUploadException.invalidValue("sidebar-position", String.valueOf(sidebarPosition),
+                        "a finite number");
+            }
         } else {
             requireAbsent(label, "label", MARKDOWN_DOCUMENTATION);
+            requireAbsent(sidebarPosition, "sidebar-position", MARKDOWN_DOCUMENTATION);
+            requireAbsent(sidebarAfter, "sidebar-after", MARKDOWN_DOCUMENTATION);
+            requireAbsent(sidebarBefore, "sidebar-before", MARKDOWN_DOCUMENTATION);
         }
 
         requireText(sourceRepository, "source-repository", PROVENANCE_REQUIRED);
@@ -113,10 +141,33 @@ public record DocumentationUploadDescriptor(
     }
 
     /**
+     * Where the microsite this upload describes asked to go among the other items of its chapter.
+     * <p>
+     * Built from the three parameters above rather than read from anywhere else - a microsite has no front
+     * matter of its own, so this is the one place its placement comes from. {@link OrderHint#NONE} for a
+     * microsite that named neither a position nor a reference, which is every non-HTML upload: the compact
+     * constructor above has already refused the three parameters there.
+     */
+    public OrderHint orderHint() {
+        if (sidebarAfter != null) {
+            return new OrderHint(sidebarPosition, OrderHint.Direction.AFTER, sidebarAfter);
+        }
+        if (sidebarBefore != null) {
+            return new OrderHint(sidebarPosition, OrderHint.Direction.BEFORE, sidebarBefore);
+        }
+        return sidebarPosition == null ? OrderHint.NONE : new OrderHint(sidebarPosition, null, null);
+    }
+
+    /**
      * The precision a timestamp survives a round trip through the database with.
      */
     private static Instant toStoredPrecision(Instant instant) {
         return instant == null ? null : instant.truncatedTo(ChronoUnit.MICROS);
+    }
+
+    /** A blank value names nothing, the same as one that was never given. */
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     // The rules over the placement, and their helpers, are DocumentationPlacement's - these three are what
@@ -132,6 +183,14 @@ public record DocumentationUploadDescriptor(
 
     private static void requireAbsent(String value, String parameter, String documentationKind) {
         DocumentationPlacement.requireAbsent(value, parameter, documentationKind);
+    }
+
+    /** The same rule as {@link #requireAbsent(String, String, String)}, for the one parameter that is a number. */
+    private static void requireAbsent(Double value, String parameter, String documentationKind) {
+        if (value != null) {
+            throw InvalidUploadException.invalidValue(parameter, String.valueOf(value),
+                    "no value, as %s names no %s".formatted(documentationKind, parameter));
+        }
     }
 
     private static void requirePresent(Object value, String parameter, String requiredBecause) {

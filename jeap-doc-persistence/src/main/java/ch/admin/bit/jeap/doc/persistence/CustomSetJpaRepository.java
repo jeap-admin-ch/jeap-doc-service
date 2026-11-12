@@ -125,11 +125,11 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
             insert into custom_set (id, site, kind, system_name, name, source_format, template, location,
                                     topic, label, revision, object_key, sha256, size_in_bytes,
                                     source_repository, source_ref, source_revision, source_timestamp,
-                                    version, uploaded_at)
+                                    version, uploaded_at, order_position, order_direction, order_reference)
             values (nextval('custom_set_id_seq'), :site, :kind, :system, :name, :sourceFormat, :template,
                     :location, :topic, :label, :revision, :objectKey, :sha256, :sizeInBytes,
                     :sourceRepository, :sourceRef, :sourceRevision, :sourceTimestamp, :version,
-                    :uploadedAt)
+                    :uploadedAt, :orderPosition, :orderDirection, :orderReference)
             on conflict (site, kind, coalesce(system_name, ''), coalesce(name, ''), source_format,
                          coalesce(template, ''),
                          coalesce(location, ''), coalesce(topic, ''))
@@ -143,7 +143,10 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
                           source_revision = excluded.source_revision,
                           source_timestamp = excluded.source_timestamp,
                           version = excluded.version,
-                          uploaded_at = excluded.uploaded_at
+                          uploaded_at = excluded.uploaded_at,
+                          order_position = excluded.order_position,
+                          order_direction = excluded.order_direction,
+                          order_reference = excluded.order_reference
             """, nativeQuery = true)
     // One parameter per column of the row an upsert writes, so the statement stays one statement.
     @SuppressWarnings("java:S107")
@@ -156,5 +159,6 @@ interface CustomSetJpaRepository extends JpaRepository<CustomSetEntity, Long> {
                 @Param("sizeInBytes") long sizeInBytes, @Param("sourceRepository") String sourceRepository,
                 @Param("sourceRef") String sourceRef, @Param("sourceRevision") String sourceRevision,
                 @Param("sourceTimestamp") Instant sourceTimestamp, @Param("version") String version,
-                @Param("uploadedAt") Instant uploadedAt);
+                @Param("uploadedAt") Instant uploadedAt, @Param("orderPosition") Double orderPosition,
+                @Param("orderDirection") String orderDirection, @Param("orderReference") String orderReference);
 }

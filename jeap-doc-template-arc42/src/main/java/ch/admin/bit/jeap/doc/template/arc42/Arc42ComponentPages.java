@@ -24,6 +24,7 @@ import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.markdown.ReactionEntry;
@@ -234,7 +235,7 @@ final class Arc42ComponentPages {
                         CONTEXT_VIEW_LABEL)));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
-        writeContextView(system, component, componentContext, context, directory);
+        writeContextView(template, system, component, componentContext, context, directory);
     }
 
     /**
@@ -242,11 +243,13 @@ final class Arc42ComponentPages {
      * <p>
      * The table is what makes a bounded diagram honest: an arrow reading {@code 5 Events} hides five names.
      */
-    private static void writeContextView(DocumentedSystem system, DocumentedComponent component,
-                                         ComponentContext componentContext, GenerationContext context,
-                                         Path directory) throws IOException {
+    private static void writeContextView(Arc42Template template, DocumentedSystem system,
+                                         DocumentedComponent component, ComponentContext componentContext,
+                                         GenerationContext context, Path directory) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(CONTEXT_VIEW_LABEL, 1, context))
+                .frontMatter(Arc42Pages.generated(CONTEXT_VIEW_LABEL,
+                        template.siblingPosition(CONTEXT_AND_SCOPE, SubjectKind.COMPONENT,
+                                COMPONENT_CONTEXT_VIEW_PAGE), context))
                 .heading(1, CONTEXT_VIEW_LABEL)
                 .paragraph(Md.sentence("The interactions of {} with other {} components and with "
                                        + "components of external systems. " + PlantUmlViews.ARROW_LEGEND,
@@ -297,15 +300,15 @@ final class Arc42ComponentPages {
 
         List<Markdown> contents = new ArrayList<>();
         if (database) {
-            writeDatabaseSchema(component, context, directory);
+            writeDatabaseSchema(template, component, context, directory);
             contents.add(Md.link(paths.page(BUILDING_BLOCK_VIEW, DATABASE_SCHEMA_PAGE), DATABASE_SCHEMA_LABEL));
         }
         if (restApi) {
-            writeRestApi(component, context, directory);
+            writeRestApi(template, component, context, directory);
             contents.add(Md.link(paths.page(BUILDING_BLOCK_VIEW, REST_API_PAGE), REST_API_LABEL));
         }
         if (!messages.isEmpty()) {
-            writeMessages(system, component, messages, context, directory);
+            writeMessages(template, system, component, messages, context, directory);
             contents.add(Md.link(paths.page(BUILDING_BLOCK_VIEW, MESSAGES_PAGE), MESSAGES_LABEL));
         }
 
@@ -331,8 +334,8 @@ final class Arc42ComponentPages {
      * missed at its deadline - there would otherwise be no entry in the chapter at all, and no way for a
      * reader to tell a schema that has not arrived yet from a component that keeps no data.
      */
-    private static void writeDatabaseSchema(DocumentedComponent component, GenerationContext context,
-                                            Path directory) throws IOException {
+    private static void writeDatabaseSchema(Arc42Template template, DocumentedComponent component,
+                                            GenerationContext context, Path directory) throws IOException {
         DatabaseSchema schema = component.schema();
         // Worked out once for the whole page. Grouping, collapsing the partitions and sorting is done on every
         // call of DatabaseSchema.documentedTables, and the page needs it through a dozen paths: the count, the
@@ -341,7 +344,9 @@ final class Arc42ComponentPages {
                 : DocumentedSchema.of(schema, context.schemaTableGroups().forComponent(component.name()),
                         context.limits().maxSchemaTableDiagram(), context.limits().maxSchemaTableList());
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(DATABASE_SCHEMA_LABEL, 1, context))
+                .frontMatter(Arc42Pages.generated(DATABASE_SCHEMA_LABEL,
+                        template.siblingPosition(BUILDING_BLOCK_VIEW, SubjectKind.COMPONENT, DATABASE_SCHEMA_PAGE),
+                        context))
                 .heading(1, DATABASE_SCHEMA_LABEL)
                 .paragraph(Md.sentence("The database schema of {}.", Md.code(component.name())));
 
@@ -657,8 +662,8 @@ final class Arc42ComponentPages {
      * <b>Written even where no specification has been replicated.</b> The model knows the operations, so a
      * page listing them and saying that the grouping needs the specification is worth more than no page.
      */
-    private static void writeRestApi(DocumentedComponent component, GenerationContext context, Path directory)
-            throws IOException {
+    private static void writeRestApi(Arc42Template template, DocumentedComponent component,
+                                     GenerationContext context, Path directory) throws IOException {
         RestApiOverview declared = component.api();
         // The operational endpoints of the platform are in a service's specification without being what a
         // reader came for - see DocumentedApiPaths. Applied here rather than when the specification was
@@ -671,7 +676,9 @@ final class Arc42ComponentPages {
         Markdown swagger = component.openApi() == null ? Markdown.EMPTY
                 : Md.linkOrCode(component.openApi().swaggerUrl(), component.openApi().swaggerUrl());
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(REST_API_LABEL, 2, context))
+                .frontMatter(Arc42Pages.generated(REST_API_LABEL,
+                        template.siblingPosition(BUILDING_BLOCK_VIEW, SubjectKind.COMPONENT, REST_API_PAGE),
+                        context))
                 .heading(1, REST_API_LABEL)
                 .paragraph(swagger.isEmpty()
                         ? Md.sentence("The resources {} offers over REST. It is an overview - the "
@@ -908,11 +915,13 @@ final class Arc42ComponentPages {
      * is documented once and linked from everywhere it is contracted on. Where that system is another one the
      * link leaves this part of the site, and {@code CrossPartLinks} rewrites it.
      */
-    private static void writeMessages(DocumentedSystem system, DocumentedComponent component,
-                                      List<ContractedMessage> messages, GenerationContext context,
-                                      Path directory) throws IOException {
+    private static void writeMessages(Arc42Template template, DocumentedSystem system,
+                                      DocumentedComponent component, List<ContractedMessage> messages,
+                                      GenerationContext context, Path directory) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(MESSAGES_LABEL, 3, context))
+                .frontMatter(Arc42Pages.generated(MESSAGES_LABEL,
+                        template.siblingPosition(BUILDING_BLOCK_VIEW, SubjectKind.COMPONENT, MESSAGES_PAGE),
+                        context))
                 .heading(1, MESSAGES_LABEL)
                 .paragraph(Md.sentence("The events and commands for which {} defines or consumes a "
                                        + "contract, together with the topics on which they are exchanged. "
@@ -1113,7 +1122,9 @@ final class Arc42ComponentPages {
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(COMPONENT_REACTIONS_LABEL, 1, context))
+                .frontMatter(Arc42Pages.generated(COMPONENT_REACTIONS_LABEL,
+                        template.siblingPosition(RUNTIME_VIEW, SubjectKind.COMPONENT, COMPONENT_REACTIONS_PAGE),
+                        context))
                 .heading(1, COMPONENT_REACTIONS_LABEL)
                 .paragraph(Md.sentence("The messages that trigger a reaction in {} and the events or "
                                        + "commands it publishes in response.", Md.code(component.name())));

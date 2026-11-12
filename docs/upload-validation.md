@@ -5,9 +5,13 @@ decides where it is published. This page is the **structural** half of what chec
 service applies to the *paths* of an upload, per structure template - and for the tree of a static site, which
 follows none.
 
-**Two stages, and this is the second.** The content of the files - CommonMark, dead links, the front-matter
-allowlist - is checked in the doc workflow, before anything is sent, and the doc service never sees a file's
-bytes. The structure is checked here, against the template the upload names.
+**Two stages, and this is the second.** Most of the content of the files - CommonMark, dead links, the
+front-matter allowlist - is checked in the doc workflow, before anything is sent, and the doc service does not
+read it again. The structure is checked here, against the template the upload names - and so, once the
+structure is accepted, is one thing about a page's own content: whether its `sidebar_position`,
+`sidebar_after` and `sidebar_before` are values this service can read at all, see
+[A page's own placement](#a-pages-own-placement) below. The doc workflow checks their shape too, but it is a
+client a caller can skip, so this is the one check every upload goes through.
 
 **Ask before you build the ZIP.** `POST /api/uploads/docs/validation` answers whether a path tree would be
 accepted: `200` when there is nothing to report, `422` with a finding per problem when there is. Nothing is
@@ -96,9 +100,27 @@ carrying it. `HIDDEN_NAME`.
 | --- | --- |
 | Whether the system, component or library exists | It is created by the upload that names it |
 | Whether a chapter is missing | Not an error: a repository documents what it documents, and no report mentions the chapters nobody wrote |
-| Anything about a file's content | The workflow's half, and this endpoint never receives a byte of it |
+| Anything about a file's content, except its own placement | The workflow's half; this endpoint never receives a byte of a file, and these rules do not read one either - see [A page's own placement](#a-pages-own-placement) for the one check that does |
 | Whether the same tree was already uploaded | The endpoint has no memory and writes nothing |
 | Case | A path is compared as it arrives, so `1-Intro/` is an unknown chapter. Saying so is more useful than accepting it into a case-sensitive object store. The exceptions are the extension and the landing page names of rule 6, which the site generator folds itself |
+
+### A page's own placement
+
+A Markdown page may say where it goes among the other items of its chapter, in its front matter:
+`sidebar_position` orders it among the items that carry no reference of their own; `sidebar_after` or
+`sidebar_before` places it directly next to one other item by name. This runs only once the path structure
+above is accepted, and only for a page the upload actually carries - never for the validation endpoint, which
+receives a list of paths and no byte of any file's content.
+
+| Rule | Finding |
+| ---- | ------- |
+| `sidebar_position` is a finite number - an integer or a decimal, not quoted | `INVALID_POSITION` |
+| At most one of `sidebar_after` and `sidebar_before` is given, and the one that is names a single, non-blank name | `INVALID_REFERENCE` |
+| Neither reference key is given on a static site's page - its pages are ordered by Docusaurus itself, with no chapter to place one next to | `INVALID_REFERENCE` |
+
+**Whether a reference names a real sibling is not checked yet.** `sidebar_after: tpyo-of-a-page` is accepted
+here and read as if the page named nothing, by `ChapterOrder` - this page is still left to be caught by hand
+until that check exists too.
 
 ## arc42
 
@@ -274,6 +296,8 @@ as a whole.
 | `EMPTY_TREE` | *Set-level.* Nothing in the set would be published |
 | `MISSING_ENTRY_POINT` | *Set-level.* An HTML upload with no `index.html` at its root |
 | `UNKNOWN_LOCATION` | *Set-level.* An HTML upload embedded at something that is not a chapter |
+| `INVALID_POSITION` | `sidebar_position` is there and is not a finite number |
+| `INVALID_REFERENCE` | `sidebar_after` and `sidebar_before` both given, one of them given with a value that is not a single, non-blank name, or either given on a static site's page |
 
 ## Adding a template
 
@@ -283,7 +307,7 @@ A second structure template declares three things and writes no validation code 
 | --- | --- |
 | Its chapters | `chapters()`, which it already declares to generate into |
 | The extensions an upload may carry | `allowedFileExtensions()` |
-| What it generates into a chapter, if anything | `generatedNames(chapter, subject)`, which defaults to nothing |
+| What it generates into a chapter, if anything, in the order it writes them | `generatedSiblings(chapter, subject)`, which defaults to nothing |
 
 Everything else - the path rules, the finding codes, the messages, the order and the cap - is the doc
 service's, so the workflow that prints arc42's report prints the new template's unchanged. See

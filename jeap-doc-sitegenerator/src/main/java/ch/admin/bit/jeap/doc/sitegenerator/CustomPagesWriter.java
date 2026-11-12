@@ -12,6 +12,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
 import ch.admin.bit.jeap.doc.domain.custom.Microsite;
 import ch.admin.bit.jeap.doc.domain.custom.UploadedFrontMatter;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
+import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.ReservedNames;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
@@ -27,6 +28,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -107,9 +109,11 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
             return 0;
         }
         List<CustomPage> pages = set.get().pagesOf(chapterFolder);
-        // One order over everything in this chapter, so a microsite sits among the pages by its label
-        // rather than after all of them. A chapter with no microsite comes out as the upload numbered it.
-        ChapterOrder order = ChapterOrder.of(pages, micrositesOf(subject, chapterFolder));
+        // One order over everything in this chapter - the siblings this template generated into it, the
+        // uploaded pages and the microsites - so a microsite sits among the pages by its label rather than
+        // after all of them, and an uploaded item placed next to a generated sibling lands next to it.
+        ChapterOrder order = ChapterOrder.of(presentSiblingsOf(chapterFolder, subject.kind(), chapterDirectory),
+                pages, micrositesOf(subject, chapterFolder));
         int written = 0;
         for (CustomPage page : pages) {
             if (write(set.get(), page, order.positionOf(page), chapterDirectory)) {
@@ -122,6 +126,37 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
             write(set.get(), asset, 0, chapterDirectory);
         }
         return written;
+    }
+
+    /**
+     * The generated siblings of this chapter that this run actually wrote, each at the position its own page
+     * already carries.
+     * <p>
+     * <b>Asked of the directory, not trusted from the template.</b> Whether a sibling was written depends on
+     * what the subject has - a system with no components gets no whitebox page - and {@code Arc42CustomChapters
+     * .write} runs after every generated page of a chapter, so what exists on disk at this point is exactly
+     * what this run wrote, whichever of the template's conditions decided it.
+     */
+    private List<ChapterOrder.PresentSibling> presentSiblingsOf(String chapterFolder, SubjectKind kind,
+                                                                 Path chapterDirectory) {
+        Optional<StructureChapter> chapter = template.chapterOfFolder(chapterFolder);
+        if (chapter.isEmpty()) {
+            return List.of();
+        }
+        List<ChapterOrder.PresentSibling> present = new ArrayList<>();
+        for (String name : template.generatedSiblings(chapter.get(), kind)) {
+            if (existsAsPageOrGroup(chapterDirectory, name)) {
+                present.add(new ChapterOrder.PresentSibling(name,
+                        template.siblingPosition(chapter.get(), kind, name)));
+            }
+        }
+        return present;
+    }
+
+    /** Whether a generated sibling's page or group folder was actually written into this chapter. */
+    private static boolean existsAsPageOrGroup(Path chapterDirectory, String name) {
+        return Files.exists(chapterDirectory.resolve(name + "." + DocumentationPaths.MARKDOWN_EXTENSION))
+               || Files.isDirectory(chapterDirectory.resolve(name));
     }
 
     /** Whether a file may be written at its path: nothing the template generates, and inside its chapter. */
@@ -314,9 +349,9 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
     private String pageOf(CustomSet set, int position, String uploaded) {
         CustomProvenance provenance = set.provenance();
         Map<String, Object> generated = UploadedFrontMatter.keys();
-        // Past whatever the template generates into this chapter: Docusaurus breaks a tie between two equal
-        // positions by file name, which is the one thing assigning a position is meant to take out of it.
-        generated.put("sidebar_position", template.firstCustomPagePosition() + position);
+        // The position ChapterOrder assigned: already absolute, already past whatever this template
+        // generated into the chapter, and already placed next to a sibling the page named one.
+        generated.put("sidebar_position", position);
         generated.put("doc_status", DOC_STATUS);
         generated.put("doc_source", "upload");
         generated.put("doc_source_repository", provenance.sourceRepository());
@@ -336,7 +371,8 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         if (microsites.isEmpty()) {
             return 0;
         }
-        ChapterOrder order = ChapterOrder.of(pagesOf(subject, chapterFolder), microsites);
+        ChapterOrder order = ChapterOrder.of(presentSiblingsOf(chapterFolder, subject.kind(), chapterDirectory),
+                pagesOf(subject, chapterFolder), microsites);
         for (Microsite microsite : microsites) {
             writeMicrosite(microsite, order.positionOf(microsite), chapterDirectory);
         }
@@ -363,7 +399,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         Map<String, Object> generated = UploadedFrontMatter.keys();
         // A set stored before the label column existed carries none; its topic is what names it then.
         generated.put("title", microsite.label() == null ? microsite.topic() : microsite.label());
-        generated.put("sidebar_position", template.firstCustomPagePosition() + position);
+        generated.put("sidebar_position", position);
         // A namespace of its own under the chapter, so a microsite can never take the route of a page
         // beside it - and the topic the upload named is what a reader sees in the URL.
         generated.put("slug", "microsites/" + microsite.topic());

@@ -78,6 +78,11 @@ class DocumentationUploadEntity {
     private String buildUrl;
     private Instant generatedAt;
 
+    /** An HTML microsite's own placement among the items of its chapter - it has no front matter to carry it. */
+    private Double sidebarPosition;
+    private String sidebarAfter;
+    private String sidebarBefore;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UploadState state;

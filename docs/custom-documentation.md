@@ -89,12 +89,17 @@ replacing the bytes the service cannot read would publish a page nobody wrote.
 **The front matter is generated.** The keys an upload may carry are kept as they were written, and the ones
 the service decides are added:
 
-| Key                                                                                                              | What it is                                                    |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `title`, `description`, `sidebar_label`, `tags`, `keywords`                                                      | Kept from the upload, exactly as written                      |
-| `sidebar_position`                                                                                               | Assigned by the service, from the sorted titles - see below   |
-| `doc_status`                                                                                                     | `custom`, against the `generated` of a page the service wrote |
-| `doc_source`, `doc_source_repository`, `doc_source_ref`, `doc_source_revision`, `doc_version`, `doc_uploaded_at` | Where the page came from                                      |
+| Key                                                                                                              | What it is                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `title`, `description`, `sidebar_label`, `tags`, `keywords`                                                      | Kept from the upload, exactly as written                                                                                   |
+| `sidebar_position`                                                                                               | Assigned by the service - from the sorted titles, or from a position or a reference the page named - see below           |
+| `doc_status`                                                                                                     | `custom`, against the `generated` of a page the service wrote                                                             |
+| `doc_source`, `doc_source_repository`, `doc_source_ref`, `doc_source_revision`, `doc_version`, `doc_uploaded_at` | Where the page came from                                                                                                   |
+
+On a static site's page `sidebar_position` is kept exactly as uploaded instead - a static site has none of
+the siblings the service would otherwise place it around, so Docusaurus orders its pages itself. `sidebar_after`
+and `sidebar_before` are never kept: they only ever place a page relative to a chapter's own items, which is
+read once from the raw upload and never published.
 
 **It is parsed as YAML and written as YAML**, which is what Docusaurus will do with it. So a quoted scalar
 running over several lines is the value it says it is, a title holding a colon comes back quoted, and a
@@ -121,7 +126,7 @@ names, with the microsite in a frame and the navigation and sidebar of the site 
 | Where it goes | The `location` of the upload is the chapter; the `topic` is the last segment of its route, under `microsites/` within that chapter |
 | What names it | The `label` of the upload - a microsite has no pages to take a title from, so this is the only thing that can name it in the navigation |
 | Its own URL | `/microsites/<system>/components/<name>/<template>/<location>/<topic>/` - a component's and a library's name their kind, a system's own does not. This is the URL the frame opens, and the one to link to |
-| Where it is ordered | Among the uploaded pages of its chapter, by its label - the two are one list |
+| Where it is ordered | Among the uploaded pages of its chapter, by its label by default - the two are one list. A microsite has no front matter of its own, so `sidebar-position`, `sidebar-after` and `sidebar-before` are upload parameters instead, read into the same hint a page's front matter would give |
 | Whether it is searchable | **Yes, its content and not only its label.** The text of its pages is taken out of the bundle when it is uploaded and stored beside its files, and a hit opens the page that frames it at the file that matched. See [Search](search.md) |
 | One reserved name | `_jeap-search.tsv` at the root of the set is where that text is stored, so an upload carrying that path is refused. Anywhere deeper in the tree the name is yours |
 | What is searched of it | The first **200** `.html` and `.htm` files, the entry point first, and at most 512 KB of each. A set with more pages is published whole and searched down to the cap - it is what keeps one microsite of several hundred pages from being the whole result list |
@@ -152,21 +157,27 @@ a browser ignores that header for a subresource.
 
 ## The order of the pages in a chapter
 
-**The pages of a chapter are sorted by their titles**, and the service assigns each page's
-`sidebar_position` from that order.
-
-It has to, because Docusaurus does not. An autogenerated sidebar is sorted by `sidebar_position` and then by
-**file name**, so `zebra.md` titled *Alpha* would come last. And `sidebar_position` is not on the front-matter
-allowlist, so an upload cannot set it: the order of a chapter lives in one place, and that place is the
-titles a reader sees.
-
-A page with no title is sorted by its file name, which is what Docusaurus falls back to for the heading
+**By default, the pages of a chapter are sorted by their titles**, after the ones the service generates into
+it. A page with no title is sorted by its file name, which is what Docusaurus falls back to for the heading
 anyway, and the file name breaks a tie between two pages with the same title - so the order never depends on
 how the archive happened to list them.
 
-**And the uploaded pages of a chapter stand after the ones the service generates into it.** Their positions
-are offset past whatever the template writes there, because Docusaurus breaks a tie between two equal
-positions by file name - the one thing assigning a position is meant to take out of it.
+**A page may ask for a different place**, in its own front matter:
+
+- `sidebar_position` ranks it among the items that name no reference of their own - lower first;
+- `sidebar_after` or `sidebar_before` places it directly next to one other item of the same chapter, by
+  name - a generated page included, e.g. `sidebar_after: system-context-view`. At most one of the two.
+
+A page naming neither is free, and sorts by title exactly as before. The service still assigns every page's
+final `sidebar_position` itself, past whatever the template generates into the chapter: Docusaurus breaks a
+tie between two equal positions by file name, which is the one thing assigning a position is meant to take
+out of it, and a declared position is honoured among the items that share it rather than published verbatim.
+
+**The shape of `sidebar_position`, `sidebar_after` and `sidebar_before` is checked at upload**, before a page
+is published: a position has to be a finite number, and a reference a single, non-blank name - see
+[the validation rules](upload-validation.md#a-pages-own-placement). **Whether a reference names a real
+sibling is not checked yet** - a typo in `sidebar_after` is read as if the page named nothing, and sorts by
+title at the end of the chapter instead of where it meant to be.
 
 ## A subject the architecture model does not know
 

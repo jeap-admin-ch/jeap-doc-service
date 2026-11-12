@@ -63,10 +63,13 @@ public interface UploadedBundles {
         /**
          * The first bytes of one file of the archive, for reading what a page says about itself.
          * <p>
-         * <b>Bounded, and read only once a set has been accepted.</b> Nothing is decompressed while the
-         * upload is being decided - what it is checked against is the list of paths - so a bundle that is
-         * refused is refused without an entry ever being unpacked. This is for the set that got through, and
-         * it reads a page's front matter rather than the page.
+         * <b>Bounded, and read only once the path structure is accepted.</b> Nothing is decompressed while
+         * that is being decided - what it is checked against is the list of paths - so a tree that breaks a
+         * structure rule is refused without an entry ever being unpacked. Once the structure is accepted, a
+         * handful of kilobytes of each markdown page's own front matter may still be read here, to check a
+         * page's own placement before the set is taken over - see {@code OrderValidation}. That is the one
+         * exception, and it is bounded by this method's own {@code maxBytes}: nothing here ever reads a page
+         * rather than its front matter.
          *
          * @param path     the path inside the archive
          * @param maxBytes the most to read, however long the file is

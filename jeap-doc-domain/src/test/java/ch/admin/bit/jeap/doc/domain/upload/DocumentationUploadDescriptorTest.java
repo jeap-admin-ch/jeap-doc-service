@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.upload;
 
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder;
 import org.junit.jupiter.api.Test;
 
@@ -209,6 +210,79 @@ class DocumentationUploadDescriptorTest {
     @Test
     void build_whenBuildUrlAndGeneratedAtAreMissing_thenAccepted() {
         assertThatCode(() -> systemDocs().buildUrl(null).generatedAt(null).build()).doesNotThrowAnyException();
+    }
+
+    @Test
+    void build_whenHtmlNamesNoPlacement_thenAcceptedWithNoHint() {
+        DocumentationUploadDescriptor upload = htmlComponentDocs().build();
+
+        assertThat(upload.orderHint()).isEqualTo(OrderHint.NONE);
+    }
+
+    @Test
+    void build_whenHtmlNamesAPositionAndAReference_thenBothTravelIntoTheHint() {
+        DocumentationUploadDescriptor upload = htmlComponentDocs()
+                .sidebarPosition(2.5)
+                .sidebarBefore("database-schema")
+                .build();
+
+        assertThat(upload.orderHint()).isEqualTo(new OrderHint(2.5, OrderHint.Direction.BEFORE,
+                "database-schema"));
+    }
+
+    @Test
+    void build_whenHtmlNamesOnlyAPosition_thenTheHintHasNoReference() {
+        DocumentationUploadDescriptor upload = htmlComponentDocs().sidebarPosition(1.0).build();
+
+        assertThat(upload.orderHint()).isEqualTo(new OrderHint(1.0, null, null));
+    }
+
+    @Test
+    void build_whenHtmlNamesBothSidebarAfterAndSidebarBefore_thenRejected() {
+        DocumentationUploadDescriptorBuilder withBoth = htmlComponentDocs()
+                .sidebarAfter("a").sidebarBefore("b");
+
+        assertThatThrownBy(withBoth::build)
+                .isInstanceOfSatisfying(InvalidUploadException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
+                .hasMessageContaining("sidebar-before");
+    }
+
+    @Test
+    void build_whenHtmlSidebarPositionIsNotFinite_thenRejected() {
+        DocumentationUploadDescriptorBuilder infinite = htmlComponentDocs()
+                .sidebarPosition(Double.POSITIVE_INFINITY);
+
+        assertThatThrownBy(infinite::build)
+                .isInstanceOfSatisfying(InvalidUploadException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
+                .hasMessageContaining("sidebar-position");
+    }
+
+    @Test
+    void build_whenMarkdownNamesAPlacement_thenRejected() {
+        DocumentationUploadDescriptorBuilder withPosition = componentDocs().sidebarPosition(1.0);
+        assertThatThrownBy(withPosition::build)
+                .isInstanceOfSatisfying(InvalidUploadException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(InvalidUploadException.Code.INVALID_PARAMETER_VALUE))
+                .hasMessageContaining("sidebar-position");
+        DocumentationUploadDescriptorBuilder withAfter = componentDocs().sidebarAfter("intro");
+        assertThatThrownBy(withAfter::build)
+                .isInstanceOf(InvalidUploadException.class)
+                .hasMessageContaining("sidebar-after");
+        DocumentationUploadDescriptorBuilder withBefore = componentDocs().sidebarBefore("intro");
+        assertThatThrownBy(withBefore::build)
+                .isInstanceOf(InvalidUploadException.class)
+                .hasMessageContaining("sidebar-before");
+    }
+
+    /** A blank reference names nothing, exactly as if the parameter had not been sent at all. */
+    @Test
+    void build_whenSidebarAfterIsBlank_thenReadAsNone() {
+        DocumentationUploadDescriptor upload = htmlComponentDocs().sidebarAfter("  ").build();
+
+        assertThat(upload.sidebarAfter()).isNull();
+        assertThat(upload.orderHint()).isEqualTo(OrderHint.NONE);
     }
 
     private static DocumentationUploadDescriptor.DocumentationUploadDescriptorBuilder systemDocs() {

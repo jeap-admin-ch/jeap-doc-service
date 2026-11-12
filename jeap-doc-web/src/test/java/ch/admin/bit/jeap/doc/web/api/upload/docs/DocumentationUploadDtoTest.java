@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
 import ch.admin.bit.jeap.doc.domain.upload.DocumentationUploadDescriptor;
 import ch.admin.bit.jeap.doc.domain.upload.InvalidUploadException;
@@ -54,5 +55,32 @@ class DocumentationUploadDtoTest {
         assertThat(descriptor.component()).isEqualTo("foo-bar-scs");
         assertThat(descriptor.site()).isEqualTo("default");
         assertThat(descriptor.subjectName()).isEqualTo("foo-bar-scs");
+    }
+
+    @Test
+    void toDescriptor_whenAMicrositeNamesAPlacement_thenItsHintIsBuiltFromTheParameters() {
+        DocumentationUploadDescriptor descriptor = DocumentationUploadDto.builder()
+                .type(DocumentationTypeDto.COMPONENT_DOCS)
+                .system("orders")
+                .component("foo-bar-scs")
+                .version("1.4.0")
+                .template("arc42")
+                .sourceFormat(SourceFormatDto.HTML)
+                .location("6-runtime-view")
+                .topic("spring-rest-docs")
+                .label("Spring REST Docs")
+                .sourceRepository("ssh://git@bitbucket.example.ch/orders/foo-bar-scs.git")
+                .sourceRevision("9a1c2f8")
+                .sourceRef("main")
+                .sourceTimestamp(OffsetDateTime.parse("2026-08-21T09:12:00+02:00"))
+                .sidebarPosition(2.5)
+                .sidebarAfter("database-schema")
+                .build()
+                .toDescriptor();
+
+        assertThat(descriptor.sidebarPosition()).isEqualTo(2.5);
+        assertThat(descriptor.sidebarAfter()).isEqualTo("database-schema");
+        assertThat(descriptor.orderHint())
+                .isEqualTo(new OrderHint(2.5, OrderHint.Direction.AFTER, "database-schema"));
     }
 }

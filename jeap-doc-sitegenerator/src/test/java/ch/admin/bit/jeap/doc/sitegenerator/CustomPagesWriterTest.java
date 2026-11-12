@@ -7,6 +7,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
 import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.port.BundleLimits;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
@@ -141,17 +142,33 @@ class CustomPagesWriterTest {
                 .endsWith("Because the old one could not do it.\n");
     }
 
-    /**
-     * Past whatever the template generates into the chapter. Docusaurus breaks a tie between two equal
-     * positions by file name, which is the one thing assigning a position is there to take out of it - so an
-     * uploaded page numbered from one would tie with the first generated page of that chapter.
-     */
+    /** A chapter with no generated sibling present numbers its uploaded page from one, as it always did. */
     @Test
-    void writeInto_thenTheSidebarPositionStandsAfterTheGeneratedPagesOfTheChapter() throws IOException {
+    void writeInto_withNoGeneratedSiblingPresent_thenTheSidebarPositionStartsAtOne() throws IOException {
         writeOnePage("5-building-block-view", "our-take.md", "---\ntitle: Our take\n---\n\nText.\n");
 
         assertThat(Files.readString(chapterDirectory.resolve("our-take.md")))
-                .contains("sidebar_position: " + (new TestTemplate().firstCustomPagePosition() + 1));
+                .contains("sidebar_position: 1");
+    }
+
+    /**
+     * Past whatever generated sibling is actually present. Docusaurus breaks a tie between two equal
+     * positions by file name, which is the one thing assigning a position is there to take out of it - so an
+     * uploaded page numbered from one would tie with the generated page if it stood at the same position.
+     */
+    @Test
+    void writeInto_whenAGeneratedSiblingIsPresent_thenTheSidebarPositionStandsAfterIt() throws IOException {
+        TestTemplate template = new TestTemplate();
+        StructureChapter chapter = template.chapterOfFolder("5-building-block-view").orElseThrow();
+        // The generated page this run already wrote, exactly as Arc42CustomChapters.write finds it: the
+        // template's own writer runs first, and this writer only asks the directory what is already there.
+        Files.writeString(chapterDirectory.resolve("whitebox-view.md"), "---\ntitle: Whitebox View\n---\n");
+
+        writeOnePage("5-building-block-view", "our-take.md", "---\ntitle: Our take\n---\n\nText.\n");
+
+        int siblingPosition = template.siblingPosition(chapter, SubjectKind.SYSTEM, "whitebox-view");
+        assertThat(Files.readString(chapterDirectory.resolve("our-take.md")))
+                .contains("sidebar_position: " + (siblingPosition + 1));
     }
 
     /**
@@ -583,9 +600,45 @@ class CustomPagesWriterTest {
                 .contains("title: reference").doesNotContain("title: null");
     }
 
+    /**
+     * <b>Read from the set, not guessed from the microsite's own files.</b> An HTML microsite has no front
+     * matter of its own, so its placement among the pages of its chapter is the one the upload parameters
+     * put on the set - the same fields {@link ch.admin.bit.jeap.doc.domain.custom.Microsite#of} reads.
+     */
+    @Test
+    void writeMicrositesInto_whenTheSetNamesAPlacement_thenTheMicrositeIsOrderedByIt() throws IOException {
+        CustomPage notes = new CustomPage("6-runtime-view", "notes.md", "Notes", 0, false, OrderHint.NONE);
+        CustomSet pages = setOf(1L, SYSTEM, SourceFormat.MARKDOWN, notes);
+        CustomSet microsite = micrositeOf("Configuration Reference",
+                new OrderHint(null, OrderHint.Direction.BEFORE, "notes"));
+        InMemoryStorage storage = new InMemoryStorage().with(pages, "6-runtime-view/notes.md", "# Notes\n");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(pages, microsite)), storage)) {
+            writer.writeInto(SYSTEM, "6-runtime-view", chapterDirectory);
+            writer.writeMicrositesInto(SYSTEM, "6-runtime-view", chapterDirectory);
+        }
+
+        int notesPosition = sidebarPositionOf(chapterDirectory.resolve("notes.md"));
+        int micrositePosition = sidebarPositionOf(chapterDirectory.resolve("reference-microsite.md"));
+        assertThat(micrositePosition).isLessThan(notesPosition);
+    }
+
+    private static int sidebarPositionOf(Path page) throws IOException {
+        String content = Files.readString(page);
+        return content.lines()
+                .filter(line -> line.startsWith("sidebar_position:"))
+                .map(line -> line.substring("sidebar_position:".length()).strip())
+                .mapToInt(Integer::parseInt)
+                .findFirst().orElseThrow();
+    }
+
     private static CustomSet micrositeOf(String label) {
+        return micrositeOf(label, OrderHint.NONE);
+    }
+
+    private static CustomSet micrositeOf(String label, OrderHint hint) {
         return new CustomSet(2L, keyOf(SYSTEM, SourceFormat.HTML), label, 7L,
-                "current/docs/2/1/files/", "abc", 10, PROVENANCE, List.of());
+                "current/docs/2/1/files/", "abc", 10, PROVENANCE, List.of(), hint);
     }
 
     private void writeOnePage(String chapterFolder, String fileName, String content) {
@@ -677,6 +730,12 @@ class CustomPagesWriterTest {
         @Override
         public Set<String> generatedNames(StructureChapter chapter, SubjectKind subject) {
             return chapter != null && "1-intro".equals(chapter.folder()) ? Set.of("whitebox") : Set.of();
+        }
+
+        @Override
+        public List<String> generatedSiblings(StructureChapter chapter, SubjectKind subject) {
+            return chapter != null && "5-building-block-view".equals(chapter.folder())
+                    ? List.of("whitebox-view") : List.of();
         }
 
         @Override

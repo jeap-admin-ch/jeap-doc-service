@@ -1,5 +1,10 @@
 package ch.admin.bit.jeap.doc.web.api.upload.docs;
 
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
+import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
+import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
+import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import ch.admin.bit.jeap.doc.web.DocServiceIntegrationTestBase;
 import ch.admin.bit.jeap.doc.web.api.upload.UploadPaths;
 import org.junit.jupiter.api.Test;
@@ -20,6 +25,7 @@ import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -36,6 +42,9 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private CustomDocumentationRepository documentation;
 
 
     @Test
@@ -65,6 +74,37 @@ class UploadApiIT extends DocServiceIntegrationTestBase {
     void upload_whenComponentDocumentationInHtml_thenAccepted() throws Exception {
         mockMvc.perform(uploadOf(htmlComponentDocs()).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
                 .andExpect(status().isCreated());
+    }
+
+    /**
+     * <b>The one path that actually sets a microsite's hint.</b> A microsite has no front matter of its own,
+     * so its placement among the other items of its chapter travels as these upload parameters - the
+     * descriptor builds the hint from them, and {@code Microsite.of} reads it off the stored set.
+     */
+    @Test
+    void upload_whenAMicrositeNamesAPlacement_thenItsHintIsStored() throws Exception {
+        Map<String, String> parameters = htmlComponentDocs();
+        parameters.put("sidebar-position", "2.5");
+        parameters.put("sidebar-after", "database-schema");
+
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
+                .andExpect(status().isCreated());
+
+        CustomSetKey key = new CustomSetKey("default", SubjectKind.COMPONENT, SYSTEM, "foo-bar-scs",
+                SourceFormat.HTML, "arc42", "6-runtime-view", "spring-rest-docs");
+        assertThat(documentation.find(key).orElseThrow().hint())
+                .isEqualTo(new OrderHint(2.5, OrderHint.Direction.AFTER, "database-schema"));
+    }
+
+    @Test
+    void upload_whenMarkdownNamesASidebarPosition_thenBadRequest() throws Exception {
+        Map<String, String> parameters = componentDocs();
+        parameters.put("sidebar-position", "1");
+
+        mockMvc.perform(uploadOf(parameters).with(authentication(tokenWithRoles(uploadsRole(SYSTEM, "write")))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER_VALUE"))
+                .andExpect(jsonPath("$.detail").value(containsString("sidebar-position")));
     }
 
     @Test

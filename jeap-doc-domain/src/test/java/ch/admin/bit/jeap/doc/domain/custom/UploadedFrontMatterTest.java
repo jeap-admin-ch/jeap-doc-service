@@ -350,6 +350,64 @@ class UploadedFrontMatterTest {
                 .contains("title: '2024-01-01'");
     }
 
+    /**
+     * <b>A static site's own page may keep the position it uploaded.</b> {@code CustomPagesWriter} overwrites
+     * it for a chapter page, so this is only ever seen verbatim on a page {@code StaticSiteWriter} rewrites.
+     */
+    @Test
+    void rewritten_whenAnUploadedPageNamesASidebarPosition_thenItIsKeptAsANumber() {
+        String rewritten = UploadedFrontMatter.rewritten("""
+                ---
+                title: Setup
+                sidebar_position: 3
+                ---
+
+                Text.
+                """, UploadedFrontMatter.keys());
+
+        assertThat(rewritten).describedAs("a number, not the quoted string a plain reading of the block gives")
+                .contains("sidebar_position: 3").doesNotContain("sidebar_position: '3'");
+    }
+
+    /** A page may place itself between two others with a decimal, which Docusaurus orders just as well. */
+    @Test
+    void rewritten_whenAnUploadedSidebarPositionIsADecimal_thenItIsKeptAsOne() {
+        String rewritten = UploadedFrontMatter.rewritten("---\nsidebar_position: 2.5\n---\n\nText.\n",
+                UploadedFrontMatter.keys());
+
+        assertThat(rewritten).contains("sidebar_position: 2.5");
+    }
+
+    /** Not a number this service can make sense of, so the page is published without one - never guessed. */
+    @Test
+    void rewritten_whenAnUploadedSidebarPositionIsNotANumber_thenItIsDropped() {
+        String rewritten = UploadedFrontMatter.rewritten("---\nsidebar_position: not-a-number\n---\n\nText.\n",
+                UploadedFrontMatter.keys());
+
+        assertThat(rewritten).doesNotContain("sidebar_position");
+    }
+
+    /**
+     * <b>Never in a published page.</b> The two reference keys place an item relative to a named sibling, but
+     * only to compute a position with - {@link UploadedTitles} reads them for that, straight out of the
+     * unfiltered block, and neither ever reaches the page this rewrites.
+     */
+    @Test
+    void rewritten_whenAnUploadedPageNamesAReferenceKey_thenItIsDropped() {
+        String rewritten = UploadedFrontMatter.rewritten("""
+                ---
+                title: Setup
+                sidebar_after: intro
+                sidebar_before: appendix
+                ---
+
+                Text.
+                """, UploadedFrontMatter.keys());
+
+        assertThat(rewritten).doesNotContain("sidebar_after").doesNotContain("sidebar_before")
+                .contains("title: Setup");
+    }
+
     /** An expansion bomb is a handful of bytes, and no page needs an alias. */
     @Test
     void rewritten_whenTheBlockIsAnExpansionBomb_thenItIsRefusedRatherThanExpanded() {

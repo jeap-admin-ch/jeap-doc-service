@@ -62,6 +62,9 @@ class DocumentationUploadMapperTest {
         assertThat(entity.getSourceTimestamp()).isEqualTo(Instant.parse("2026-08-21T07:12:00Z"));
         assertThat(entity.getBuildUrl()).isEqualTo("https://github.com/orders/foo-bar-scs/actions/runs/1234567890");
         assertThat(entity.getGeneratedAt()).isEqualTo(Instant.parse("2026-08-21T07:15:00Z"));
+        assertThat(entity.getSidebarPosition()).isEqualTo(2.5);
+        assertThat(entity.getSidebarAfter()).isEqualTo("database-schema");
+        assertThat(entity.getSidebarBefore()).isNull();
     }
 
     /**
@@ -92,6 +95,8 @@ class DocumentationUploadMapperTest {
                 .sourceTimestamp(Instant.parse("2026-08-21T07:12:00Z"))
                 .buildUrl("https://github.com/orders/foo-bar-scs/actions/runs/1234567890")
                 .generatedAt(Instant.parse("2026-08-21T07:15:00Z"))
+                .sidebarPosition(2.5)
+                .sidebarAfter("database-schema")
                 .build();
     }
 

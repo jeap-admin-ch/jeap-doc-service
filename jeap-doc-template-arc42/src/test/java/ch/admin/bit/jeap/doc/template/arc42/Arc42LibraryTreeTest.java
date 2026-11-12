@@ -4,8 +4,10 @@ import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
+import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -79,16 +81,19 @@ class Arc42LibraryTreeTest {
         writeWith(Map.of("2-constraints", List.of("what-was-given.md")));
 
         Path group = libraryTree().getParent();
+        int librariesPosition = template.siblingPosition(Arc42Chapters.BUILDING_BLOCK_VIEW, SubjectKind.SYSTEM,
+                DocumentationPaths.LIBRARIES_SEGMENT);
         assertThat(group.resolve("_category_.json")).exists();
         assertThat(Files.readString(group.resolve("_category_.json")))
                 .describedAs("beside the components, after them - and its own position, because two groups "
                              + "of one position are ordered by their folder names instead")
-                .contains("\"label\": \"Libraries\"").contains("\"position\": 3");
-        assertThat(Arc42LibraryPages.LIBRARIES_POSITION)
-                .describedAs("the components are at two, the events at four and the commands at five")
-                .isEqualTo(3)
-                .isNotEqualTo(Arc42SystemPages.EVENTS_POSITION)
-                .isNotEqualTo(Arc42SystemPages.COMMANDS_POSITION);
+                .contains("\"label\": \"Libraries\"").contains("\"position\": " + librariesPosition);
+        assertThat(librariesPosition)
+                .describedAs("the components stand before the libraries, the events and the commands after")
+                .isNotEqualTo(template.siblingPosition(Arc42Chapters.BUILDING_BLOCK_VIEW, SubjectKind.SYSTEM,
+                        Arc42MessagePages.EVENTS))
+                .isNotEqualTo(template.siblingPosition(Arc42Chapters.BUILDING_BLOCK_VIEW, SubjectKind.SYSTEM,
+                        Arc42MessagePages.COMMANDS));
         assertThat(group.resolve("index.md")).describedAs("a group a reader can read, not only expand")
                 .exists();
         assertThat(Files.readString(group.resolve("index.md"))).contains(LIBRARY);

@@ -179,11 +179,14 @@ findings in the body. The rules are on [What an upload is validated against](upl
 
 **A refused set leaves nothing behind.** The bundle is read onto a file and its list of entries decides before
 anything is stored, so there is no object, no set, and an upload a retry can take over once the set is fixed.
-Reading that list costs one seek and unpacks not one entry: everything the rules ask about is a path.
+Reading that list costs one seek and unpacks not one entry: the structure rules ask only about a path.
 
-The **Markdown itself** - CommonMark, dead links, the front-matter allowlist - is the doc workflow's half of
-the validation, before anything is sent; the doc service never sees a file's bytes. And nothing is scanned for
-malware: that is descoped from this enabler.
+**Most of the Markdown itself** - CommonMark, dead links, the front-matter allowlist - is the doc workflow's
+half of the validation, before anything is sent, and the doc service does not read it again. The one
+exception is a page's own placement among the items of its chapter -
+[`sidebar_position`, `sidebar_after` and `sidebar_before`](upload-validation.md#a-pages-own-placement) - which
+is checked once more here, because that client is one a caller can skip. Nothing else about a file's content
+is scanned, and nothing is scanned for malware: that is descoped from this enabler.
 
 ## What happens next
 
@@ -223,7 +226,8 @@ PUT /api/uploads/docs/{uploadId}?site=handbook&type=site-docs&source-format=mark
   shown as text, and the dry run of `POST /api/uploads/docs/validation?type=site-docs&site=handbook`. What does
   not apply is what belongs to a template: there are no chapters, so a file may lie at the root and in any folder,
   at any depth. A page's front matter keeps what any uploaded page may say about itself - its title, description,
-  sidebar label, tags and keywords. The [validation rules](upload-validation.md) list the names a tree may not use.
+  sidebar label, tags, keywords and its own `sidebar_position`. The
+  [validation rules](upload-validation.md) list the names a tree may not use.
 - **Only a static site takes it, and a static site takes nothing else.** A site-level upload to a site with
   other content, and a system's upload to a static site, are refused - by the dry run as by the upload, where the
   dry run names its site.
@@ -240,10 +244,13 @@ PUT /api/uploads/docs/{uploadId}?site=handbook&type=site-docs&source-format=mark
 The sidebar is the tree: every folder is a category, every page an entry in it. **Nothing has to be configured
 for that** - a tree of plain folders and pages is a complete site. What decides how it looks:
 
-- **The order is the numbers.** A leading number on a page or folder, `01-why.md` or `02-working-agreements/`,
-  orders it among its siblings and is not part of its URL or its label. Without a number, an entry comes after the
-  numbered ones, in the order of its name. A page cannot set its own position: `sidebar_position` is not among
-  the front matter an uploaded page keeps.
+- **The order is the numbers, or a page's own `sidebar_position`.** A leading number on a page or folder,
+  `01-why.md` or `02-working-agreements/`, orders it among its siblings and is not part of its URL or its
+  label. Without a number, an entry comes after the numbered ones, in the order of its name - unless its
+  front matter carries `sidebar_position`, which is kept as it was written and passed through to Docusaurus
+  verbatim: a static site has no chapter-generated siblings to place a page around, so it orders its pages
+  natively, by that number. `sidebar_after` and `sidebar_before` are refused on a static site's page - see
+  [the validation rules](upload-validation.md#a-pages-own-placement).
 - **A folder's own page** is an `index.md`, a `README.md` or a page named like its folder - `guides/guides.md`,
   compared as written, so `01-guides/guides.md` is not one. Clicking the folder opens it, and its
   `sidebar_label`, or else its title, labels the folder.

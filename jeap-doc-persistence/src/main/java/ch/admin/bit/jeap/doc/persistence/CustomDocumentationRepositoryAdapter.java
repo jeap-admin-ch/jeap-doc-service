@@ -6,6 +6,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
 import ch.admin.bit.jeap.doc.domain.custom.SubjectDeployment;
 import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationRepository;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
@@ -68,11 +69,13 @@ class CustomDocumentationRepositoryAdapter implements CustomDocumentationReposit
                 .map(CustomSetEntity::getObjectKey)
                 .filter(objectKey -> !objectKey.equals(set.objectKey()));
         CustomProvenance provenance = set.provenance();
+        OrderHint hint = set.hint();
         sets.upsert(key.site(), key.kind().name(), key.system(), key.name(), key.sourceFormat().name(),
                 key.template(), key.location(), key.topic(), set.label(), set.revision(), set.objectKey(),
                 set.sha256(), set.sizeInBytes(), provenance.sourceRepository(), provenance.sourceRef(),
                 provenance.sourceRevision(), provenance.sourceTimestamp(), provenance.version(),
-                provenance.uploadedAt());
+                provenance.uploadedAt(), hint.position(), hint.direction() == null ? null : hint.direction().name(),
+                hint.reference());
         CustomSetEntity stored = findEntity(key).orElseThrow(() -> new IllegalStateException(
                 "The documentation set %s was written and cannot be read back.".formatted(key)));
         pages.deleteBySetId(stored.getId());

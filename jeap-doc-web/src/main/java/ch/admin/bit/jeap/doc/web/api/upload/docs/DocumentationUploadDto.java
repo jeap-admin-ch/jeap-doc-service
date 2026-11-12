@@ -30,7 +30,10 @@ record DocumentationUploadDto(
         OffsetDateTime sourceTimestamp,
         String version,
         String buildUrl,
-        OffsetDateTime generatedAt) {
+        OffsetDateTime generatedAt,
+        Double sidebarPosition,
+        String sidebarAfter,
+        String sidebarBefore) {
 
     DocumentationUploadDescriptor toDescriptor() {
         return DocumentationUploadDescriptor.builder()
@@ -51,6 +54,9 @@ record DocumentationUploadDto(
                 .version(version)
                 .buildUrl(buildUrl)
                 .generatedAt(generatedAt == null ? null : generatedAt.toInstant())
+                .sidebarPosition(sidebarPosition)
+                .sidebarAfter(sidebarAfter)
+                .sidebarBefore(sidebarBefore)
                 .build();
     }
 }

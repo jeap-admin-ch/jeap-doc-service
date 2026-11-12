@@ -17,6 +17,7 @@ import ch.admin.bit.jeap.doc.domain.port.CustomDocumentationStorage;
 import ch.admin.bit.jeap.doc.domain.port.HtmlText;
 import ch.admin.bit.jeap.doc.domain.port.UploadedBundles;
 import ch.admin.bit.jeap.doc.domain.upload.validation.FindingCode;
+import ch.admin.bit.jeap.doc.domain.upload.validation.OrderValidation;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureFinding;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureReport;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureValidation;
@@ -93,9 +94,9 @@ class DocumentationUploadServiceTest {
         metrics = new RecordingUploadMetrics();
         DocumentationSites sites = new DocumentationSites(new SiteProperties());
         service = new DocumentationUploadService(uploadRepository, subjectRepository, bundles, documentation,
-                documentationStorage, validation, new UploadProperties(), new CustomProperties(), sites,
-                siteUploadRulesOf(sites), htmlText, new SearchProperties(), buildTrigger, metrics,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                documentationStorage, validation, new OrderValidation(), new UploadProperties(),
+                new CustomProperties(), sites, siteUploadRulesOf(sites), htmlText, new SearchProperties(),
+                buildTrigger, metrics, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     /** The rules over the content sources the service ships. */

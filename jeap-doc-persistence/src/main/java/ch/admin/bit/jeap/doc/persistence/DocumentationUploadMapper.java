@@ -61,6 +61,9 @@ final class DocumentationUploadMapper {
         entity.setSourceTimestamp(descriptor.sourceTimestamp());
         entity.setBuildUrl(descriptor.buildUrl());
         entity.setGeneratedAt(descriptor.generatedAt());
+        entity.setSidebarPosition(descriptor.sidebarPosition());
+        entity.setSidebarAfter(descriptor.sidebarAfter());
+        entity.setSidebarBefore(descriptor.sidebarBefore());
     }
 
     private static DocumentationUploadDescriptor toDescriptor(DocumentationUploadEntity entity) {
@@ -83,6 +86,9 @@ final class DocumentationUploadMapper {
                 .version(entity.getVersion())
                 .buildUrl(entity.getBuildUrl())
                 .generatedAt(entity.getGeneratedAt())
+                .sidebarPosition(entity.getSidebarPosition())
+                .sidebarAfter(entity.getSidebarAfter())
+                .sidebarBefore(entity.getSidebarBefore())
                 .build();
     }
 

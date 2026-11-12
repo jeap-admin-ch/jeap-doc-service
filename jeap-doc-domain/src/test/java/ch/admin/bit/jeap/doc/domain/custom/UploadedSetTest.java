@@ -201,4 +201,58 @@ class UploadedSetTest {
 
         assertThat(pages).extracting(CustomPage::fileName).containsExactly("b.md", "a.md");
     }
+
+    /** A bundle of whole pages, front matter and all - what the ordering hint is read from. */
+    private record Pages(Map<String, String> content) implements UploadedBundles.ReceivedBundle {
+
+        @Override
+        public List<String> paths() {
+            return List.copyOf(content.keySet());
+        }
+
+        @Override
+        public long declaredUnpackedSize() {
+            return 0;
+        }
+
+        @Override
+        public String sha256() {
+            return "";
+        }
+
+        @Override
+        public long sizeInBytes() {
+            return 0;
+        }
+
+        @Override
+        public byte[] head(String path, int maxBytes) {
+            String page = content.get(path);
+            return page == null ? new byte[0] : page.getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        public void close() {
+            // nothing to release: this bundle is a map of whole pages.
+        }
+    }
+
+    @Test
+    void aPageWithAPlacement_carriesItsHint() {
+        List<CustomPage> pages = UploadedSet.pagesOf(List.of("3-context-and-scope/overview.md"),
+                new Pages(Map.of("3-context-and-scope/overview.md",
+                        "---\ntitle: Overview\nsidebar_before: system-context-view\n---\n")));
+
+        assertThat(pages).singleElement().satisfies(page ->
+                assertThat(page.hint())
+                        .isEqualTo(new OrderHint(null, OrderHint.Direction.BEFORE, "system-context-view")));
+    }
+
+    @Test
+    void aPageWithNoPlacement_carriesNoHint() {
+        List<CustomPage> pages = UploadedSet.pagesOf(List.of("1-intro/goals.md"),
+                new Titles(Map.of("1-intro/goals.md", "Goals")));
+
+        assertThat(pages).singleElement().satisfies(page -> assertThat(page.hint()).isEqualTo(OrderHint.NONE));
+    }
 }

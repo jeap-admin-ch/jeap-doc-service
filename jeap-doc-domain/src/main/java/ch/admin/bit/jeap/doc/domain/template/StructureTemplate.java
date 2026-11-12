@@ -132,8 +132,8 @@ public interface StructureTemplate {
     Set<String> allowedFileExtensions();
 
     /**
-     * The page and group names this template generates into a chapter, for that kind of subject - without the
-     * extension, because what collides is a document and not a file.
+     * The page and group names this template generates into a chapter, for that kind of subject, in the order
+     * it writes them - without the extension, because what collides is a document and not a file.
      * <p>
      * An upload carrying one of them would produce two documents at one URL, and Docusaurus is configured
      * with {@code onDuplicateRoutes: 'throw'} - so the build of that subject's part fails, twenty minutes
@@ -141,23 +141,54 @@ public interface StructureTemplate {
      * <p>
      * Defaults to nothing: a template that generates no page occupies no name beyond the two the domain
      * reserves everywhere, {@code index} and {@code _category_.json}.
+     * <p>
+     * <b>The order is the one declaration.</b> It is what {@link #siblingPosition} numbers a generated page
+     * by, and what an uploaded item may place itself before or after - the same list answers both, so the two
+     * can never disagree about which sibling comes first.
      */
-    default Set<String> generatedNames(StructureChapter chapter, SubjectKind subject) {
-        return Set.of();
+    default List<String> generatedSiblings(StructureChapter chapter, SubjectKind subject) {
+        return List.of();
     }
 
     /**
-     * The sidebar position the first uploaded page of a chapter takes.
+     * The page and group names this template generates into a chapter, for that kind of subject - without the
+     * extension, because what collides is a document and not a file.
      * <p>
-     * <b>Uploaded pages stand after the ones this template generates.</b> The upload numbers the pages of a
-     * chapter from one, in the order of their titles, and Docusaurus breaks a tie between two equal positions
-     * by file name - so without an offset the first uploaded page of a chapter would tie with the first
-     * generated one and the order would silently depend on what the files are called, which is the one thing
-     * assigning a position is meant to take out of it.
-     * <p>
-     * A hundred, because no chapter of a template generates that many pages. One that does says so here.
+     * Derived from {@link #generatedSiblings}, which is the one declaration: this is what the upload
+     * validation and {@link ReservedNames} ask, and neither needs the order.
      */
-    default int firstCustomPagePosition() {
-        return 100;
+    default Set<String> generatedNames(StructureChapter chapter, SubjectKind subject) {
+        return Set.copyOf(generatedSiblings(chapter, subject));
+    }
+
+    /**
+     * The gap between two generated siblings' positions.
+     * <p>
+     * Large enough that the uploaded items placed between two of them, or after the last one, can never reach
+     * the next: a chapter holds at most {@code jeap.doc.upload.validation.max-paths}, ceilinged at 100 000,
+     * items in total.
+     */
+    int SIBLING_STRIDE = 1_000_000;
+
+    /**
+     * The sidebar position a generated sibling of a chapter takes.
+     * <p>
+     * <b>Uploaded items are placed around these numbers.</b> An item with no placement of its own still has
+     * to stand after every generated page, and one placed next to a named sibling has to land next to the
+     * real position that sibling's own page carries - so this is the one formula both the writer of the
+     * generated page and {@link ch.admin.bit.jeap.doc.domain.custom.ChapterOrder} have to agree on, and it is
+     * written once, here.
+     *
+     * @param name one of {@link #generatedSiblings}, for the same chapter and subject
+     * @throws IllegalArgumentException if it is not
+     */
+    default int siblingPosition(StructureChapter chapter, SubjectKind subject, String name) {
+        List<String> siblings = generatedSiblings(chapter, subject);
+        int index = siblings.indexOf(name);
+        if (index < 0) {
+            throw new IllegalArgumentException(("'%s' is not a sibling this template generates into %s for "
+                                                + "%s.").formatted(name, chapter, subject));
+        }
+        return (index + 1) * SIBLING_STRIDE;
     }
 }

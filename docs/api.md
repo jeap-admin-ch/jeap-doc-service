@@ -86,6 +86,9 @@ do).
 | `version`           | for `component-docs`, `library-docs` | Version of the component or library                                                           | `1.4.0`                                                         |
 | `build-url`         | no                                   | Build that uploaded the documents                                                             | `https://github.com/orders/foo-bar-scs/actions/runs/1234567890` |
 | `generated-at`      | no                                   | When the documents were generated, ISO-8601                                                   | `2026-08-21T09:15:00+02:00`                                     |
+| `sidebar-position`  | no, for `source-format=html` only    | Where the microsite goes among the items of its chapter that name no reference of their own  | `2.5`                                                           |
+| `sidebar-after`     | no, for `source-format=html` only    | The item of its chapter the microsite stands directly after; at most one of this and `sidebar-before` | `database-schema`                                        |
+| `sidebar-before`    | no, for `source-format=html` only    | The item of its chapter the microsite stands directly before; at most one of this and `sidebar-after` | `rest-api`                                                |
 
 The doc service will host more than one documentation site. An upload without a `site` targets the default site,
 which is what a repository that does not care about sites sends.

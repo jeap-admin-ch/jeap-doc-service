@@ -7,6 +7,7 @@ import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.Md;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
@@ -32,13 +33,6 @@ final class Arc42LibraryPages {
 
     static final String LIBRARIES_LABEL = "Libraries";
 
-    /**
-     * Inside chapter 5, after the components: the two groups of building blocks stand together, and the
-     * events and the commands follow at four and five. Every group of the chapter has a position of its own -
-     * Docusaurus orders two equal ones by their folder names.
-     */
-    static final int LIBRARIES_POSITION = 3;
-
     private Arc42LibraryPages() {
     }
 
@@ -54,7 +48,8 @@ final class Arc42LibraryPages {
             return;
         }
         Path group = buildingBlock.resolve(DocumentationPaths.LIBRARIES_SEGMENT);
-        Arc42Pages.writeCategory(group, LIBRARIES_LABEL, LIBRARIES_POSITION);
+        Arc42Pages.writeCategory(group, LIBRARIES_LABEL, template.siblingPosition(BUILDING_BLOCK_VIEW,
+                SubjectKind.SYSTEM, DocumentationPaths.LIBRARIES_SEGMENT));
         writeIndex(system, libraries, context, group);
         for (CustomSubject library : libraries) {
             writeLibrary(template, system, library, context, group.resolve(library.name()));
@@ -118,7 +113,9 @@ final class Arc42LibraryPages {
         Path introduction = Arc42Pages.chapterDirectory(template, structure, INTRODUCTION);
         Optional<CustomProvenance> uploaded = system.custom().provenanceOf(library);
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generatedWithoutTheModel("Library Overview", 0, context))
+                .frontMatter(Arc42Pages.generatedWithoutTheModel("Library Overview",
+                        template.siblingPosition(INTRODUCTION, SubjectKind.LIBRARY,
+                                Arc42Template.LIBRARY_OVERVIEW_PAGE), context))
                 .heading(1, "Library Overview")
                 .paragraph(Md.sentence("What the doc service knows about {}, from the upload that published "
                                        + "this documentation. Everything else on these pages was written by "

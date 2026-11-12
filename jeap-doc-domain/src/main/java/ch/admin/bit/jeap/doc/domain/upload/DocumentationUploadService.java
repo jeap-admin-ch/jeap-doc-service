@@ -10,6 +10,7 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.MicrositePageText;
 import ch.admin.bit.jeap.doc.domain.custom.MicrositeSearchText;
 import ch.admin.bit.jeap.doc.domain.custom.UploadedSet;
+import ch.admin.bit.jeap.doc.domain.upload.validation.OrderValidation;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureReport;
 import ch.admin.bit.jeap.doc.domain.upload.validation.StructureValidation;
 import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
@@ -67,6 +68,7 @@ public class DocumentationUploadService {
     private final CustomDocumentationRepository documentation;
     private final CustomDocumentationStorage documentationStorage;
     private final StructureValidation validation;
+    private final OrderValidation orderValidation;
     private final UploadProperties uploadProperties;
     private final CustomProperties customProperties;
     private final DocumentationSites sites;
@@ -223,15 +225,21 @@ public class DocumentationUploadService {
      * The same rules the structure validation endpoint applies, on the same paths - a pipeline may skip that
      * endpoint, and a set that got past it must not be able to put a page in a chapter nothing serves or a
      * page over one the generator writes itself.
+     * <p>
+     * <b>The order check runs only once the structure is accepted.</b> It reads a page's own front matter,
+     * which the structure check never does - so a tree that would be refused anyway is refused without a
+     * single byte of a page being read, exactly as before this existed.
      */
     private void requireAPublishableSet(DocumentationUpload upload, UploadedBundles.ReceivedBundle received) {
-        StructureReport report = validation.validate(upload.descriptor().site(), upload.descriptor().placement(),
-                received.paths());
-        if (report.isValid()) {
-            return;
+        DocumentationUploadDescriptor descriptor = upload.descriptor();
+        StructureReport report = validation.validate(descriptor.site(), descriptor.placement(), received.paths());
+        if (!report.isValid()) {
+            throw recordRejectedBundle(upload, InvalidUploadException.structureInvalid(report));
         }
-        InvalidUploadException refused = InvalidUploadException.structureInvalid(report);
-        throw recordRejectedBundle(upload, refused);
+        orderValidation.check(report, descriptor.placement(), received.paths(), received)
+                .ifPresent(orderReport -> {
+                    throw recordRejectedBundle(upload, InvalidUploadException.structureInvalid(orderReport));
+                });
     }
 
     /**
@@ -286,7 +294,8 @@ public class DocumentationUploadService {
                                     descriptor.sourceRevision(), descriptor.sourceTimestamp(),
                                     descriptor.version(), clock.instant()),
                             siteDocumentation ? UploadedSet.staticPagesOf(received.paths())
-                                    : UploadedSet.pagesOf(descriptor.sourceFormat(), received.paths(), received)));
+                                    : UploadedSet.pagesOf(descriptor.sourceFormat(), received.paths(), received),
+                            descriptor.orderHint()));
             replaced.previousObjectKey().ifPresent(this::forgetTheReplacedObject);
         } catch (InvalidUploadException e) {
             // A microsite is unpacked here, and one that unpacks to more than it may is the uploader's to fix,

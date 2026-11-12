@@ -14,9 +14,16 @@ import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
  * @param topic    what identifies this microsite within that chapter, and the last segment of its route
  * @param url        where its entry point is served, as a path within this service
  * @param provenance the repository, the commit and the upload the files came from
+ * @param hint     where the microsite asked to go among the other items of its chapter, read from the upload
+ *                 parameters of the same three names; {@link OrderHint#NONE} for a microsite that gave none
  */
 public record Microsite(String label, String location, String topic, String url,
-                        CustomProvenance provenance) {
+                        CustomProvenance provenance, OrderHint hint) {
+
+    /** A microsite with no declared placement among its siblings - every one before this hint existed. */
+    public Microsite(String label, String location, String topic, String url, CustomProvenance provenance) {
+        this(label, location, topic, url, provenance, OrderHint.NONE);
+    }
 
     /**
      * The segment every microsite is served under, spelled here and nowhere else: the URL a page frames, the
@@ -36,7 +43,7 @@ public record Microsite(String label, String location, String topic, String url,
                 : key.system() + "/" + kindSegmentOf(key.kind()) + "/" + key.name();
         String url = "/" + SEGMENT + "/" + subject + "/" + key.template() + "/" + key.location() + "/"
                      + key.topic() + "/";
-        return new Microsite(set.label(), key.location(), key.topic(), url, set.provenance());
+        return new Microsite(set.label(), key.location(), key.topic(), url, set.provenance(), set.hint());
     }
 
     /**

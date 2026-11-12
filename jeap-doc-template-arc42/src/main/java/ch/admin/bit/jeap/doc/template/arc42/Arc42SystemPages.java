@@ -12,6 +12,7 @@ import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
+import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.markdown.ReactionEntry;
@@ -153,7 +154,8 @@ final class Arc42SystemPages {
         writeBuildingBlockIndexOfUploadsOnly(system, context, buildingBlock);
         if (!system.components().isEmpty()) {
             Path components = buildingBlock.resolve(DocumentationPaths.COMPONENTS_SEGMENT);
-            Arc42Pages.writeCategory(components, COMPONENTS_LABEL, 2);
+            Arc42Pages.writeCategory(components, COMPONENTS_LABEL, template.siblingPosition(BUILDING_BLOCK_VIEW,
+                    SubjectKind.SYSTEM, DocumentationPaths.COMPONENTS_SEGMENT));
             writeComponentIndexOfUploadsOnly(system, context, components);
             for (SystemDocumentation.ComponentDocumentation component : system.components()) {
                 Arc42UnknownSubjectPage.writeForComponent(template, system, component, context,
@@ -298,7 +300,8 @@ final class Arc42SystemPages {
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         MarkdownWriter view = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(CONTEXT_VIEW_LABEL, 1, context))
+                .frontMatter(Arc42Pages.generated(CONTEXT_VIEW_LABEL,
+                        template.siblingPosition(CONTEXT_AND_SCOPE, SubjectKind.SYSTEM, CONTEXT_VIEW_PAGE), context))
                 .heading(1, CONTEXT_VIEW_LABEL)
                 .paragraph(Md.sentence("The external systems {} interacts with and the data exchanged "
                                        + "between them. " + PlantUmlViews.ARROW_LEGEND,
@@ -320,10 +323,6 @@ final class Arc42SystemPages {
         Arc42Pages.write(directory, CONTEXT_VIEW_PAGE + ".md", view);
     }
 
-    /** Inside chapter 5, after the components and the libraries: what the system publishes. */
-    static final int EVENTS_POSITION = 4;
-    static final int COMMANDS_POSITION = 5;
-
     /** Chapter 5: the components, libraries, events and commands inside the system. */
     private static void writeBuildingBlockView(Arc42Template template, SystemDocumentation documented,
                                                DocumentedSystem system, GenerationContext context,
@@ -336,12 +335,14 @@ final class Arc42SystemPages {
         // The message groups are written before the listing that links to them, and the listing goes by what
         // they answer: a system defines no events, or no commands, more often than not, and a link to a
         // directory nothing wrote fails the build of every site of the environment.
-        // Four and five, after the building blocks: the components stand at two and the libraries at three,
-        // and two groups of one position would be ordered by their folder names instead.
+        // After the building blocks, in the template's own declared order - the one declaration both this and
+        // ChapterOrder read, so an uploaded item placed next to one of them lands next to its real position.
         boolean events = Arc42MessagePages.write(system, MessageKind.EVENT, Arc42MessagePages.EVENTS,
-                EVENTS_POSITION, context, directory);
+                template.siblingPosition(BUILDING_BLOCK_VIEW, SubjectKind.SYSTEM, Arc42MessagePages.EVENTS),
+                context, directory);
         boolean commands = Arc42MessagePages.write(system, MessageKind.COMMAND, Arc42MessagePages.COMMANDS,
-                COMMANDS_POSITION, context, directory);
+                template.siblingPosition(BUILDING_BLOCK_VIEW, SubjectKind.SYSTEM, Arc42MessagePages.COMMANDS),
+                context, directory);
 
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context))
@@ -374,7 +375,7 @@ final class Arc42SystemPages {
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         if (!system.components().isEmpty()) {
-            writeWhiteboxView(system, context, whitebox, directory);
+            writeWhiteboxView(template, system, context, whitebox, directory);
         }
         writeComponents(template, documented, context, directory);
         Arc42LibraryPages.write(template, documented, context, directory);
@@ -389,12 +390,13 @@ final class Arc42SystemPages {
      * view decides which pictures the page draws and how each is drawn; this writes what it decided, and says
      * so where a picture is folded or left out.
      */
-    private static void writeWhiteboxView(DocumentedSystem system, GenerationContext context, WhiteboxView whitebox,
-                                          Path directory) throws IOException {
+    private static void writeWhiteboxView(Arc42Template template, DocumentedSystem system, GenerationContext context,
+                                          WhiteboxView whitebox, Path directory) throws IOException {
         String title = "Whitebox View " + system.name();
         WhiteboxView.Pictures pictures = whitebox.pictures(context.limits());
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(title, 1, context))
+                .frontMatter(Arc42Pages.generated(title,
+                        template.siblingPosition(BUILDING_BLOCK_VIEW, SubjectKind.SYSTEM, WHITEBOX_PAGE), context))
                 .heading(1, title)
                 .paragraph(Md.sentence("All components of {}, the relations between them, and what they "
                                        + "exchange with other systems.", Md.code(system.name())));
@@ -578,7 +580,8 @@ final class Arc42SystemPages {
             return;
         }
         Path components = buildingBlock.resolve(DocumentationPaths.COMPONENTS_SEGMENT);
-        Arc42Pages.writeCategory(components, COMPONENTS_LABEL, 2);
+        Arc42Pages.writeCategory(components, COMPONENTS_LABEL, template.siblingPosition(BUILDING_BLOCK_VIEW,
+                SubjectKind.SYSTEM, DocumentationPaths.COMPONENTS_SEGMENT));
         writeComponentIndex(documented, system, context, components);
         for (SystemDocumentation.ComponentDocumentation onlyDocumented : all) {
             if (!onlyDocumented.isInTheArchitectureModel()) {
@@ -700,7 +703,8 @@ final class Arc42SystemPages {
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
 
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(Arc42Pages.generated(SYSTEM_REACTIONS_LABEL, 1, context))
+                .frontMatter(Arc42Pages.generated(SYSTEM_REACTIONS_LABEL,
+                        template.siblingPosition(RUNTIME_VIEW, SubjectKind.SYSTEM, SYSTEM_REACTIONS_PAGE), context))
                 .heading(1, SYSTEM_REACTIONS_LABEL)
                 .paragraph(Md.sentence("Which message makes {} react, and what it does in answer. Every "
                                        + "reaction here belongs to one of its components; a message outlined "
