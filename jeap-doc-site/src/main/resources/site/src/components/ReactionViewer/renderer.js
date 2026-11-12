@@ -3,6 +3,7 @@ import dagre from 'cytoscape-dagre';
 import {expansionViewport} from './expansionViewport.mjs';
 import {orderGroupChildren} from './layout.mjs';
 import {nodeAppearance, foreignAppearance, pinnedAppearance} from './appearance.mjs';
+import {presentationPan} from './presentation.mjs';
 cytoscape.use(dagre);
 
 function wrap(label, kind) {
@@ -135,7 +136,15 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
         if (cy.zoom() > 1) cy.zoom(1);
         cy.center();
     };
-    if (viewport) { cy.zoom(viewport.zoom); cy.pan(viewport.pan); }
+    if (viewport?.restorePositions && viewport.positions) {
+        const positions = new Map(viewport.positions);
+        cy.batch(() => cy.nodes(':childless').positions(node => positions.get(node.id()) ?? node.position()));
+    }
+    if (viewport) {
+        cy.minZoom(Math.min(cy.minZoom(), viewport.zoom));
+        cy.zoom(viewport.zoom); cy.pan(presentationPan(viewport, cy.width(), cy.height()));
+        onZoom(Math.round(cy.zoom() * 100));
+    }
     else reset();
     let highlightTarget;
     // A semantic redraw may move nodes in model coordinates. Keep the action target at its screen position.
@@ -216,8 +225,14 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
             cy.on('pan zoom resize', changed); changed();
             return () => cy.off('pan zoom resize', changed);
         },
+        observeChanges: listener => {
+            cy.on('pan zoom', listener);
+            return () => cy.off('pan zoom', listener);
+        },
         centerAt: point => cy.pan({x: cy.width() / 2 - point.x * cy.zoom(), y: cy.height() / 2 - point.y * cy.zoom()}),
-        viewport: () => ({zoom: cy.zoom(), pan: {...cy.pan()}, group: activeGroup, node: activeNode}),
+        viewport: () => ({zoom: cy.zoom(), pan: {...cy.pan()}, width: cy.width(), height: cy.height(),
+            group: activeGroup, node: activeNode,
+            positions: cy.nodes(':childless').map(node => [node.id(), {...node.position()}])}),
         openNodeMenu: () => {
             const node = activeNode ? cy.getElementById(activeNode) : cy.collection();
             openNodeMenu(node.length ? node : activeGroup ? cy.getElementById(activeGroup) : cy.nodes('[kind="group"]').first());

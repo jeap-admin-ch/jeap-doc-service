@@ -1,9 +1,12 @@
 .viewer { border: 1px solid var(--ifm-color-emphasis-300); border-radius: 10px; margin: 1.5rem 0; overflow: hidden; background: var(--ifm-background-color); }
-.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--ifm-color-emphasis-200); }
+.toolbar { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--ifm-color-emphasis-200); }
+.copyFeedback { position: absolute; top: calc(100% + 8px); right: 12px; z-index: 5; max-width: calc(100% - 24px); padding: 8px 12px; border: 1px solid var(--ifm-color-success); border-radius: 6px; background: var(--ifm-background-color); color: var(--ifm-font-color-base); box-shadow: 0 3px 12px #0003; font-size: .85rem; pointer-events: none; }
 .caption { display: block; color: var(--ifm-color-emphasis-600); font-size: 0.8rem; }
 .reactionTable { margin: 1rem 0; overflow-x: auto; }
 :global(.jeapReactionView):has(.reactionTable) > :global(.jeapReactionTableFallback) { display: none; }
-.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; column-gap: 18px; row-gap: 10px; }
+.actionGroup { display: inline-flex; align-items: center; gap: 6px; }
+.actionGroup + .actionGroup { padding-left: 18px; border-left: 1px solid var(--ifm-color-emphasis-300); }
 .actions button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 5px; background: var(--ifm-background-color); color: var(--ifm-font-color-base); cursor: pointer; padding: 6px; font: inherit; font-size: 1rem; width: 32px; height: 32px; }
 .actions button:hover { background: var(--ifm-color-emphasis-100); }
 .actions button:disabled { opacity: 0.45; cursor: default; }
@@ -37,6 +40,7 @@
 .viewer:fullscreen .canvas { height: auto; min-height: 350px; }
 @media (max-width: 600px) { .canvas { height: 480px; } .toolbar { padding: 12px; } }
 .actions .pathButton { width: auto; padding-inline: 10px; }
+.sharedLink { display: block; width: 100%; font: inherit; }
 .explorationDialog { width: 38rem; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow: auto; padding: 24px; border: 1px solid var(--ifm-color-emphasis-300); border-radius: 8px; color: var(--ifm-font-color-base); background: var(--ifm-background-color); }
 .explorationDialog::backdrop { background: #0008; }
 .explorationDialog label { display: flex; flex-direction: column; gap: 8px; }

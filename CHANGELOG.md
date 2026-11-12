@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.12.0] - 2026-11-12
+
+### Added
+- Undo the newest 100 semantic actions independently in each reaction viewer, including combined actions,
+  focus and reset. Share versioned view links that replay atomically on the current site and environment
+  graph, use stable semantic targets and report missing or ambiguous targets and links over 16,384 characters.
+- Restore zoom, pan and node positions from before the action with viewer Back. Shared links retain zoom
+  and the centred graph point across different canvas sizes.
+- Shorten shared links with a deduplicated reference table, compact step tuples and native DEFLATE raw
+  compression before Base64URL encoding. Read existing semantic links and bound decoded data to 256 KiB
+  and replay to 2,048 steps, independently of the 100-step undo buffer.
+- Show a brief copy confirmation beside the reaction viewer's toolbar. Sharing updates the browser address
+  without reloading, adding a navigation entry or resetting either viewer's state and undo history.
+- Update the address automatically after semantic actions, zoom and pan, with a 250 ms debounce. The last
+  interacted viewer owns the link; stale encoders cannot overwrite it. Validate repeated targets once per
+  generation and remove a stale link if the current view cannot be encoded.
+- Group reaction-viewer controls from left to right by history, sharing/source and view, with wider separator
+  spacing and view controls ordered as zoom, Fit all, minimap and full screen. Use the same brief copy confirmation
+  for links and JSON source. Export readable JSON with local element IDs and structured hidden references
+  instead of nested JSON-encoded internal IDs.
+
 ## [4.11.0] - 2026-11-12
 
 ### Added

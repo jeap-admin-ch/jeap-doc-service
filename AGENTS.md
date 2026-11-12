@@ -956,3 +956,38 @@ flow-edge identities separately: reaching a reaction must not expose all its int
 preserves the original baseline, expansion preserves existing pins, and path selection uses forward/backward
 reachability for ordered endpoint pairs, including cycles without enumerating walks. Boundary-circle clicks
 use the same one-edge expansion command as the depth dialog. PREDECESSOR edges are never traversed.
+
+
+Viewer semantic actions pass through `history.mjs`, including Focus, Reset and future search-result jumps.
+Keep the reset baseline in that state and restore it with Back. Each viewer retains 100 undoable steps;
+its complete link replay script is separate. `sharing.mjs` encodes versioned steps in the URL fragment and
+replays them atomically against the current site/environment. Use interface keys and group keys, never
+mutable reaction IDs as durable targets. Individual reaction signatures must resolve uniquely or fail.
+Presentation changes create no history steps. Each semantic checkpoint retains its preceding viewport and
+node positions for Back. Links retain zoom and the centred model point, not per-node positions or
+undo history. Interface references carry their semantic identity as well as an upstream key. Resolve by the
+unique semantic identity, never by a reused key. Reaction endpoints and legacy group triggers use the same
+identity. Older links without enough identity information fail instead of selecting a replacement node.
+Recalculate layout on link opening, and apply the shared
+viewport instead of fitting it. Normal presentation redraws preserve node positions too.
+
+`linkState.mjs` packs version 4 links with one reference dictionary and opcode/index tuples. Dictionary
+indices refer only to that link's entries, never to upstream graph IDs. `linkCodec.mjs` encodes the exact
+compact UTF-8 JSON as DEFLATE raw plus Base64URL with the independent `d1.` prefix. Keep the fragment,
+the 16,384-character URL cap, bounded streaming decompression (256 KiB) and the 2,048-step replay cap.
+Uncompressed semantic links remain readable. Sharing and restoration are asynchronous; cancel stale
+results when the viewer changes or unmounts. Compression must not weaken target validation or change steps.
+Sharing replaces the current browser-history entry with the captured link without notifying the router;
+a router replay would reset every viewer and discard local undo history. Keep copy feedback near the toolbar,
+announce it accessibly, expire it after three seconds and show success only after clipboard writing succeeds.
+`addressUpdates.mjs` coordinates one address per page with a 250 ms debounce after semantic actions and pan/zoom.
+The last interacted viewer wins. Initial rendering and offscreen activation do not publish addresses. Cancel
+stale or unmounted owners before they publish, including when another viewer takes over. Automatic updates
+never copy or create undo steps; failure clears a stale reaction fragment and leaves the graph usable.
+Browser checks that decode links asynchronously use `page.waitForCondition` around an awaited
+`page.evaluate`. A Promise returned from `waitForFunction` is truthy even before its condition is resolved,
+so that check can return before the automatic URL exists.
+The toolbar groups view controls, sharing/source and history in that order. Link and source copying share
+one accessible, expiring confirmation beside the toolbar. `source.mjs` exports readable version 2 JSON with
+local element IDs, consistent edge/parent/anchor references and structured hidden targets. Keep actual node
+identities and text values intact; never remove backslashes from serialized JSON to make it look simpler.

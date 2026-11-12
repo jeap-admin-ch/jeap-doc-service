@@ -1,7 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import styles from './styles.module.css';
 
-export default function SourceView({id, source, onClose}) {
+export default function SourceView({id, source, onClose, onCopyStart, onCopied}) {
     const input = useRef(null), current = useRef(source);
     const [status, setStatus] = useState('');
     useEffect(() => {
@@ -9,10 +9,11 @@ export default function SourceView({id, source, onClose}) {
         return () => { current.current = null; };
     }, [source]);
     const copy = async () => {
+        onCopyStart();
         try {
             if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
             await navigator.clipboard.writeText(source);
-            if (current.current === source) setStatus('Copied.');
+            if (current.current === source) { setStatus(''); onCopied(); }
         } catch {
             if (current.current !== source) return;
             input.current?.select();

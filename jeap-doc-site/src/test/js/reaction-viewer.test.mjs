@@ -103,12 +103,21 @@ test('JSON source represents the current projection with opaque identities and n
     const state = expandGroups(graph, entryView(graph, entry));
     const collapsed = setGroupExpanded(graph, state, graph.groupOf.get(identity(key('r1', 'REACTION'))), false);
     const elements = project(graph, collapsed).elements;
-    const source = JSON.parse(viewSource(elements, {...entry, componentLinks: [{href: '/unused'}]}, 'site', 'dev'));
-    assert.deepEqual(source, {formatVersion: 1, site: 'site', environment: 'dev', entry,
-        elements: JSON.parse(JSON.stringify(elements))});
+    const text = viewSource(elements, {...entry, componentLinks: [{href: '/unused'}]}, 'site', 'dev', graph);
+    const source = JSON.parse(text);
+    assert.equal(source.formatVersion, 2);
+    assert.equal(source.site, 'site'); assert.equal(source.environment, 'dev');
+    assert.deepEqual(source.entry, entry);
+    assert.equal(source.elements.length, elements.length);
+    assert.equal(text, JSON.stringify(source, null, 2));
+    const ids = new Set(source.elements.map(element => element.data.id));
+    for (const {data} of source.elements) {
+        assert.match(data.id, /^(node|group|edge|marker)-\d+$/);
+        for (const field of ['source', 'target', 'parent', 'anchor']) if (data[field]) assert.ok(ids.has(data[field]));
+    }
     assert.equal(source.elements.filter(element => element.data.kind === 'reaction').length, 1);
-    assert.ok(source.elements.some(element => element.data.id.startsWith('hidden:')));
-    assert.ok(!source.elements.some(element => element.data.id === identity(key('foreign', 'REACTION'))));
+    assert.deepEqual(source.elements.find(element => element.data.kind === 'reaction').data.identity, key('alone', 'REACTION'));
+    assert.deepEqual(source.elements.find(element => element.data.restore).data.restore, [key('r1', 'REACTION'), key('r2', 'REACTION')]);
 });
 test('interface navigation resolves messages and REST providers without guessing ambiguous or foreign destinations', () => {
     const event = message('A'), command = message('C');
@@ -370,22 +379,38 @@ test('group layout balances incoming and outgoing crossings and keeps ties stabl
     assert.deepEqual(orderGroupChildren(children, parents, [], positions), children);
 });
 
-test('JSON source explains opaque group ids with ownership and structured grouping metadata', () => {
+test('JSON source explains readable group ids with ownership and structured grouping metadata', () => {
     const data = payload();
     const trigger = data.graph.nodes.find(node => node.identity.key === 'A');
     trigger.interfaceDetails.message = {messageType: 'OrderAcceptedEvent', variant: 'express'};
     const graph = readGraph(data, 'site', 'dev');
     const state = entryView(graph, entry);
-    const source = JSON.parse(viewSource(project(graph, state).elements, entry, 'site', 'dev'));
-    const group = source.elements.find(element => element.data.id === graph.groupOf.get(identity(key('r1', 'REACTION')))).data;
+    const source = JSON.parse(viewSource(project(graph, state).elements, entry, 'site', 'dev', graph));
+    const group = source.elements.find(element => element.data.grouping?.trigger?.key === 'A').data;
     assert.equal(group.system, 's');
     assert.equal(group.component, 'c');
     assert.deepEqual(group.grouping, {trigger: {nodeType: 'INTERFACE', key: 'A', label: 'OrderAcceptedEvent\nexpress'}});
-    const standalone = source.elements.find(element => element.data.id === graph.groupOf.get(identity(key('alone', 'REACTION')))).data;
+    const standalone = source.elements.find(element => element.data.grouping?.reaction?.key === 'alone').data;
     assert.deepEqual(standalone.grouping, {reaction: key('alone', 'REACTION')});
-    const node = source.elements.find(element => element.data.id === identity(key('A'))).data;
+    const node = source.elements.find(element => element.data.identity?.key === 'A').data;
     assert.deepEqual(node.identity, key('A'));
     assert.equal(node.label, 'OrderAcceptedEvent\nexpress');
+});
+
+test('JSON source preserves quoted identity keys and labels as data without nested JSON ids', () => {
+    const data = payload(), special = 'A/"quoted"\\key';
+    data.graph.nodes[0].identity.key = special;
+    data.graph.nodes[0].interfaceDetails.message.messageType = 'Quotes " and \\ and <script>';
+    for (const edge of data.graph.edges) if (edge.source.key === 'A') edge.source.key = special;
+    const graph = readGraph(data, 'site', 'dev'), original = structuredClone(graph);
+    const focused = {kind: 'INTERFACE', id: identity(key(special))};
+    const source = JSON.parse(viewSource(project(graph, entryView(graph, focused)).elements, focused, 'site', 'dev', graph));
+    const node = source.elements.find(element => element.data.identity?.key === special).data;
+    assert.match(node.id, /^node-\d+$/);
+    assert.equal(source.entry.target, node.id);
+    assert.deepEqual(node.identity, key(special));
+    assert.equal(node.label, 'Quotes " and \\ and <script>');
+    assert.deepEqual(graph, original);
 });
 
 test('explicit group keys do not imply one shared trigger and unknown owners remain unknown', () => {
@@ -639,6 +664,9 @@ test('outgoing hide through a collapsed group does not visit initially supersede
 });
 
 import "./reaction-exploration.test.mjs";
+import "./reaction-history.test.mjs";
+import "./reaction-link-codec.test.mjs";
+import "./reaction-address.test.mjs";
 
 test('group menu expansion preserves explicit hiding and superseded status while its marker restores hidden members', () => {
     const graph = readGraph(payload(), 'site', 'dev');

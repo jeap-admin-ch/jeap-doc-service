@@ -141,7 +141,11 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                 .setName("Open path view"))).hasCount(0);
         var buttons = viewer.getByRole(AriaRole.GROUP, new com.microsoft.playwright.Locator.GetByRoleOptions()
                 .setName("Graph view").setExact(true)).locator("button:not([aria-label=\"Open path view\"])");
-        assertThat(buttons).hasCount(7);
+        assertThat(buttons).hasCount(9);
+        org.assertj.core.api.Assertions.assertThat(buttons.evaluateAll("buttons => buttons.map(button => button.getAttribute('aria-label'))"))
+                .isEqualTo(java.util.List.of("Back", "Reset view", "Share link", "Show source", "Zoom out", "Zoom in", "Fit all", "Show minimap", "Fullscreen"));
+        var toolbar = viewer.getByRole(AriaRole.GROUP, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Graph view").setExact(true));
+        assertThat(toolbar.locator(":scope > [role='group']")).hasCount(3);
         for (var button : buttons.all()) {
             assertThat(button).hasText("");
             assertThat(button.locator("svg")).hasCount(1);
@@ -565,13 +569,26 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         showReactionViewer(1);
         org.assertj.core.api.Assertions.assertThat(source.inputValue()).contains("<script>alert(1)</script>");
         assertThat(viewer.locator("script")).hasCount(0);
-        Object sourceIds = source.evaluate("el => JSON.parse(el.value).elements.map(n => n.data.id).sort()");
-        org.assertj.core.api.Assertions.assertThat(sourceIds).isEqualTo(((java.util.Map<?, ?>) before).get("ids"));
+        Object sourceIds = source.evaluate("el => JSON.parse(el.value).elements.filter(n => n.data.identity).map(n => JSON.stringify(n.data.identity)).sort()");
+        org.assertj.core.api.Assertions.assertThat(sourceIds).isEqualTo(canvas.evaluate(
+                "el => el._cyreg.cy.nodes().filter(n => n.data('identity')).map(n => JSON.stringify(n.data('identity'))).sort()"));
+        org.assertj.core.api.Assertions.assertThat(source.evaluate("""
+                el => {
+                    const source = JSON.parse(el.value), ids = new Set(source.elements.map(e => e.data.id));
+                    return source.formatVersion === 2 && source.elements.every(({data}) =>
+                        /^(node|group|edge|marker)-[0-9]+$/.test(data.id)
+                        && ['parent', 'source', 'target', 'anchor'].every(field => !data[field] || ids.has(data[field])));
+                }
+                """)).isEqualTo(true);
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Copy source")).click();
-        assertThat(viewer.locator("section[aria-label='Graph source'] [role='status']")).hasText("Copied.");
+        var feedback = viewer.getByText("Code wurde kopiert", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true));
+        assertThat(feedback).isVisible();
+        assertThat(feedback).hasAttribute("role", "status");
+        assertThat(viewer.locator("section[aria-label='Graph source'] [role='status']")).hasCount(0);
         org.assertj.core.api.Assertions.assertThat(page.evaluate("window.copiedGraphSource")).isEqualTo(source.inputValue());
         page.evaluate("() => { navigator.clipboard.writeText = async () => { throw new Error('denied'); }; }");
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Copy source")).click();
+        assertThat(feedback).hasCount(0);
         assertThat(viewer.locator("section[aria-label='Graph source'] [role='status']")).containsText("Copy the selected text");
         org.assertj.core.api.Assertions.assertThat(source.evaluate("el => el.selectionStart === 0 && el.selectionEnd === el.value.length")).isEqualTo(true);
         source.press("Escape");
@@ -1110,6 +1127,592 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         edge.putObject("target").put("nodeType", type.equals("TRIGGER") ? "REACTION" : "INTERFACE").put("key", target);
     }
 
+    @Test
+    void viewerBackRestoresTheViewportAndPositionsBeforeTheSemanticAction() {
+        installVisibilityFixture(false);
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+        openFixtureInterfaceMenu(viewer, "A");
+        page.keyboard().press("Escape");
+        canvas.evaluate("""
+                el => {
+                    const cy = el._cyreg.cy;
+                    cy.getElementById('["INTERFACE","A"]').position({x: 120, y: 140});
+                    cy.zoom(1); cy.pan({x: 90, y: 60});
+                }
+                """);
+        Object preceding = presentationOf(viewer);
+        canvas.focus();
+        page.keyboard().press("Shift+F10");
+        menuAction(viewer, "Pin");
+        awaitPinned("A");
+        canvas.evaluate("el => { el._cyreg.cy.zoom(1.8); el._cyreg.cy.pan({x: -170, y: -90}); }");
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitPresentation(page, 0, preceding, true);
+        assertThat(viewer.getByLabel("Zoom", new com.microsoft.playwright.Locator.GetByLabelOptions().setExact(true))).hasText("100%");
+        assertNoPins(viewer);
+        assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void sharedLinksRestoreZoomAndCentreInAFreshBrowserWithADifferentViewportSize() {
+        open("/" + COMPONENT_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
+                el => { el._cyreg.cy.zoom(1.3); el._cyreg.cy.pan({x: -210, y: 75}); }
+                """);
+        Object preceding = presentationOf(viewer);
+        String link = sharedLink(viewer);
+        try (var fresh = context.browser().newContext(new com.microsoft.playwright.Browser.NewContextOptions()
+                .setViewportSize(900, 950).setColorScheme(com.microsoft.playwright.options.ColorScheme.LIGHT))) {
+            var document = fresh.newPage();
+            document.navigate(link);
+            document.locator("section[aria-label='Reaction chains']").scrollIntoViewIfNeeded();
+            awaitPresentation(document, 0, preceding, false);
+            document.reload();
+            document.locator("section[aria-label='Reaction chains']").scrollIntoViewIfNeeded();
+            awaitPresentation(document, 0, preceding, false);
+        }
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void viewerBackRestoresCombinedActionsAndResetWithoutChangingBrowserNavigationOrOtherViewers() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        showReactionViewer(1);
+        var viewers = page.locator("section[aria-label='Reaction chains']");
+        var viewer = viewers.first();
+        String initial = semanticProjection(viewer), other = semanticProjection(viewers.nth(1));
+        String originalUrl = page.url();
+        String group = groupOfReaction(viewer, "4243");
+        assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
+        openGroupMenu(viewer, group);
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group").setExact(true)).click();
+        awaitGroupMembers(group, 0);
+        String collapsed = semanticProjection(viewer);
+        openGroupMenu(viewer, group);
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Pin").setExact(true)).click();
+        page.waitForFunction("""
+                id => document.querySelector('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')
+                    ?._cyreg?.cy.getElementById(id).data('pinned') === true
+                """, group);
+        String pinned = semanticProjection(viewer);
+        openGroupMenu(viewer, group);
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Unpin members and hide group").setExact(true)).click();
+        page.waitForFunction("""
+                id => !document.querySelector('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')
+                    ?._cyreg?.cy.getElementById(id).length
+                """, group);
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitSemanticProjection(page, 0, pinned);
+        openGroupMenu(viewer, group);
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Focus").setExact(true)).click();
+        page.waitForFunction("""
+                () => document.querySelector('section[aria-label="Reaction chains"] strong')?.textContent.includes('(Group)')
+                """);
+        String focused = semanticProjection(viewer);
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Reset view").setExact(true)).click();
+        awaitSemanticProjection(page, 0, initial);
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitSemanticProjection(page, 0, focused);
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Zoom in").setExact(true)).click();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all").setExact(true)).click();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitSemanticProjection(page, 0, pinned);
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitSemanticProjection(page, 0, collapsed);
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitSemanticProjection(page, 0, initial);
+        assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
+        org.assertj.core.api.Assertions.assertThat(semanticProjection(viewers.nth(1))).isEqualTo(other);
+        org.assertj.core.api.Assertions.assertThat(java.net.URI.create(page.url()).getPath())
+                .isEqualTo(java.net.URI.create(originalUrl).getPath());
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void sharedVariantOpensInAFreshLightBrowserWithEmptyHistoryAndAnUndoableReset() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        showReactionViewer(1);
+        var viewers = page.locator("section[aria-label='Reaction chains']");
+        var viewer = viewers.nth(1);
+        String initial = semanticProjection(viewer), other = semanticProjection(viewers.first());
+        String group = groupOfReaction(viewer, "5242");
+        openGroupMenu(viewer, group);
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Collapse group").setExact(true)).click();
+        page.waitForFunction("""
+                () => document.querySelectorAll('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')[1]
+                    ?._cyreg?.cy.nodes('[kind="reaction"]').every(node => JSON.parse(node.id())[1] !== '5242')
+                """);
+        String shared = semanticProjection(viewer);
+        String link = sharedLink(viewer);
+        try (var fresh = context.browser().newContext(new com.microsoft.playwright.Browser.NewContextOptions()
+                .setColorScheme(com.microsoft.playwright.options.ColorScheme.LIGHT))) {
+            var document = fresh.newPage();
+            document.navigate(link);
+            var restored = document.locator("section[aria-label='Reaction chains']").nth(1);
+            restored.scrollIntoViewIfNeeded();
+            awaitSemanticProjection(document, 1, shared);
+            document.locator("section[aria-label='Reaction chains']").first().scrollIntoViewIfNeeded();
+            awaitSemanticProjection(document, 0, other);
+            assertThat(restored.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
+            restored.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Reset view").setExact(true)).click();
+            awaitSemanticProjection(document, 1, initial);
+            restored.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+            awaitSemanticProjection(document, 1, shared);
+            document.reload();
+            restored.scrollIntoViewIfNeeded();
+            awaitSemanticProjection(document, 1, shared);
+            assertThat(restored.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
+        }
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void sharedInterfaceReferencesFollowTheMessageWhenNumericKeysAreReused() {
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        openFixtureInterfaceMenu(viewer, "3");
+        menuAction(viewer, "Pin");
+        awaitPinned("3");
+        String link = sharedLink(viewer);
+        try (var fresh = context.browser().newContext()) {
+            var document = fresh.newPage();
+            document.route("**/reaction-graph.json", route -> {
+                var response = route.fetch();
+                var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+                var payload = mapper.readTree(response.text());
+                for (var node : payload.path("graph").path("nodes")) swapInterfaceKey(node.path("identity"));
+                for (var edge : payload.path("graph").path("edges")) {
+                    swapInterfaceKey(edge.path("source"));
+                    swapInterfaceKey(edge.path("target"));
+                }
+                route.fulfill(new FulfillOptions().setResponse(response).setBody(mapper.writeValueAsString(payload)));
+            });
+            document.navigate(link);
+            document.locator("section[aria-label='Reaction chains']").scrollIntoViewIfNeeded();
+            document.waitForFunction("""
+                    () => {
+                        const cy = document.querySelector('div[aria-label^="Reaction graph."]')?._cyreg?.cy;
+                        if (!cy) return false;
+                        const pins = cy.nodes('[?pinned]');
+                        return pins.length === 1 && pins[0].data('identity')?.key === '5'
+                            && pins[0].data('label') === 'ShippingDispatchedEvent';
+                    }
+                    """);
+            assertThat(document.getByText("This view cannot be restored on the current graph.",
+                    new com.microsoft.playwright.Page.GetByTextOptions().setExact(true))).hasCount(0);
+        }
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    private void swapInterfaceKey(tools.jackson.databind.JsonNode identity) {
+        if (!identity.path("nodeType").asString().equals("INTERFACE")) return;
+        String key = identity.path("key").asString();
+        if (key.equals("3") || key.equals("5")) {
+            ((tools.jackson.databind.node.ObjectNode) identity).put("key", key.equals("3") ? "5" : "3");
+        }
+    }
+
+    @Test
+    void sharedReactionSurvivesANewOpaqueIdButFailsAtomicallyWhenItsTargetIsRemoved() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']").first();
+        String group = groupOfReaction(viewer, "4243");
+        openGroupMenu(viewer, group);
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Pin").setExact(true)).click();
+        page.waitForFunction("""
+                id => document.querySelector('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')
+                    ?._cyreg?.cy.getElementById(id).data('pinned') === true
+                """, group);
+        openReactionMenu(viewer, "4242");
+        viewer.getByRole(AriaRole.MENUITEM, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Pin").setExact(true)).click();
+        page.waitForFunction("""
+                () => document.querySelector('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')
+                    ?._cyreg?.cy.nodes('[kind="reaction"]').some(node => JSON.parse(node.id())[1] === '4242' && node.data('pinned'))
+                """);
+        String link = sharedLink(viewer);
+        for (boolean remove : new boolean[]{false, true}) {
+            try (var fresh = context.browser().newContext()) {
+                var document = fresh.newPage();
+                document.route("**/reaction-graph.json", route -> {
+                    var response = route.fetch();
+                    var json = tools.jackson.databind.json.JsonMapper.builder().build();
+                    var payload = json.readTree(response.text());
+                    var graph = (tools.jackson.databind.node.ObjectNode) payload.path("graph");
+                    var nodes = json.createArrayNode();
+                    for (var node : graph.path("nodes")) {
+                        if (node.path("identity").path("key").asString().equals("4242")) {
+                            if (remove) continue;
+                            ((tools.jackson.databind.node.ObjectNode) node.path("identity")).put("key", "new-reaction-id");
+                        }
+                        nodes.add(node);
+                    }
+                    var edges = json.createArrayNode();
+                    for (var edge : graph.path("edges")) {
+                        boolean affected = false;
+                        for (String endpoint : java.util.List.of("source", "target")) {
+                            if (edge.path(endpoint).path("key").asString().equals("4242")) {
+                                affected = true;
+                                ((tools.jackson.databind.node.ObjectNode) edge.path(endpoint)).put("key", "new-reaction-id");
+                            }
+                        }
+                        if (!remove || !affected) edges.add(edge);
+                    }
+                    graph.set("nodes", nodes);
+                    graph.set("edges", edges);
+                    route.fulfill(new FulfillOptions().setResponse(response).setBody(json.writeValueAsString(payload)));
+                });
+                document.navigate(link);
+                document.locator("section[aria-label='Reaction chains']").first().scrollIntoViewIfNeeded();
+                if (remove) {
+                    assertThat(document.getByText("This view cannot be restored on the current graph.",
+                            new com.microsoft.playwright.Page.GetByTextOptions().setExact(true))).isVisible();
+                    assertThat(document.locator("article h1")).isVisible();
+                    document.waitForFunction("""
+                            () => {
+                                const cy = document.querySelector('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')?._cyreg?.cy;
+                                return cy && cy.nodes('[kind="reaction"]').length
+                                    && !cy.nodes('[kind="reaction"], [kind="group"]').some(node => node.data('pinned'));
+                            }
+                            """);
+                } else {
+                    document.waitForFunction("""
+                            () => document.querySelector('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')
+                                ?._cyreg?.cy.nodes('[kind="reaction"]').some(node => JSON.parse(node.id())[1] === 'new-reaction-id' && node.data('pinned'))
+                            """);
+                }
+            }
+        }
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    private String sharedLink(com.microsoft.playwright.Locator viewer) {
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Share link").setExact(true)).click();
+        var link = viewer.getByRole(AriaRole.TEXTBOX, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Shared view link").setExact(true));
+        assertThat(link).isVisible();
+        String address = link.inputValue();
+        org.assertj.core.api.Assertions.assertThat(java.net.URI.create(address).getRawFragment()).startsWith("reaction-view=d1.");
+        org.assertj.core.api.Assertions.assertThat(page.url()).isEqualTo(address);
+        return address;
+    }
+
+    @Test
+    void sharingShowsTemporaryCopyFeedbackAndReplacesTheAddressWithoutResettingEitherViewer() {
+        page.addInitScript("""
+                Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {
+                    writeText: async text => { window.copiedReactionLink = text; }
+                }});
+                """);
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        showReactionViewer(1);
+        var viewers = page.locator("section[aria-label='Reaction chains']");
+        var first = viewers.first();
+        String initial = semanticProjection(first), other = semanticProjection(viewers.nth(1));
+        String group = groupOfReaction(first, "4243");
+        openGroupMenu(first, group);
+        menuAction(first, "Collapse group");
+        awaitGroupMembers(group, 0);
+        String collapsed = semanticProjection(first);
+        Object viewport = presentationOf(first);
+        Object historyLength = page.evaluate("window.reactionShareDocument = 'same-document'; history.length");
+        first.locator("div[aria-label^='Reaction graph.']").evaluate("el => { window.reactionShareRenderer = el._cyreg.cy; }");
+
+        String link = sharedLink(first);
+
+        var feedback = first.getByText("Link wurde kopiert", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true));
+        assertThat(feedback).isVisible();
+        assertThat(feedback).hasAttribute("role", "status");
+        org.assertj.core.api.Assertions.assertThat(page.evaluate("window.copiedReactionLink")).isEqualTo(link);
+        org.assertj.core.api.Assertions.assertThat(page.evaluate("history.length")).isEqualTo(historyLength);
+        org.assertj.core.api.Assertions.assertThat(page.evaluate("window.reactionShareDocument")).isEqualTo("same-document");
+        org.assertj.core.api.Assertions.assertThat(first.locator("div[aria-label^='Reaction graph.']")
+                .evaluate("el => el._cyreg.cy === window.reactionShareRenderer")).isEqualTo(true);
+        awaitSemanticProjection(page, 0, collapsed);
+        awaitSemanticProjection(page, 1, other);
+        awaitPresentation(page, 0, viewport, true);
+        assertThat(viewers.nth(1).getByText("Link wurde kopiert")).hasCount(0);
+        assertThat(first.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isEnabled();
+        assertThat(feedback).hasCount(0);
+        first.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitSemanticProjection(page, 0, initial);
+        awaitAutomaticLink(0, "");
+        org.assertj.core.api.Assertions.assertThat(page.evaluate("history.length")).isEqualTo(historyLength);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void actionsZoomAndPanUpdateTheAddressAutomaticallyWithoutCopyingOrCreatingUndoSteps() {
+        page.addInitScript("""
+                window.automaticClipboardWrites = 0;
+                Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {
+                    writeText: async () => { window.automaticClipboardWrites++; }
+                }});
+                """);
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        String initial = semanticProjection(viewer);
+        org.assertj.core.api.Assertions.assertThat(java.net.URI.create(page.url()).getFragment()).isNull();
+        Object historyLength = page.evaluate("window.automaticAddressDocument = 'same-document'; history.length");
+        openFixtureInterfaceMenu(viewer, "3");
+        menuAction(viewer, "Pin");
+        awaitPinned("3");
+        awaitAutomaticLink(1, null);
+        String pinned = page.url();
+        viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
+                el => { el._cyreg.cy.zoom(1.3); el._cyreg.cy.pan({x: -200, y: 80}); }
+                """);
+        Object viewport = presentationOf(viewer);
+        page.waitForURL(address -> !address.equals(pinned));
+        String current = page.url();
+        org.assertj.core.api.Assertions.assertThat(page.evaluate("window.automaticClipboardWrites")).isEqualTo(0);
+        org.assertj.core.api.Assertions.assertThat(page.evaluate("history.length")).isEqualTo(historyLength);
+        org.assertj.core.api.Assertions.assertThat(page.evaluate("window.automaticAddressDocument")).isEqualTo("same-document");
+        assertThat(viewer.getByText("Link wurde kopiert")).hasCount(0);
+        try (var fresh = context.browser().newContext()) {
+            var document = fresh.newPage();
+            document.navigate(current);
+            document.locator("section[aria-label='Reaction chains']").scrollIntoViewIfNeeded();
+            awaitPresentation(document, 0, viewport, false);
+            document.waitForFunction("""
+                    () => document.querySelector('div[aria-label^="Reaction graph."]')?._cyreg?.cy.nodes('[?pinned]')
+                        .some(node => node.data('identity')?.key === '3')
+                    """);
+        }
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitSemanticProjection(page, 0, initial);
+        awaitAutomaticLink(0, null);
+        assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
+        org.assertj.core.api.Assertions.assertThat(page.evaluate("history.length")).isEqualTo(historyLength);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void theMostRecentlyEditedViewerOwnsTheAutomaticLinkWithoutInitialViewersOverwritingIt() {
+        open("/" + MESSAGE_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        showReactionViewer(1);
+        var viewers = page.locator("section[aria-label='Reaction chains']");
+        String firstInitial = semanticProjection(viewers.first());
+        openGroupMenu(viewers.first(), groupOfReaction(viewers.first(), "4243"));
+        menuAction(viewers.first(), "Collapse group");
+        awaitAutomaticLink(1, "");
+        String group = groupOfReaction(viewers.nth(1), "5242");
+        openGroupMenu(viewers.nth(1), group);
+        menuAction(viewers.nth(1), "Collapse group");
+        page.waitForFunction("""
+                group => {
+                    const cy = document.querySelectorAll('div[aria-label^="Reaction graph."]')[1]?._cyreg?.cy;
+                    return cy && !cy.destroyed() && cy.getElementById(group).length === 1
+                        && cy.getElementById(group).children('[kind="reaction"]').length === 0;
+                }
+                """, group);
+        String secondSelection = semanticProjection(viewers.nth(1));
+        awaitAutomaticLink(1, VARIANT);
+        String second = (String) page.evaluate("location.href");
+        try (var fresh = context.browser().newContext()) {
+            var document = fresh.newPage();
+            document.navigate(second);
+            var restored = document.locator("section[aria-label='Reaction chains']");
+            restored.first().scrollIntoViewIfNeeded();
+            awaitSemanticProjection(document, 0, firstInitial);
+            restored.nth(1).scrollIntoViewIfNeeded();
+            awaitSemanticProjection(document, 1, secondSelection);
+            org.assertj.core.api.Assertions.assertThat(document.url()).isEqualTo(second);
+        }
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    private void awaitAutomaticLink(int steps, String variant) {
+        var expected = new java.util.HashMap<String, Object>();
+        expected.put("steps", steps);
+        if (variant != null) expected.put("variant", variant);
+        page.waitForCondition(() -> Boolean.TRUE.equals(page.evaluate("""
+                async expected => {
+                    const prefix = '#reaction-view=d1.', hash = location.hash;
+                    if (!hash.startsWith(prefix)) return false;
+                    try {
+                        const binary = atob(hash.slice(prefix.length).replaceAll('-', '+').replaceAll('_', '/'));
+                        const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+                        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+                        const state = JSON.parse(await new Response(stream).text());
+                        return state.v === 4 && state.s.length === expected.steps
+                            && (!('variant' in expected) || state.r[state.w].targets[0].identity.message[1] === expected.variant);
+                    } catch { return false; }
+                }
+                """, expected)));
+        String current = (String) page.evaluate("location.href");
+        page.waitForURL(address -> address.equals(current));
+    }
+
+    @Test
+    void automaticEncodingFailureRemovesTheStaleLinkAndKeepsTheEditedGraphUsable() {
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        sharedLink(viewer);
+        openFixtureInterfaceMenu(viewer, "3");
+        page.evaluate("() => { window.CompressionStream = class { constructor() { throw new Error('test compression failure'); } }; }");
+        menuAction(viewer, "Pin");
+        awaitPinned("3");
+        assertThat(viewer.getByText("test compression failure", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true))).isVisible();
+        page.waitForURL(address -> java.net.URI.create(address).getFragment() == null);
+        assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isEnabled();
+        assertThat(viewer.getByRole(AriaRole.TEXTBOX, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Shared view link").setExact(true))).hasCount(0);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void sharingUpdatesTheAddressWhenClipboardAccessIsDeniedWithoutClaimingItWasCopied() {
+        page.addInitScript("""
+                Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {
+                    writeText: async () => { throw new Error('denied'); }
+                }});
+                """);
+        open("/" + COMPONENT_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        String link = sharedLink(viewer);
+        assertThat(viewer.getByText("Link wurde kopiert")).hasCount(0);
+        assertThat(viewer.getByText("Copy the shared view link below.", new com.microsoft.playwright.Locator.GetByTextOptions().setExact(true))).isVisible();
+        page.reload();
+        showReactionViewer(0);
+        org.assertj.core.api.Assertions.assertThat(page.url()).isEqualTo(link);
+        assertThat(page.getByText("This view cannot be restored on the current graph.")).hasCount(0);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void aTruncatedCompressedLinkLeavesTheOrdinaryEntryAndDocumentationUsable() {
+        open("/" + COMPONENT_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        String initial = semanticProjection(viewer);
+        String link = sharedLink(viewer);
+        page.navigate(link.substring(0, link.length() - 8));
+        assertThat(page.getByText("This view cannot be restored on the current graph.",
+                new com.microsoft.playwright.Page.GetByTextOptions().setExact(true))).isVisible();
+        viewer.scrollIntoViewIfNeeded();
+        awaitSemanticProjection(page, 0, initial);
+        assertThat(page.locator("article h1")).isVisible();
+        assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void anEmptySharedSelectionKeepsTheLiveTableEmptyAndCanBeReset() {
+        installVisibilityFixture(false);
+        open("/" + SYSTEM_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        openFixtureInterfaceMenu(viewer, "A");
+        menuAction(viewer, "Focus");
+        awaitGraphKeys(java.util.List.of("B", "r2"), false);
+        openFixtureInterfaceMenu(viewer, "A");
+        menuAction(viewer, "Hide connected subgraph");
+        assertThat(viewer.locator("canvas")).hasCount(0);
+        String link = sharedLink(viewer);
+        page.navigate(link);
+        page.reload();
+        viewer.scrollIntoViewIfNeeded();
+        var table = page.locator("table[data-reaction-table='live']");
+        assertThat(table).isVisible();
+        assertThat(table.locator("tbody tr")).hasCount(0);
+        assertThat(page.locator(".jeapReactionTableFallback")).isHidden();
+        assertThat(viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
+        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Reset view").setExact(true)).click();
+        assertThat(table.locator("tbody tr")).hasCount(4);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
+    void sharedLinksRetainTheEnvironmentAndRejectReplayInAnotherEnvironment() {
+        String prefix = environments().stream().filter(environment -> !environment.main()).findFirst().orElseThrow().routePrefix();
+        open(prefix + "/" + COMPONENT_REACTIONS_ROUTE + "/");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        String initial = semanticProjection(viewer);
+        String link = sharedLink(viewer);
+        org.assertj.core.api.Assertions.assertThat(java.net.URI.create(link).getPath())
+                .isEqualTo(prefix + "/" + COMPONENT_REACTIONS_ROUTE + "/");
+        page.navigate(link);
+        showReactionViewer(0);
+        awaitSemanticProjection(page, 0, initial);
+        String fragment = java.net.URI.create(link).getRawFragment();
+        open("/" + COMPONENT_REACTIONS_ROUTE + "/#" + fragment);
+        assertThat(page.getByText("This view cannot be restored on the current graph.",
+                new com.microsoft.playwright.Page.GetByTextOptions().setExact(true))).isVisible();
+        assertThat(page.locator("article h1")).isVisible();
+        open("/" + COMPONENT_REACTIONS_ROUTE + "/#reaction-view=unsupported");
+        assertThat(page.getByText("This view cannot be restored on the current graph.",
+                new com.microsoft.playwright.Page.GetByTextOptions().setExact(true))).isVisible();
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    private static final String SEMANTIC_PROJECTION = """
+            cy => JSON.stringify(cy.elements().map(element => element.data()).sort((a, b) => a.id.localeCompare(b.id)))
+            """;
+
+    private Object presentationOf(com.microsoft.playwright.Locator viewer) {
+        return viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
+                el => {
+                    const cy = el._cyreg.cy;
+                    return {zoom: cy.zoom(), pan: cy.pan(), width: cy.width(), height: cy.height(),
+                        positions: cy.nodes(':childless').map(node => [node.id(), node.position()])};
+                }
+                """);
+    }
+
+    private void awaitPresentation(com.microsoft.playwright.Page document, int index, Object expected, boolean positions) {
+        document.waitForFunction("""
+                args => {
+                    const cy = document.querySelectorAll('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')[args.index]?._cyreg?.cy;
+                    const before = args.expected, close = (a, b) => Math.abs(a - b) < .001;
+                    if (!cy || !close(cy.zoom(), before.zoom)) return false;
+                    if (args.positions) {
+                        return close(cy.pan('x'), before.pan.x) && close(cy.pan('y'), before.pan.y)
+                            && before.positions.every(([id, point]) => {
+                                const node = cy.getElementById(id);
+                                return node.length && close(node.position('x'), point.x) && close(node.position('y'), point.y);
+                            });
+                    }
+                    const centre = {x: (cy.width() / 2 - cy.pan('x')) / cy.zoom(),
+                        y: (cy.height() / 2 - cy.pan('y')) / cy.zoom()};
+                    return close(centre.x, (before.width / 2 - before.pan.x) / before.zoom)
+                        && close(centre.y, (before.height / 2 - before.pan.y) / before.zoom);
+                }
+                """, java.util.Map.of("index", index, "expected", expected, "positions", positions));
+    }
+
+    private String semanticProjection(com.microsoft.playwright.Locator viewer) {
+        return (String) viewer.locator("div[aria-label^='Reaction graph.']")
+                .evaluate("element => (" + SEMANTIC_PROJECTION + ")(element._cyreg.cy)");
+    }
+
+    private void awaitSemanticProjection(com.microsoft.playwright.Page document, int index, String expected) {
+        try {
+            document.waitForFunction("""
+                args => {
+                    const cy = document.querySelectorAll('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')[args.index]?._cyreg?.cy;
+                    return cy && (""" + SEMANTIC_PROJECTION + ")(cy) === args.expected; }",
+                java.util.Map.of("index", index, "expected", expected));
+        } catch (com.microsoft.playwright.TimeoutError error) {
+            org.assertj.core.api.Assertions.assertThat(semanticProjection(document.locator("section[aria-label='Reaction chains']").nth(index)))
+                    .as("Viewer %s semantic projection", index).isEqualTo(expected);
+            throw error;
+        }
+    }
+
     private void assertGraphFitted(com.microsoft.playwright.Locator viewer) {
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         org.assertj.core.api.Assertions.assertThat(canvas.evaluate("""
@@ -1124,12 +1727,11 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     private void openReactionMenu(com.microsoft.playwright.Locator viewer, String reaction) {
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
-        var position = (java.util.Map<?, ?>) canvas.evaluate("""
+        var id = (String) canvas.evaluate("""
                 (element, reaction) => element._cyreg.cy.nodes('[kind="reaction"]')
-                    .filter(node => JSON.parse(node.id())[1] === reaction).first().renderedPosition()
+                    .filter(node => JSON.parse(node.id())[1] === reaction).first().id()
                 """, reaction);
-        canvas.click(new com.microsoft.playwright.Locator.ClickOptions().setButton(com.microsoft.playwright.options.MouseButton.RIGHT)
-                .setPosition(((Number) position.get("x")).doubleValue(), ((Number) position.get("y")).doubleValue()));
+        clickGraphNode(viewer, id, true);
         assertThat(viewer.getByRole(AriaRole.MENU)).isVisible();
     }
 
