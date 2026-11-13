@@ -89,12 +89,12 @@ replacing the bytes the service cannot read would publish a page nobody wrote.
 **The front matter is generated.** The keys an upload may carry are kept as they were written, and the ones
 the service decides are added:
 
-| Key                                                                                                              | What it is                                                                                                                 |
-| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `title`, `description`, `sidebar_label`, `tags`, `keywords`                                                      | Kept from the upload, exactly as written                                                                                   |
-| `sidebar_position`                                                                                               | Assigned by the service - from the sorted titles, or from a position or a reference the page named - see below           |
-| `doc_status`                                                                                                     | `custom`, against the `generated` of a page the service wrote                                                             |
-| `doc_source`, `doc_source_repository`, `doc_source_ref`, `doc_source_revision`, `doc_version`, `doc_uploaded_at` | Where the page came from                                                                                                   |
+| Key                                                                                                              | What it is                                                                                                     |
+| ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `title`, `description`, `sidebar_label`, `tags`, `keywords`                                                      | Kept from the upload, exactly as written                                                                       |
+| `sidebar_position`                                                                                               | Assigned by the service - from the sorted titles, or from a position or a reference the page named - see below |
+| `doc_status`                                                                                                     | `custom`, against the `generated` of a page the service wrote                                                  |
+| `doc_source`, `doc_source_repository`, `doc_source_ref`, `doc_source_revision`, `doc_version`, `doc_uploaded_at` | Where the page came from                                                                                       |
 
 On a static site's page `sidebar_position` is kept exactly as uploaded instead - a static site has none of
 the siblings the service would otherwise place it around, so Docusaurus orders its pages itself. `sidebar_after`
@@ -176,12 +176,15 @@ out of it, and a declared position is honoured among the items that share it rat
 **`sidebar_position`, `sidebar_after` and `sidebar_before` are checked at upload**, before a page is
 published: a position has to be a finite number, a reference a single, non-blank name, and - for a system's, a
 component's or a library's documentation - a reference has to name a page of the same chapter of this set, a
-generated sibling of it, a page of the chapter's currently stored set, or a currently stored microsite of it; a
-set of references must not introduce a cycle. See [the validation rules](upload-validation.md#a-pages-own-placement).
+generated sibling of it, or a currently stored microsite of it; a set of references must not introduce a cycle.
+The set the upload replaces does not count, because none of its pages survives the upload. See
+[the validation rules](upload-validation.md#a-pages-own-placement).
 
-**A page already stored with a reference that names nothing, or that sits in a cycle, is the one case
-`ChapterOrder` still has to handle on its own** - a set taken over before these checks existed. Such a page is
-an orphan: it sorts by title at the end of the chapter, after every free item, instead of where it meant to be.
+**An item whose reference names nothing, or that sits in a cycle, is an orphan.** It sorts by title at the end
+of the chapter, after every free item, instead of where it meant to be. The upload check cannot rule this out
+completely: a microsite a page names may be removed later, a generated sibling may not be written in every
+environment, a microsite's own `sidebar-after` and `sidebar-before` are not checked against the chapter, and a
+set taken over before these checks existed was never checked.
 
 ## A chapter's landing page lists its own contents
 

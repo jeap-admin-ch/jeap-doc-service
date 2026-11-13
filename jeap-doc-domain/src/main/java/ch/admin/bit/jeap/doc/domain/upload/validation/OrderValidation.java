@@ -151,8 +151,8 @@ public class OrderValidation {
 
     /**
      * Groups the tree's markdown pages by chapter and checks each chapter's references against what the
-     * chapter would actually hold: this upload's own pages, the template's generated siblings, and what is
-     * currently stored for it.
+     * chapter will hold once this set is taken over: this upload's own pages, the template's generated
+     * siblings, and the microsites currently stored for it.
      * <p>
      * Nothing is checked for a chapter this tree has no page in - there is nothing new to place there.
      */
@@ -175,7 +175,6 @@ public class OrderValidation {
         CustomSubject subject = new CustomSubject(site, placement.subject(), placement.system(),
                 placement.subjectName());
         CustomDocumentation stored = documentation.of(site, placement.system());
-        CustomDocumentation storedMarkdown = stored.publishedBy(template.get().id());
 
         List<StructureFinding> findings = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : pathsByChapter.entrySet()) {
@@ -185,8 +184,8 @@ public class OrderValidation {
                 // Unknown chapter: StructureValidation already refused the tree over it.
                 continue;
             }
-            findings.addAll(chapterFindings(template.get(), chapter.get(), subject, storedMarkdown, stored,
-                    chapterFolder, entry.getValue(), hintOfPath));
+            findings.addAll(chapterFindings(template.get(), chapter.get(), subject, stored, chapterFolder,
+                    entry.getValue(), hintOfPath));
         }
         return findings;
     }
@@ -199,6 +198,17 @@ public class OrderValidation {
     private record GroupSplit(String name, String landingPath, List<String> ownPages) {
     }
 
+    /** One chapter's paths, split into what lies directly in it and what lies in one of its groups. */
+    private record PathSplit(List<String> rootPaths, List<GroupSplit> groups) {
+    }
+
+    /**
+     * What a reference inside this chapter may name, and what each of those names itself refers onward to -
+     * the two {@link ChapterOrder#namesInACycle} and the unknown-reference check both read.
+     */
+    private record ChapterReferences(Set<String> known, Map<String, String> referenceOf) {
+    }
+
     /**
      * The findings of one chapter: every reference its pages, its groups and their own pages name, each
      * checked against what its own level holds - a reference inside a group names only that group's own
@@ -206,9 +216,21 @@ public class OrderValidation {
      * keeps between a chapter's own order and a group's.
      */
     private List<StructureFinding> chapterFindings(StructureTemplate template, StructureChapter chapter,
-                                                    CustomSubject subject, CustomDocumentation storedMarkdown,
-                                                    CustomDocumentation stored, String chapterFolder,
-                                                    List<String> paths, Map<String, OrderHint> hintOfPath) {
+                                                    CustomSubject subject, CustomDocumentation stored,
+                                                    String chapterFolder, List<String> paths,
+                                                    Map<String, OrderHint> hintOfPath) {
+        PathSplit split = splitPaths(paths);
+        ChapterReferences references = referencesOf(template, chapter, subject, stored, chapterFolder, split,
+                hintOfPath);
+
+        List<StructureFinding> findings = new ArrayList<>(
+                unknownReferenceFindings(split.rootPaths(), split.groups(), hintOfPath, references.known()));
+        findings.addAll(cyclicOrderFindings(split.rootPaths(), split.groups(), references.referenceOf()));
+        return findings;
+    }
+
+    /** One chapter's paths, apart into what lies directly in it and what lies in one of its groups. */
+    private static PathSplit splitPaths(List<String> paths) {
         List<String> rootPaths = new ArrayList<>();
         Map<String, List<String>> pathsByGroup = new LinkedHashMap<>();
         for (String path : paths) {
@@ -220,39 +242,48 @@ public class OrderValidation {
             }
         }
         List<GroupSplit> groups = pathsByGroup.entrySet().stream()
-                .map(entry -> splitOf(entry.getKey(), entry.getValue(), hintOfPath))
+                .map(entry -> splitOf(entry.getKey(), entry.getValue()))
                 .toList();
+        return new PathSplit(rootPaths, groups);
+    }
 
+    /**
+     * What this chapter's items may be referenced by, and what each of them refers onward to, once this set is
+     * taken over: the chapter's generated siblings, its stored microsites, and this upload's own tree.
+     * <p>
+     * <b>The subject's stored Markdown set is left out.</b> This upload replaces it whole, so none of its pages
+     * or groups will be there to be named. A reference it still holds would also close a cycle the new set does
+     * not have. A microsite is a set of its own and stays.
+     */
+    private ChapterReferences referencesOf(StructureTemplate template, StructureChapter chapter,
+                                           CustomSubject subject, CustomDocumentation stored,
+                                           String chapterFolder, PathSplit split,
+                                           Map<String, OrderHint> hintOfPath) {
         Set<String> known = new HashSet<>(template.generatedSiblings(chapter, subject.kind()));
         Map<String, String> referenceOf = new HashMap<>();
-        for (String path : rootPaths) {
-            String name = ChapterOrder.nameOf(fileNameOf(path));
-            known.add(name);
-            addReference(referenceOf, name, hintOfPath.get(path));
-        }
-        for (GroupSplit group : groups) {
-            known.add(group.name());
-            if (group.landingPath() != null) {
-                addReference(referenceOf, group.name(), hintOfPath.get(group.landingPath()));
-            }
-        }
-        storedMarkdown.setOf(subject).map(set -> set.pagesOf(chapterFolder)).orElse(List.of())
-                .forEach(page -> {
-                    String name = ChapterOrder.nameOf(page.fileName());
-                    known.add(name);
-                    addReference(referenceOf, name, page.hint());
-                });
-        storedMarkdown.setOf(subject).map(set -> set.groupsOf(chapterFolder)).orElse(List.of())
-                .forEach(storedGroup -> {
-                    known.add(storedGroup.name());
-                    addReference(referenceOf, storedGroup.name(), storedGroup.hint());
-                });
         for (Microsite microsite : stored.micrositesOf(subject, template.id(), chapterFolder)) {
             String name = Microsite.SEGMENT + "/" + microsite.topic();
             known.add(name);
             addReference(referenceOf, name, microsite.hint());
         }
+        for (String path : split.rootPaths()) {
+            String name = ChapterOrder.nameOf(fileNameOf(path));
+            known.add(name);
+            addReference(referenceOf, name, hintOfPath.get(path));
+        }
+        for (GroupSplit group : split.groups()) {
+            known.add(group.name());
+            if (group.landingPath() != null) {
+                addReference(referenceOf, group.name(), hintOfPath.get(group.landingPath()));
+            }
+        }
+        return new ChapterReferences(known, referenceOf);
+    }
 
+    /** The {@link FindingCode#UNKNOWN_REFERENCE} findings of a chapter's own items and each group's own. */
+    private List<StructureFinding> unknownReferenceFindings(List<String> rootPaths, List<GroupSplit> groups,
+                                                             Map<String, OrderHint> hintOfPath,
+                                                             Set<String> known) {
         List<StructureFinding> findings = new ArrayList<>();
         for (String path : rootPaths) {
             unknownReferenceFindingOf(path, hintOfPath.get(path), known).ifPresent(findings::add);
@@ -264,18 +295,25 @@ public class OrderValidation {
             }
             findings.addAll(groupFindings(group, hintOfPath));
         }
+        return findings;
+    }
 
+    /** The {@link FindingCode#CYCLIC_ORDER} findings of a chapter's own items, given what refers to what. */
+    private static List<StructureFinding> cyclicOrderFindings(List<String> rootPaths, List<GroupSplit> groups,
+                                                               Map<String, String> referenceOf) {
         Set<String> cyclic = ChapterOrder.namesInACycle(referenceOf);
-        if (!cyclic.isEmpty()) {
-            for (String path : rootPaths) {
-                if (cyclic.contains(ChapterOrder.nameOf(fileNameOf(path)))) {
-                    findings.add(cyclicOrderFindingOf(path));
-                }
+        if (cyclic.isEmpty()) {
+            return List.of();
+        }
+        List<StructureFinding> findings = new ArrayList<>();
+        for (String path : rootPaths) {
+            if (cyclic.contains(ChapterOrder.nameOf(fileNameOf(path)))) {
+                findings.add(cyclicOrderFindingOf(path));
             }
-            for (GroupSplit group : groups) {
-                if (group.landingPath() != null && cyclic.contains(group.name())) {
-                    findings.add(cyclicOrderFindingOf(group.landingPath()));
-                }
+        }
+        for (GroupSplit group : groups) {
+            if (group.landingPath() != null && cyclic.contains(group.name())) {
+                findings.add(cyclicOrderFindingOf(group.landingPath()));
             }
         }
         return findings;
@@ -285,10 +323,9 @@ public class OrderValidation {
      * The findings of one group: every reference its own pages name, checked against that group's own pages
      * alone - never a page of the chapter around it, a generated sibling, a microsite, or another group's.
      * <p>
-     * <b>Not augmented with what is currently stored.</b> The chapter-level check reads the currently stored
-     * set because a page may cross between a markdown set and a microsite of the same chapter; a group has
-     * no such counterpart, and the plan this follows names only a group's own pages as what a reference inside
-     * it may reach.
+     * <b>Nothing stored is added.</b> The chapter-level check adds the chapter's stored microsites, because they
+     * are separate sets that survive this upload. A group has no such counterpart: all its pages come from this
+     * upload.
      */
     private List<StructureFinding> groupFindings(GroupSplit group, Map<String, OrderHint> hintOfPath) {
         Set<String> known = new HashSet<>();
@@ -320,8 +357,9 @@ public class OrderValidation {
             return Optional.empty();
         }
         return Optional.of(StructureFinding.of(FindingCode.UNKNOWN_REFERENCE, path,
-                ("'%s' is not a page of this chapter or group, a generated sibling of it, or a page or "
-                 + "microsite currently stored for it.").formatted(reference)));
+                ("'%s' is not a page of this chapter or group in this upload, a generated sibling of it, or a "
+                 + "microsite currently stored for it. The pages of the set this upload replaces do not count.")
+                        .formatted(reference)));
     }
 
     private static StructureFinding cyclicOrderFindingOf(String path) {
@@ -333,8 +371,7 @@ public class OrderValidation {
      * Splits one group's own paths into its landing page, if it named one by the same rule a stored group's
      * is read by, and the rest.
      */
-    private static GroupSplit splitOf(String groupFolder, List<String> groupPaths,
-                                      Map<String, OrderHint> hintOfPath) {
+    private static GroupSplit splitOf(String groupFolder, List<String> groupPaths) {
         String landingPath = null;
         List<String> ownPages = new ArrayList<>();
         for (String path : groupPaths) {

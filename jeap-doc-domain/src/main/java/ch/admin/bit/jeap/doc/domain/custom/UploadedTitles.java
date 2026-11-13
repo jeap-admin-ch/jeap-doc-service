@@ -28,7 +28,7 @@ public final class UploadedTitles {
     public static final int HEAD_BYTES = 8 * 1024;
 
     /** Escaped rather than written: a raw one is invisible in an editor and in a diff. */
-    private static final char BYTE_ORDER_MARK = '﻿';
+    private static final char BYTE_ORDER_MARK = '\uFEFF';
     private static final String TITLE_KEY = "title";
     private static final String POSITION_KEY = "sidebar_position";
     private static final String AFTER_KEY = "sidebar_after";

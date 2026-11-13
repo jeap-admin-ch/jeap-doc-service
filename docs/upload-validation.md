@@ -117,8 +117,13 @@ receives a list of paths and no byte of any file's content.
 | `sidebar_position` is a finite number - an integer or a decimal, not quoted | `INVALID_POSITION` |
 | At most one of `sidebar_after` and `sidebar_before` is given, and the one that is names a single, non-blank name | `INVALID_REFERENCE` |
 | Neither reference key is given on a static site's page - its pages are ordered by Docusaurus itself, with no chapter to place one next to | `INVALID_REFERENCE` |
-| `sidebar_after` or `sidebar_before` names a page of the same chapter of this set, a generated sibling of it, a page of the chapter's currently stored set, or a currently stored microsite of it | `UNKNOWN_REFERENCE` |
-| A page's reference, followed from item to item - this set's own and what is currently stored for the same chapter alike - does not loop back to itself | `CYCLIC_ORDER` |
+| `sidebar_after` or `sidebar_before` names a page of the same chapter of this set, a generated sibling of it, or a currently stored microsite of it | `UNKNOWN_REFERENCE` |
+| A page's reference, followed from item to item - over this set's own pages and the chapter's currently stored microsites - does not loop back to itself | `CYCLIC_ORDER` |
+
+**The set this upload replaces does not count.** An upload replaces its set whole, so a page that only the
+stored set has will be gone once the upload is taken over. A reference to it is refused, and a reference it
+still holds cannot close a cycle. A page that is moved therefore only has to say where it goes now. A microsite
+is a set of its own, so a stored microsite stays and counts.
 
 **The cross-reference checks run only for a system's, a component's or a library's documentation.** A static
 site's pages carry no reference at all - `INVALID_REFERENCE` already refuses one - so `UNKNOWN_REFERENCE` and
@@ -150,8 +155,8 @@ A group's own rules, on top of the ones above:
 - **No two pages of one group carry the same name once a leading number is taken off it**, the landing page's
   identity included - `COLLIDING_NAME`.
 - **A group's own stripped name may not be the one a document of its chapter already has** - a page named
-  `sap-interfaces.md` beside a group folder `sap-interfaces/` is one route - `COLLIDING_NAME`. Two groups whose
-  stripped names collide are refused the same way.
+  `shipping-partners.md` beside a group folder `shipping-partners/` is one route - `COLLIDING_NAME`. Two groups
+  whose stripped names collide are refused the same way.
 - **A group folder right below the chapter may not carry a name the doc service writes there itself**, exactly
   as rule 6 above - `RESERVED_NAME`.
 - **`_category_.json` stays refused inside a group too**: the doc service writes it from the landing page's
@@ -336,7 +341,7 @@ as a whole.
 | `UNKNOWN_LOCATION` | *Set-level.* An HTML upload embedded at something that is not a chapter |
 | `INVALID_POSITION` | `sidebar_position` is there and is not a finite number |
 | `INVALID_REFERENCE` | `sidebar_after` and `sidebar_before` both given, one of them given with a value that is not a single, non-blank name, or either given on a static site's page |
-| `UNKNOWN_REFERENCE` | `sidebar_after` or `sidebar_before` names something that is not a page of the same chapter, a generated sibling of it, a page of the chapter's currently stored set, or a currently stored microsite of it |
+| `UNKNOWN_REFERENCE` | `sidebar_after` or `sidebar_before` names something that is not a page of the same chapter of this set, a generated sibling of it, or a currently stored microsite of it |
 | `CYCLIC_ORDER` | A page's reference, followed from item to item, loops back to itself - a self-reference is a cycle of one |
 
 ## Adding a template

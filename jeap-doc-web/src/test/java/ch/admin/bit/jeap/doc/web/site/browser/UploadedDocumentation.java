@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.web.site.browser;
 
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.custom.ChapterOrder;
 import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentation;
 import ch.admin.bit.jeap.doc.domain.custom.CustomPage;
 import ch.admin.bit.jeap.doc.domain.custom.CustomPages;
@@ -9,10 +10,17 @@ import ch.admin.bit.jeap.doc.domain.custom.CustomProvenance;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSet;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSetKey;
 import ch.admin.bit.jeap.doc.domain.custom.CustomSubject;
+import ch.admin.bit.jeap.doc.domain.custom.Microsite;
+import ch.admin.bit.jeap.doc.domain.custom.OrderHint;
+import ch.admin.bit.jeap.doc.domain.custom.PageGroup;
 import ch.admin.bit.jeap.doc.domain.custom.UploadedFrontMatter;
+import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
+import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
+import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
+import ch.admin.bit.jeap.doc.template.arc42.Arc42Template;
 
 import java.io.IOException;
 import java.util.zip.ZipOutputStream;
@@ -27,6 +35,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * A system documented entirely by uploads, for the browser tests.
@@ -34,6 +43,10 @@ import java.util.Map;
  * The pages are written the way the site generator writes them - the body as it was uploaded, the front
  * matter generated - so what a browser sees here is what a reader gets from a real upload. What is skipped is
  * the endpoint and the object storage, which {@code CustomDocsGenerationIT} covers end to end.
+ * <p>
+ * <b>Every position comes from the real {@link ChapterOrder}</b>, built from the same items
+ * {@code CustomPagesWriter} builds it from. A browser test of the order then checks what the service would
+ * publish, not a numbering of this class's own.
  */
 final class UploadedDocumentation {
 
@@ -98,6 +111,24 @@ final class UploadedDocumentation {
     static final String GROUP_PAGE_ONE_TITLE = "Automated testing";
     static final String GROUP_PAGE_TWO = "message-contracts";
     static final String GROUP_PAGE_TWO_TITLE = "Zzz message contract versioning";
+
+    /**
+     * The chapter where two pages are placed around a generated item - see {@code SiblingPlacementBrowserIT}.
+     * For a system no architecture model holds, the only thing generated into it is the libraries group.
+     */
+    static final String PLACEMENT_CHAPTER = "5-building-block-view";
+
+    /** The label of that generated group. */
+    static final String GENERATED_SIBLING_LABEL = "Libraries";
+
+    /** A page placed before the libraries group by its own {@code sidebar_before}. Its title sorts last. */
+    static final String PLACED_PAGE_TITLE = "Read this before the libraries";
+
+    /** A page with no placement. Its title sorts first, but as a free item it still comes after the group. */
+    static final String FREE_PAGE_TITLE = "Afterword";
+
+    /** Their body. It avoids the words the search tests count, so these two pages change none of their counts. */
+    private static final String PLACEMENT_BODY = "Placed by its own front matter.";
 
     /** An uploaded page with a table of 18 terms, in the constraints chapter - see {@code TableControlsBrowserIT}. */
     static final String TERMS_PAGE = "terms";
@@ -243,13 +274,19 @@ final class UploadedDocumentation {
                 GROUP_CHAPTER, List.of(
                         new Page(GROUP_FOLDER + "/index.md", GROUP_LABEL),
                         new Page(GROUP_FOLDER + "/" + GROUP_PAGE_ONE + ".md", GROUP_PAGE_ONE_TITLE),
-                        new Page(GROUP_FOLDER + "/" + GROUP_PAGE_TWO + ".md", GROUP_PAGE_TWO_TITLE))));
+                        new Page(GROUP_FOLDER + "/" + GROUP_PAGE_TWO + ".md", GROUP_PAGE_TWO_TITLE)),
+                PLACEMENT_CHAPTER, List.of(
+                        new Page("before-the-libraries.md", PLACED_PAGE_TITLE, PLACEMENT_BODY,
+                                new OrderHint(null, OrderHint.Direction.BEFORE,
+                                        DocumentationPaths.LIBRARIES_SEGMENT)),
+                        new Page("afterword.md", FREE_PAGE_TITLE, PLACEMENT_BODY, OrderHint.NONE))));
         pages.put(new CustomSubject(Site.DEFAULT_SITE, SubjectKind.LIBRARY, system, library), Map.of(
                 "12-glossary", List.of(new Page("terms.md", "The terms of the client"))));
         List<CustomSet> sets = new ArrayList<>(setsOf(pages));
         sets.add(micrositeOf(system));
-        return SystemDocumentation.ofUploadsOnly(Site.DEFAULT_SITE, system,
-                new CustomDocumentation(sets), new WritesThePages(pages));
+        CustomDocumentation documentation = new CustomDocumentation(sets);
+        return SystemDocumentation.ofUploadsOnly(Site.DEFAULT_SITE, system, documentation,
+                new WritesThePages(pages, documentation));
     }
 
     private static List<CustomSet> setsOf(Map<CustomSubject, Map<String, List<Page>>> pages) {
@@ -262,7 +299,7 @@ final class UploadedDocumentation {
                         .sorted(java.util.Comparator.comparing(Page::title)).toList();
                 for (int i = 0; i < sorted.size(); i++) {
                     files.add(new CustomPage(chapter, sorted.get(i).fileName(), sorted.get(i).title(),
-                            i + 1, false));
+                            i + 1, false, sorted.get(i).hint()));
                 }
             });
             CustomSubject key = subject.getKey();
@@ -289,8 +326,14 @@ final class UploadedDocumentation {
                 List.of());
     }
 
-    /** Writes the pages the way the site generator does: the body as uploaded, the front matter generated. */
-    private record WritesThePages(Map<CustomSubject, Map<String, List<Page>>> pages) implements CustomPages {
+    /**
+     * Writes the pages the way the site generator does: the body as uploaded, the front matter generated, and
+     * each position from the chapter's one {@link ChapterOrder}.
+     */
+    private record WritesThePages(Map<CustomSubject, Map<String, List<Page>>> pages,
+                                  CustomDocumentation documentation) implements CustomPages {
+
+        private static final StructureTemplate TEMPLATE = new Arc42Template();
 
         /**
          * The page that frames the microsite, written the way {@code CustomPagesWriter} writes it: what a
@@ -298,12 +341,22 @@ final class UploadedDocumentation {
          */
         @Override
         public int writeMicrositesInto(CustomSubject subject, String chapterFolder, Path chapterDirectory) {
-            if (subject.kind() != SubjectKind.SYSTEM || !MICROSITE_LOCATION.equals(chapterFolder)) {
+            List<Microsite> microsites = documentation.micrositesOf(subject, TEMPLATE.id(), chapterFolder);
+            if (microsites.isEmpty()) {
                 return 0;
             }
+            ChapterOrder order = orderOf(subject, chapterFolder, chapterDirectory);
+            for (Microsite microsite : microsites) {
+                writeMicrosite(subject, microsite, order.positionOf(microsite), chapterDirectory);
+            }
+            return microsites.size();
+        }
+
+        private static void writeMicrosite(CustomSubject subject, Microsite microsite, int position,
+                                           Path chapterDirectory) {
             Map<String, Object> generated = UploadedFrontMatter.keys();
             generated.put("title", MICROSITE_LABEL);
-            generated.put("sidebar_position", 50);
+            generated.put("sidebar_position", position);
             generated.put("slug", "microsites/" + MICROSITE_TOPIC);
             generated.put("hide_table_of_contents", true);
             generated.put("className", "doc-microsite-page");
@@ -319,57 +372,76 @@ final class UploadedDocumentation {
             generated.put("doc_uploaded_at_display", DisplayTime.of(UPLOADED_AT));
             try {
                 Files.createDirectories(chapterDirectory);
-                Files.writeString(chapterDirectory.resolve(MICROSITE_TOPIC + "-microsite.md"),
+                Files.writeString(chapterDirectory.resolve(microsite.fileName()),
                         UploadedFrontMatter.rewritten("Published by the team that owns it.\n", generated),
                         StandardCharsets.UTF_8);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
-            return 1;
         }
 
         @Override
         public int writeInto(CustomSubject subject, String chapterFolder, Path chapterDirectory) {
-            List<Page> inChapter = pages.getOrDefault(subject, Map.of())
-                    .getOrDefault(chapterFolder, List.of());
-            List<Page> rootPages = inChapter.stream()
-                    .filter(page -> !page.fileName().contains("/")).toList();
-            List<Page> sorted = rootPages.stream()
-                    .sorted(java.util.Comparator.comparing(Page::title)).toList();
-            for (int i = 0; i < sorted.size(); i++) {
-                write(sorted.get(i), i + 1, chapterDirectory, false);
+            Optional<CustomSet> set = documentation.setOf(subject);
+            if (set.isEmpty()) {
+                return 0;
             }
-            writeGroupsInto(inChapter, sorted.size() + 1, chapterDirectory);
-            return sorted.size();
+            ChapterOrder order = orderOf(subject, chapterFolder, chapterDirectory);
+            int written = 0;
+            for (CustomPage page : set.get().pagesOf(chapterFolder)) {
+                write(pageOf(subject, page), order.positionOf(page), chapterDirectory, false);
+                written++;
+            }
+            for (PageGroup group : set.get().groupsOf(chapterFolder)) {
+                written += writeGroup(subject, group, order.positionOf(group), chapterDirectory);
+            }
+            return written;
         }
 
         /**
-         * A group written the way {@code CustomPagesWriter} really writes one: its {@code _category_.json},
-         * its landing page - the one named {@code index.md} within the folder - and its other pages, ordered
-         * by their titles among themselves.
+         * The order {@code CustomPagesWriter} numbers a chapter from: the generated siblings already on disk,
+         * the pages, the microsites and the groups.
          */
-        private void writeGroupsInto(List<Page> inChapter, int firstPosition, Path chapterDirectory) {
-            Map<String, List<Page>> byFolder = new LinkedHashMap<>();
-            for (Page page : inChapter) {
-                int slash = page.fileName().indexOf('/');
-                if (slash > 0) {
-                    byFolder.computeIfAbsent(page.fileName().substring(0, slash), key -> new ArrayList<>())
-                            .add(page);
-                }
-            }
-            int position = firstPosition;
-            for (Map.Entry<String, List<Page>> group : byFolder.entrySet()) {
-                writeGroup(group.getKey(), group.getValue(), position++, chapterDirectory);
-            }
+        private ChapterOrder orderOf(CustomSubject subject, String chapterFolder, Path chapterDirectory) {
+            Optional<CustomSet> set = documentation.setOf(subject);
+            return ChapterOrder.of(presentSiblingsOf(chapterFolder, subject.kind(), chapterDirectory),
+                    set.map(found -> found.pagesOf(chapterFolder)).orElseGet(List::of),
+                    documentation.micrositesOf(subject, TEMPLATE.id(), chapterFolder),
+                    set.map(found -> found.groupsOf(chapterFolder)).orElseGet(List::of));
         }
 
-        private void writeGroup(String folder, List<Page> groupPages, int position, Path chapterDirectory) {
-            Page landing = groupPages.stream()
-                    .filter(page -> page.fileName().equals(folder + "/index.md"))
+        /** The generated siblings written into this chapter, each at the position the template gave it. */
+        private static List<ChapterOrder.PresentSibling> presentSiblingsOf(String chapterFolder, SubjectKind kind,
+                                                                            Path chapterDirectory) {
+            Optional<StructureChapter> chapter = TEMPLATE.chapterOfFolder(chapterFolder);
+            if (chapter.isEmpty()) {
+                return List.of();
+            }
+            List<ChapterOrder.PresentSibling> present = new ArrayList<>();
+            for (String name : TEMPLATE.generatedSiblings(chapter.get(), kind)) {
+                if (Files.exists(chapterDirectory.resolve(name + "." + DocumentationPaths.MARKDOWN_EXTENSION))
+                    || Files.isDirectory(chapterDirectory.resolve(name))) {
+                    present.add(new ChapterOrder.PresentSibling(name,
+                            TEMPLATE.siblingPosition(chapter.get(), kind, name)));
+                }
+            }
+            return present;
+        }
+
+        /** The uploaded page a stored page row stands for. */
+        private Page pageOf(CustomSubject subject, CustomPage page) {
+            return pages.get(subject).get(page.chapter()).stream()
+                    .filter(uploaded -> uploaded.fileName().equals(page.fileName()))
                     .findFirst().orElseThrow();
-            List<Page> rest = groupPages.stream().filter(page -> page != landing)
-                    .sorted(java.util.Comparator.comparing(Page::title)).toList();
-            Path groupDirectory = chapterDirectory.resolve(folder);
+        }
+
+        /**
+         * A group written the way {@code CustomPagesWriter} really writes one: its {@code _category_.json}, its
+         * own pages in their own order, and its landing page. The fixture's one group uploads its landing page.
+         */
+        private int writeGroup(CustomSubject subject, PageGroup group, int position, Path chapterDirectory) {
+            Page landing = pageOf(subject, group.landingPage().orElseThrow());
+            Path groupDirectory = chapterDirectory.resolve(group.folder());
             try {
                 Files.createDirectories(groupDirectory);
                 Files.writeString(groupDirectory.resolve("_category_.json"), """
@@ -377,16 +449,18 @@ final class UploadedDocumentation {
                           "label": "%s",
                           "position": %d
                         }
-                        """.formatted(landing.title(), position), StandardCharsets.UTF_8);
+                        """.formatted(group.label(), position), StandardCharsets.UTF_8);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
             // Not ordered, the same reason CustomPagesWriter does not order a group's own landing page:
             // Docusaurus reads it as the category's own page, never as a sibling of the group's others.
             write(landing, 0, chapterDirectory, true);
-            for (int i = 0; i < rest.size(); i++) {
-                write(rest.get(i), i + 1, chapterDirectory, false);
+            ChapterOrder order = ChapterOrder.of(group.pages(), List.of());
+            for (CustomPage page : group.pages()) {
+                write(pageOf(subject, page), order.positionOf(page), chapterDirectory, false);
             }
+            return group.pages().size() + 1;
         }
 
         /**
@@ -428,11 +502,18 @@ final class UploadedDocumentation {
         }
     }
 
-    /** One uploaded page: what it is called on disk, what it says it is, and what a team wrote in it. */
-    private record Page(String fileName, String title, String body) {
+    /**
+     * One uploaded page: what it is called on disk, what it says it is, what a team wrote in it, and where its
+     * front matter asked to be placed.
+     */
+    private record Page(String fileName, String title, String body, OrderHint hint) {
 
         Page(String fileName, String title) {
             this(fileName, title, "Written by the team that owns this documentation.");
+        }
+
+        Page(String fileName, String title, String body) {
+            this(fileName, title, body, OrderHint.NONE);
         }
     }
 }

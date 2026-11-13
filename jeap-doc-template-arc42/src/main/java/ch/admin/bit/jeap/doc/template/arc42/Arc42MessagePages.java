@@ -52,21 +52,18 @@ final class Arc42MessagePages {
     }
 
     /**
-     * Writes the group of one kind of message, and answers whether there is one.
-     * <p>
-     * False means nothing was written because the system defines no message of the kind. The caller links to
-     * the group only then, because a link to a directory nothing wrote fails the build of every site of the
-     * environment.
+     * Writes the group of one kind of message. Nothing is written when the system defines no message of the
+     * kind.
      * <p>
      * Every message the system defines gets a page: its slug is derived and checked by the importer, which
      * refuses a name that yields none, one that would be the listing of its group, and two that yield the
      * same - so nothing here has to be left out, and nothing here decides what a path segment is.
      */
-    static boolean write(DocumentedSystem system, MessageKind kind, String group, int position,
-                         GenerationContext context, Path buildingBlockDirectory) throws IOException {
+    static void write(DocumentedSystem system, MessageKind kind, String group, int position,
+                      GenerationContext context, Path buildingBlockDirectory) throws IOException {
         List<DocumentedMessage> messages = system.messagesOfKind(kind);
         if (messages.isEmpty()) {
-            return false;
+            return;
         }
         Path directory = buildingBlockDirectory.resolve(group);
         Arc42Pages.writeCategory(directory, kind.plural(), position);
@@ -74,7 +71,6 @@ final class Arc42MessagePages {
         for (DocumentedMessage message : messages) {
             writeMessage(message, context, directory);
         }
-        return true;
     }
 
     /** Every message of one kind, with who produces and who consumes each. */

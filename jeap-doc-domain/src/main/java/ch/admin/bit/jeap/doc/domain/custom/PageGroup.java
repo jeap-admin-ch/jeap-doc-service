@@ -28,7 +28,6 @@ public record PageGroup(String folder, String label, OrderHint hint, List<Custom
     public PageGroup {
         pages = pages == null ? List.of() : List.copyOf(pages);
         hint = hint == null ? OrderHint.NONE : hint;
-        landingPage = landingPage == null ? Optional.empty() : landingPage;
     }
 
     /**

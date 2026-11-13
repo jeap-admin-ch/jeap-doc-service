@@ -225,7 +225,7 @@ class ChapterOrderTest {
     /** A group is one more item of the chapter, ordered by its label exactly as a page or a microsite is. */
     @Test
     void aGroup_isOrderedByItsLabelAmongPagesAndMicrosites() {
-        PageGroup group = group("sap-interfaces", "Mid", OrderHint.NONE);
+        PageGroup group = group("shipping-partners", "Mid", OrderHint.NONE);
 
         ChapterOrder order = ChapterOrder.of(List.of(),
                 List.of(page("alpha.md", "Alpha", 1), page("zulu.md", "Zulu", 2)), List.of(), List.of(group));
@@ -236,8 +236,8 @@ class ChapterOrderTest {
 
     @Test
     void anItem_canPlaceItselfRelativeToAGroup() {
-        PageGroup group = group("sap-interfaces", "SAP Interfaces", OrderHint.NONE);
-        CustomPage notes = page("notes.md", "Notes", after("sap-interfaces"));
+        PageGroup group = group("shipping-partners", "Shipping Partners", OrderHint.NONE);
+        CustomPage notes = page("notes.md", "Notes", after("shipping-partners"));
 
         ChapterOrder order = ChapterOrder.of(List.of(), List.of(notes), List.of(), List.of(group));
 
@@ -247,7 +247,7 @@ class ChapterOrderTest {
     /** A group's own placement comes from its landing page's hint, read by whoever builds the {@link PageGroup}. */
     @Test
     void aGroup_canPlaceItselfRelativeToAGeneratedSibling() {
-        PageGroup group = group("sap-interfaces", "SAP Interfaces", before("system-context-view"));
+        PageGroup group = group("shipping-partners", "Shipping Partners", before("system-context-view"));
 
         ChapterOrder order = ChapterOrder.of(List.of(sibling("system-context-view", 1_000_000)),
                 List.of(), List.of(), List.of(group));
@@ -261,9 +261,9 @@ class ChapterOrderTest {
      */
     @Test
     void aGroupsOwnPages_areOrderedByACallOfTheirOwn() {
-        CustomPage orders = new CustomPage("6-runtime-view", "sap-interfaces/orders.md", "Orders", 0, false,
+        CustomPage orders = new CustomPage("6-runtime-view", "shipping-partners/orders.md", "Orders", 0, false,
                 OrderHint.NONE);
-        CustomPage invoices = new CustomPage("6-runtime-view", "sap-interfaces/invoices.md", "Invoices", 0, false,
+        CustomPage invoices = new CustomPage("6-runtime-view", "shipping-partners/invoices.md", "Invoices", 0, false,
                 after("orders"));
 
         ChapterOrder groupOrder = ChapterOrder.of(List.of(invoices, orders), List.of());
@@ -274,7 +274,7 @@ class ChapterOrderTest {
     /** A reference inside a group names only the page it means, never the group's own folder. */
     @Test
     void nameOf_isTheLastSegmentAlone() {
-        assertThat(ChapterOrder.nameOf("sap-interfaces/01-foo.md")).isEqualTo("foo");
+        assertThat(ChapterOrder.nameOf("shipping-partners/01-foo.md")).isEqualTo("foo");
         assertThat(ChapterOrder.nameOf("01-foo.md")).isEqualTo("foo");
     }
 }

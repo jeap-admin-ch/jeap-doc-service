@@ -75,14 +75,14 @@ public enum FindingCode {
 
     /**
      * {@code sidebar_after} or {@code sidebar_before} names something that is not a page of the same chapter
-     * of this set, a generated sibling of that chapter, a page of the chapter's currently stored set, or a
-     * currently stored microsite of it.
+     * of this set, a generated sibling of that chapter, or a currently stored microsite of it. The pages of the
+     * set this upload replaces do not count.
      */
     UNKNOWN_REFERENCE,
 
     /**
-     * A page's reference, followed from item to item - this set's own and what is currently stored for the
-     * same chapter alike - loops back to itself. A self-reference is a cycle of one.
+     * A page's reference, followed from item to item - over this set's own pages and the chapter's currently
+     * stored microsites - loops back to itself. A self-reference is a cycle of one.
      */
     CYCLIC_ORDER
 }

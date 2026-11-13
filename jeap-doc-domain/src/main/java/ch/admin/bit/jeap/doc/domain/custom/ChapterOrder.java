@@ -22,8 +22,9 @@ import java.util.Set;
  * <p>
  * <b>The roots, in order,</b> are the generated siblings present in this environment (in the template's own
  * order), then the items with no reference ("free"), then the items whose reference is missing in this
- * environment or sits in a cycle ("orphans") - the latter is only possible for a set stored before this rule
- * existed. <b>Each root expands</b> to its before-group, itself, then its after-group, and a group member
+ * environment or sits in a cycle ("orphans") - a cycle only in a set stored before the validation that
+ * refuses one existed, or through a microsite, whose own reference is not checked against its chapter.
+ * <b>Each root expands</b> to its before-group, itself, then its after-group, and a group member
  * expands the same way - so a chain of references nests correctly. Every group, and the free and orphan lists
  * themselves, are ordered by their own {@link OrderHint#position()} first (absent last), then by title or
  * label, then by name.
@@ -165,7 +166,8 @@ public final class ChapterOrder {
 
     /**
      * The items whose reference, followed as far as it goes, loops back on itself - a self-reference is a
-     * cycle of one. Only possible for a set stored before the validation that refuses it existed.
+     * cycle of one. Possible for a set stored before the validation that refuses it existed, and through a
+     * microsite, whose own reference is not checked against its chapter.
      */
     private static Set<String> cyclicReferences(List<Item> items) {
         Map<String, String> referenceOf = new HashMap<>();
@@ -181,7 +183,8 @@ public final class ChapterOrder {
      * <p>
      * <b>The one definition of a cycle.</b> This class uses it while placing the items of an already-taken-
      * over set; {@code OrderValidation} uses the exact same one to refuse a set that would introduce one,
-     * before anything is stored - combining this set's own references with what is already stored.
+     * before anything is stored - combining this set's own references with those of the chapter's stored
+     * microsites.
      *
      * @param referenceOf one name to the name it names, or absent for a name with no reference of its own
      */
@@ -214,8 +217,8 @@ public final class ChapterOrder {
      * this file name - without its extension and its leading number, the way every reference is read.
      * <p>
      * <b>Of the last segment alone.</b> A page's {@link CustomPage#fileName} carries the folder it is grouped
-     * into, if any - {@code sap-interfaces/bestellungen.md} - and a reference inside that group names only
-     * {@code bestellungen}, never the group's own name: a group is opaque from inside it, the same way the
+     * into, if any - {@code shipping-partners/orders.md} - and a reference inside that group names only
+     * {@code orders}, never the group's own name: a group is opaque from inside it, the same way the
      * chapter around it is.
      * <p>
      * Shared with {@code OrderValidation}, which needs the exact same name before a page is ever stored, to

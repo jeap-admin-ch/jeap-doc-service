@@ -58,6 +58,9 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
     /** What a custom page says it is, against the {@code generated} of a page the service wrote itself. */
     static final String DOC_STATUS = "custom";
 
+    /** The front matter key {@link #DOC_STATUS} and the service's own {@code generated} go into. */
+    private static final String DOC_STATUS_KEY = "doc_status";
+
     /**
      * The most of one file that is ever held at once, whatever the budget of its set allows.
      * <p>
@@ -114,12 +117,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         }
         List<CustomPage> pages = set.get().pagesOf(chapterFolder);
         List<PageGroup> groups = set.get().groupsOf(chapterFolder);
-        // One order over everything directly in this chapter - the siblings this template generated into it,
-        // the uploaded pages, the microsites and the groups - so a microsite or a group sits among the pages
-        // by its label rather than after all of them, and an uploaded item placed next to a generated sibling
-        // lands next to it. A group's own pages are not here; see writeGroupInto.
-        ChapterOrder order = ChapterOrder.of(presentSiblingsOf(chapterFolder, subject.kind(), chapterDirectory),
-                pages, micrositesOf(subject, chapterFolder), groups);
+        ChapterOrder order = chapterOrderOf(subject, chapterFolder, chapterDirectory);
         int written = 0;
         for (CustomPage page : pages) {
             if (write(set.get(), page, order.positionOf(page), chapterDirectory)) {
@@ -189,7 +187,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(FrontMatter.frontMatter()
                         .put("title", group.label())
-                        .put("doc_status", "generated")
+                        .put(DOC_STATUS_KEY, "generated")
                         .put("doc_chapter_contents", true))
                 .heading(1, group.label());
         try {
@@ -441,7 +439,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         if (isGroupLandingPage) {
             generated.put("doc_chapter_contents", true);
         }
-        generated.put("doc_status", DOC_STATUS);
+        generated.put(DOC_STATUS_KEY, DOC_STATUS);
         generated.put("doc_source", "upload");
         generated.put("doc_source_repository", provenance.sourceRepository());
         generated.put("doc_source_ref", provenance.sourceRef());
@@ -460,20 +458,33 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         if (microsites.isEmpty()) {
             return 0;
         }
-        ChapterOrder order = ChapterOrder.of(presentSiblingsOf(chapterFolder, subject.kind(), chapterDirectory),
-                pagesOf(subject, chapterFolder), microsites);
+        ChapterOrder order = chapterOrderOf(subject, chapterFolder, chapterDirectory);
         for (Microsite microsite : microsites) {
             writeMicrosite(microsite, order.positionOf(microsite), chapterDirectory);
         }
         return microsites.size();
     }
 
-    private List<Microsite> micrositesOf(CustomSubject subject, String chapterFolder) {
-        return allDocumentation.micrositesOf(subject, template.id(), chapterFolder);
+    /**
+     * One order over everything directly in this chapter: the siblings this template generated into it, the
+     * uploaded pages, the microsites and the groups. So a microsite or a group sits among the pages by its
+     * label rather than after all of them, and an uploaded item placed next to a generated sibling lands next
+     * to it. A group's own pages are not here; see writeGroupInto.
+     * <p>
+     * <b>{@link #writeInto} and {@link #writeMicrositesInto} both number their items from this order.</b> Each
+     * writes only its own items, so an order that left out the other's - the groups, say - would give two
+     * items one position, and turn a microsite placed next to a group into an orphan.
+     */
+    private ChapterOrder chapterOrderOf(CustomSubject subject, String chapterFolder, Path chapterDirectory) {
+        Optional<CustomSet> set = documentation.setOf(subject);
+        return ChapterOrder.of(presentSiblingsOf(chapterFolder, subject.kind(), chapterDirectory),
+                set.map(found -> found.pagesOf(chapterFolder)).orElseGet(List::of),
+                micrositesOf(subject, chapterFolder),
+                set.map(found -> found.groupsOf(chapterFolder)).orElseGet(List::of));
     }
 
-    private List<CustomPage> pagesOf(CustomSubject subject, String chapterFolder) {
-        return documentation.setOf(subject).map(set -> set.pagesOf(chapterFolder)).orElseGet(List::of);
+    private List<Microsite> micrositesOf(CustomSubject subject, String chapterFolder) {
+        return allDocumentation.micrositesOf(subject, template.id(), chapterFolder);
     }
 
     /**
@@ -495,7 +506,7 @@ class CustomPagesWriter implements CustomPages, AutoCloseable {
         // The frame is the page: a table of contents of one heading would only take width from it.
         generated.put("hide_table_of_contents", true);
         generated.put("className", "doc-microsite-page");
-        generated.put("doc_status", DOC_STATUS);
+        generated.put(DOC_STATUS_KEY, DOC_STATUS);
         generated.put("doc_source", "upload");
         generated.put("doc_microsite_url", microsite.url());
         generated.put("doc_microsite_label", microsite.label());

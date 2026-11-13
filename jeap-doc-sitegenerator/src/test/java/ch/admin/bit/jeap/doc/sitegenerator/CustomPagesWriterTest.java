@@ -383,23 +383,23 @@ class CustomPagesWriterTest {
     void writeInto_whenAGroupHasAnUploadedLandingPage_thenItsLabelAndPagesArePublished() throws IOException {
         CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
                 page("1-intro", "why.md", "Why", 1),
-                new CustomPage("1-intro", "sap-interfaces/index.md", "SAP Interfaces", 0, false, OrderHint.NONE),
-                new CustomPage("1-intro", "sap-interfaces/orders.md", "Orders", 0, false, OrderHint.NONE));
+                new CustomPage("1-intro", "shipping-partners/index.md", "Shipping Partners", 0, false, OrderHint.NONE),
+                new CustomPage("1-intro", "shipping-partners/orders.md", "Orders", 0, false, OrderHint.NONE));
         InMemoryStorage storage = new InMemoryStorage()
                 .with(set, "1-intro/why.md", "# Why\n")
-                .with(set, "1-intro/sap-interfaces/index.md", "# SAP Interfaces\n")
-                .with(set, "1-intro/sap-interfaces/orders.md", "# Orders\n");
+                .with(set, "1-intro/shipping-partners/index.md", "# Shipping Partners\n")
+                .with(set, "1-intro/shipping-partners/orders.md", "# Orders\n");
 
         try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
             writer.writeInto(SYSTEM, "1-intro", chapterDirectory);
         }
 
-        assertThat(chapterDirectory.resolve("sap-interfaces/orders.md")).exists();
-        assertThat(chapterDirectory.resolve("sap-interfaces/index.md"))
+        assertThat(chapterDirectory.resolve("shipping-partners/orders.md")).exists();
+        assertThat(chapterDirectory.resolve("shipping-partners/index.md"))
                 .describedAs("the uploaded landing page is published, not a generated one")
                 .exists();
-        assertThat(Files.readString(chapterDirectory.resolve("sap-interfaces/_category_.json")))
-                .contains("\"label\": \"SAP Interfaces\"");
+        assertThat(Files.readString(chapterDirectory.resolve("shipping-partners/_category_.json")))
+                .contains("\"label\": \"Shipping Partners\"");
     }
 
     /**
@@ -411,17 +411,17 @@ class CustomPagesWriterTest {
     @Test
     void writeInto_whenAGroupsLandingPageIsUploaded_thenItAlsoListsTheGroupsContents() throws IOException {
         CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
-                new CustomPage("1-intro", "sap-interfaces/index.md", "SAP Interfaces", 0, false, OrderHint.NONE),
-                new CustomPage("1-intro", "sap-interfaces/orders.md", "Orders", 0, false, OrderHint.NONE));
+                new CustomPage("1-intro", "shipping-partners/index.md", "Shipping Partners", 0, false, OrderHint.NONE),
+                new CustomPage("1-intro", "shipping-partners/orders.md", "Orders", 0, false, OrderHint.NONE));
         InMemoryStorage storage = new InMemoryStorage()
-                .with(set, "1-intro/sap-interfaces/index.md", "# SAP Interfaces\n")
-                .with(set, "1-intro/sap-interfaces/orders.md", "# Orders\n");
+                .with(set, "1-intro/shipping-partners/index.md", "# Shipping Partners\n")
+                .with(set, "1-intro/shipping-partners/orders.md", "# Orders\n");
 
         try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
             writer.writeInto(SYSTEM, "1-intro", chapterDirectory);
         }
 
-        assertThat(Files.readString(chapterDirectory.resolve("sap-interfaces/index.md")))
+        assertThat(Files.readString(chapterDirectory.resolve("shipping-partners/index.md")))
                 .contains("doc_chapter_contents: true");
     }
 
@@ -434,21 +434,21 @@ class CustomPagesWriterTest {
     void writeInto_whenAGroupHasNoUploadedLandingPage_thenAGeneratedOneListsItsPages() throws IOException {
         CustomSet set = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
                 page("1-intro", "why.md", "Why", 1),
-                new CustomPage("1-intro", "sap-interfaces/orders.md", "Orders", 0, false, OrderHint.NONE));
+                new CustomPage("1-intro", "shipping-partners/orders.md", "Orders", 0, false, OrderHint.NONE));
         InMemoryStorage storage = new InMemoryStorage()
                 .with(set, "1-intro/why.md", "# Why\n")
-                .with(set, "1-intro/sap-interfaces/orders.md", "# Orders\n");
+                .with(set, "1-intro/shipping-partners/orders.md", "# Orders\n");
 
         try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(set)), storage)) {
             writer.writeInto(SYSTEM, "1-intro", chapterDirectory);
         }
 
-        assertThat(Files.readString(chapterDirectory.resolve("sap-interfaces/index.md")))
-                .contains("title: \"sap-interfaces\"")
+        assertThat(Files.readString(chapterDirectory.resolve("shipping-partners/index.md")))
+                .contains("title: \"shipping-partners\"")
                 .contains("doc_status: \"generated\"")
                 .contains("doc_chapter_contents: true");
-        assertThat(Files.readString(chapterDirectory.resolve("sap-interfaces/_category_.json")))
-                .contains("\"label\": \"sap-interfaces\"");
+        assertThat(Files.readString(chapterDirectory.resolve("shipping-partners/_category_.json")))
+                .contains("\"label\": \"shipping-partners\"");
     }
 
     /** A folder the template generates into the chapter is its own, and an asset is not written into it. */
@@ -697,6 +697,78 @@ class CustomPagesWriterTest {
         int notesPosition = sidebarPositionOf(chapterDirectory.resolve("notes.md"));
         int micrositePosition = sidebarPositionOf(chapterDirectory.resolve("reference-microsite.md"));
         assertThat(micrositePosition).isLessThan(notesPosition);
+    }
+
+    /**
+     * A page, a group and a microsite in one chapter, sorted by their labels. The microsite is numbered from
+     * the same order as the page and the group, so it does not take the group's position.
+     */
+    @Test
+    void writeMicrositesInto_whenTheChapterAlsoHasAGroup_thenNoTwoItemsShareAPosition() throws IOException {
+        CustomSet pages = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
+                page("6-runtime-view", "alpha.md", "Alpha", 1),
+                page("6-runtime-view", "billing/index.md", "Billing", 0),
+                page("6-runtime-view", "billing/invoices.md", "Invoices", 0));
+        CustomSet microsite = micrositeOf("Configuration Reference");
+        InMemoryStorage storage = new InMemoryStorage()
+                .with(pages, "6-runtime-view/alpha.md", "# Alpha\n")
+                .with(pages, "6-runtime-view/billing/index.md", "# Billing\n")
+                .with(pages, "6-runtime-view/billing/invoices.md", "# Invoices\n");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(pages, microsite)), storage)) {
+            writer.writeInto(SYSTEM, "6-runtime-view", chapterDirectory);
+            writer.writeMicrositesInto(SYSTEM, "6-runtime-view", chapterDirectory);
+        }
+
+        int pagePosition = sidebarPositionOf(chapterDirectory.resolve("alpha.md"));
+        int groupPosition = categoryPositionOf(chapterDirectory.resolve("billing"));
+        int micrositePosition = sidebarPositionOf(chapterDirectory.resolve("reference-microsite.md"));
+        assertThat(groupPosition).isGreaterThan(pagePosition);
+        assertThat(micrositePosition).describedAs("Configuration Reference comes after Billing")
+                .isGreaterThan(groupPosition);
+    }
+
+    /**
+     * A microsite may be placed next to a group, by the group's name. The group is in the order the microsite
+     * is numbered from, so the reference resolves and the microsite comes directly after the group.
+     */
+    @Test
+    void writeMicrositesInto_whenPlacedAfterAGroup_thenItComesDirectlyAfterTheGroup() throws IOException {
+        CustomSet pages = setOf(1L, SYSTEM, SourceFormat.MARKDOWN,
+                page("6-runtime-view", "alpha.md", "Alpha", 1),
+                page("6-runtime-view", "billing/index.md", "Billing", 0),
+                page("6-runtime-view", "billing/invoices.md", "Invoices", 0),
+                page("6-runtime-view", "catalog.md", "Catalog", 2),
+                page("6-runtime-view", "delta.md", "Delta", 3));
+        CustomSet microsite = micrositeOf("Configuration Reference",
+                new OrderHint(null, OrderHint.Direction.AFTER, "billing"));
+        InMemoryStorage storage = new InMemoryStorage()
+                .with(pages, "6-runtime-view/alpha.md", "# Alpha\n")
+                .with(pages, "6-runtime-view/billing/index.md", "# Billing\n")
+                .with(pages, "6-runtime-view/billing/invoices.md", "# Invoices\n")
+                .with(pages, "6-runtime-view/catalog.md", "# Catalog\n")
+                .with(pages, "6-runtime-view/delta.md", "# Delta\n");
+
+        try (CustomPagesWriter writer = writerOver(new CustomDocumentation(List.of(pages, microsite)), storage)) {
+            writer.writeInto(SYSTEM, "6-runtime-view", chapterDirectory);
+            writer.writeMicrositesInto(SYSTEM, "6-runtime-view", chapterDirectory);
+        }
+
+        int groupPosition = categoryPositionOf(chapterDirectory.resolve("billing"));
+        int micrositePosition = sidebarPositionOf(chapterDirectory.resolve("reference-microsite.md"));
+        int catalogPosition = sidebarPositionOf(chapterDirectory.resolve("catalog.md"));
+        assertThat(micrositePosition).isGreaterThan(groupPosition);
+        assertThat(micrositePosition).describedAs("directly after the group, not at the end as an orphan")
+                .isLessThan(catalogPosition);
+    }
+
+    private static int categoryPositionOf(Path groupDirectory) throws IOException {
+        return Files.readString(groupDirectory.resolve("_category_.json")).lines()
+                .map(String::strip)
+                .filter(line -> line.startsWith("\"position\":"))
+                .map(line -> line.substring("\"position\":".length()).strip())
+                .mapToInt(Integer::parseInt)
+                .findFirst().orElseThrow();
     }
 
     private static int sidebarPositionOf(Path page) throws IOException {

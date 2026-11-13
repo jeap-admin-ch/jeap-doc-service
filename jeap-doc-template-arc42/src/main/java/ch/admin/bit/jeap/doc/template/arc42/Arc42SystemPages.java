@@ -61,6 +61,9 @@ final class Arc42SystemPages {
     private static final String CONTEXT_VIEW_LABEL = "System Context View";
     private static final String SYSTEM_REACTIONS_LABEL = "System Reactions";
 
+    /** Marks a generated chapter landing page, whose chapter contents list the site template reads off it. */
+    private static final String DOC_CHAPTER_CONTENTS = "doc_chapter_contents";
+
     private Arc42SystemPages() {
     }
 
@@ -171,7 +174,7 @@ final class Arc42SystemPages {
             throws IOException {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context)
-                        .put("doc_chapter_contents", true))
+                        .put(DOC_CHAPTER_CONTENTS, true))
                 .heading(1, BUILDING_BLOCK_VIEW.label())
                 .paragraph(Md.sentence("The parts of {} that are documented. The architecture model of this "
                                        + "environment does not hold this system, so how it is decomposed is "
@@ -253,7 +256,7 @@ final class Arc42SystemPages {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(INTRODUCTION.label(), 0, context)
                         .put("description", system.description())
-                        .put("doc_chapter_contents", true))
+                        .put(DOC_CHAPTER_CONTENTS, true))
                 .heading(1, INTRODUCTION.label())
                 .paragraphOrNothing(Md.text(system.description()),
                         "The architecture repository holds no description of this system.");
@@ -294,7 +297,7 @@ final class Arc42SystemPages {
 
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(CONTEXT_AND_SCOPE.label(), 0, context)
-                        .put("doc_chapter_contents", true))
+                        .put(DOC_CHAPTER_CONTENTS, true))
                 .heading(1, CONTEXT_AND_SCOPE.label())
                 .paragraph(Md.sentence("Which external systems and actors interact with {}, and what "
                                        + "information or data is exchanged.", Md.code(system.name())));
@@ -333,21 +336,20 @@ final class Arc42SystemPages {
         WhiteboxView whitebox = WhiteboxView.of(context.model(), system, context.limits().maxDiagramNodes(),
                 context.viewExclusions());
 
-        // The message groups are written before the listing that links to them, and the listing goes by what
-        // they answer: a system defines no events, or no commands, more often than not, and a link to a
-        // directory nothing wrote fails the build of every site of the environment.
         // After the building blocks, in the template's own declared order - the one declaration both this and
         // ChapterOrder read, so an uploaded item placed next to one of them lands next to its real position.
-        boolean events = Arc42MessagePages.write(system, MessageKind.EVENT, Arc42MessagePages.EVENTS,
+        // Whether either wrote anything is not read here: CustomPagesWriter.presentSiblingsOf re-derives it
+        // from the generated directory itself, once this chapter's tree is complete.
+        Arc42MessagePages.write(system, MessageKind.EVENT, Arc42MessagePages.EVENTS,
                 template.siblingPosition(BUILDING_BLOCK_VIEW, SubjectKind.SYSTEM, Arc42MessagePages.EVENTS),
                 context, directory);
-        boolean commands = Arc42MessagePages.write(system, MessageKind.COMMAND, Arc42MessagePages.COMMANDS,
+        Arc42MessagePages.write(system, MessageKind.COMMAND, Arc42MessagePages.COMMANDS,
                 template.siblingPosition(BUILDING_BLOCK_VIEW, SubjectKind.SYSTEM, Arc42MessagePages.COMMANDS),
                 context, directory);
 
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context)
-                        .put("doc_chapter_contents", true))
+                        .put(DOC_CHAPTER_CONTENTS, true))
                 .heading(1, BUILDING_BLOCK_VIEW.label())
                 .paragraph(Md.sentence("How {} is decomposed, and what flows between its parts.",
                         Md.code(system.name())));
@@ -675,7 +677,7 @@ final class Arc42SystemPages {
 
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(RUNTIME_VIEW.label(), 0, context)
-                        .put("doc_chapter_contents", true))
+                        .put(DOC_CHAPTER_CONTENTS, true))
                 .heading(1, RUNTIME_VIEW.label())
                 .paragraph(Md.sentence("How {} behaves while it runs.", Md.code(system.name())));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);

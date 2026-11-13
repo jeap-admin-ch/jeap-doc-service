@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /** A path becomes a chapter and a file name, and the pages of a chapter get their order. */
 class UploadedSetTest {
@@ -254,5 +255,44 @@ class UploadedSetTest {
                 new Titles(Map.of("1-intro/goals.md", "Goals")));
 
         assertThat(pages).singleElement().satisfies(page -> assertThat(page.hint()).isEqualTo(OrderHint.NONE));
+    }
+
+    /**
+     * A group's own pages compete for position among themselves alone - never against the pages directly in
+     * the chapter, which is the separation {@link ch.admin.bit.jeap.doc.domain.custom.ChapterOrder}'s class
+     * comment asks for: one order per level.
+     */
+    @Test
+    void thePagesOfAGroup_areNumberedWithinTheirOwnGroup() {
+        List<CustomPage> pages = UploadedSet.pagesOf(
+                List.of("1-intro/a.md", "1-intro/b.md", "1-intro/c.md",
+                        "1-intro/shipping-partners/orders.md", "1-intro/shipping-partners/invoices.md"),
+                new Titles(Map.of(
+                        "1-intro/a.md", "A", "1-intro/b.md", "B", "1-intro/c.md", "C",
+                        "1-intro/shipping-partners/orders.md", "Orders",
+                        "1-intro/shipping-partners/invoices.md", "Invoices")));
+
+        assertThat(pages).filteredOn(page -> !page.fileName().startsWith("shipping-partners/"))
+                .extracting(CustomPage::fileName, CustomPage::position)
+                .containsExactly(tuple("a.md", 1), tuple("b.md", 2), tuple("c.md", 3));
+        assertThat(pages).filteredOn(page -> page.fileName().startsWith("shipping-partners/"))
+                .extracting(CustomPage::fileName, CustomPage::position)
+                .containsExactly(tuple("shipping-partners/invoices.md", 1), tuple("shipping-partners/orders.md", 2));
+    }
+
+    /**
+     * The landing page is the group's own {@code _category_.json} page rather than a sibling of the pages
+     * below it, exactly as the site generator writes it - so it carries no position of its own.
+     */
+    @Test
+    void aGroupsLandingPage_carriesNoPositionOfItsOwn() {
+        List<CustomPage> pages = UploadedSet.pagesOf(
+                List.of("1-intro/shipping-partners/index.md", "1-intro/shipping-partners/orders.md"),
+                new Titles(Map.of(
+                        "1-intro/shipping-partners/index.md", "Shipping Partners",
+                        "1-intro/shipping-partners/orders.md", "Orders")));
+
+        assertThat(pages).filteredOn(page -> page.fileName().equals("shipping-partners/index.md"))
+                .singleElement().extracting(CustomPage::position).isEqualTo(0);
     }
 }

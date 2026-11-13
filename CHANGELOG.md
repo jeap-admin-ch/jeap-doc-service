@@ -14,10 +14,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   at most one reference key may be given, as a single non-blank name; neither reference key is accepted on a
   static site's page.
 - For a system's, a component's or a library's documentation, an uploaded page's `sidebar_after` or
-  `sidebar_before` is checked against what the chapter would actually hold: this upload's own pages, the
-  template's generated siblings, and the chapter's currently stored pages and microsites
-  (`UNKNOWN_REFERENCE`), and a set of references - this upload's own and what is already stored alike - must
-  not introduce a cycle (`CYCLIC_ORDER`).
+  `sidebar_before` is checked against what the chapter will hold once the upload is taken over: this upload's
+  own pages, the template's generated siblings, and the chapter's currently stored microsites
+  (`UNKNOWN_REFERENCE`). Those references must not introduce a cycle (`CYCLIC_ORDER`). The set the upload
+  replaces does not count, so a page that moves only has to say where it goes now.
 - An HTML microsite upload may name the same placement with the `sidebar-position`, `sidebar-after` and
   `sidebar-before` parameters - it has no front matter of its own to carry them in. Refused for any other
   `source-format`.

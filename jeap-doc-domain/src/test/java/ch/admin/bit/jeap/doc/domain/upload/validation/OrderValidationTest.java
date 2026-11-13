@@ -313,8 +313,9 @@ class OrderValidationTest {
         assertThat(report).isEmpty();
     }
 
+    /** This upload replaces the stored set whole, so a page only that set has will be gone. */
     @Test
-    void check_whenAReferenceNamesAPageOfTheCurrentlyStoredSet_thenNothing() {
+    void check_whenAReferenceNamesAPageOnlyTheReplacedSetHas_thenUnknownReference() {
         stores(markdownSetOf(new CustomPage("1-intro", "overview.md", "Overview", 1, false)));
         UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
                 "1-intro/goals.md", "---\nsidebar_after: overview\n---\n\n# Goals\n"));
@@ -322,7 +323,9 @@ class OrderValidationTest {
         Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
                 List.of("1-intro/goals.md"), bundle);
 
-        assertThat(report).isEmpty();
+        assertThat(report).isPresent();
+        assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactly(tuple(FindingCode.UNKNOWN_REFERENCE, "1-intro/goals.md"));
     }
 
     @Test
@@ -368,9 +371,27 @@ class OrderValidationTest {
                         tuple(FindingCode.CYCLIC_ORDER, "1-intro/b.md"));
     }
 
-    /** The cycle is only completed by combining this upload's own reference with what is already stored. */
+    /**
+     * A microsite is a set of its own and survives this upload, so its reference can complete a cycle with this
+     * upload's own.
+     */
     @Test
-    void check_whenAStoredPageReferencesBackIntoThisUpload_thenCyclicOrder() {
+    void check_whenAStoredMicrositeReferencesBackIntoThisUpload_thenCyclicOrder() {
+        stores(micrositeOf("handbook", new OrderHint(null, OrderHint.Direction.AFTER, "goals")));
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/goals.md", "---\nsidebar_after: microsites/handbook\n---\n\n# Goals\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/goals.md"), bundle);
+
+        assertThat(report).isPresent();
+        assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactly(tuple(FindingCode.CYCLIC_ORDER, "1-intro/goals.md"));
+    }
+
+    /** A page of the replaced set cannot complete a cycle: it will be gone once this upload is taken over. */
+    @Test
+    void check_whenAPageOfTheReplacedSetReferencesBackIntoThisUpload_thenUnknownReferenceAndNoCycle() {
         stores(markdownSetOf(new CustomPage("1-intro", "b.md", "B", 1, false,
                 new OrderHint(null, OrderHint.Direction.AFTER, "a"))));
         UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
@@ -381,17 +402,76 @@ class OrderValidationTest {
 
         assertThat(report).isPresent();
         assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
-                .containsExactly(tuple(FindingCode.CYCLIC_ORDER, "1-intro/a.md"));
+                .containsExactly(tuple(FindingCode.UNKNOWN_REFERENCE, "1-intro/a.md"));
+    }
+
+    /**
+     * Two pages swap places. The replaced set says {@code a} comes after {@code b}, and the new one says the
+     * opposite. Only the new one counts, so there is no cycle.
+     */
+    @Test
+    void check_whenTwoPagesSwapPlaces_thenNothing() {
+        stores(markdownSetOf(
+                new CustomPage("1-intro", "a.md", "A", 1, false, new OrderHint(null, OrderHint.Direction.AFTER, "b")),
+                new CustomPage("1-intro", "b.md", "B", 2, false)));
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/a.md", "---\ntitle: A\n---\n\n# A\n",
+                "1-intro/b.md", "---\nsidebar_after: a\n---\n\n# B\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/a.md", "1-intro/b.md"), bundle);
+
+        assertThat(report).isEmpty();
+    }
+
+    /**
+     * A group re-sent without its landing page has no reference any more. The one its replaced landing page had
+     * does not count, so a page of the chapter may now be placed after the group.
+     */
+    @Test
+    void check_whenAGroupIsResentWithoutItsLandingPage_thenItsOldReferenceDoesNotCount() {
+        stores(markdownSetOf(
+                new CustomPage("1-intro", "shipping/index.md", "Shipping", 1, false,
+                        new OrderHint(null, OrderHint.Direction.AFTER, "goals")),
+                new CustomPage("1-intro", "shipping/carriers.md", "Carriers", 2, false),
+                new CustomPage("1-intro", "goals.md", "Goals", 3, false)));
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/shipping/carriers.md", "---\ntitle: Carriers\n---\n\n# Carriers\n",
+                "1-intro/goals.md", "---\nsidebar_after: shipping\n---\n\n# Goals\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/shipping/carriers.md", "1-intro/goals.md"), bundle);
+
+        assertThat(report).isEmpty();
+    }
+
+    /** The replaced set's reference for a re-sent page does not hide a cycle this upload introduces. */
+    @Test
+    void check_whenAReSentPageClosesACycle_thenCyclicOrderWhateverTheReplacedSetSaid() {
+        stores(markdownSetOf(new CustomPage("1-intro", "a.md", "A", 1, false,
+                new OrderHint(null, OrderHint.Direction.AFTER, "unrelated"))));
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
+                "1-intro/a.md", "---\nsidebar_after: b\n---\n\n# A\n",
+                "1-intro/b.md", "---\nsidebar_after: a\n---\n\n# B\n"));
+
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
+                List.of("1-intro/a.md", "1-intro/b.md"), bundle);
+
+        assertThat(report).isPresent();
+        assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactlyInAnyOrder(
+                        tuple(FindingCode.CYCLIC_ORDER, "1-intro/a.md"),
+                        tuple(FindingCode.CYCLIC_ORDER, "1-intro/b.md"));
     }
 
     @Test
     void check_whenAGroupsLandingPageReferencesAGeneratedSibling_thenNothing() {
         storesNothing();
         UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
-                "1-intro/sap-interfaces/index.md", "---\nsidebar_after: intro\n---\n\n# SAP Interfaces\n"));
+                "1-intro/shipping-partners/index.md", "---\nsidebar_after: intro\n---\n\n# Shipping Partners\n"));
 
         Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/sap-interfaces/index.md"), bundle);
+                List.of("1-intro/shipping-partners/index.md"), bundle);
 
         assertThat(report).isEmpty();
     }
@@ -400,25 +480,25 @@ class OrderValidationTest {
     void check_whenAGroupsLandingPageReferencesNothingKnown_thenUnknownReference() {
         storesNothing();
         UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
-                "1-intro/sap-interfaces/index.md", "---\nsidebar_after: nonexistent\n---\n\n# SAP Interfaces\n"));
+                "1-intro/shipping-partners/index.md", "---\nsidebar_after: nonexistent\n---\n\n# Shipping Partners\n"));
 
         Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/sap-interfaces/index.md"), bundle);
+                List.of("1-intro/shipping-partners/index.md"), bundle);
 
         assertThat(report).isPresent();
         assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
-                .containsExactly(tuple(FindingCode.UNKNOWN_REFERENCE, "1-intro/sap-interfaces/index.md"));
+                .containsExactly(tuple(FindingCode.UNKNOWN_REFERENCE, "1-intro/shipping-partners/index.md"));
     }
 
     @Test
     void check_whenAChapterItemReferencesAGroupByItsStrippedName_thenNothing() {
         storesNothing();
         UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
-                "1-intro/sap-interfaces/index.md", "---\ntitle: SAP Interfaces\n---\n\n# SAP Interfaces\n",
-                "1-intro/goals.md", "---\nsidebar_after: sap-interfaces\n---\n\n# Goals\n"));
+                "1-intro/shipping-partners/index.md", "---\ntitle: Shipping Partners\n---\n\n# Shipping Partners\n",
+                "1-intro/goals.md", "---\nsidebar_after: shipping-partners\n---\n\n# Goals\n"));
 
         Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/sap-interfaces/index.md", "1-intro/goals.md"), bundle);
+                List.of("1-intro/shipping-partners/index.md", "1-intro/goals.md"), bundle);
 
         assertThat(report).isEmpty();
     }
@@ -429,14 +509,14 @@ class OrderValidationTest {
         storesNothing();
         UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
                 "1-intro/goals.md", "---\ntitle: Goals\n---\n\n# Goals\n",
-                "1-intro/sap-interfaces/orders.md", "---\nsidebar_after: goals\n---\n\n# Orders\n"));
+                "1-intro/shipping-partners/orders.md", "---\nsidebar_after: goals\n---\n\n# Orders\n"));
 
         Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/goals.md", "1-intro/sap-interfaces/orders.md"), bundle);
+                List.of("1-intro/goals.md", "1-intro/shipping-partners/orders.md"), bundle);
 
         assertThat(report).isPresent();
         assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
-                .containsExactly(tuple(FindingCode.UNKNOWN_REFERENCE, "1-intro/sap-interfaces/orders.md"));
+                .containsExactly(tuple(FindingCode.UNKNOWN_REFERENCE, "1-intro/shipping-partners/orders.md"));
     }
 
     /** Nor can a page of one group be reached from inside another: each group is checked at its own level. */
@@ -459,11 +539,11 @@ class OrderValidationTest {
     void check_whenAGroupPageReferencesASiblingOfTheSameGroup_thenNothing() {
         storesNothing();
         UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
-                "1-intro/sap-interfaces/orders.md", "---\ntitle: Orders\n---\n\n# Orders\n",
-                "1-intro/sap-interfaces/invoices.md", "---\nsidebar_after: orders\n---\n\n# Invoices\n"));
+                "1-intro/shipping-partners/orders.md", "---\ntitle: Orders\n---\n\n# Orders\n",
+                "1-intro/shipping-partners/invoices.md", "---\nsidebar_after: orders\n---\n\n# Invoices\n"));
 
         Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/sap-interfaces/orders.md", "1-intro/sap-interfaces/invoices.md"), bundle);
+                List.of("1-intro/shipping-partners/orders.md", "1-intro/shipping-partners/invoices.md"), bundle);
 
         assertThat(report).isEmpty();
     }
@@ -472,17 +552,17 @@ class OrderValidationTest {
     void check_whenTwoGroupPagesReferenceEachOther_thenBothAreCyclicOrder() {
         storesNothing();
         UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
-                "1-intro/sap-interfaces/a.md", "---\nsidebar_after: b\n---\n\n# A\n",
-                "1-intro/sap-interfaces/b.md", "---\nsidebar_after: a\n---\n\n# B\n"));
+                "1-intro/shipping-partners/a.md", "---\nsidebar_after: b\n---\n\n# A\n",
+                "1-intro/shipping-partners/b.md", "---\nsidebar_after: a\n---\n\n# B\n"));
 
         Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/sap-interfaces/a.md", "1-intro/sap-interfaces/b.md"), bundle);
+                List.of("1-intro/shipping-partners/a.md", "1-intro/shipping-partners/b.md"), bundle);
 
         assertThat(report).isPresent();
         assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
                 .containsExactlyInAnyOrder(
-                        tuple(FindingCode.CYCLIC_ORDER, "1-intro/sap-interfaces/a.md"),
-                        tuple(FindingCode.CYCLIC_ORDER, "1-intro/sap-interfaces/b.md"));
+                        tuple(FindingCode.CYCLIC_ORDER, "1-intro/shipping-partners/a.md"),
+                        tuple(FindingCode.CYCLIC_ORDER, "1-intro/shipping-partners/b.md"));
     }
 
     /** A small template of this test's own: arc42's twelve chapters would only make every case longer. */

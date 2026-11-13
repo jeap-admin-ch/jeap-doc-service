@@ -93,20 +93,63 @@ public final class UploadedSet {
     }
 
     /**
-     * The pages of one chapter, numbered from one in the order of their titles.
+     * The pages of one chapter, numbered from one in the order of their titles - one order for the chapter's
+     * own pages and its groups, and a separate one per group for its own pages, exactly the split
+     * {@link ChapterOrder}'s class comment asks for: a reference inside a group names only that group's own
+     * pages, never a page or a sibling of the chapter around it.
      * <p>
-     * Delegates to {@link ChapterOrder} with no generated siblings, so there is one comparator for a chapter's
-     * order rather than two: the file name decides where a page has no title, and it breaks the tie between
-     * two pages that have the same one - so the order of a chapter never depends on the order the archive
-     * happened to list it in.
+     * Delegates to {@link ChapterOrder} with no generated siblings and no microsites, so there is one
+     * comparator for an order rather than two: the file name decides where a page has no title, and it breaks
+     * the tie between two pages that have the same one - so the order of a chapter never depends on the order
+     * the archive happened to list it in.
      */
     private static List<CustomPage> ordered(List<CustomPage> inChapter) {
-        ChapterOrder order = ChapterOrder.of(inChapter, List.of());
-        return inChapter.stream()
-                .sorted(Comparator.comparing(order::positionOf))
-                .map(page -> new CustomPage(page.chapter(), page.fileName(), page.title(), order.positionOf(page),
-                        false, page.hint()))
+        List<CustomPage> rootPages = new ArrayList<>();
+        Map<String, List<CustomPage>> byGroup = new LinkedHashMap<>();
+        for (CustomPage page : inChapter) {
+            int slash = page.fileName().indexOf('/');
+            if (slash < 0) {
+                rootPages.add(page);
+            } else {
+                byGroup.computeIfAbsent(page.fileName().substring(0, slash), key -> new ArrayList<>()).add(page);
+            }
+        }
+        List<PageGroup> groups = byGroup.entrySet().stream()
+                .map(entry -> PageGroup.of(entry.getKey(), entry.getValue()))
                 .toList();
+
+        List<CustomPage> pages = new ArrayList<>(orderedAt(rootPages, groups));
+        groups.forEach(group -> pages.addAll(orderedGroupOf(group)));
+        return List.copyOf(pages);
+    }
+
+    /** One chapter's own items placed among each other: its root pages and its groups, never a group's own. */
+    private static List<CustomPage> orderedAt(List<CustomPage> rootPages, List<PageGroup> groups) {
+        ChapterOrder order = ChapterOrder.of(List.of(), rootPages, List.of(), groups);
+        return rootPages.stream()
+                .sorted(Comparator.comparing(order::positionOf))
+                .map(page -> repositioned(page, order.positionOf(page)))
+                .toList();
+    }
+
+    /**
+     * One group's own pages, placed among each other alone - never among the chapter's own items. Its landing
+     * page is not one of them: it is the group's own {@code _category_.json} page rather than a sibling of
+     * the pages below it, exactly as {@code CustomPagesWriter.writeGroupInto} writes it, so it carries no
+     * position of its own either.
+     */
+    private static List<CustomPage> orderedGroupOf(PageGroup group) {
+        ChapterOrder order = ChapterOrder.of(group.pages(), List.of());
+        List<CustomPage> pages = new ArrayList<>(group.pages().stream()
+                .sorted(Comparator.comparing(order::positionOf))
+                .map(page -> repositioned(page, order.positionOf(page)))
+                .toList());
+        group.landingPage().ifPresent(landingPage -> pages.add(repositioned(landingPage, 0)));
+        return pages;
+    }
+
+    private static CustomPage repositioned(CustomPage page, int position) {
+        return new CustomPage(page.chapter(), page.fileName(), page.title(), position, false, page.hint());
     }
 
     /** A page is what the site generator renders; everything else a set may carry is an asset beside one. */

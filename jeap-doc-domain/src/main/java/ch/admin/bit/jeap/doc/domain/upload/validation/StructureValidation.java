@@ -307,66 +307,66 @@ public class StructureValidation {
         return path == null || IgnoredPaths.isIgnored(path);
     }
 
-    /** The eight path rules and the two set-level ones, in the order the finding codes are documented in. */
-    // Guard clauses: one continue per rule, so the first finding about a path is the only one reported.
-    @SuppressWarnings("java:S135")
+    /** The eight path rules and the two set-level ones, over every distinct path once. */
     private List<StructureFinding> markdownFindings(DocumentationPlacement placement, StructureTemplate template,
                                                     Set<String> allowed, List<String> checked) {
-        List<StructureFinding> findings = new ArrayList<>();
         Set<String> duplicated = duplicatesOf(checked);
         Set<String> colliding = collidingDocumentsOf(checked);
         Set<String> collidingInGroup = collidingGroupDocumentsOf(checked);
         Set<String> folders = foldersOf(checked);
+        List<StructureFinding> findings = new ArrayList<>();
         // Distinct, so a path that appears three times is one finding rather than three - and so that a
         // second guard against reporting it twice is not needed.
         for (String path : new LinkedHashSet<>(checked)) {
-            Optional<StructureFinding> pathFinding = pathHygiene(path, duplicated);
-            if (pathFinding.isPresent()) {
-                findings.add(pathFinding.get());
-                continue;
-            }
-            String[] segments = path.split("/");
-            if (segments.length < 2) {
-                findings.add(StructureFinding.of(FindingCode.FILE_OUTSIDE_CHAPTER, path,
-                        "A file at the root of the documentation set belongs to no chapter, so nothing would "
-                        + "publish it. Move it into the chapter it documents."));
-                continue;
-            }
-            Optional<StructureChapter> chapter = template.chapterOfFolder(segments[0]);
-            if (chapter.isEmpty()) {
-                findings.add(StructureFinding.of(FindingCode.UNKNOWN_CHAPTER, path,
-                        unknownChapterMessage(template, segments[0])));
-                continue;
-            }
-            if (segments.length > 2) {
-                Optional<StructureFinding> folderFinding =
-                        folderFinding(path, segments, template, chapter.get(), placement, colliding);
-                if (folderFinding.isPresent()) {
-                    findings.add(folderFinding.get());
-                    continue;
-                }
-            }
-            if (folders.contains(path)) {
-                findings.add(StructureFinding.of(FindingCode.COLLIDING_NAME, path,
-                        ("'%s' is a file, and other files of the set lie in a folder of that name. One path "
-                         + "cannot be both, and the build of this part would fail writing it. Rename the file "
-                         + "or the folder.").formatted(segments[segments.length - 1])));
-                continue;
-            }
-            Optional<StructureFinding> finding;
-            if (segments.length == 2) {
-                finding = nameFinding(path, segments[1], template, allowed, chapter.get(), placement, colliding);
-            } else if (segments.length == 3) {
-                // Directly inside a group: its own name may collide with another page of that group.
-                finding = groupNameFinding(path, segments, allowed, collidingInGroup);
-            } else {
-                // An asset deeper inside a group. Its depth and its folders' names are already checked above;
-                // nothing this far down can collide with anything else in the chapter.
-                finding = basicFileFinding(path, segments[segments.length - 1], allowed);
-            }
-            finding.ifPresent(findings::add);
+            markdownFindingOf(path, placement, template, allowed, duplicated, colliding, collidingInGroup, folders)
+                    .ifPresent(findings::add);
         }
         return findings;
+    }
+
+    /** The one finding, if any, that one path of a markdown set breaks - in the order the codes are documented in. */
+    private Optional<StructureFinding> markdownFindingOf(String path, DocumentationPlacement placement,
+                                                          StructureTemplate template, Set<String> allowed,
+                                                          Set<String> duplicated, Set<String> colliding,
+                                                          Set<String> collidingInGroup, Set<String> folders) {
+        Optional<StructureFinding> pathFinding = pathHygiene(path, duplicated);
+        if (pathFinding.isPresent()) {
+            return pathFinding;
+        }
+        String[] segments = path.split("/");
+        if (segments.length < 2) {
+            return Optional.of(StructureFinding.of(FindingCode.FILE_OUTSIDE_CHAPTER, path,
+                    "A file at the root of the documentation set belongs to no chapter, so nothing would "
+                    + "publish it. Move it into the chapter it documents."));
+        }
+        Optional<StructureChapter> chapter = template.chapterOfFolder(segments[0]);
+        if (chapter.isEmpty()) {
+            return Optional.of(StructureFinding.of(FindingCode.UNKNOWN_CHAPTER, path,
+                    unknownChapterMessage(template, segments[0])));
+        }
+        if (segments.length > 2) {
+            Optional<StructureFinding> folderFinding =
+                    folderFinding(path, segments, template, chapter.get(), placement, colliding);
+            if (folderFinding.isPresent()) {
+                return folderFinding;
+            }
+        }
+        if (folders.contains(path)) {
+            return Optional.of(StructureFinding.of(FindingCode.COLLIDING_NAME, path,
+                    ("'%s' is a file, and other files of the set lie in a folder of that name. One path "
+                     + "cannot be both, and the build of this part would fail writing it. Rename the file "
+                     + "or the folder.").formatted(segments[segments.length - 1])));
+        }
+        if (segments.length == 2) {
+            return nameFinding(path, segments[1], template, allowed, chapter.get(), placement, colliding);
+        }
+        if (segments.length == 3) {
+            // Directly inside a group: its own name may collide with another page of that group.
+            return groupNameFinding(path, segments, allowed, collidingInGroup);
+        }
+        // An asset deeper inside a group. Its depth and its folders' names are already checked above.
+        // Nothing this far down can collide with anything else in the chapter.
+        return basicFileFinding(path, segments[segments.length - 1], allowed);
     }
 
     /**
@@ -691,8 +691,8 @@ public class StructureValidation {
                 }
                 String document = NumberPrefixes.stripped(name.substring(0, name.length() - extension.length() - 1));
                 key = documentKeyOf(segments[0], document);
-            } else if (segments.length == 3 && groupsSeen.add(segments[0] + "/" + segments[1])
-                       && DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(segments[2]))) {
+            } else if (segments.length == 3 && DocumentationPaths.MARKDOWN_EXTENSION.equals(extensionOf(segments[2]))
+                       && groupsSeen.add(segments[0] + "/" + segments[1])) {
                 key = documentKeyOf(segments[0], NumberPrefixes.stripped(segments[1]));
             } else {
                 continue;

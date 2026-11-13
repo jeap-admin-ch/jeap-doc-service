@@ -71,7 +71,11 @@ final class Arc42ComponentPages {
     private static final String OPERATIONS_LABEL = "Operations";
     private static final String TOPIC_LABEL = "Topic";
     private static final String VERSIONS_LABEL = "Versions";
+    private static final String TABLES_LABEL = "Tables";
     private static final String NONE = "None.";
+
+    /** Marks a generated chapter landing page, whose chapter contents list the site template reads off it. */
+    private static final String DOC_CHAPTER_CONTENTS = "doc_chapter_contents";
 
     /**
      * The columns of the two contract tables on the messages page.
@@ -196,7 +200,7 @@ final class Arc42ComponentPages {
         MarkdownWriter page = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(INTRODUCTION.label(), 0, context)
                         .put("description", component.description())
-                        .put("doc_chapter_contents", true))
+                        .put(DOC_CHAPTER_CONTENTS, true))
                 .heading(1, INTRODUCTION.label())
                 .paragraph(Md.text(component.description()));
 
@@ -229,7 +233,7 @@ final class Arc42ComponentPages {
         Path directory = Arc42Pages.chapterDirectory(template, structure, CONTEXT_AND_SCOPE);
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(CONTEXT_AND_SCOPE.label(), 0, context)
-                        .put("doc_chapter_contents", true))
+                        .put(DOC_CHAPTER_CONTENTS, true))
                 .heading(1, CONTEXT_AND_SCOPE.label())
                 .paragraph(Md.sentence("What {} talks to, and about what.", Md.code(component.name())));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
@@ -309,7 +313,7 @@ final class Arc42ComponentPages {
 
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(BUILDING_BLOCK_VIEW.label(), 0, context)
-                        .put("doc_chapter_contents", true))
+                        .put(DOC_CHAPTER_CONTENTS, true))
                 .heading(1, BUILDING_BLOCK_VIEW.label());
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);
         return true;
@@ -351,7 +355,7 @@ final class Arc42ComponentPages {
         facts.add(List.of(Md.text("Database"), codeOr(schema == null ? null : schema.name())));
         facts.add(List.of(Md.text("Schema version"), schemaVersion(component, schema)));
         if (documented != null) {
-            facts.add(List.of(Md.text("Tables"), tableCount(documented)));
+            facts.add(List.of(Md.text(TABLES_LABEL), tableCount(documented)));
         }
         page.table(List.of("", ""), facts);
 
@@ -537,7 +541,7 @@ final class Arc42ComponentPages {
 
     /** Every entry with its columns, including the ones the diagram had no room for. */
     private static void writeTables(MarkdownWriter page, DocumentedSchema documented, int maxMembers) {
-        page.heading(2, "Tables");
+        page.heading(2, TABLES_LABEL);
         for (SchemaTable table : documented.listed()) {
             page.heading(3, Md.code(table.name()));
             if (table.group() != null) {
@@ -611,7 +615,7 @@ final class Arc42ComponentPages {
         List<GroupedTables.Member> members = group.members();
         List<GroupedTables.Member> listed = members.size() > maxMembers
                 ? members.subList(0, maxMembers) : members;
-        page.table(List.of("Entity", "Tables", "Range"), listed.stream()
+        page.table(List.of("Entity", TABLES_LABEL, "Range"), listed.stream()
                 .map(member -> List.of(
                         Md.code(member.entity()),
                         Md.text(String.valueOf(member.tables())),
@@ -1109,7 +1113,7 @@ final class Arc42ComponentPages {
 
         MarkdownWriter index = new MarkdownWriter()
                 .frontMatter(Arc42Pages.generated(RUNTIME_VIEW.label(), 0, context)
-                        .put("doc_chapter_contents", true))
+                        .put(DOC_CHAPTER_CONTENTS, true))
                 .heading(1, RUNTIME_VIEW.label())
                 .paragraph(Md.sentence("The runtime behavior of {}.", Md.code(component.name())));
         Arc42Pages.write(directory, Arc42Pages.INDEX, index);

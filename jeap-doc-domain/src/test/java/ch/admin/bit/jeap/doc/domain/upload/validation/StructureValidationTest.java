@@ -383,9 +383,9 @@ class StructureValidationTest {
     @Test
     void aWellFormedGroup_isAccepted() {
         assertThat(codesOf(validate(systemDocs(),
-                "5-building-block-view/sap-interfaces/index.md",
-                "5-building-block-view/sap-interfaces/orders.md",
-                "5-building-block-view/sap-interfaces/invoices.md"))).isEmpty();
+                "5-building-block-view/shipping-partners/index.md",
+                "5-building-block-view/shipping-partners/orders.md",
+                "5-building-block-view/shipping-partners/invoices.md"))).isEmpty();
     }
 
     /**
@@ -395,60 +395,79 @@ class StructureValidationTest {
     @Test
     void aGroupsStrippedNameCollidingWithAPageOfTheChapter_isRefused() {
         StructureReport report = validate(systemDocs(),
-                "5-building-block-view/sap-interfaces.md",
-                "5-building-block-view/sap-interfaces/index.md");
+                "5-building-block-view/shipping-partners.md",
+                "5-building-block-view/shipping-partners/index.md");
 
         assertThat(report.findings())
                 .extracting(StructureFinding::code, StructureFinding::path)
                 .containsExactlyInAnyOrder(
-                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces.md"),
-                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/index.md"));
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners/index.md"));
+    }
+
+    /**
+     * The group's representative path for the collision check has to be a markdown one - an asset uploaded
+     * ahead of the group's own pages must not consume that slot and silently wave the group's name through.
+     */
+    @Test
+    void aGroupsStrippedNameCollidingWithAPageOfTheChapter_isRefusedEvenWhenAnAssetOfTheGroupComesFirst() {
+        StructureReport report = validate(systemDocs(),
+                "5-building-block-view/shipping-partners.md",
+                "5-building-block-view/shipping-partners/diagram.png",
+                "5-building-block-view/shipping-partners/index.md");
+
+        assertThat(report.findings())
+                .extracting(StructureFinding::code, StructureFinding::path)
+                .containsExactlyInAnyOrder(
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners/diagram.png"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners/index.md"));
     }
 
     @Test
     void twoGroupsWithTheSameStrippedName_collide() {
         StructureReport report = validate(systemDocs(),
-                "5-building-block-view/sap-interfaces/index.md",
-                "5-building-block-view/02-sap-interfaces/index.md");
+                "5-building-block-view/shipping-partners/index.md",
+                "5-building-block-view/02-shipping-partners/index.md");
 
         assertThat(report.findings())
                 .extracting(StructureFinding::code, StructureFinding::path)
                 .containsExactlyInAnyOrder(
-                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/index.md"),
-                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/02-sap-interfaces/index.md"));
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners/index.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/02-shipping-partners/index.md"));
     }
 
     @Test
     void twoPagesOfOneGroupAtOneRoute_collide() {
         StructureReport report = validate(systemDocs(),
-                "5-building-block-view/sap-interfaces/foo.md",
-                "5-building-block-view/sap-interfaces/01-foo.md");
+                "5-building-block-view/shipping-partners/foo.md",
+                "5-building-block-view/shipping-partners/01-foo.md");
 
         assertThat(report.findings())
                 .extracting(StructureFinding::code, StructureFinding::path)
                 .containsExactlyInAnyOrder(
-                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/foo.md"),
-                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/01-foo.md"));
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners/foo.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners/01-foo.md"));
     }
 
     /** An index and a README are both the group's own landing page - one document, two names for it. */
     @Test
     void aGroupWithTwoLandingPages_collide() {
         StructureReport report = validate(systemDocs(),
-                "5-building-block-view/sap-interfaces/index.md",
-                "5-building-block-view/sap-interfaces/readme.md");
+                "5-building-block-view/shipping-partners/index.md",
+                "5-building-block-view/shipping-partners/readme.md");
 
         assertThat(report.findings())
                 .extracting(StructureFinding::code, StructureFinding::path)
                 .containsExactlyInAnyOrder(
-                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/index.md"),
-                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/sap-interfaces/readme.md"));
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners/index.md"),
+                        tuple(FindingCode.COLLIDING_NAME, "5-building-block-view/shipping-partners/readme.md"));
     }
 
     /** A page inside a group collides with nothing the chapter itself generates - a different route. */
     @Test
     void aPageInsideAGroupNamedLikeAGeneratedSibling_isAccepted() {
-        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/sap-interfaces/whitebox-view.md")))
+        assertThat(codesOf(validate(systemDocs(), "5-building-block-view/shipping-partners/whitebox-view.md")))
                 .isEmpty();
     }
 

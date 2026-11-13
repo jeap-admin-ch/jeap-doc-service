@@ -186,7 +186,7 @@ half of the validation, before anything is sent, and the doc service does not re
 exception is a page's own placement among the items of its chapter -
 [`sidebar_position`, `sidebar_after` and `sidebar_before`](upload-validation.md#a-pages-own-placement) - which
 is checked once more here, because that client is one a caller can skip. Nothing else about a file's content
-is scanned, and nothing is scanned for malware: that is descoped from this enabler.
+is scanned.
 
 ## What happens next
 

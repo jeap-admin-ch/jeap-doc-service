@@ -54,14 +54,17 @@ class ChapterContentsBrowserIT extends SiteBrowserTestBase {
         assertNothingWentWrongInTheBrowser();
     }
 
-    /** A chapter mixing uploaded pages and the uploaded microsite - one list, by the title or label each shows. */
+    /**
+     * A chapter mixing uploaded pages and the uploaded microsite - one list, by the title or label each shows.
+     * The microsite's label sorts first, so it is not simply put after the pages.
+     */
     @Test
     void aChapterOfUploadedPagesAndAMicrosite_listsBothKinds() {
         open("/" + CONSTRAINTS_ROUTE + "/");
 
         List<String> labels = chapterContents(page).locator("li a").allTextContents();
-        assertThat(labels).containsExactly("Raw HTML as it was uploaded", "Terms of the trade",
-                "What was given", UploadedDocumentation.MICROSITE_LABEL);
+        assertThat(labels).containsExactly(UploadedDocumentation.MICROSITE_LABEL, "Raw HTML as it was uploaded",
+                "Terms of the trade", "What was given");
         assertNothingWentWrongInTheBrowser();
     }
 
