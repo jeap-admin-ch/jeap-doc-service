@@ -1043,6 +1043,34 @@ class Arc42SystemTreeTest {
                 .contains("/systems/named/system-architecture/building-block-view/events/named-thing-happened/");
     }
 
+    /** The system's root page links a component to the page this tree writes for it. */
+    @Test
+    void theComponentPageItAnswersForTheRootPageIsTheOneItWrites() throws IOException {
+        generate();
+
+        DocumentedComponent component = orders.components().stream()
+                .filter(candidate -> candidate.name().equals("orders-intake")).findFirst().orElseThrow();
+        assertThat(template.componentPage(orders, component))
+                .contains("/systems/" + orders.slug()
+                          + "/system-architecture/building-block-view/components/orders-intake/");
+        assertThat(read("system-architecture/5-building-block-view/components/orders-intake/index.md"))
+                .contains("# orders-intake");
+    }
+
+    /** A component's page asks for the live excerpts of that one component, below its facts. */
+    @Test
+    void aComponentsPageAsksForItsExcerpts() throws IOException {
+        generate();
+
+        String page = read("system-architecture/5-building-block-view/components/orders-intake/index.md");
+        assertThat(page).contains("""
+                ```jeap-excerpts
+                {"page": "component", "system": "%s", "environment": "dev", "components": ["orders-intake"]}
+                ```""".formatted(orders.name()));
+        assertThat(page.indexOf("```jeap-excerpts")).isGreaterThan(page.indexOf("| Database schema |"))
+                .isLessThan(page.indexOf("## Documentation"));
+    }
+
     /**
      * A component nothing has seen for a fortnight may describe something that no longer exists, and a reader
      * has to be told.

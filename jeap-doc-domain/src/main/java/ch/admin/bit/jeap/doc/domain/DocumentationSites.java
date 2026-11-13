@@ -39,7 +39,7 @@ public class DocumentationSites {
      * therefore refused as an environment of any site. Every site but the default one is served below
      * {@link Site#SITE_SEGMENT}, which is a namespace of its own - see the constant.
      */
-    public static final Set<String> RESERVED_TOP_LEVEL_SEGMENTS = Set.of("api", "actuator", "swagger-ui", "api-docs",
+    public static final Set<String> RESERVED_TOP_LEVEL_SEGMENTS = Set.of("api", "ui-api", "actuator", "swagger-ui", "api-docs",
             "webjars", "error", "assets", "img", Microsite.SEGMENT);
 
     /**

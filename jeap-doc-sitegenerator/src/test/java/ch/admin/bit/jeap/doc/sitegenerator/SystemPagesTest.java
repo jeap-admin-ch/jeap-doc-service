@@ -89,6 +89,49 @@ class SystemPagesTest {
                 .contains("| Also known as | `order-desk` |");
     }
 
+    /**
+     * The root page lists the system's components, each linking to its page in the template that wrote one - so a
+     * reader stays on the site rather than having only the excerpts' links into other sites.
+     */
+    @Test
+    void write_thenTheLandingPageListsTheComponentsWithALinkToTheirPage() throws IOException {
+        pagesWith(new WritingTemplate()).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        String landingPage = Files.readString(directory.resolve("systems").resolve("orders").resolve("index.md"));
+        assertThat(landingPage).contains("## Components")
+                .contains("| Component | Type | Description |")
+                .contains("[orders-intake](/systems/orders/written/orders-intake/)");
+        assertThat(landingPage.indexOf("## Components")).isGreaterThan(landingPage.indexOf("| Commands |"))
+                .isLessThan(landingPage.indexOf("```jeap-excerpts"));
+    }
+
+    /** A template that wrote nothing for the system has no page to link, so the name stands alone. */
+    @Test
+    void write_whenNoTemplateWroteAComponentPage_thenTheComponentIsListedWithoutALink() throws IOException {
+        pagesWith(new SilentTemplate()).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        String landingPage = Files.readString(directory.resolve("systems").resolve("orders").resolve("index.md"));
+        assertThat(landingPage).contains("## Components").contains("| orders-intake |")
+                .doesNotContain("](/systems/orders/written/orders-intake/)");
+    }
+
+    /**
+     * The live excerpts are asked for by a placeholder below the facts and before the documentation, holding the
+     * model's names only - so what is deployed and how the system scores changes no page.
+     */
+    @Test
+    void write_thenTheLandingPageAsksForTheExcerptsOfTheSystemsComponents() throws IOException {
+        pagesWith(new WritingTemplate()).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT);
+
+        String landingPage = Files.readString(directory.resolve("systems").resolve("orders").resolve("index.md"));
+        assertThat(landingPage).contains("""
+                ```jeap-excerpts
+                {"page": "system", "system": "ORDERS", "environment": "prod", "components": ["orders-intake"]}
+                ```""");
+        assertThat(landingPage.indexOf("```jeap-excerpts")).isGreaterThan(landingPage.indexOf("| Commands |"))
+                .isLessThan(landingPage.indexOf("## Documentation"));
+    }
+
     @Test
     void write_whenATemplateWritesASubtree_thenTheLandingPageLinksToIt() throws IOException {
         SystemPages pages = pagesWith(new WritingTemplate());
@@ -617,6 +660,12 @@ class SystemPagesTest {
             Path own = systemDirectory.resolve(systemPathSegment());
             Files.createDirectories(own);
             Files.writeString(own.resolve("index.md"), "# Written\n");
+        }
+
+        @Override
+        public Optional<String> componentPage(ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem system,
+                                              DocumentedComponent component) {
+            return Optional.of("/systems/" + system.slug() + "/written/" + component.slug() + "/");
         }
     }
 

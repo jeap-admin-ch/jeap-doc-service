@@ -35,7 +35,7 @@ class AboutThisDocumentationTest {
     private static final Instant GENERATED_AT = Instant.parse("2026-09-03T07:30:00Z");
     private static final Instant IMPORTED_AT = Instant.parse("2026-09-03T05:45:00Z");
     private static final String STATUS_URL = "https://doc.example.ch/docs/about-this-documentation.json";
-    private static final String LIVE_STATUS_URL = "https://doc.example.ch/docs/live-status.json";
+    private static final String LIVE_STATUS_URL = "https://doc.example.ch/docs/ui-api/sites/default/live-status";
 
     @TempDir
     Path directory;
@@ -113,7 +113,7 @@ class AboutThisDocumentationTest {
         String written = write(facts(), 1L);
 
         assertThat(written)
-                .contains("Source: [live-status.json](" + LIVE_STATUS_URL + ")")
+                .contains("Source: [live-status](" + LIVE_STATUS_URL + ")")
                 .describedAs("the column the module fills, in the table the source line follows")
                 .contains("| Next |");
     }

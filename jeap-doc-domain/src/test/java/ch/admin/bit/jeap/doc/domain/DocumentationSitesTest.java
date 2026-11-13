@@ -207,7 +207,7 @@ class DocumentationSitesTest {
      * or disappear behind the management endpoints. These names all used to fail the startup.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"api", "actuator", "swagger-ui", "api-docs", "webjars", "error", "assets", "img",
+    @ValueSource(strings = {"api", "ui-api", "actuator", "swagger-ui", "api-docs", "webjars", "error", "assets", "img",
             "site", "default-site", "dev", "prod"})
     void construct_whenTheSiteIsNamedAfterAPathTheServiceAnswersOn_thenItIsAccepted(String id) {
         SiteProperties properties = properties(Map.of(id, site(configured -> {
@@ -223,7 +223,7 @@ class DocumentationSitesTest {
      * `static` is one of the generator's static directories, and `default` its own documentation instance.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"api", "actuator", "assets", "static", "default"})
+    @ValueSource(strings = {"api", "ui-api", "actuator", "assets", "static", "default"})
     void construct_whenAnEnvironmentIsNamedAfterSomethingTheServiceOrTheGeneratorOwns_thenFailsTheStartup(
             String id) {
         SiteProperties properties = properties(Map.of(Site.DEFAULT_SITE, site(configured ->

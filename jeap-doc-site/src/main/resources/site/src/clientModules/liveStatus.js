@@ -16,8 +16,11 @@
  *    what is in it. A reader with no scripts and a fetch that fails both get the page as written.
  */
 
-/** The name of the resource, which is also how the link to it is recognised. */
-const FILE_NAME = 'live-status.json';
+/**
+ * How the link to the resource is recognised: the API the pages read (`/ui-api`), and the resource's name at
+ * the end - `DocumentationLiveStatus.PATH` on the service's side.
+ */
+const LINK = 'a[href*="/ui-api/sites/"][href$="/live-status"]';
 
 /**
  * The column headings the cells are found by. Nothing else on the page carries them, and they are constants
@@ -107,7 +110,7 @@ function isSchedule(schedule) {
 }
 
 async function fillIn() {
-    const link = document.querySelector(`a[href$="${FILE_NAME}"]`);
+    const link = document.querySelector(LINK);
     if (!link) {
         return;
     }

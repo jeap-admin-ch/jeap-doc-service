@@ -443,7 +443,7 @@ class LandscapeChangeBrowserIT extends BrowserTestBase {
         assertThat(served.status()).isEqualTo(200);
         // The source line the page carries whether or not anything is fetched, so that a reader with no
         // scripts can follow it themselves.
-        PlaywrightAssertions.assertThat(page.getByText("live-status.json")).isVisible();
+        PlaywrightAssertions.assertThat(page.locator("a[href$='/ui-api/sites/" + SITE + "/live-status']")).isVisible();
 
         // One cell per scheduled job of the service, all filled from a single fetch.
         Locator filled = page.locator("span[data-jeap-doc-live]");

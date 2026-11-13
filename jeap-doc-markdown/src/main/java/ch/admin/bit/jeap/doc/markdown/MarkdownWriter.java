@@ -137,6 +137,14 @@ public final class MarkdownWriter {
     }
 
     /**
+     * The placeholder of the live excerpts, which the site template fills in the reader's browser - see
+     * {@link ExcerptsEntry}.
+     */
+    public MarkdownWriter excerpts(ExcerptsEntry entry) {
+        return fence(ExcerptsEntry.LANGUAGE, entry.encoded());
+    }
+
+    /**
      * A fenced block whose body is not Markdown: a diagram, or a snippet of JSON. The body is passed through
      * untouched. It has to be valid in its own language, which is the business of whoever produced it.
      */

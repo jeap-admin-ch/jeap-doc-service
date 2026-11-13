@@ -406,6 +406,12 @@ class BuildShutdownIT {
             return ch.admin.bit.jeap.doc.domain.port.ArchitectureImportMetrics.NONE;
         }
 
+        /** And reading what that import stored, which the governance excerpt does; nothing here asks for one. */
+        @Bean
+        ch.admin.bit.jeap.doc.domain.port.GovernanceResourceContent governanceResourceContent() {
+            return org.mockito.Mockito.mock(ch.admin.bit.jeap.doc.domain.port.GovernanceResourceContent.class);
+        }
+
         /** The governance import's upstream lives in yet another module; this context serves nothing from it. */
         @Bean
         ch.admin.bit.jeap.doc.domain.port.GovernanceUpstream governanceUpstream() {

@@ -1,5 +1,7 @@
 package ch.admin.bit.jeap.doc.domain.template;
 
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 
 import java.io.IOException;
@@ -23,6 +25,17 @@ public interface StructureTemplate {
 
     /** The id an upload names in its {@code template} parameter. */
     String id();
+
+    /**
+     * Where this template writes the page of a component the architecture model holds, as a link target - or
+     * empty where it writes none.
+     * <p>
+     * The system's root page lists its components and is written outside every template, so it asks rather than
+     * knowing a template's paths. It asks only a template that wrote its subtree of the system.
+     */
+    default Optional<String> componentPage(DocumentedSystem system, DocumentedComponent component) {
+        return Optional.empty();
+    }
 
     /** The path segment below a system. */
     String systemPathSegment();

@@ -36,6 +36,7 @@ import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import ch.admin.bit.jeap.doc.markdown.CategoryFile;
+import ch.admin.bit.jeap.doc.markdown.ExcerptsEntry;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.markdown.Md;
@@ -50,6 +51,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -110,6 +112,7 @@ public class SystemPages {
 
     /** What the systems index is called, in its category file, its front matter and its heading. */
     private static final String SYSTEMS_LABEL = "Systems";
+    private static final String COMPONENTS_LABEL = "Components";
 
     /**
      * The custom property that says which of the shell's sidebar categories is the systems index.
@@ -537,7 +540,7 @@ public class SystemPages {
                     Md.text(""), Md.text(""), Md.text(""),
                     Md.italic("The architecture model of this environment does not hold this system.")));
         }
-        page.table(List.of("System", "Team", "Components", "Events", "Commands", "Description"), rows);
+        page.table(List.of("System", "Team", COMPONENTS_LABEL, "Events", "Commands", "Description"), rows);
         Files.writeString(systems.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
     }
 
@@ -582,10 +585,15 @@ public class SystemPages {
                 rows.add(List.of(Md.text("Also known as"),
                         Md.joinWith(", ", system.otherNames().stream().map(Md::code).toList())));
             }
-            rows.add(List.of(Md.text("Components"), Md.text(String.valueOf(system.components().size()))));
+            rows.add(List.of(Md.text(COMPONENTS_LABEL), Md.text(String.valueOf(system.components().size()))));
             rows.add(List.of(Md.text("Events"), Md.text(String.valueOf(system.events().size()))));
             rows.add(List.of(Md.text("Commands"), Md.text(String.valueOf(system.commands().size()))));
             page.table(List.of("", ""), rows);
+            writeComponents(page, system, written);
+            // How the system scores, read live by the page: only the names the model holds are written
+            // here, so a scoring run rebuilds nothing.
+            page.excerpts(new ExcerptsEntry(ExcerptsEntry.Page.SYSTEM, system.name(), context.environment(),
+                    system.components().stream().map(DocumentedComponent::name).toList()));
         }
 
         if (!written.isEmpty()) {
@@ -597,6 +605,30 @@ public class SystemPages {
                     .toList());
         }
         Files.writeString(directory.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The components of the model, each linking to its page in the first template that wrote one - so that a
+     * reader of the system's root page reaches a component without leaving the site. Sorted by name, as the
+     * excerpts below list them.
+     */
+    private static void writeComponents(MarkdownWriter page, DocumentedSystem system,
+                                        List<StructureTemplate> written) {
+        if (system.components().isEmpty()) {
+            return;
+        }
+        page.heading(2, COMPONENTS_LABEL);
+        page.table(List.of("Component", "Type", "Description"), system.components().stream()
+                .sorted(Comparator.comparing(DocumentedComponent::name))
+                .map(component -> List.of(
+                        written.stream()
+                                .flatMap(template -> template.componentPage(system, component).stream())
+                                .findFirst()
+                                .map(target -> Md.link(target, component.name()))
+                                .orElseGet(() -> Md.text(component.name())),
+                        component.type() == null ? Markdown.EMPTY : Md.text(component.type().label()),
+                        Md.text(component.description())))
+                .toList());
     }
 
     private static Markdown teamOf(Team team) {

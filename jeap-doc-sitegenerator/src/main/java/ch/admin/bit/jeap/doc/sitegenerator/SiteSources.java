@@ -506,9 +506,9 @@ public class SiteSources {
         // Where the numbers of this build are published: the origin, the base URL of this site, and the file
         // the run writes beside the site once it knows them.
         String statusUrl = urls.url() + urls.baseUrl(site) + AboutThisDocumentation.STATUS_FILE;
-        // The live status is not a file anything writes: the service answers it under the same base URL, so
-        // that a page of this site can fetch it same-origin.
-        String liveStatusUrl = urls.url() + urls.baseUrl(site) + DocumentationLiveStatus.FILE_NAME;
+        // The live status is not a file anything writes: the service answers it in the API the pages read, on the
+        // same origin, so that a page of this site can fetch it.
+        String liveStatusUrl = urls.url() + urls.contextPath() + DocumentationLiveStatus.pathOf(site.id());
         if (!site.perEnvironment()) {
             aboutThisDocumentation.write(facts, null, models, buildId, statusUrl, liveStatusUrl,
                     contentDirectory.resolve(SINGLE_TREE));

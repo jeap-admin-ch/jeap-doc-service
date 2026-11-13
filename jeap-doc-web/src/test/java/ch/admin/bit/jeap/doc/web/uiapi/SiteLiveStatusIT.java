@@ -1,4 +1,4 @@
-package ch.admin.bit.jeap.doc.web.site;
+package ch.admin.bit.jeap.doc.web.uiapi;
 
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.DocumentationLiveStatus;
@@ -20,9 +20,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -140,11 +142,11 @@ class SiteLiveStatusIT extends DocServiceIntegrationTestBase {
     }
 
     /**
-     * <b>It is a path of the site, so it is open exactly as the site is</b> - the statements it carries are the
-     * ones the page used to print, and the page needs no token. The administration API that reads the same rows
-     * does. Both halves in one case, because it is one decision: putting this below {@code /api} would have put
-     * a bearer token in front of a table on a public page, and opening the API would have published the reason
-     * an import failed.
+     * <b>It is in the API the pages read, so it is open exactly as the site is</b> - the statements it carries
+     * are the ones the page used to print, and the page needs no token. The administration API that reads the
+     * same rows does. Both halves in one case, because it is one decision: putting this below {@code /api} would
+     * have put a bearer token in front of a table on a public page, and opening the API would have published
+     * the reason an import failed.
      */
     @Test
     void get_thenOpenToAnyReaderOfTheSiteWhileTheAdministrationApiStaysClosed() throws Exception {
@@ -169,44 +171,45 @@ class SiteLiveStatusIT extends DocServiceIntegrationTestBase {
     }
 
     /**
-     * The default site owns the context root and every other site is served below {@code /site/}, and this
-     * resource follows that namespace rather than one of its own - it is answered where the site's own paths
-     * are answered, by the resolver that knows the rule.
+     * Every site answers for itself by its id, the default site among them - and a site that is not configured
+     * has no status to answer.
      */
     @Test
-    void get_whenTheRootOrAnotherSite_thenEachSiteAnswersForItself() throws Exception {
-        mockMvc.perform(get("/" + DocumentationLiveStatus.FILE_NAME))
+    void get_whenTheDefaultOrAnotherOrAnUnknownSite_thenEachSiteAnswersForItself() throws Exception {
+        mockMvc.perform(get(path("default")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.site").value("default"));
 
         mockMvc.perform(get(path("governance")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.site").value("governance"));
+
+        mockMvc.perform(get(path("no-such-site")))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
     /**
-     * <b>The site's own path is this resource, and no other path is</b> - and it is answered before the site
-     * has to be published at all.
-     * <p>
-     * Both halves are one decision of {@code SiteRequestHandler}. The file name is matched against the whole
-     * path within the site rather than against its last segment, so a page of that name inside the tree stays
-     * content: a resolver matching the name anywhere would answer a page of the documentation with the status
-     * instead. And the interception comes before the published check, which is why the site of this class -
-     * which no case here ever publishes - answers its status at all, while the same name one level down gets
-     * the answer of a site that has not been generated.
+     * <b>The address it had beside the site is content again</b>, answered like any other path of a site that
+     * has not been generated - there is no second way to the status. Pages generated before it moved link the
+     * old address until their site is generated again.
      */
     @Test
-    void get_whenTheNameIsInsideTheTree_thenItIsContentAndNotTheStatus() throws Exception {
-        mockMvc.perform(get(path(SITE)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.site").value(SITE));
-
-        mockMvc.perform(get("/site/" + SITE + "/systems/orders/" + DocumentationLiveStatus.FILE_NAME))
+    void get_whenTheOldAddressBesideTheSite_thenItIsContentAndNotTheStatus() throws Exception {
+        mockMvc.perform(get("/site/" + SITE + "/live-status.json"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
     }
 
+    /** Nothing below the root of the UI API may be written to. */
+    @Test
+    void writing_thenRefused() throws Exception {
+        int status = mockMvc.perform(post(path(SITE))).andReturn().getResponse().getStatus();
+
+        assertThat(status).isIn(401, 403);
+    }
+
     private static String path(String site) {
-        return "/site/" + site + "/" + DocumentationLiveStatus.FILE_NAME;
+        return DocumentationLiveStatus.pathOf(site);
     }
 }

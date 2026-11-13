@@ -39,7 +39,7 @@ import static ch.admin.bit.jeap.doc.markdown.FrontMatter.frontMatter;
  * documentation has not moved is not built again and the page stays as it was - which is truthful for
  * provenance and a lie for status. So the page carries when a model's content was imported, which build wrote
  * it and when; it does not carry when the architecture repository was last read, whether the import is behind,
- * or when the schedule fires next. Those are served live as {@link DocumentationLiveStatus#FILE_NAME} and
+ * or when the schedule fires next. Those are served live as {@link DocumentationLiveStatus#PATH} and
  * filled into the cells left for them - and the page says where they are, so that it reads correctly for a
  * reader whose browser runs no scripts.
  */
@@ -213,7 +213,7 @@ public class AboutThisDocumentation {
      */
     private void writeLiveStatusNote(MarkdownWriter page, String liveStatusUrl) {
         page.paragraph(Md.sentence("Source: {}",
-                Md.link(liveStatusUrl, DocumentationLiveStatus.FILE_NAME)));
+                Md.link(liveStatusUrl, DocumentationLiveStatus.RESOURCE_NAME)));
     }
 
     private static String treeOf(DocumentationFacts.EnvironmentFacts environment) {

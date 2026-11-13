@@ -697,14 +697,74 @@ The doc service is a web server as well as an API: every path that is not the AP
 description or the Swagger UI serves the generated documentation site, to anyone who can reach the service. See
 [Generating the documentation](generation.md).
 
-One of those paths is not published output but an answer of the service: `live-status.json`, **at the base URL
-of a site and only there**, says when each of the site's environments last read its architecture repository,
-whether the import is behind, and when the import fires next. A file of that name deeper in the tree is content
-like any other. It is answered before the site has to be published at all, so a site that has never been
-generated still reports why, and it is never cached. It belongs to the site and is open exactly as the site is -
-the page describing the documentation fetches it, because those statements would freeze into a page that is not
+## The API the pages read: /ui-api
+
+What a page of a site reads in the reader's browser is below `/ui-api` - a root of its own beside `/api`, not
+below it. `/api` is called by pipelines and services and always needs a bearer token; a page has none to send.
+So `/ui-api` is **open and read-only**: `GET` and `HEAD` are answered without a token, and every other method is
+refused. Nothing below it answers what the open sites would not show.
+
+| Resource                                           | What it answers                                                                                                                                                                                       |
+|----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `GET /ui-api/sites/{site}/live-status`             | When each environment of the site last read its architecture repository, whether the import is behind, and when each schedule fires next. Never cached (`no-store`); `404` for a site not configured  |
+| `GET /ui-api/excerpts/governance/systems/{system}` | The governance excerpt of a system, which its architecture pages show - see below                                                                                                                     |
+
+The live status is answered whether or not the site has been published, so a site that has never been generated
+still reports why. The About page fetches it, because those statements would freeze into a page that is not
 rebuilt. What it may carry is the same decision as for that page; the administration API above is where a
 failure reason and the upstream URL stay.
+
+### The governance excerpt
+
+`GET /ui-api/excerpts/governance/systems/{system}` is what a system's and a component's architecture page show
+of the system's governance scores. `{system}` is the system's name in the architecture model, matched against
+the governance data's names exactly and, failing that, ignoring case. It is answered from the governance data
+the [governance import](governance-import.md) stored, **never from the Governance Service** - a page asks on
+every view, and must not depend on another service being up.
+
+```json
+{
+  "system": "Inspecziun",
+  "link": "/docs/site/governance/systems/inspecziun/",
+  "rulesOverview": "/docs/site/governance/rules/",
+  "scoredAt": "2026-10-22T08:45:21+02:00",
+  "score": 86, "trend": "STABLE",
+  "history": [{"day": "2026-10-09", "score": 92}, {"day": "2026-10-22", "score": 86}],
+  "components": [
+    {
+      "name": "inspecziun-borderpanel-scs",
+      "link": "/docs/site/governance/systems/inspecziun/inspecziun-borderpanel-scs/",
+      "score": 78, "trend": "STABLE",
+      "history": [{"day": "2026-10-09", "score": 86}, {"day": "2026-10-22", "score": 78}],
+      "compliant": 12, "pausedOrDisabled": 0,
+      "failingRules": [
+        {"ruleId": "component-consumes-signedmessages", "label": "Component Consumes Signed Messages",
+         "comment": "Signature is not enforced for consumption", "details": [],
+         "since": "2026-10-22T06:45:00+02:00", "link": "/docs/site/governance/rules/component-consumes-signedmessages/"}
+      ]
+    }
+  ]
+}
+```
+
+- `history` is the last 14 days of the score history, oldest first.
+- A failing rule is one in the state `FAIL`, in the order the governance data lists them. `compliant` counts
+  `OK`, `pausedOrDisabled` counts `PAUSED` and `DISABLED`; `UNKNOWN` is counted nowhere. `comment` is the first
+  line of the rule's result and `details` its further lines.
+- Times carry the offset of this service's time zone, as every time on a generated page does.
+- Links are paths including the context path, into the site with `content: governance` - the one
+  `jeap.doc.governance.excerpts.site` names where there are several - and are `null` where that site has no
+  such page: the same slugs and the same collisions as the site itself.
+- A weak `ETag` over the body, `Cache-Control: no-cache`, and `304` for a matching `If-None-Match`. Weak, like
+  the files of the sites: a strong tag would stop the response from being compressed, and revalidation works the
+  same either way. The tag is computed over the answer, so a `304` saves the transfer and not the reading of the
+  stored governance data.
+- `204` without a body where no site has `content: governance`, nothing has been imported yet, or the system is
+  not scored, and a page shows no excerpt then. Not a `404`: every generated page asks, on every instance, and a
+  browser reports each `404` of a fetch as a resource that failed to load - nothing being scored is not an error.
+
+There is one resource per system and none per component: a component page reads its system's answer and shows
+its own entry, so all pages of a system share one entity tag and one cache entry.
 
 ## Removing custom documentation
 

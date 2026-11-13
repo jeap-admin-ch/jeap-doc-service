@@ -7,7 +7,7 @@
     <parent>
         <groupId>ch.admin.bit.jeap</groupId>
         <artifactId>jeap-doc-service</artifactId>
-        <version>4.14.0-SNAPSHOT</version>
+        <version>4.15.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>jeap-doc-site</artifactId>
@@ -52,6 +52,16 @@
                             <skip>${skipSiteInstall}</skip>
                             <executable>node</executable>
                             <arguments><argument>src/test/js/reaction-viewer.test.mjs</argument></arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>test-excerpts-model</id>
+                        <phase>test</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <skip>${skipSiteInstall}</skip>
+                            <executable>node</executable>
+                            <arguments><argument>src/test/js/excerpts.test.mjs</argument></arguments>
                         </configuration>
                     </execution>
                 </executions>

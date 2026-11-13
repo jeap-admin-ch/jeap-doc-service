@@ -68,6 +68,24 @@ its text instead, for the same reason as above. That holds for a link wrapped ov
 another's text and for a link reference definition too. A code block or a container the explanation leaves
 open is closed at its end, so it cannot take in the rest of the page.
 
+## Excerpts on the architecture pages
+
+A system's and a component's page of the architecture documentation show an excerpt of the governance site:
+the scores, the failing rules and a link to each of their pages here - see [The live excerpts on a system's and
+a component's page](generation.md#the-live-excerpts-on-a-systems-and-a-components-page). It is read live from
+the governance data this service stored, so it shows a scoring run as soon as the import has stored it, without
+the architecture site being generated again.
+
+The excerpt links by **the same slugs this site is written with**, so it does not link to a page the site left
+out: a name without a slug, the second of two names with one slug, and a system whose own resource could not be
+read get no link there either. Two links can still lead to a page that is not there: the one to a rule whose
+resource is stored but cannot be read, and any link to something a scoring run has just added, until this site
+has been generated with it.
+
+An instance with more than one site of `content: governance` names the one the excerpts link into in
+`jeap.doc.governance.excerpts.site`, and does not start without it - see
+[Configuration](configuration.md). With one such site there is nothing to set.
+
 ## Highlighting
 
 A score or a conformance rate carries a coloured marker before the value, with the thresholds the Governance

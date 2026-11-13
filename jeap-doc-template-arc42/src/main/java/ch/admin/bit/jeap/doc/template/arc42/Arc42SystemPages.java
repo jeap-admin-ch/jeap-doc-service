@@ -13,6 +13,7 @@ import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
+import ch.admin.bit.jeap.doc.markdown.ExcerptsEntry;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.markdown.ReactionEntry;
@@ -576,6 +577,11 @@ final class Arc42SystemPages {
         }
     }
 
+    /** Where the page of a component the model holds is served - see {@link #writeComponent}. */
+    static String componentPageOf(DocumentedSystem system, DocumentedComponent component) {
+        return DocumentationPaths.component(system.slug(), SYSTEM_SEGMENT, BUILDING_BLOCK_VIEW, component.slug());
+    }
+
     /**
      * The root page of a component the architecture model holds, and its own arc42 tree below it.
      */
@@ -621,6 +627,9 @@ final class Arc42SystemPages {
                     + "something that no longer exists.",
                     Md.code(DisplayTime.of(component.lastSeen()))));
         }
+        // Read live by the page, as on the system's page - the placeholder names nothing but the model's names.
+        page.excerpts(new ExcerptsEntry(ExcerptsEntry.Page.COMPONENT, system.name(), context.environment(),
+                List.of(component.name())));
 
         // The subtree first and the link to it after, the way a system's landing page is written: a link
         // to a page nothing wrote fails the build of every site of the environment.

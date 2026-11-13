@@ -493,13 +493,16 @@ are what keep that working. The plan behind it is the enabler's `MODULARIZATION.
   something that is not volatile, and a change never gets published. `ContentDigest` explains both directions.
   This includes the reaction snapshot's import time: another system's reactions can advance it without changing
   this part's pages. Keep the shell's complete reaction graph file in the digest so graph changes are published.
-- **Provenance goes in the page; status is served beside the site.** The volatile set is for values that say
+- **Provenance goes in the page; status is served by the UI API.** The volatile set is for values that say
   *this content is as of then* and stay true in a page nobody rebuilds. A value that says what is true *now* -
   when the architecture repository was last read, whether the import is behind, when a schedule fires next -
   does not belong in a page at all, and hiding it from the digest instead would freeze the page that has to
-  report a broken import. Those are answered live as `DocumentationLiveStatus` under
-  `<base URL of the site>live-status.json`, served by `SiteRequestHandler` so that the site's own filter chain
-  covers them, and filled into the page's cells by `liveStatus.js`.
+  report a broken import. Those are answered live as `DocumentationLiveStatus` at
+  `/ui-api/sites/{site}/live-status`, and filled into the page's cells by `liveStatus.js`.
+- **What a page reads in the browser is below `/ui-api`, and nothing else is.** It is open and read-only, with a
+  security filter chain of its own (`GET` and `HEAD`, nothing else), so that `/api/**` stays "a bearer token,
+  always" without an exception carved into it. The paths are the constants of `UiApiPaths`; `ui-api` is a
+  reserved segment, like `api`. Nothing below it may answer what the open sites would not show.
 - **A link that leaves a part cannot be checked by the build that writes it.** `CrossPartLinks` rewrites those
   links once, over the written content, rather than at the thirty places that write one - so a new page cannot
   forget the rule. Inside a part, `onBrokenLinks: 'throw'` still catches a generator bug, and that is the half

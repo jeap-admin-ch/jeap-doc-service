@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.web;
 
+import ch.admin.bit.jeap.doc.web.uiapi.UiApiPaths;
 import ch.admin.bit.jeap.security.resource.token.AuthoritiesResolver;
 import ch.admin.bit.jeap.security.resource.token.JeapAuthenticationConverter;
 import ch.admin.bit.jeap.security.resource.validation.JeapJwtDecoderFactory;
@@ -7,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -25,6 +27,28 @@ import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 public class DocsWebSecurityConfiguration {
 
     static final String API_PATH_PREFIX = "/api";
+
+    /**
+     * What the pages of the sites read in the reader's browser - {@link UiApiPaths}: open like the sites, and
+     * read-only.
+     * <p>
+     * A chain of its own rather than an exception in the API chain, so that {@code /api/**} stays "a bearer token,
+     * always". And not left to the site chain below, which would permit it only because it is "everything that is
+     * not {@code /api}": that chain permits every method, and nothing below this root may be written to.
+     */
+    @Bean
+    @Order(Ordered.LOWEST_PRECEDENCE - 25)
+    SecurityFilterChain uiApiSecurityFilterChain(HttpSecurity http) {
+        return http
+                .securityMatcher(PathPatternRequestMatcher.withDefaults().matcher(UiApiPaths.UI_API + "/**"))
+                .authorizeHttpRequests(requests -> requests
+                        .requestMatchers(HttpMethod.GET, UiApiPaths.UI_API + "/**").permitAll()
+                        .requestMatchers(HttpMethod.HEAD, UiApiPaths.UI_API + "/**").permitAll()
+                        .anyRequest().denyAll())
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .build();
+    }
 
     /**
      * The generated documentation, open to anyone who can reach the service.

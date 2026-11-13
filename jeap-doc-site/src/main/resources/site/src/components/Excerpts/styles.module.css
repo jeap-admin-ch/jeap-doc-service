@@ -1,0 +1,113 @@
+/* Colours come from the theme's variables only, so light and dark mode both work. */
+.excerpt {
+    border: 1px solid var(--jeap-border);
+    border-radius: var(--ifm-global-radius);
+    padding: 1rem 1.25rem 0.75rem;
+    margin: 1.5rem 0;
+    background: var(--jeap-surface, var(--ifm-background-color));
+}
+
+.header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.title {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.title a {
+    color: inherit;
+}
+
+.source {
+    font-size: 0.8rem;
+    color: var(--jeap-muted);
+}
+
+.live {
+    display: inline-block;
+    width: 0.45rem;
+    height: 0.45rem;
+    margin-right: 0.4rem;
+    border-radius: 50%;
+    vertical-align: 0.1rem;
+    background: var(--ifm-color-success);
+}
+
+.score {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.25rem;
+    margin: 0.25rem 0 0.75rem;
+}
+
+.scoreValue {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.trend {
+    color: var(--ifm-font-color-base);
+}
+
+.history {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.historyLine {
+    stroke: var(--ifm-color-primary);
+    stroke-width: 1.5;
+}
+
+.historyLabel {
+    font-size: 0.75rem;
+    color: var(--jeap-muted);
+}
+
+.table {
+    display: table;
+    width: 100%;
+    margin-bottom: 0.5rem;
+}
+
+.rule {
+    font-size: 0.85rem;
+}
+
+.comment {
+    font-size: 0.8rem;
+    color: var(--jeap-muted);
+}
+
+.more {
+    white-space: nowrap;
+}
+
+.nowrap {
+    white-space: nowrap;
+}
+
+.compliance {
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    color: var(--jeap-muted);
+}
+
+.footer {
+    border-top: 1px solid var(--jeap-border);
+    padding-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.bottomLink {
+    font-weight: 700;
+}

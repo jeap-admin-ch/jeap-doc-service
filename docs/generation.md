@@ -526,6 +526,46 @@ other place that carries every entry is the architecture repository's own API, w
 a published site can open. In the measured estate two components' pages are shortened, by about 60 and 54
 entries - and after grouping, those entries share a name pattern with tables that are already on the page.
 
+### The live excerpts on a system's and a component's page
+
+A system's page and a component's page show how the system scores in governance - read **live**, in the
+reader's browser, rather than written into the page. A scoring run changes the scores up to four times a
+weekday, and a page carrying them would have to be generated again for each - or would go stale the moment
+it was not.
+
+So the generator writes a placeholder, below the facts and before *Documentation*, in every environment tree.
+On a system's page the facts end with **its components**: a table of every component the tree's model holds,
+sorted by name, with its type and description, each linking to its page on this site. That table is written
+whether or not there is an excerpt, and it is how a reader stays on the site - the names in an excerpt lead to
+the site the excerpt comes from. The template that writes a component's page says where it is
+(`StructureTemplate.componentPage`), so the root page names no template's paths. The placeholder:
+
+````markdown
+```jeap-excerpts
+{"page": "system", "system": "orders", "environment": "prod", "components": ["orders-intake", "orders-payment"]}
+```
+````
+
+It names what the architecture model of the tree holds and nothing else - the system, and on a system page its
+components sorted by name, on a component page that one component - so a scoring run changes no part's content
+hash. The site template hands the block to its excerpts component, which reads
+[`GET /ui-api/excerpts/governance/systems/{system}`](api.md#the-governance-excerpt) once the page has mounted:
+
+- **System page**: the system's score with its marker, trend and the last 14 days as a line, the time of the
+  scoring run, and a row per component of the placeholder - the lowest score first - with its score and the
+  rules it fails, each linking to its page on the governance site.
+- **Component page**: the component's score, and the rules it fails with the state, the comment - its first
+  line and first detail, cut at 200 characters, and how many further details there are - and since when;
+  below it how many further rules it complies with, and how many are paused or disabled.
+- **Nothing at all** until the answer arrives, and on a `204`, any other status or error, or after five seconds: no frame,
+  no spinner, no message. An instance without a governance site, and a system that is not scored, show the
+  page as it was. A component is found by its name, else by the name that differs in case only; one the answer
+  does not know gets no row, and a system page with no row at all still shows the system's score.
+
+Times are shown in the offset the service answered with, not converted to the browser's time zone, so that they
+read like the rest of the generated page. The excerpt needs JavaScript and is not in the site search: it is not
+in the published HTML the index is built from, and it carries `data-pagefind-ignore` should that change.
+
 ### What the navigation shows
 
 **The sidebar shows the path to the open page.** Only the structure at the top of a system's sidebar starts
@@ -622,7 +662,7 @@ what they are looking at, where it came from, and when it changes next.
 | Overview                        | The site, the tree, the structure templates this instance generates, whether an upload publishes the site, whether it waits for the architecture model   | The configuration, through `DocumentationProvenance`  |
 | The publication you are reading | Which build produced this site and when - and the numbers of that run, fetched                                                                           | The build itself, and `about-this-documentation.json` |
 | The environments of this site   | Per environment: which tree it is, what its model contributed, when that content was imported. Left out on a site without environments                   | The run                                               |
-| Scheduling                      | A row per scheduled job of the service - the import that publishes the site, the reconcile, and the three clean-ups - and, fetched, when each fires next | The configuration, and `live-status.json`             |
+| Scheduling                      | A row per scheduled job of the service - the import that publishes the site, the reconcile, and the three clean-ups - and, fetched, when each fires next | The configuration, and the live status                |
 
 **One page per tree rather than one per site**, which is forced rather than chosen: the site template switches
 Docusaurus' pages plugin off, so a page outside the environment trees cannot be served - and a single page in
@@ -662,11 +702,11 @@ rebuilt.
 
 So the `Next` cell of every row of the schedule table is not written into the page at all, and is fetched.
 
-`GET <base URL of the site>live-status.json` answers the whole site in one request - every schedule the page
-tabulates, and every environment's last read for whoever reads the resource itself. It is a path of the site
-and is therefore served to anyone who can read the site, exactly as the page is; the administration API below
-`/api` is a different resource with a different rule, and what may be published is decided in
-`DocumentationProvenance` for both. It is answered `no-store`: a cached copy would be the frozen page again
+`GET /ui-api/sites/{site}/live-status` answers the whole site in one request - every schedule the page
+tabulates, and every environment's last read for whoever reads the resource itself. It is in the API the pages
+read in the browser, which is open and read-only, and is therefore served to anyone who can read the site,
+exactly as the page is; the administration API below `/api` is a different resource with a different rule, and
+what may be published is decided in `DocumentationProvenance` for both. It is answered `no-store`: a cached copy would be the frozen page again
 with an extra step.
 
 The page keeps its cells and links the resource under the table as its source. The client module finds the

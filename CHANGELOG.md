@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.15.0] - 2026-11-18
+
+### Added
+- Show a live governance excerpt on the generated system and component pages: the system's score, trend and
+  last 14 days, and per component its score and the rules it fails, each linking into the governance site. The
+  pages read it in the browser, so a scoring run rebuilds no page; nothing is shown without governance data.
+- `GET /ui-api/excerpts/governance/systems/{system}` answers the excerpt from the stored governance data, with a
+  weak entity tag and `no-cache`, and `204` where there is nothing to show.
+- `jeap.doc.governance.excerpts.site` names the governance site the excerpts link into. It is only needed, and
+  then required, where an instance configures more than one site with `content: governance`.
+- A system's root page lists its components, each linking to its page on the site.
+  `StructureTemplate.componentPage` says where a template writes a component's page.
+- `/ui-api` is the API the pages read in the browser: open and read-only (`GET` and `HEAD`), with a security
+  filter chain of its own. `/api/**` keeps requiring a bearer token. `ui-api` is reserved as an environment id
+  of the default site.
+
+### Changed
+- The live status of a site moves from `<base URL of the site>live-status.json` to
+  `GET /ui-api/sites/{site}/live-status`. The old address is no longer answered: an About page generated before
+  links the old one until its site is generated again, and shows the schedule cells as written until then.
+- Write the `jeap-excerpts` placeholder on the generated system and component pages, which changes the content
+  of every system part once.
+
 ## [4.14.0] - 2026-11-15
 
 ### Dependencies

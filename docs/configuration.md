@@ -205,7 +205,7 @@ has to be a slug, and short enough for the name of the lock its builds take. A s
 or `prod` without colliding with anything.
 
 What still takes a top-level segment is **the default site's environments** - `/dev/`, `/prod/` - so it is
-there that the paths the service answers on itself are unusable. Reserved for them: `api`, `actuator`,
+there that the paths the service answers on itself are unusable. Reserved for them: `api`, `ui-api`, `actuator`,
 `swagger-ui`, `api-docs`, `webjars`, `error`, `assets`, `img`, and `site`, which is where every other site is
 served. The environments of any other site sit below `/site/<id>/` and may be called anything.
 
@@ -492,6 +492,7 @@ jeap:
 | `jeap.doc.governance.client.max-retry-delay`  | `PT2S`                   | The longest a retry waits, however often the delay has been doubled                                                                                                                                              |
 | `jeap.doc.governance.max-resource-size`       | `1MB`                    | The largest systems index, rules index, system or rule resource that is stored. A bigger one is left where it is, with a warning naming it                                                                      |
 | `jeap.doc.governance.import.cron`             | `0 55 6-20 * * MON-FRI` | When the Governance Service is imported as the safety net - the same minutes as its own reporting job, ten after its scoring. **Empty means never** - see [the import](governance-import.md) and [the scheduled jobs](scheduled-jobs.md) |
+| `jeap.doc.governance.excerpts.site`           | -                        | The site with `content: governance` the [excerpts](governance-site.md#excerpts-on-the-architecture-pages) link into. Required where there is more than one such site, and not needed otherwise                  |
 
 An instance that configures no `jeap.doc.governance.url` reads no Governance Service and starts; it publishes
 no governance site. The Governance Service is not called while the service starts, for the same reason the

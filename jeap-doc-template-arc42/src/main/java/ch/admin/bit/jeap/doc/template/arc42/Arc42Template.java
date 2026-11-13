@@ -1,5 +1,7 @@
 package ch.admin.bit.jeap.doc.template.arc42;
 
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static ch.admin.bit.jeap.doc.template.arc42.Arc42Chapters.BUILDING_BLOCK_VIEW;
@@ -240,5 +243,11 @@ public class Arc42Template implements StructureTemplate {
     public void writeSystem(SystemDocumentation system, GenerationContext context, Path systemDirectory)
             throws IOException {
         Arc42SystemPages.write(this, system, context, systemDirectory);
+    }
+
+    /** Every component the model holds has its page in the building block view. */
+    @Override
+    public Optional<String> componentPage(DocumentedSystem system, DocumentedComponent component) {
+        return Optional.of(Arc42SystemPages.componentPageOf(system, component));
     }
 }

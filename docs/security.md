@@ -85,6 +85,12 @@ read is of no use behind a bearer token a browser does not have, and the alterna
 session - is not something this service does. What is protected is *changing* the documentation, which is what
 the roles above are for.
 
+**What the pages read in the browser is open too, and read-only.** It is below `/ui-api` - a root of its own
+beside `/api`, with a security filter chain of its own that answers `GET` and `HEAD` without a token and refuses
+every other method. `/api/**` stays "a bearer token, always", without an exception carved into it. Nothing below
+`/ui-api` answers what the open sites would not show: the live status of a site (see below) and the governance
+excerpt of a system, which repeats what the governance site publishes. See [The REST API](api.md).
+
 The actuator keeps its own chain from the jEAP monitoring starter, and `/actuator/prometheus` stays behind Basic
 auth - **its password has to be set per instance**, see [Observability](observability.md).
 
@@ -98,11 +104,11 @@ nothing that was generated can become part of the program that runs.
 
 ## What the documentation says about the service
 
-The **About This Documentation** page, `about-this-documentation.json` beside it and `live-status.json` - which
-the service answers live under the base URL of each site - are part of the published site, so they are readable
-by anyone who can reach it. `live-status.json` is deliberately **not** below `/api`: it carries the statements
-the page cannot keep true on its own, and a bearer token in front of a table on a public page would be a token
-no browser has. What all three may carry is decided in one place - `DocumentationProvenance` - and not by
+The **About This Documentation** page and `about-this-documentation.json` beside it are part of the published
+site, and the site's live status - which the service answers at `/ui-api/sites/{site}/live-status` - is read by
+that page, so all three are readable by anyone who can reach the service. The live status is deliberately **not**
+below `/api`: it carries the statements the page cannot keep true on its own, and a bearer token in front of a
+table on a public page would be a token no browser has. What all three may carry is decided in one place - `DocumentationProvenance` - and not by
 whoever writes a page:
 
 | Published                                                                                      | Not published                                               |

@@ -33,15 +33,24 @@ public record DocumentationLiveStatus(String site, Instant at, List<EnvironmentS
                                       List<ScheduleStatus> schedules) {
 
     /**
-     * Where it is served, relative to the base URL of a site - beside {@code about-this-documentation.json},
-     * which carries the numbers of one publication and is a file the publication wrote.
+     * Where it is served, below the context path of the service: in the API the pages read in the browser
+     * ({@code /ui-api}), which is open and read-only, and not in the administration API under {@code /api},
+     * which needs a token a browser does not have.
      * <p>
-     * The name is written into the page as an absolute link, and the client module takes the URL from that
-     * link, so the two cannot disagree. It is a path of the site and is therefore covered by the site's own
-     * filter chain, which is open to every reader - the administration API under {@code /api} is a different
-     * resource with a different rule.
+     * The path is written into the page as an absolute link, and the client module takes the URL from that
+     * link, so the two cannot disagree.
      */
-    public static final String FILE_NAME = "live-status.json";
+    public static final String PATH = "/ui-api/sites/{site}/live-status";
+
+    /** The last segment of {@link #PATH}, which is how the client module recognises the link. */
+    public static final String RESOURCE_NAME = "live-status";
+
+    /**
+     * {@link #PATH} of one site.
+     */
+    public static String pathOf(String site) {
+        return PATH.replace("{site}", site);
+    }
 
     public DocumentationLiveStatus {
         environments = List.copyOf(environments);

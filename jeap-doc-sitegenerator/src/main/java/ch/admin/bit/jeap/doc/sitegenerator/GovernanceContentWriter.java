@@ -3,7 +3,6 @@ package ch.admin.bit.jeap.doc.sitegenerator;
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SitePart;
-import ch.admin.bit.jeap.doc.domain.Slugs;
 import ch.admin.bit.jeap.doc.domain.content.GovernanceContent;
 import ch.admin.bit.jeap.doc.domain.governance.GovernanceComponent;
 import ch.admin.bit.jeap.doc.domain.governance.GovernanceDailyScore;
@@ -17,6 +16,7 @@ import ch.admin.bit.jeap.doc.domain.governance.GovernanceRuleParameter;
 import ch.admin.bit.jeap.doc.domain.governance.GovernanceRuleState;
 import ch.admin.bit.jeap.doc.domain.governance.GovernanceRuleSummary;
 import ch.admin.bit.jeap.doc.domain.governance.GovernanceRulesIndex;
+import ch.admin.bit.jeap.doc.domain.governance.GovernanceSlugs;
 import ch.admin.bit.jeap.doc.domain.governance.GovernanceSystem;
 import ch.admin.bit.jeap.doc.domain.governance.GovernanceSystemConformance;
 import ch.admin.bit.jeap.doc.domain.governance.GovernanceSystemSummary;
@@ -24,6 +24,7 @@ import ch.admin.bit.jeap.doc.domain.governance.GovernanceSystemsIndex;
 import ch.admin.bit.jeap.doc.domain.port.GovernanceResourceContent;
 import ch.admin.bit.jeap.doc.domain.port.GovernanceResourceRepository;
 import ch.admin.bit.jeap.doc.markdown.CategoryFile;
+import ch.admin.bit.jeap.doc.markdown.FrontMatter;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
 import ch.admin.bit.jeap.doc.markdown.Md;
@@ -72,6 +73,11 @@ public class GovernanceContentWriter implements ContentWriter {
     private static final String TITLE = "Governance";
     private static final String SYSTEMS_LABEL = "Systems";
     private static final String RULES_LABEL = "Rules";
+    private static final String SYSTEM_HEADING = "System";
+    private static final String COMPONENT_HEADING = "Component";
+    private static final String SCORE_HEADING = "Score";
+    private static final String TREND_HEADING = "Trend";
+    private static final String INDEX_FILE = "index.md";
 
     /** Active rules first, the heaviest of them first; an inactive rule's weight is null, so it sorts last. */
     private static final Comparator<GovernanceRuleSummary> RULES_OVERVIEW_ORDER = Comparator
@@ -152,9 +158,9 @@ public class GovernanceContentWriter implements ContentWriter {
 
     private Map<String, SystemPage> readSystems(GovernanceSystemsIndex index) {
         Map<String, SystemPage> pages = new LinkedHashMap<>();
-        Map<String, String> slugs = new LinkedHashMap<>();
+        GovernanceSlugs slugs = GovernanceSlugs.forPages("system");
         for (GovernanceSystemSummary summary : index.systems()) {
-            String slug = slugOf("system", summary.name(), slugs);
+            String slug = slugs.slugOf(summary.name());
             if (slug == null) {
                 continue;
             }
@@ -172,9 +178,9 @@ public class GovernanceContentWriter implements ContentWriter {
 
     private Map<String, ComponentPage> readComponents(GovernanceSystem system) {
         Map<String, ComponentPage> pages = new LinkedHashMap<>();
-        Map<String, String> slugs = new LinkedHashMap<>();
+        GovernanceSlugs slugs = GovernanceSlugs.forPages("component");
         for (GovernanceComponent component : system.components()) {
-            String slug = slugOf("component", component.name(), slugs);
+            String slug = slugs.slugOf(component.name());
             if (slug != null) {
                 pages.put(component.name(), new ComponentPage(slug, component));
             }
@@ -184,9 +190,9 @@ public class GovernanceContentWriter implements ContentWriter {
 
     private Map<String, RulePage> readRules(GovernanceRulesIndex rulesIndex) {
         Map<String, RulePage> pages = new LinkedHashMap<>();
-        Map<String, String> slugs = new LinkedHashMap<>();
+        GovernanceSlugs slugs = GovernanceSlugs.forPages("rule");
         for (GovernanceRuleSummary summary : rulesIndex.rules()) {
-            String slug = slugOf("rule", summary.ruleId(), slugs);
+            String slug = slugs.slugOf(summary.ruleId());
             if (slug == null) {
                 continue;
             }
@@ -202,19 +208,27 @@ public class GovernanceContentWriter implements ContentWriter {
         return pages;
     }
 
+    /** The front matter of a page of this site; {@code first} puts it at the top of its sidebar category. */
+    private static FrontMatter pageFrontMatter(String title, String slug, boolean first, Instant generatedAt) {
+        FrontMatter frontMatter = frontMatter()
+                .put("title", title)
+                .put("slug", slug)
+                .put("sidebar_label", title);
+        if (first) {
+            frontMatter = frontMatter.put("sidebar_position", 0);
+        }
+        return frontMatter
+                .put("doc_status", "generated")
+                .put("doc_source", "governance-service")
+                .put("doc_generated_at", generatedAt.toString())
+                .put("doc_generated_at_display", DisplayTime.of(generatedAt));
+    }
+
     /** A short introduction at the site root - the one page every reader of this site starts at. */
     private void writeOverview(Path tree, Optional<GovernanceSystemsIndex> index, Map<String, SystemPage> systems,
                                boolean hasRules, Instant generatedAt) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(frontMatter()
-                        .put("title", TITLE)
-                        .put("slug", GovernancePaths.overview())
-                        .put("sidebar_label", TITLE)
-                        .put("sidebar_position", 0)
-                        .put("doc_status", "generated")
-                        .put("doc_source", "governance-service")
-                        .put("doc_generated_at", generatedAt.toString())
-                        .put("doc_generated_at_display", DisplayTime.of(generatedAt)))
+                .frontMatter(pageFrontMatter(TITLE, GovernancePaths.overview(), true, generatedAt))
                 .heading(1, TITLE)
                 .paragraph("This site shows how the systems and components of the platform conform to the "
                            + "governance rules.")
@@ -227,22 +241,14 @@ public class GovernanceContentWriter implements ContentWriter {
             page.paragraph(Md.sentence("{} lists every rule with its conformance rate.",
                     Md.link(GovernancePaths.rules(), RULES_LABEL)));
         }
-        Files.writeString(tree.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
+        Files.writeString(tree.resolve(INDEX_FILE), page.text(), StandardCharsets.UTF_8);
     }
 
     /** The scores per system, as the landing page of the Systems category. */
     private void writeSystemsOverview(Path systemsDirectory, Optional<GovernanceSystemsIndex> index,
                                       Map<String, SystemPage> systems, Instant generatedAt) throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(frontMatter()
-                        .put("title", SYSTEMS_LABEL)
-                        .put("slug", GovernancePaths.systems())
-                        .put("sidebar_label", SYSTEMS_LABEL)
-                        .put("sidebar_position", 0)
-                        .put("doc_status", "generated")
-                        .put("doc_source", "governance-service")
-                        .put("doc_generated_at", generatedAt.toString())
-                        .put("doc_generated_at_display", DisplayTime.of(generatedAt)))
+                .frontMatter(pageFrontMatter(SYSTEMS_LABEL, GovernancePaths.systems(), true, generatedAt))
                 .heading(1, SYSTEMS_LABEL)
                 .paragraph(asOfSentence(index));
 
@@ -262,9 +268,9 @@ public class GovernanceContentWriter implements ContentWriter {
         if (rows.isEmpty()) {
             page.paragraph("No system has been scored yet.");
         } else {
-            page.table(List.of("System", "Score", "Trend"), rows);
+            page.table(List.of(SYSTEM_HEADING, SCORE_HEADING, TREND_HEADING), rows);
         }
-        Files.writeString(systemsDirectory.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
+        Files.writeString(systemsDirectory.resolve(INDEX_FILE), page.text(), StandardCharsets.UTF_8);
     }
 
     private static boolean hasSystemsPage(Optional<GovernanceSystemsIndex> index, Map<String, SystemPage> pages) {
@@ -304,18 +310,10 @@ public class GovernanceContentWriter implements ContentWriter {
                 StandardCharsets.UTF_8);
 
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(frontMatter()
-                        .put("title", system.name())
-                        .put("slug", GovernancePaths.system(slug))
-                        .put("sidebar_label", system.name())
-                        .put("sidebar_position", 0)
-                        .put("doc_status", "generated")
-                        .put("doc_source", "governance-service")
-                        .put("doc_generated_at", generatedAt.toString())
-                        .put("doc_generated_at_display", DisplayTime.of(generatedAt)))
+                .frontMatter(pageFrontMatter(system.name(), GovernancePaths.system(slug), true, generatedAt))
                 .heading(1, system.name())
                 .heading(2, "Overall")
-                .table(List.of("Score", "Trend"),
+                .table(List.of(SCORE_HEADING, TREND_HEADING),
                         List.of(List.of(scoreCell(system.score()), trendCell(system.trend()))));
 
         if (!system.components().isEmpty()) {
@@ -328,10 +326,10 @@ public class GovernanceContentWriter implements ContentWriter {
                         Md.link(GovernancePaths.component(slug, component.slug()), component.component().name()),
                         scoreCell(component.component().score()), trendCell(component.component().trend())));
             }
-            page.table(List.of("Component", "Score", "Trend"), rows);
+            page.table(List.of(COMPONENT_HEADING, SCORE_HEADING, TREND_HEADING), rows);
         }
         writeHistory(page, system.history());
-        Files.writeString(directory.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve(INDEX_FILE), page.text(), StandardCharsets.UTF_8);
 
         writeComponents(directory, written, rules, generatedAt);
     }
@@ -349,22 +347,15 @@ public class GovernanceContentWriter implements ContentWriter {
             throws IOException {
         Files.createDirectories(directory);
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(frontMatter()
-                        .put("title", component.name())
-                        .put("slug", GovernancePaths.component(systemSlug, componentSlug))
-                        .put("sidebar_label", component.name())
-                        .put("doc_status", "generated")
-                        .put("doc_source", "governance-service")
-                        .put("doc_generated_at", generatedAt.toString())
-                        .put("doc_generated_at_display", DisplayTime.of(generatedAt)))
+                .frontMatter(pageFrontMatter(component.name(), GovernancePaths.component(systemSlug, componentSlug), false, generatedAt))
                 .heading(1, component.name())
-                .table(List.of("Score", "Trend"),
+                .table(List.of(SCORE_HEADING, TREND_HEADING),
                         List.of(List.of(scoreCell(component.score()), trendCell(component.trend()))));
 
         writeHistory(page, component.history());
 
         if (!component.ruleStates().isEmpty()) {
-            page.heading(2, "Rules");
+            page.heading(2, RULES_LABEL);
             List<List<Markdown>> rows = new ArrayList<>();
             for (GovernanceRuleState state : component.ruleStates()) {
                 Markdown comment = withDetails(state.comment(), state.details());
@@ -375,7 +366,7 @@ public class GovernanceContentWriter implements ContentWriter {
             }
             page.table(List.of("Rule", "State", "Comment"), rows);
         }
-        Files.writeString(directory.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve(INDEX_FILE), page.text(), StandardCharsets.UTF_8);
     }
 
     /** The first line of a result, and its further lines as a bullet list under it - all in the one cell. */
@@ -459,15 +450,7 @@ public class GovernanceContentWriter implements ContentWriter {
                                            Map<String, RulePage> rulePages, Instant generatedAt)
             throws IOException {
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(frontMatter()
-                        .put("title", RULES_LABEL)
-                        .put("slug", GovernancePaths.rules())
-                        .put("sidebar_label", RULES_LABEL)
-                        .put("sidebar_position", 0)
-                        .put("doc_status", "generated")
-                        .put("doc_source", "governance-service")
-                        .put("doc_generated_at", generatedAt.toString())
-                        .put("doc_generated_at_display", DisplayTime.of(generatedAt)))
+                .frontMatter(pageFrontMatter(RULES_LABEL, GovernancePaths.rules(), true, generatedAt))
                 .heading(1, RULES_LABEL)
                 .paragraph("The share shown for an active rule is nominal: where other rules are disabled for "
                            + "a component, this rule weighs more there.");
@@ -486,7 +469,7 @@ public class GovernanceContentWriter implements ContentWriter {
                     scoreCell(summary.conformanceRate()), trendCell(summary.trend()),
                     countCell(summary.exemptionCount())));
         }
-        page.table(List.of("Rule", "Active", "Weight", "Share", "Conformance", "Trend", "Exemptions"), rows);
+        page.table(List.of("Rule", "Active", "Weight", "Share", "Conformance", TREND_HEADING, "Exemptions"), rows);
 
         for (GovernanceRuleSummary summary : ordered) {
             RulePage written = rulePages.get(summary.ruleId());
@@ -494,7 +477,7 @@ public class GovernanceContentWriter implements ContentWriter {
                 writeExemptionsFold(page, summary.ruleId(), written.rule());
             }
         }
-        Files.writeString(rules.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
+        Files.writeString(rules.resolve(INDEX_FILE), page.text(), StandardCharsets.UTF_8);
     }
 
     private static <T> Predicate<T> distinctBy(Function<T, String> key) {
@@ -510,7 +493,7 @@ public class GovernanceContentWriter implements ContentWriter {
             List<List<Markdown>> rows = rule.exemptions().stream()
                     .map(GovernanceContentWriter::exemptionRow)
                     .toList();
-            folded.table(List.of("Component", "Reason", "End day", "Effect"), rows);
+            folded.table(List.of(COMPONENT_HEADING, "Reason", "End day", "Effect"), rows);
         });
     }
 
@@ -525,14 +508,7 @@ public class GovernanceContentWriter implements ContentWriter {
         String name = nameOf(rule, ruleId);
         Files.createDirectories(directory);
         MarkdownWriter page = new MarkdownWriter()
-                .frontMatter(frontMatter()
-                        .put("title", name)
-                        .put("slug", GovernancePaths.rule(written.slug()))
-                        .put("sidebar_label", name)
-                        .put("doc_status", "generated")
-                        .put("doc_source", "governance-service")
-                        .put("doc_generated_at", generatedAt.toString())
-                        .put("doc_generated_at_display", DisplayTime.of(generatedAt)))
+                .frontMatter(pageFrontMatter(name, GovernancePaths.rule(written.slug()), false, generatedAt))
                 .heading(1, name)
                 .paragraph(Md.join(Md.text("Rule ID: "), Md.code(ruleId)));
         writeExplanation(page, rule.explanation(), rule.active());
@@ -547,7 +523,7 @@ public class GovernanceContentWriter implements ContentWriter {
         }
         // An inactive rule's page carries the explanation only - nothing else above is written for one.
 
-        Files.writeString(directory.resolve("index.md"), page.text(), StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve(INDEX_FILE), page.text(), StandardCharsets.UTF_8);
     }
 
     /** Folded on an active rule, so the conformance facts stay near the top; an inactive rule has nothing else. */
@@ -589,7 +565,7 @@ public class GovernanceContentWriter implements ContentWriter {
                             Comparator.nullsLast(Comparator.reverseOrder())))
                     .map(system -> List.of(systemCell(system.system(), systems), scoreCell(system.rate())))
                     .toList();
-            page.table(List.of("System", "Rate"), rows);
+            page.table(List.of(SYSTEM_HEADING, "Rate"), rows);
         }
     }
 
@@ -605,7 +581,7 @@ public class GovernanceContentWriter implements ContentWriter {
                         componentCell(component.system(), component.component(), systems),
                         dayCell(component.since())))
                 .toList();
-        page.table(List.of("System", "Component", "Non-compliant since"), rows);
+        page.table(List.of(SYSTEM_HEADING, COMPONENT_HEADING, "Non-compliant since"), rows);
     }
 
     /** Written only when this rule has a grace period at all - a rule without one shows no such section. */
@@ -621,7 +597,7 @@ public class GovernanceContentWriter implements ContentWriter {
         List<List<Markdown>> rows = rule.gracePeriodComponents().stream()
                 .map(component -> gracePeriodRow(component, systems))
                 .toList();
-        page.table(List.of("System", "Component", "Comment", "Detected", "Grace period ends"), rows);
+        page.table(List.of(SYSTEM_HEADING, COMPONENT_HEADING, "Comment", "Detected", "Grace period ends"), rows);
     }
 
     private static List<Markdown> gracePeriodRow(GovernanceGracePeriodComponent component,
@@ -670,33 +646,6 @@ public class GovernanceContentWriter implements ContentWriter {
             return Md.text(days + (days == 1 ? " day" : " days"));
         }
         return Md.text(hours + (hours == 1 ? " hour" : " hours"));
-    }
-
-    /**
-     * The slug of a name or rule ID, refusing a second one that would overwrite the first page - see {@code
-     * ArchitectureModelImportStep.slugOf} for the same rule. Logged and left without a page rather than failing
-     * the whole site: a name collision in the Governance Service's own data must not take every other page down
-     * with it. A value that yields no slug at all - {@code ..} among them - gets no page either, so nothing
-     * from upstream is ever used as a path segment unslugged.
-     */
-    private String slugOf(String what, String name, Map<String, String> taken) {
-        String slug;
-        try {
-            slug = Slugs.toSlug(name);
-        } catch (IllegalArgumentException e) {
-            log.warn("The {} '{}' has no slug, so no page is generated for it.", what, name);
-            return null;
-        }
-        String already = taken.putIfAbsent(slug, name);
-        if (already == null) {
-            return slug;
-        }
-        if (already.equals(name)) {
-            return null; // the same name twice in one list - write it once, not once per occurrence
-        }
-        log.warn("The {}s '{}' and '{}' would both be documented at '{}'. No page is generated for '{}'.",
-                what, already, name, slug, name);
-        return null;
     }
 
     /** A coloured marker before the value: green from 80 percent, yellow from 50, red below. */
