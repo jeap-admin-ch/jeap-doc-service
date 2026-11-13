@@ -757,8 +757,9 @@ class CustomPagesWriterTest {
         int groupPosition = categoryPositionOf(chapterDirectory.resolve("billing"));
         int micrositePosition = sidebarPositionOf(chapterDirectory.resolve("reference-microsite.md"));
         int catalogPosition = sidebarPositionOf(chapterDirectory.resolve("catalog.md"));
-        assertThat(micrositePosition).isGreaterThan(groupPosition);
-        assertThat(micrositePosition).describedAs("directly after the group, not at the end as an orphan")
+        assertThat(micrositePosition)
+                .isGreaterThan(groupPosition)
+                .describedAs("directly after the group, not at the end as an orphan")
                 .isLessThan(catalogPosition);
     }
 

@@ -86,7 +86,7 @@ public record CustomSet(
 
     /** Whether this page lies in a group folder rather than directly in its chapter. */
     private static boolean isGrouped(CustomPage page) {
-        return page.fileName().indexOf('/') > 0;
+        return page.fileName().contains("/");
     }
 
     private static String groupFolderOf(CustomPage page) {

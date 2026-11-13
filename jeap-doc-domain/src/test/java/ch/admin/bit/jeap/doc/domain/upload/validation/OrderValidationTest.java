@@ -18,8 +18,12 @@ import ch.admin.bit.jeap.doc.domain.upload.DocumentationType;
 import ch.admin.bit.jeap.doc.domain.upload.SourceFormat;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -29,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
@@ -144,16 +149,33 @@ class OrderValidationTest {
                 10L, new CustomProvenance(null, null, null, null, null, null), List.of(), hint);
     }
 
-    @Test
-    void check_whenNoPageNamesAPlacement_thenNothing() {
+    /**
+     * One page whose placement is fine, each way it can be. {@code intro} is a sibling the test template
+     * generates into this chapter for a system, so a reference to it resolves - from a page of the chapter and
+     * from a group's landing page alike, which places the group among the chapter's items.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("acceptedPlacements")
+    void check_whenThePlacementIsFine_thenNothing(String path, String content) {
         storesNothing();
-        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
-                "1-intro/goals.md", "---\ntitle: Goals\n---\n\n# Goals\n"));
+        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(path, content));
 
-        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/goals.md"), bundle);
+        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE, List.of(path), bundle);
 
         assertThat(report).isEmpty();
+    }
+
+    private static Stream<Arguments> acceptedPlacements() {
+        return Stream.of(
+                Arguments.of(Named.of("no placement at all", "1-intro/goals.md"),
+                        "---\ntitle: Goals\n---\n\n# Goals\n"),
+                Arguments.of(Named.of("a decimal sidebar_position", "1-intro/goals.md"),
+                        "---\nsidebar_position: 2.5\n---\n\n# Goals\n"),
+                Arguments.of(Named.of("a reference to a generated sibling", "1-intro/goals.md"),
+                        "---\nsidebar_after: intro\n---\n\n# Goals\n"),
+                Arguments.of(Named.of("a group's landing page referencing a generated sibling",
+                                "1-intro/shipping-partners/index.md"),
+                        "---\nsidebar_after: intro\n---\n\n# Shipping Partners\n"));
     }
 
     @Test
@@ -168,18 +190,6 @@ class OrderValidationTest {
         assertThat(report).isPresent();
         assertThat(report.get().findings()).extracting(StructureFinding::code, StructureFinding::path)
                 .containsExactly(tuple(FindingCode.INVALID_POSITION, "1-intro/goals.md"));
-    }
-
-    @Test
-    void check_whenASidebarPositionIsADecimal_thenNotInvalid() {
-        storesNothing();
-        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
-                "1-intro/goals.md", "---\nsidebar_position: 2.5\n---\n\n# Goals\n"));
-
-        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/goals.md"), bundle);
-
-        assertThat(report).isEmpty();
     }
 
     @Test
@@ -208,19 +218,6 @@ class OrderValidationTest {
         assertThat(report).isPresent();
         assertThat(report.get().findings()).extracting(StructureFinding::code)
                 .containsExactly(FindingCode.INVALID_REFERENCE);
-    }
-
-    /** {@code intro} is a sibling the test template generates into this chapter for a system. */
-    @Test
-    void check_whenAValidReferenceIsNamed_thenNothing() {
-        storesNothing();
-        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
-                "1-intro/goals.md", "---\nsidebar_after: intro\n---\n\n# Goals\n"));
-
-        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/goals.md"), bundle);
-
-        assertThat(report).isEmpty();
     }
 
     /** A static site has no generated siblings and no chapter of its own: a reference names nothing real. */
@@ -462,18 +459,6 @@ class OrderValidationTest {
                 .containsExactlyInAnyOrder(
                         tuple(FindingCode.CYCLIC_ORDER, "1-intro/a.md"),
                         tuple(FindingCode.CYCLIC_ORDER, "1-intro/b.md"));
-    }
-
-    @Test
-    void check_whenAGroupsLandingPageReferencesAGeneratedSibling_thenNothing() {
-        storesNothing();
-        UploadedBundles.ReceivedBundle bundle = bundleOf(Map.of(
-                "1-intro/shipping-partners/index.md", "---\nsidebar_after: intro\n---\n\n# Shipping Partners\n"));
-
-        Optional<StructureReport> report = validation.check(ACCEPTED, markdown(), SITE,
-                List.of("1-intro/shipping-partners/index.md"), bundle);
-
-        assertThat(report).isEmpty();
     }
 
     @Test

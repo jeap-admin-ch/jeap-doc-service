@@ -727,9 +727,7 @@ public class StructureValidation {
 
     /** How a page inside a group is identified in {@link #collidingGroupDocumentsOf}: its own route within it. */
     private static String groupDocumentKeyOf(String[] segments) {
-        String name = segments[2];
-        String extension = extensionOf(name);
-        String fileName = name.substring(0, name.length() - extension.length() - 1);
+        String fileName = ReservedNames.withoutItsExtension(segments[2]);
         String identity = ReservedNames.isLandingPageName(fileName, segments[1])
                 ? "landing"
                 : "doc:" + NumberPrefixes.stripped(fileName).toLowerCase(Locale.ROOT);

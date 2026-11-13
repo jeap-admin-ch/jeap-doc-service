@@ -5,7 +5,6 @@ import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -103,7 +102,7 @@ class CustomSetGroupsTest {
     void pageGroupOf_withNoPages_hasNoLandingPageEither() {
         PageGroup group = PageGroup.of("shipping-partners", List.of());
 
-        assertThat(group.landingPage()).isEqualTo(Optional.empty());
+        assertThat(group.landingPage()).isEmpty();
         assertThat(group.pages()).isEmpty();
         assertThat(group.hint()).isEqualTo(OrderHint.NONE);
     }
