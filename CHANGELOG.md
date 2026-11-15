@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.14.0] - 2026-11-15
+
+### Dependencies
+- **com.microsoft.playwright:playwright**: 1.64.0 → 1.65.0 (minor)
+- **ch.admin.bit.jeap:jeap-spring-boot-parent**: 41.36.0 → 41.37.0 (minor)
+- **cytoscape-dagre**: 4.0.1 → 4.1.0 (minor)
+- **cytoscape**: 3.34.4 → 3.35.0 (minor)
+- **@matfsw/docusaurus-plantuml-plugin**: 1.8.17 → 1.8.18 (patch)
+
 ## [4.13.0] - 2026-11-12
 
 ### Added
