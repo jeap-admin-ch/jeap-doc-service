@@ -1,5 +1,5 @@
 import React, {useEffect, useId, useMemo, useRef, useState} from 'react';
-import {expansionLimit, expandView, interfaceLabel, pathCandidates, pathSelection} from './exploration.mjs';
+import {expansionLimit, expandView} from './exploration.mjs';
 import styles from './styles.module.css';
 
 function Dialog({title, onClose, children}) {
@@ -36,33 +36,5 @@ export function ExpansionDialog({graph, state, id, direction, onApply, onClose})
             {preview.message && <p role="status">{preview.message}</p>}
             <button type="submit" disabled={!preview.changed}>Expand</button>
         </form>
-    </Dialog>;
-}
-
-export function PathDialog({graph, state, initialIds, onApply, onClose}) {
-    const [ids, setIds] = useState(initialIds ?? []), [choice, setChoice] = useState('');
-    const candidates = useMemo(() => pathCandidates(graph, state, ids), [graph, state, ids]);
-    const selection = useMemo(() => pathSelection(graph, state, ids), [graph, state, ids]);
-    return <Dialog title="Open path view" onClose={onClose}>
-        <p>Select two or more interfaces. Both directions and cyclic detours are included.</p>
-        <ul aria-label="Selected interfaces">{ids.map(id => <li key={id}>
-            {interfaceLabel(graph, id)} <button type="button" aria-label={`Remove ${interfaceLabel(graph, id)}`}
-                onClick={() => { setIds(previous => previous.filter(other => other !== id)); setChoice(''); }}>Remove</button>
-        </li>)}</ul>
-        <form onSubmit={event => {
-            event.preventDefault();
-            if (candidates.some(candidate => candidate.id === choice)) { setIds(previous => [...previous, choice]); setChoice(''); }
-        }}>
-            <label>Add interface
-                <select autoFocus value={choice} onChange={event => setChoice(event.target.value)}>
-                    <option value="">Choose an interface</option>
-                    {candidates.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
-                </select>
-            </label>
-            <button type="submit" disabled={!choice}>Add</button>
-        </form>
-        <p role="status">{ids.length < 2 ? 'Select at least two interfaces.' : !selection.connected
-            ? 'No directed connection between the selected interfaces.' : 'These are graph relationships, not an individual execution trace.'}</p>
-        <button type="button" disabled={!selection.connected} onClick={() => onApply({type: 'paths', ids})}>Show paths</button>
     </Dialog>;
 }

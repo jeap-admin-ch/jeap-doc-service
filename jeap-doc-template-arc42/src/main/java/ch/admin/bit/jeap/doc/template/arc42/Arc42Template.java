@@ -3,6 +3,8 @@ package ch.admin.bit.jeap.doc.template.arc42;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
+import ch.admin.bit.jeap.doc.domain.template.ReactionDocumentationLinks;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
@@ -229,6 +231,12 @@ public class Arc42Template implements StructureTemplate {
      */
     private static List<String> generatedForLibrary(StructureChapter chapter) {
         return INTRODUCTION.equals(chapter) ? List.of(LIBRARY_OVERVIEW_PAGE) : List.of();
+    }
+
+    @Override
+    public ReactionDocumentationLinks reactionDocumentationLinks(
+            ReactionView destinations, GenerationContext context) {
+        return Arc42ReactionPages.documentationLinks(destinations, context);
     }
 
     /**

@@ -1,13 +1,13 @@
 package ch.admin.bit.jeap.doc.template.arc42;
 
 import ch.admin.bit.jeap.doc.domain.architecture.*;
-import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
-import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionDocumentation;
 import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.*;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionDocumentation;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
-import ch.admin.bit.jeap.doc.markdown.ReactionEntry;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
+import ch.admin.bit.jeap.doc.markdown.ReactionEntry;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -54,7 +54,7 @@ class Arc42ReactionPagesTest {
         var largerModel = ArchitectureModel.of(List.of(system, system("unrelated", List.of(component("unrelated-api", true)))));
         for (boolean http : List.of(false, true)) {
             var message = new ObservedMessage(new Identity(http ? "INTERFACE" : "MESSAGE", "event"), "AcceptedEvent", "");
-            var reaction = new ObservedReaction(new Identity("REACTION", "1"), "consumer", java.math.BigDecimal.ONE);
+            var reaction = new ObservedReaction(new Identity("REACTION", "1"), "consumer", BigDecimal.ONE);
             var operation = new ObservedHttpOperation(new Identity("INTERFACE", "http"), "HTTP", "GET /items", "provider", "GET", "/items");
             var observations = new ObservedReactions(http ? "observer-v2" : "observer-v1",
                     http ? List.of(message, operation) : List.of(message), List.of(reaction),
@@ -103,6 +103,18 @@ class Arc42ReactionPagesTest {
         assertThat(before.components()).hasSize(2);
         assertThat(before.messages()).hasSize(2);
         assertThat(before.restProviders()).hasSize(2);
+        var destinations = new ReactionDocumentation(snapshot, model).destinations();
+        assertThat(destinations.components()).hasSize(2);
+        assertThat(destinations.messages()).hasSize(2);
+        assertThat(destinations.restProviders()).hasSize(2);
+        assertThat(new ReactionDocumentation(reordered, model).destinations()).isEqualTo(destinations);
+        var context = new GenerationContext(model, "dev", null, Instant.EPOCH, Instant.EPOCH,
+                new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000), "/site/docs/dev/");
+        var catalog = new Arc42Template().reactionDocumentationLinks(destinations, context);
+        assertThat(catalog.componentLinks()).hasSize(2).allSatisfy(link ->
+                assertThat(link.href()).startsWith("/site/docs/dev/systems/s/").endsWith("/component-reactions/"));
+        assertThat(catalog.interfaceLinks()).hasSize(4).allSatisfy(link ->
+                assertThat(link.href()).startsWith("/site/docs/dev/systems/s/"));
         assertThat(after.rows()).isEqualTo(before.rows());
         assertThat(render(after, model)).isEqualTo(render(before, model));
     }

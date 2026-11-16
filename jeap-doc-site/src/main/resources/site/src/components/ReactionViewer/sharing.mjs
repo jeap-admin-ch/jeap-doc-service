@@ -112,6 +112,7 @@ export function resolveReference(graph, ref) {
 }
 
 export function entryReference(graph, entry, reference = id => referenceOf(graph, id)) {
+    if (entry.kind === 'EXPLORER') return {kind: 'EXPLORER'};
     if (['INTERFACE', 'REACTION', 'GROUP'].includes(entry.kind)) return {kind: entry.kind, target: reference(entry.id)};
     if (entry.kind === 'SYSTEM') return {kind: entry.kind, system: entry.system};
     if (entry.kind === 'COMPONENT') return {kind: entry.kind, system: entry.system, component: entry.component};
@@ -125,6 +126,7 @@ export function entryReference(graph, entry, reference = id => referenceOf(graph
 }
 
 function resolveEntry(graph, entry) {
+    if (entry?.kind === 'EXPLORER') { fields(entry, ['kind']); return {kind: 'EXPLORER'}; }
     let resolved;
     if (['INTERFACE', 'REACTION', 'GROUP'].includes(entry?.kind)) {
         fields(entry, ['kind', 'target']);

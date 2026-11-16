@@ -37,6 +37,11 @@ const {environments} = readGenerated('environments.json');
  * one tree, and nothing for any other site.
  */
 const perEnvironment = site.perEnvironment !== false;
+const reactionEnvironments = perEnvironment ? (site.reactionEnvironments || []) : [];
+const hasReactions = reactionEnvironments.length > 0;
+// Keep existing environment roots intact without requiring configuration changes.
+const reactionExplorerPath = environments.some(environment => !environment.main && environment.id === 'reactions')
+    ? '/_reactions/' : '/reactions/';
 
 if (perEnvironment && !environments.some((environment) => environment.main)) {
     throw new Error('No environment is marked as the main one; the site generator guarantees exactly one.');
@@ -282,6 +287,7 @@ const footerLinks = [
             // Only when the main environment has a systems page - a footer link to one that was not written
             // fails the whole build, since onBrokenLinks is 'throw'.
             ...(site.hasSystems ? [siteLink('Systems', '/systems/')] : []),
+            ...(hasReactions ? [{label: 'Reaction Graph Explorer', href: `pathname://${site.baseUrl}`, className: 'jeap-explorer-link'}] : []),
             // Unconditional: unlike the systems tree, this page is written into every environment tree of
             // every site, so the link can never point at a page nobody wrote.
             siteLink('About This Documentation', '/about-this-documentation/'),
@@ -327,6 +333,22 @@ function searchPage() {
     };
 }
 
+/** The explorer shares the shell's environment graph; system parts link across builds. */
+function reactionExplorerPages() {
+    return {
+        name: 'reaction-explorer-pages',
+        contentLoaded({actions}) {
+            for (const environment of environments.filter(each => part.environments.includes(each.id) && reactionEnvironments.includes(each.id))) {
+                actions.addRoute({
+                    path: `${site.baseUrl.replace(/\/$/, '')}${routePrefixOf(environment)}${reactionExplorerPath}`,
+                    component: '@site/src/components/ReactionExplorer/index.js',
+                    exact: true,
+                });
+            }
+        },
+    };
+}
+
 /** @type {import('@docusaurus/types').Config} */
 const config = {
     title: site.title,
@@ -335,7 +357,7 @@ const config = {
 
     url: site.url,
     baseUrl: site.baseUrl,
-    customFields: {docSite: site.id},
+    customFields: {docSite: site.id, reactionEnvironments, reactionExplorerPath},
 
     // Every route is emitted as <route>/index.html. The doc service serves the site from object storage and
     // resolves a directory to its index.html, so the two have to agree.
@@ -426,6 +448,7 @@ const config = {
         // it the way it links the front page, unchecked, and a part that added a /search of its own would
         // give the site two.
         ...(part.shell ? [searchPage] : []),
+        ...(hasReactions && part.carriesWholeEnvironments ? [reactionExplorerPages] : []),
         // One docs instance per environment this part carries. All of them are plugin instances and none is
         // the preset's: a part may carry any set of environments, and the preset's instance would be a
         // special case among them that has to be picked and named.
@@ -504,6 +527,7 @@ const config = {
                     // theme renders `@theme/SearchBar` itself when no search item is present, and the two
                     // paths put it in different places.
                     {type: 'search', position: 'right'},
+                    ...(hasReactions ? [{type: 'custom-reactionExplorer', position: 'right'}] : []),
                     ...(perEnvironment ? [{type: 'custom-environmentSwitcher', position: 'right'}] : []),
                 ],
             },

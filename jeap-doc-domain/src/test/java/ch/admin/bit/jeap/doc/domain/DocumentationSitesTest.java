@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.domain;
 import ch.admin.bit.jeap.doc.domain.custom.Microsite;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
@@ -283,17 +284,31 @@ class DocumentationSitesTest {
     }
 
     /**
-     * `default` is the id the site generator's own documentation instance uses, so an environment named after
-     * it fails every build of that site on a duplicate plugin id - minutes into a run, not at startup.
+     * Generator routes belong to every site, including sites mounted below their own prefix.
      */
-    @Test
-    void construct_whenAnEnvironmentIsCalledDefault_thenFailsTheStartup() {
-        SiteProperties properties = properties(Map.of(Site.DEFAULT_SITE, site(configured ->
-                configured.setEnvironments(List.of(environment(Site.DEFAULT_SITE, true, true))))));
+    @ParameterizedTest
+    @CsvSource({"default,default", "handbook,default", "handbook,static"})
+    void construct_whenAnEnvironmentUsesAGeneratorRoute_thenFailsTheStartup(String siteId, String id) {
+        SiteProperties properties = properties(Map.of(siteId, site(configured ->
+                configured.setEnvironments(List.of(environment(id, true, true))))));
 
         assertThatThrownBy(() -> new DocumentationSites(properties))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("site generator");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"default,true", "default,false", "handbook,true", "handbook,false"})
+    void construct_whenAnEnvironmentIsCalledReactions_thenExistingConfigurationRemainsValid(
+            String siteId, boolean main) {
+        SiteProperties properties = properties(Map.of(siteId, site(configured ->
+                configured.setEnvironments(List.of(environment("reactions", main, true),
+                        environment("prod", !main, false))))));
+
+        Site configured = new DocumentationSites(properties).find(siteId).orElseThrow();
+        assertThat(configured.environments()).extracting(SiteEnvironment::id)
+                .containsExactlyInAnyOrder("reactions", "prod");
+        assertThat(configured.mainEnvironment().id()).isEqualTo(main ? "reactions" : "prod");
     }
 
     /**

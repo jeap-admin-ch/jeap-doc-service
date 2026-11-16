@@ -3,6 +3,7 @@ package ch.admin.bit.jeap.doc.template.arc42;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
+import ch.admin.bit.jeap.doc.domain.template.ReactionDocumentationLinks;
 import ch.admin.bit.jeap.doc.domain.template.DocumentationPaths;
 import ch.admin.bit.jeap.doc.markdown.Markdown;
 import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
@@ -43,6 +44,14 @@ final class Arc42ReactionPages {
                         .map(href -> new ReactionEntry.ComponentLink(component.system(), component.component(), href)).stream())
                 .distinct().toList();
         page.reactionViewer(entry.withComponentLinks(links).withInterfaceLinks(interfaceLinks(view, context)));
+    }
+
+    static ReactionDocumentationLinks documentationLinks(ReactionView view, GenerationContext context) {
+        return new ReactionDocumentationLinks(view.components().stream()
+                .flatMap(component -> componentLink(component, context, null)
+                        .map(href -> new ReactionDocumentationLinks.ComponentLink(component.system(), component.component(), href)).stream())
+                .toList(), interfaceLinks(view, context).stream()
+                .map(link -> new ReactionDocumentationLinks.InterfaceLink(link.kind(), link.name(), link.href())).toList());
     }
 
     static List<ReactionEntry.InterfaceLink> interfaceLinks(ReactionView view, GenerationContext context) {

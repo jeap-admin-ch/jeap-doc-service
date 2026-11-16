@@ -119,9 +119,7 @@ public final class ReactionDocumentation {
     private ReactionView view(Set<Identity> selectedReactions, Set<Identity> pinned) {
         Set<Identity> selectedInterfaces = new LinkedHashSet<>(pinned);
         List<ReactionView.Row> rows = new ArrayList<>();
-        Set<ReactionView.ComponentLink> components = new LinkedHashSet<>();
         for (Identity id : selectedReactions) {
-            componentLink(owners.get(id)).ifPresent(components::add);
             if (!active(id)) continue;
             Identity trigger = triggers.get(id);
             if (!pinned.isEmpty() && !pinned.contains(trigger)) trigger = null;
@@ -134,6 +132,16 @@ public final class ReactionDocumentation {
         }
         rows.sort(Comparator.comparing(ReactionView.Row::component).thenComparing(row -> Objects.requireNonNullElse(row.trigger(), ""))
                 .thenComparing(row -> row.reaction().key()));
+        return destinations(selectedReactions, selectedInterfaces, rows);
+    }
+
+    /** All observed destinations, including isolated interfaces, without building a table of the whole graph. */
+    public ReactionView destinations() {
+        return destinations(reactions.keySet(), interfaces.keySet(), List.of());
+    }
+
+    private ReactionView destinations(Set<Identity> selectedReactions, Set<Identity> selectedInterfaces,
+                                      List<ReactionView.Row> rows) {
         List<ReactionView.MessageLink> links = selectedInterfaces.stream().map(interfaces::get)
                 .filter(ObservedMessage.class::isInstance).map(ObservedMessage.class::cast)
                 .map(ObservedMessage::messageType).distinct()
@@ -146,10 +154,11 @@ public final class ReactionDocumentation {
                 .map(http -> restLinks.get(fold(http.provider()))).filter(Objects::nonNull).distinct()
                 .sorted(Comparator.comparing(ReactionView.RestLink::systemSlug).thenComparing(ReactionView.RestLink::provider))
                 .toList();
-        List<ReactionView.ComponentLink> sortedComponents = components.stream()
+        List<ReactionView.ComponentLink> sortedComponents = selectedReactions.stream()
+                .flatMap(id -> componentLink(owners.get(id)).stream()).distinct()
                 .sorted(Comparator.comparing(ReactionView.ComponentLink::system).thenComparing(ReactionView.ComponentLink::component))
                 .toList();
-        return new ReactionView(links, sortedComponents, restProviders, rows, !selectedReactions.isEmpty() || !pinned.isEmpty());
+        return new ReactionView(links, sortedComponents, restProviders, rows, !selectedReactions.isEmpty() || !selectedInterfaces.isEmpty());
     }
 
     private Optional<ReactionView.ComponentLink> componentLink(PublishedReactions.Ownership owner) {

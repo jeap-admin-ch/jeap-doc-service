@@ -11,6 +11,7 @@ export function sameView(left, right) {
 
 export function initialView(graph, entry) {
     const state = entryView(graph, entry);
+    if (entry.kind === 'INTERFACE' && state.visible.has(entry.id)) state.pins.add(entry.id);
     return entry.kind === 'COMPONENT' ? state : expandGroups(graph, state);
 }
 

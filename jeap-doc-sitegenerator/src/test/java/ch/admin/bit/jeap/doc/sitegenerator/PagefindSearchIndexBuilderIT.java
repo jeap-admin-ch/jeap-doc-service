@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.PublicationProperties;
@@ -53,7 +54,7 @@ class PagefindSearchIndexBuilderIT {
         SiteUrls urls = new SiteUrls(publication, "/docs");
         DefaultResourceLoader resources = new DefaultResourceLoader();
         SiteSources sources = new SiteSources(urls, resources,
-                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
+                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class), mock(ReactionNetworkPublication.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()), properties,
@@ -143,7 +144,7 @@ class PagefindSearchIndexBuilderIT {
         publication.setUrl("https://doc.example.ch");
         SiteUrls urls = new SiteUrls(publication, "/docs");
         DefaultResourceLoader resources = new DefaultResourceLoader();
-        SiteSources sources = new SiteSources(urls, resources, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
+        SiteSources sources = new SiteSources(urls, resources, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class), mock(ReactionNetworkPublication.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
                                 new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), sites,
                 new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()), properties,

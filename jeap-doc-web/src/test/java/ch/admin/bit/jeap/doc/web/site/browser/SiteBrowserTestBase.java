@@ -1,76 +1,108 @@
 package ch.admin.bit.jeap.doc.web.site.browser;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.anyString;
-
-import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
-import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
-import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.*;
-import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
-import ch.admin.bit.jeap.doc.sitegenerator.ReactionNetworkFiles;
-import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
-import ch.admin.bit.jeap.doc.domain.PublicationProperties;
-import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
-import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
-import ch.admin.bit.jeap.doc.domain.architecture.MessageSchema;
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
-import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
-import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionDocumentation;
-import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
-import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
-import ch.admin.bit.jeap.doc.domain.template.ReactionViews;
-import ch.admin.bit.jeap.doc.template.arc42.Arc42Template;
-import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
-import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
-import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
-import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
-import ch.admin.bit.jeap.doc.sitegenerator.GeneratorProperties;
-import ch.admin.bit.jeap.doc.sitegenerator.SystemPages;
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.BuildTrigger;
 import ch.admin.bit.jeap.doc.domain.DocumentationBuild;
+import ch.admin.bit.jeap.doc.domain.DocumentationProvenance;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
+import ch.admin.bit.jeap.doc.domain.PartKey;
+import ch.admin.bit.jeap.doc.domain.PublicationProperties;
+import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
+import ch.admin.bit.jeap.doc.domain.SharedAssets;
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
 import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SitePartition;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
 import ch.admin.bit.jeap.doc.domain.SystemSitePartition;
-import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
+import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
+import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
+import ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchema;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessage;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
+import ch.admin.bit.jeap.doc.domain.architecture.MessageSchema;
+import ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas;
+import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
+import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.*;
+import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
+import ch.admin.bit.jeap.doc.domain.architecture.RestApiOperation;
+import ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactRef;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionDocumentation;
+import ch.admin.bit.jeap.doc.domain.custom.CustomDocumentation;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactContent;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactRepository;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
+import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
+import ch.admin.bit.jeap.doc.domain.port.DisplayReads;
 import ch.admin.bit.jeap.doc.domain.port.DocumentationBuildRepository;
+import ch.admin.bit.jeap.doc.domain.port.DocumentationStatus;
+import ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository;
+import ch.admin.bit.jeap.doc.domain.port.PartPublication;
 import ch.admin.bit.jeap.doc.domain.port.PublishedPart;
 import ch.admin.bit.jeap.doc.domain.port.SitePublicationStorage;
+import ch.admin.bit.jeap.doc.domain.template.DiagramLimits;
+import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
+import ch.admin.bit.jeap.doc.domain.template.ReactionViews;
+import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
+import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
+import ch.admin.bit.jeap.doc.domain.upload.UploadProperties;
+import ch.admin.bit.jeap.doc.markdown.Markdown;
+import ch.admin.bit.jeap.doc.markdown.MarkdownWriter;
+import ch.admin.bit.jeap.doc.markdown.Md;
 import ch.admin.bit.jeap.doc.sitegenerator.AboutThisDocumentation;
 import ch.admin.bit.jeap.doc.sitegenerator.BuildWorkspaces;
 import ch.admin.bit.jeap.doc.sitegenerator.DocusaurusSiteBuilder;
+import ch.admin.bit.jeap.doc.sitegenerator.EnvironmentModel;
+import ch.admin.bit.jeap.doc.sitegenerator.GeneratorProperties;
 import ch.admin.bit.jeap.doc.sitegenerator.NodeProcess;
+import ch.admin.bit.jeap.doc.sitegenerator.ReactionNetworkFiles;
 import ch.admin.bit.jeap.doc.sitegenerator.SiteSources;
-import ch.admin.bit.jeap.doc.sitegenerator.StaticSiteWriter;
-import ch.admin.bit.jeap.doc.sitegenerator.SystemDocumentationWriter;
 import ch.admin.bit.jeap.doc.sitegenerator.SiteTemplate;
 import ch.admin.bit.jeap.doc.sitegenerator.SiteUrls;
+import ch.admin.bit.jeap.doc.sitegenerator.StaticSiteWriter;
+import ch.admin.bit.jeap.doc.sitegenerator.SystemDocumentationWriter;
+import ch.admin.bit.jeap.doc.sitegenerator.SystemPages;
 import ch.admin.bit.jeap.doc.sitegenerator.WrittenContent;
+import ch.admin.bit.jeap.doc.template.arc42.Arc42Template;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Proxy;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Drives a real browser over the documentation site, as it is served by the running service.
@@ -277,11 +309,11 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
             // removes the superseded one, which is this fixture: 'Removed the published site under
             // default/284 (263 files)'. So each class publishes the site it built again, under its own
             // prefix, and nothing it drives can be served by a prefix somebody else has taken away.
-            DocumentationBuild own = builds.start(ch.admin.bit.jeap.doc.domain.PartKey.shellOf(site.id()),
+            DocumentationBuild own = builds.start(PartKey.shellOf(site.id()),
                     BuildTrigger.IMPORT, INSTANCE, Instant.now(), null);
             publishedPrefix = site.id() + "/" + own.id();
-            publication.publish(new ch.admin.bit.jeap.doc.domain.port.PartPublication(publishedPrefix,
-                    ch.admin.bit.jeap.doc.domain.SharedAssets.prefixOf(site.id())),
+            publication.publish(new PartPublication(publishedPrefix,
+                    SharedAssets.prefixOf(site.id())),
                     builtSite.directory());
             recordAsPublished(own);
             serveEveryPartOfItFromThisBuildToo(site);
@@ -304,7 +336,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      */
     private void serveEveryPartOfItFromThisBuildToo(Site site) {
         for (String part : otherPartsOf(site)) {
-            recordAsPublished(builds.start(ch.admin.bit.jeap.doc.domain.PartKey.of(site.id(), part),
+            recordAsPublished(builds.start(PartKey.of(site.id(), part),
                     BuildTrigger.IMPORT, INSTANCE, Instant.now(), null));
         }
     }
@@ -327,16 +359,35 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     private ReactionNetworkFiles reactionNetworkFiles() {
         var networks = mock(ReactionNetworkPublication.class);
         when(networks.read(anyString())).thenReturn(Optional.of(reactionSnapshot()));
-        return new ReactionNetworkFiles(networks);
+        return new ReactionNetworkFiles(networks) {
+            @Override
+            public void write(Site site, SitePart part, Path content,
+                              Map<String, Optional<PublishedReactions>> snapshots,
+                              Map<String, EnvironmentModel> ignored) throws IOException {
+                // This suite writes its pages below; publish their destinations from the same fixture model.
+                var models = new HashMap<String, EnvironmentModel>();
+                for (var environment : site.environments()) {
+                    var model = reactingModel();
+                    var context = new GenerationContext(model, environment.id(), null, GENERATED_AT, GENERATED_AT,
+                            new DiagramLimits(100, 4, 40, 100, 200, 40, 20, 1000),
+                            urls.baseUrl(site) + (environment.main() ? "" : environment.id() + "/"));
+                    var links = new Arc42Template().reactionDocumentationLinks(
+                            new ReactionDocumentation(reactionSnapshot(), model).destinations(), context);
+                    models.put(environment.id(), new EnvironmentModel(
+                            List.of(), 0, 0, 0, GENERATED_AT, links));
+                }
+                super.write(site, part, content, snapshots, models);
+            }
+        };
     }
 
     private static PublishedReactions reactionSnapshot() {
-        var interfaces = new java.util.ArrayList<ObservedInterface>();
-        var reactions = new java.util.ArrayList<ObservedReaction>();
-        var triggers = new java.util.ArrayList<ObservedTrigger>();
-        var actions = new java.util.ArrayList<ObservedAction>();
-        var ownership = new java.util.ArrayList<PublishedReactions.Ownership>();
-        var messages = new java.util.HashMap<String, Identity>();
+        var interfaces = new ArrayList<ObservedInterface>();
+        var reactions = new ArrayList<ObservedReaction>();
+        var triggers = new ArrayList<ObservedTrigger>();
+        var actions = new ArrayList<ObservedAction>();
+        var ownership = new ArrayList<PublishedReactions.Ownership>();
+        var messages = new HashMap<String, Identity>();
         interfaces.add(new ObservedMessage(new Identity("INTERFACE", "9007199254740993"), "OrderCreatedEvent", "priority"));
         addObservations(systemGraph(), REACTING_SYSTEM, interfaces, reactions, triggers, actions, ownership, messages);
         addObservations(otherSystemGraph(), OTHER_SYSTEM, interfaces, reactions, triggers, actions, ownership, messages);
@@ -355,9 +406,9 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                                          List<ObservedInterface> interfaces, List<ObservedReaction> reactions,
                                          List<ObservedTrigger> triggers, List<ObservedAction> actions,
                                          List<PublishedReactions.Ownership> ownership, Map<String, Identity> messages) {
-        Map<Identity, Identity> messageIds = new java.util.HashMap<>();
+        Map<Identity, Identity> messageIds = new HashMap<>();
         for (ObservedMessage message : source.messages()) {
-            String key = message.messageType() + "/" + java.util.Objects.toString(message.variant(), "");
+            String key = message.messageType() + "/" + Objects.toString(message.variant(), "");
             var identity = messages.computeIfAbsent(key, ignored -> {
                 interfaces.add(message);
                 return message.identity();
@@ -392,9 +443,12 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * over a fixture that merely looked like the site would prove nothing about the site.
      */
     protected SiteSources fixtureSources(SiteUrls urls, BuildProperties properties) {
-        return new SiteSources(urls, new DefaultResourceLoader(), java.util.List.of(new SystemDocumentationWriter(withoutSystemPages(), reactionNetworkFiles()),
+        var reactions = mock(ReactionNetworkPublication.class);
+        // ABN has no configured observer, so navigation tests exercise both availability states.
+        when(reactions.isEnabled(anyString())).thenAnswer(call -> !"abn".equals(call.getArgument(0)));
+        return new SiteSources(urls, new DefaultResourceLoader(), List.of(new SystemDocumentationWriter(withoutSystemPages(), reactionNetworkFiles(), reactions),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
+                                new CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties, provenance(),
                 new AboutThisDocumentation(), new PublicationProperties()) {
@@ -430,10 +484,10 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     }
 
     /** A system with nothing uploaded for it: this suite writes its pages by hand. */
-    private static ch.admin.bit.jeap.doc.domain.template.SystemDocumentation withoutUploads(
-            ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem system) {
-        return ch.admin.bit.jeap.doc.domain.template.SystemDocumentation.of(Site.DEFAULT_SITE, system,
-                ch.admin.bit.jeap.doc.domain.custom.CustomDocumentation.nothing(),
+    private static SystemDocumentation withoutUploads(
+            DocumentedSystem system) {
+        return SystemDocumentation.of(Site.DEFAULT_SITE, system,
+                CustomDocumentation.nothing(),
                 (subject, chapter, directory) -> 0);
     }
 
@@ -448,39 +502,39 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
 
     /** Both halves of the artifact reading, neither of which this suite reaches. */
     private static final class Artifacts
-            implements ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactRepository,
-            ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactContent {
+            implements ArchitectureArtifactRepository,
+            ArchitectureArtifactContent {
 
         @Override
-        public java.util.List<ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactRef>
+        public List<ArchitectureArtifactRef>
                 findRefs(String environment,
-                         ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind) {
+                         ArchitectureImportKind kind) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public Optional<ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact> find(
+        public Optional<ArchitectureArtifact> find(
                 String environment,
-                ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind, String system,
+                ArchitectureImportKind kind, String system,
                 String component) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void store(ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact artifact) {
+        public void store(ArchitectureArtifact artifact) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public void confirm(String environment,
-                            ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind,
-                            String system, String component, java.time.Instant checkedAt) {
+                            ArchitectureImportKind kind,
+                            String system, String component, Instant checkedAt) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void remove(java.util.Collection<
-                ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactRef> artifacts) {
+        public void remove(Collection<
+                ArchitectureArtifactRef> artifacts) {
             throw new UnsupportedOperationException();
         }
 
@@ -490,51 +544,51 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         }
 
         @Override
-        public Optional<ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchema> databaseSchema(
-                ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact artifact) {
+        public Optional<DatabaseSchema> databaseSchema(
+                ArchitectureArtifact artifact) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public Optional<ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview> restApi(
-                ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact artifact) {
+        public Optional<RestApiOverview> restApi(
+                ArchitectureArtifact artifact) {
             throw new UnsupportedOperationException();
         }
     }
 
     /** An instance whose message schemas have never been replicated - these tests are not about them. */
-    private static ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository withoutMessageSchemas() {
-        return new ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository() {
+    private static MessageSchemaRepository withoutMessageSchemas() {
+        return new MessageSchemaRepository() {
 
             // Throwing, not answering "none": this site configures no architecture repository, so
             // SystemPages.write returns before it asks - and a stub that answers quietly would let a change
             // that made it ask look like a landscape with no schemas rather than like a test to rewrite.
             @Override
-            public java.util.List<ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef> findRefs(
+            public List<MessageVersionRef> findRefs(
                     String environment) {
                 throw new UnsupportedOperationException();
             }
 
             @Override
-            public java.util.List<ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas> findAll(
+            public List<MessageVersionSchemas> findAll(
                     String environment, String system) {
                 throw new UnsupportedOperationException();
             }
 
             @Override
-            public void store(ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas schemas) {
+            public void store(MessageVersionSchemas schemas) {
                 throw new UnsupportedOperationException();
             }
 
             @Override
             public void confirm(String environment, String system, String message, String version,
-                                java.time.Instant checkedAt) {
+                                Instant checkedAt) {
                 throw new UnsupportedOperationException();
             }
 
             @Override
-            public void remove(java.util.Collection<
-                    ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef> versions) {
+            public void remove(Collection<
+                    MessageVersionRef> versions) {
                 throw new UnsupportedOperationException();
             }
         };
@@ -555,17 +609,17 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
             }
 
             @Override
-            public Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
+            public Optional<Instant> lastSuccessfulImportAt(String environment) {
                 return Optional.empty();
             }
 
             @Override
-            public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(String environment) {
-                return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot.empty();
+            public ArchitectureSnapshot read(String environment) {
+                return ArchitectureSnapshot.empty();
             }
 
             @Override
-            public java.util.List<String> systemSlugsOf(String environment) {
+            public List<String> systemSlugsOf(String environment) {
                 return List.of();
             }
         };
@@ -576,49 +630,49 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * which is what a fresh instance looks like, and the page describing the documentation is written all the
      * same - these tests are what prove it renders.
      */
-    private static ch.admin.bit.jeap.doc.domain.DocumentationProvenance provenance() {
+    private static DocumentationProvenance provenance() {
         NeverImported imports = new NeverImported();
-        return new ch.admin.bit.jeap.doc.domain.DocumentationProvenance(
+        return new DocumentationProvenance(
                 new DocumentationSites(new SiteProperties()), imports, importStatesOf(imports),
                 withoutArchitectureModel(),
-                new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(List.of()),
+                new StructureTemplates(List.of()),
                 new BuildProperties(), new ArchitectureImportProperties(),
-                new ch.admin.bit.jeap.doc.domain.upload.UploadProperties(),
-                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties(),
-                java.time.Clock.systemDefaultZone());
+                new UploadProperties(),
+                new CustomProperties(),
+                Clock.systemDefaultZone());
     }
 
     /** The one display read a provenance asks for, answered by the same import state. */
-    private static ch.admin.bit.jeap.doc.domain.port.DisplayReads importStatesOf(NeverImported imports) {
-        return (ch.admin.bit.jeap.doc.domain.port.DisplayReads) java.lang.reflect.Proxy.newProxyInstance(
+    private static DisplayReads importStatesOf(NeverImported imports) {
+        return (DisplayReads) Proxy.newProxyInstance(
                 SiteBrowserTestBase.class.getClassLoader(),
-                new Class<?>[]{ch.admin.bit.jeap.doc.domain.port.DisplayReads.class},
+                new Class<?>[]{DisplayReads.class},
                 (proxy, method, arguments) -> {
                     if (!method.getName().equals("importState")) {
                         throw new UnsupportedOperationException(method.getName());
                     }
                     return imports.state((String) arguments[0],
-                            (ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind) arguments[1]);
+                            (ArchitectureImportKind) arguments[1]);
                 });
     }
 
     /** An instance whose architecture imports have never run. */
     private static final class NeverImported
-            implements ch.admin.bit.jeap.doc.domain.port.ArchitectureImportRepository {
+            implements ArchitectureImportRepository {
 
         @Override
-        public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState state(
-                String environment, ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind kind) {
-            return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState.none(environment, kind);
+        public ArchitectureImportState state(
+                String environment, ArchitectureImportKind kind) {
+            return ArchitectureImportState.none(environment, kind);
         }
 
         @Override
-        public java.util.List<ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState> states() {
+        public List<ArchitectureImportState> states() {
             return List.of();
         }
 
         @Override
-        public void save(ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState state) {
+        public void save(ArchitectureImportState state) {
             // nothing: this suite never imports
         }
     }
@@ -637,8 +691,8 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 new SiteTemplate(), new NodeProcess(properties), sources);
         // One part carrying the whole site: this suite is about what the template does in a browser, and
         // that is the same whichever part a page came out of.
-        ch.admin.bit.jeap.doc.domain.SitePart whole = new ch.admin.bit.jeap.doc.domain.SitePart(
-                ch.admin.bit.jeap.doc.domain.PartKey.shellOf(site.id()), "the site itself", "", true,
+        SitePart whole = new SitePart(
+                PartKey.shellOf(site.id()), "the site itself", "", true,
                 site.environments().stream().map(SiteEnvironment::id).toList(), List.of());
         BuiltSite built = builder.generate(builder.prepare(1, site, whole, GENERATED_AT));
         // What a run cost, as the runner writes it at the seam between the generator and the upload. Without
@@ -647,7 +701,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         // Through of(...), which is what DocumentationBuildRunner calls: built positionally, this fixture
         // would keep compiling through a reordering of two same-typed components and quietly change what
         // SiteServingBrowserIT asserts the page shows.
-        builder.describeRun(built, ch.admin.bit.jeap.doc.domain.port.DocumentationStatus.of(1L, GENERATED_AT,
+        builder.describeRun(built, DocumentationStatus.of(1L, GENERATED_AT,
                 92_000L, built));
         return built;
     }
@@ -853,25 +907,25 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * A cell of counterparts, as the component pages write one: one link per counterpart, comma separated.
      * The first row carries five, which is what the client module collapses behind its chip.
      */
-    private static ch.admin.bit.jeap.doc.markdown.Markdown callers(int row) {
+    private static Markdown callers(int row) {
         if (row == 0) {
             // The first caller carries a pact above the line, as a component page writes one: it is part of
             // that item and not an item of its own.
-            return ch.admin.bit.jeap.doc.markdown.Md.joinWith(", ", WIDE_CALLERS.stream()
+            return Md.joinWith(", ", WIDE_CALLERS.stream()
                     .map(caller -> caller.equals(WIDE_CALLERS.getFirst())
-                            ? ch.admin.bit.jeap.doc.markdown.Md.sentence("{}{}",
-                                    ch.admin.bit.jeap.doc.markdown.Md.link("#" + caller, caller),
-                                    ch.admin.bit.jeap.doc.markdown.Md.superscript(
-                                            ch.admin.bit.jeap.doc.markdown.Md.link("#pact", "pact")))
-                            : ch.admin.bit.jeap.doc.markdown.Md.link("#" + caller, caller))
+                            ? Md.sentence("{}{}",
+                                    Md.link("#" + caller, caller),
+                                    Md.superscript(
+                                            Md.link("#pact", "pact")))
+                            : Md.link("#" + caller, caller))
                     .toList());
         }
         if (row % 4 == 0) {
-            return ch.admin.bit.jeap.doc.markdown.Md.text("-");
+            return Md.text("-");
         }
-        return ch.admin.bit.jeap.doc.markdown.Md.joinWith(", ", List.of(
-                ch.admin.bit.jeap.doc.markdown.Md.link("#caller-" + row, "caller-" + row),
-                ch.admin.bit.jeap.doc.markdown.Md.code("caller-" + row + "-b")));
+        return Md.joinWith(", ", List.of(
+                Md.link("#caller-" + row, "caller-" + row),
+                Md.code("caller-" + row + "-b")));
     }
 
     private static void writeTablesPage(Path environmentTree) throws IOException {
@@ -879,27 +933,27 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         String[] types = {"publishes", "consumes", "calls"};
         String[] travels = {"OrderPlacedEvent", "PaymentAcceptedEvent", "ShipmentCreatedCommand", "InvoiceIssuedEvent",
                 "StockReservedEvent"};
-        List<List<ch.admin.bit.jeap.doc.markdown.Markdown>> relations = new java.util.ArrayList<>();
+        List<List<Markdown>> relations = new ArrayList<>();
         for (int i = 0; i < RELATIONS; i++) {
             String from = systems[i % systems.length] + "-" + (i % 2 == 0 ? "intake" : "worker");
             String to = systems[(i * 3 + 1) % systems.length] + "-" + (i % 3 == 0 ? "dispatch" : "service");
-            relations.add(List.of(ch.admin.bit.jeap.doc.markdown.Md.link("#" + from, from),
-                    ch.admin.bit.jeap.doc.markdown.Md.text(to),
-                    ch.admin.bit.jeap.doc.markdown.Md.text(types[i % types.length]),
-                    ch.admin.bit.jeap.doc.markdown.Md.code(travels[(i * 7) % travels.length]),
+            relations.add(List.of(Md.link("#" + from, from),
+                    Md.text(to),
+                    Md.text(types[i % types.length]),
+                    Md.code(travels[(i * 7) % travels.length]),
                     callers(i)));
         }
         String[] reactions = {"OrderPlacedEvent", "PaymentAcceptedEvent", "ShipmentCreatedCommand",
                 "InvoiceIssuedEvent", "StockReservedEvent", "RefundRequestedCommand"};
-        List<List<ch.admin.bit.jeap.doc.markdown.Markdown>> observed = new java.util.ArrayList<>();
+        List<List<Markdown>> observed = new ArrayList<>();
         for (int i = 0; i < reactions.length; i++) {
-            observed.add(List.of(ch.admin.bit.jeap.doc.markdown.Md.code(reactions[i]),
-                    ch.admin.bit.jeap.doc.markdown.Md.text("shipping-dispatch"),
-                    ch.admin.bit.jeap.doc.markdown.Md.text(TIMES_OBSERVED.get(i))));
+            observed.add(List.of(Md.code(reactions[i]),
+                    Md.text("shipping-dispatch"),
+                    Md.text(TIMES_OBSERVED.get(i))));
         }
         MarkdownWriter page = new MarkdownWriter()
                 .heading(1, "Tables")
-                .paragraph(ch.admin.bit.jeap.doc.markdown.Md.link("./" + FOLD_ROUTE + ".md", "The page with folds"))
+                .paragraph(Md.link("./" + FOLD_ROUTE + ".md", "The page with folds"))
                 .heading(2, "Relations")
                 .table(List.of("From", "To", "Type", "Interaction", CALLERS_COLUMN), relations)
                 .heading(2, "Reactions")
@@ -907,17 +961,17 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 // A table of prose, as a description column is: its commas are not separators.
                 .heading(2, "Descriptions")
                 .table(List.of("Component", "Description"),
-                        List.of(List.of(ch.admin.bit.jeap.doc.markdown.Md.code("orders-intake"),
-                                ch.admin.bit.jeap.doc.markdown.Md.text(PROSE_DESCRIPTION))))
+                        List.of(List.of(Md.code("orders-intake"),
+                                Md.text(PROSE_DESCRIPTION))))
                 // As the governance pages write the further lines of a rule's result: the first line, then a
                 // bullet list inside the same cell. The last item holds markup, which has to stay text.
                 .heading(2, "Rule results")
                 .table(List.of("Component", "Comment"),
-                        List.of(List.of(ch.admin.bit.jeap.doc.markdown.Md.code("orders-intake"),
-                                ch.admin.bit.jeap.doc.markdown.Md.joinWith(" ", List.of(
-                                        ch.admin.bit.jeap.doc.markdown.Md.text(RULE_RESULT_FIRST_LINE),
-                                        ch.admin.bit.jeap.doc.markdown.Md.listInCell(RULE_RESULT_ITEMS.stream()
-                                                .map(ch.admin.bit.jeap.doc.markdown.Md::text)
+                        List.of(List.of(Md.code("orders-intake"),
+                                Md.joinWith(" ", List.of(
+                                        Md.text(RULE_RESULT_FIRST_LINE),
+                                        Md.listInCell(RULE_RESULT_ITEMS.stream()
+                                                .map(Md::text)
                                                 .toList()))))));
         Files.writeString(environmentTree.resolve(TABLES_ROUTE + ".md"), page.text(), StandardCharsets.UTF_8);
     }
@@ -975,8 +1029,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * read in a browser and enough to carry every feature the story asks for: a node to search for, a node to
      * link to, and an edge between them.
      */
-    private void writeReactingSystem(Path environmentTree, SiteEnvironment environment)
-            throws IOException {
+    private static ArchitectureModel reactingModel() {
         DocumentedMessage trigger = message("OrdersPaymentAcceptedEvent", REACTING_MESSAGE)
                 .withVersions(TRIGGER_VERSIONS);
         DocumentedMessage dispatched = message("ShippingDispatchedEvent", "shipping-dispatched-event");
@@ -990,7 +1043,14 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
         DocumentedSystem billing = new DocumentedSystem("billing", OTHER_SYSTEM, "Settles what was shipped",
                 List.of(), null, List.of(component(OTHER_COMPONENT, "Settles a shipment")), List.of(),
                 List.of(message("BillingSettledEvent", OTHER_MESSAGE)));
-        ArchitectureModel model = ArchitectureModel.of(List.of(shipping, billing));
+        return ArchitectureModel.of(List.of(shipping, billing));
+    }
+
+    private void writeReactingSystem(Path environmentTree, SiteEnvironment environment)
+            throws IOException {
+        ArchitectureModel model = reactingModel();
+        DocumentedSystem shipping = model.find(REACTING_SYSTEM).orElseThrow();
+        DocumentedSystem billing = model.find(OTHER_SYSTEM).orElseThrow();
 
         var reactionPages = new ReactionDocumentation(reactionSnapshot(), model);
         ReactionViews reactions = reactionPages.ofSystem(shipping);
@@ -1056,13 +1116,13 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * looking at.
      */
     private static ObservedReactions systemGraph() {
-        List<ObservedInterface> messages = new java.util.ArrayList<>(List.of(
+        List<ObservedInterface> messages = new ArrayList<>(List.of(
                 observedMessage(1, "OrdersPaymentAcceptedEvent", null),
                 observedMessage(3, "ShippingDispatchedEvent", null),
                 observedMessage(5, "BillingSettledEvent", null),
                 observedMessage(7, UNDOCUMENTED_MESSAGE, null),
                 observedMessage(VARIANT_MESSAGE_ID, "OrdersPaymentAcceptedEvent", VARIANT)));
-        List<ObservedReaction> reactions = new java.util.ArrayList<>(List.of(
+        List<ObservedReaction> reactions = new ArrayList<>(List.of(
                 observedReaction(REACTION_ID, REACTING_COMPONENT, 12),
                 // Three reactions of one component to one message: one dashed box with three nodes in it.
                 observedReaction(4243, BUSY_COMPONENT, 400),
@@ -1074,7 +1134,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 observedReaction(4247, REACTING_COMPONENT, 0),
                 observedReaction(5242, REACTING_COMPONENT, 12),
                 observedReaction(5243, BUSY_COMPONENT, 400)));
-        List<ObservedTrigger> triggers = new java.util.ArrayList<>(List.of(
+        List<ObservedTrigger> triggers = new ArrayList<>(List.of(
                 observedTrigger(1, REACTION_ID),
                 observedTrigger(1, 4243),
                 observedTrigger(1, 4244),
@@ -1082,7 +1142,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 observedTrigger(7, 4246),
                 observedTrigger(VARIANT_MESSAGE_ID, 5242),
                 observedTrigger(VARIANT_MESSAGE_ID, 5243)));
-        List<ObservedAction> actions = new java.util.ArrayList<>(List.of(
+        List<ObservedAction> actions = new ArrayList<>(List.of(
                 observedAction(REACTION_ID, 3),
                 observedAction(4243, 5),
                 observedAction(4246, VARIANT_MESSAGE_ID)));
@@ -1117,7 +1177,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     }
 
     private static ObservedReaction observedReaction(long id, String component, int median) {
-        return new ObservedReaction(new Identity("REACTION", Long.toString(id)), component, java.math.BigDecimal.valueOf(median));
+        return new ObservedReaction(new Identity("REACTION", Long.toString(id)), component, BigDecimal.valueOf(median));
     }
 
     private static ObservedTrigger observedTrigger(long message, long reaction) {
@@ -1131,7 +1191,7 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
     private static DocumentedComponent component(String name, String description) {
         return new DocumentedComponent(name, name, description, ComponentType.SELF_CONTAINED_SYSTEM, null,
                 null, null, name.equals(REACTING_COMPONENT)
-                ? List.of(new ch.admin.bit.jeap.doc.domain.architecture.RestApiOperation("GET", "/shipments")) : List.of(),
+                ? List.of(new RestApiOperation("GET", "/shipments")) : List.of(),
                 null, null, null);
     }
 
@@ -1162,8 +1222,8 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
      * A model source that knows no system, so a site has one part: its shell. What the parts of a site are is
      * SystemSitePartitionTest's business; here they only have to exist.
      */
-    private static final ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource NO_MODEL =
-            new ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource() {
+    private static final ArchitectureModelSource NO_MODEL =
+            new ArchitectureModelSource() {
 
                 @Override
                 public boolean isConfiguredFor(String environment) {
@@ -1171,23 +1231,23 @@ public abstract class SiteBrowserTestBase extends BrowserTestBase {
                 }
 
                 @Override
-                public java.util.Optional<String> sourceUrlOf(String environment) {
-                    return java.util.Optional.empty();
+                public Optional<String> sourceUrlOf(String environment) {
+                    return Optional.empty();
                 }
 
                 @Override
-                public java.util.Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
-                    return java.util.Optional.empty();
+                public Optional<Instant> lastSuccessfulImportAt(String environment) {
+                    return Optional.empty();
                 }
 
                 @Override
-                public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(
+                public ArchitectureSnapshot read(
                         String environment) {
-                    return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot.empty();
+                    return ArchitectureSnapshot.empty();
                 }
 
                 @Override
-                public java.util.List<String> systemSlugsOf(String environment) {
+                public List<String> systemSlugsOf(String environment) {
                     return List.of();
                 }
             };

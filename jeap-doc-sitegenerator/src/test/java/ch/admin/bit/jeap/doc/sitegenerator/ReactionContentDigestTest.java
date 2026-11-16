@@ -1,11 +1,11 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
 import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.PublicationProperties;
-import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
 import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
@@ -67,7 +67,7 @@ class ReactionContentDigestTest {
         PublicationProperties publication = new PublicationProperties();
         publication.setUrl("https://doc.example.ch");
         sources = new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
-                List.of(new SystemDocumentationWriter(pages, new ReactionNetworkFiles(networks))),
+                List.of(new SystemDocumentationWriter(pages, new ReactionNetworkFiles(networks), mock(ReactionNetworkPublication.class))),
                 new DocumentationSites(new SiteProperties()),
                 new SystemSitePartition(NoArchitectureModel.INSTANCE, new NoCustomDocumentation()),
                 new BuildProperties(), TestProvenance.of(NoArchitectureModel.INSTANCE),

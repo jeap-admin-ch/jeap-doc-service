@@ -1,28 +1,49 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
+import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.PublicationProperties;
+import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
+import ch.admin.bit.jeap.doc.domain.SharedAssets;
 import ch.admin.bit.jeap.doc.domain.Site;
-import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
+import ch.admin.bit.jeap.doc.domain.SystemSitePartition;
+import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
+import ch.admin.bit.jeap.doc.domain.content.StaticSiteContent;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
+import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
 import ch.admin.bit.jeap.doc.domain.port.BuiltSite;
+import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
-import java.util.regex.Pattern;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -50,6 +71,7 @@ class DocusaurusSiteBuilderIT {
     private SiteUrls urls;
     private org.springframework.core.io.ResourceLoader resourceLoader;
     private SiteSources sources;
+    private final ReactionNetworkPublication reactions = mock(ReactionNetworkPublication.class);
 
     @BeforeEach
     void setUp() {
@@ -60,11 +82,11 @@ class DocusaurusSiteBuilderIT {
         publication.setUrl("https://doc.example.ch");
         urls = new SiteUrls(publication, "/docs");
         resourceLoader = new org.springframework.core.io.DefaultResourceLoader();
-        sources = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
+        sources = new SiteSources(urls, resourceLoader, List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class), reactions),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
+                                new CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
         builder = builderWriting(sources);
     }
@@ -80,6 +102,7 @@ class DocusaurusSiteBuilderIT {
      */
     @Test
     void generate_whenPagesLinkToEachOther_thenTheLinksResolveInEveryEnvironment() throws Exception {
+        Mockito.when(reactions.isEnabled(ArgumentMatchers.anyString())).thenReturn(true);
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
 
         DocusaurusSiteBuilder linking = builderWriting(sourcesAlsoWriting((written, content) -> {
@@ -106,6 +129,9 @@ class DocusaurusSiteBuilderIT {
         for (SiteEnvironment environment : site.environments()) {
             String tree = environment.main() ? "" : environment.id() + "/";
             String route = "/docs/" + tree;
+            Path explorer = built.directory().resolve(tree + "reactions/index.html");
+            assertThat(explorer).describedAs("Explorer page of %s", environment.id()).isRegularFile();
+            assertThat(Files.readString(explorer)).contains("Graph Explorer");
             Path page = built.directory().resolve(tree + "linking/index.html");
             assertThat(page).describedAs("the linking page of %s", environment.id()).isRegularFile();
 
@@ -113,10 +139,10 @@ class DocusaurusSiteBuilderIT {
             String html = Files.readString(page, StandardCharsets.UTF_8);
             assertThat(html)
                     .describedAs("the relative link on the linking page of %s", environment.id())
-                    .containsPattern("href=\"?" + java.util.regex.Pattern.quote(route + "other/") + "[\"> ]");
+                    .containsPattern("href=\"?" + Pattern.quote(route + "other/") + "[\"> ]");
             assertThat(html)
                     .describedAs("the root-relative link on the linking page of %s", environment.id())
-                    .containsPattern("href=\"?" + java.util.regex.Pattern.quote(route) + "[\"> ]");
+                    .containsPattern("href=\"?" + Pattern.quote(route) + "[\"> ]");
             if (!environment.main()) {
                 // What prefixing twice would have produced.
                 assertThat(html).doesNotContain("/docs/" + environment.id() + "/" + environment.id() + "/");
@@ -155,6 +181,7 @@ class DocusaurusSiteBuilderIT {
     @Test
     void generate_whenThePartCarriesOneSystem_thenItIsMountedWhereTheWholeSiteWouldHavePutIt()
             throws Exception {
+        Mockito.when(reactions.isEnabled(ArgumentMatchers.anyString())).thenReturn(true);
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
         DocusaurusSiteBuilder ofOneSystem = builderWriting(sourcesReadingALandscape());
 
@@ -166,6 +193,8 @@ class DocusaurusSiteBuilderIT {
         assertThat(built.directory().resolve("dev/systems/orders/index.html")).isRegularFile();
         // And nothing above the system: the systems index and the root page are the shell's pages.
         assertThat(built.directory().resolve("index.html")).doesNotExist();
+        assertThat(built.directory().resolve("reactions/index.html")).doesNotExist();
+        assertThat(built.directory().resolve("dev/reactions/index.html")).doesNotExist();
 
         // The way out of the part, carrying the prefix of the environment the reader is in. Built without
         // that prefix, a reader in the dev tree landed in the main environment's index - and `pathname://` is
@@ -178,6 +207,7 @@ class DocusaurusSiteBuilderIT {
         String inDevelopment = Files.readString(built.directory().resolve("dev/systems/orders/index.html"),
                 StandardCharsets.UTF_8);
         assertThat(inDevelopment).contains("All systems")
+                .doesNotContainPattern("href=\"?" + Pattern.quote("/docs/dev/reactions/") + "[\"> ]")
                 .describedAs("the sidebar's way out carries the environment the reader is in")
                 .containsPattern("href=\"?" + Pattern.quote("/docs/dev/systems/") + "[\"> ]")
                 // What prefixing twice would have produced. The main environment's index is on this page too - the
@@ -220,11 +250,11 @@ class DocusaurusSiteBuilderIT {
 
     /** The files of a build that go to the site's shared prefix, by their path within the site. */
     private static Map<String, byte[]> sharedFilesOf(BuiltSite built) throws IOException {
-        Map<String, byte[]> shared = new java.util.LinkedHashMap<>();
-        try (java.util.stream.Stream<Path> files = Files.walk(built.directory())) {
+        Map<String, byte[]> shared = new LinkedHashMap<>();
+        try (Stream<Path> files = Files.walk(built.directory())) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 String path = built.directory().relativize(file).toString().replace('\\', '/');
-                if (ch.admin.bit.jeap.doc.domain.SharedAssets.holds(path)) {
+                if (SharedAssets.holds(path)) {
                     shared.put(path, Files.readAllBytes(file));
                 }
             }
@@ -234,7 +264,7 @@ class DocusaurusSiteBuilderIT {
 
     /** The part carrying one system, in every environment of the site - what the partition produces. */
     private static SitePart systemPartOf(Site site, String slug) {
-        return new SitePart(ch.admin.bit.jeap.doc.domain.PartKey.of(site.id(), "system-" + slug),
+        return new SitePart(PartKey.of(site.id(), "system-" + slug),
                 "the system " + slug, "systems/" + slug, true,
                 site.environments().stream().map(SiteEnvironment::id).toList(),
                 site.environments().stream()
@@ -244,24 +274,24 @@ class DocusaurusSiteBuilderIT {
     /** Sources whose landscape has one system in it, read by every environment. */
     private SiteSources sourcesReadingALandscape() {
         return new SiteSources(urls, resourceLoader,
-                java.util.List.of(new SystemDocumentationWriter(new SystemPages(OneSystemEverywhere.INSTANCE, NoMessageSchemas.INSTANCE,
+                List.of(new SystemDocumentationWriter(new SystemPages(OneSystemEverywhere.INSTANCE, NoMessageSchemas.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         new NoCustomDocumentation(), NoCustomStorage.INSTANCE,
-                        new ch.admin.bit.jeap.doc.domain.custom.CustomProperties(),
-                        new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of()),
+                        new CustomProperties(),
+                        new StructureTemplates(List.of()),
                         new GeneratorProperties(),
-                        new ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties(),
-                        ch.admin.bit.jeap.doc.domain.port.BuildMetrics.NONE, urls), mock(ReactionNetworkFiles.class)),
+                        new ArchitectureImportProperties(),
+                        BuildMetrics.NONE, urls), mock(ReactionNetworkFiles.class), reactions),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
+                                new CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(OneSystemEverywhere.INSTANCE, new NoCustomDocumentation()), properties,
+                new SystemSitePartition(OneSystemEverywhere.INSTANCE, new NoCustomDocumentation()), properties,
                 TestProvenance.of(OneSystemEverywhere.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
     }
 
     /** A landscape of one system, read by every environment of the site. */
     private static final class OneSystemEverywhere
-            implements ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource {
+            implements ArchitectureModelSource {
 
         private static final OneSystemEverywhere INSTANCE = new OneSystemEverywhere();
 
@@ -271,28 +301,28 @@ class DocusaurusSiteBuilderIT {
         }
 
         @Override
-        public java.util.Optional<String> sourceUrlOf(String environment) {
-            return java.util.Optional.of("https://archrepo.example.com/archrepo");
+        public Optional<String> sourceUrlOf(String environment) {
+            return Optional.of("https://archrepo.example.com/archrepo");
         }
 
         @Override
-        public java.util.List<String> systemSlugsOf(String environment) {
-            return java.util.List.of("orders");
+        public List<String> systemSlugsOf(String environment) {
+            return List.of("orders");
         }
 
         @Override
-        public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(String environment) {
-            return new ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot(
-                    ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel.of(java.util.List.of(
-                            new ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem("orders", "orders",
-                                    "The orders system.", java.util.List.of(), null, java.util.List.of(),
-                                    java.util.List.of(), java.util.List.of()))),
+        public ArchitectureSnapshot read(String environment) {
+            return new ArchitectureSnapshot(
+                    ArchitectureModel.of(List.of(
+                            new DocumentedSystem("orders", "orders",
+                                    "The orders system.", List.of(), null, List.of(),
+                                    List.of(), List.of()))),
                     GENERATED_AT.minusSeconds(900));
         }
 
         @Override
-        public java.util.Optional<Instant> lastSuccessfulImportAt(String environment) {
-            return java.util.Optional.of(GENERATED_AT.minusSeconds(900));
+        public Optional<Instant> lastSuccessfulImportAt(String environment) {
+            return Optional.of(GENERATED_AT.minusSeconds(900));
         }
     }
 
@@ -310,11 +340,11 @@ class DocusaurusSiteBuilderIT {
      * generator exactly the way a page of real documentation does.
      */
     private SiteSources sourcesAlsoWriting(ExtraPages extra) {
-        return new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
+        return new SiteSources(urls, resourceLoader, List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class), reactions),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
+                                new CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
                 TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties()) {
             @Override
             public WrittenContent write(long buildId, Site written, SitePart part, Path content,
@@ -333,12 +363,12 @@ class DocusaurusSiteBuilderIT {
 
     /** The part that carries the whole site: every environment and every system of it. */
     private static SitePart wholeSiteOf(Site site) {
-        return new SitePart(ch.admin.bit.jeap.doc.domain.PartKey.shellOf(site.id()), "the site itself", "",
-                true, site.environments().stream().map(SiteEnvironment::id).toList(), java.util.List.of());
+        return new SitePart(PartKey.shellOf(site.id()), "the site itself", "",
+                true, site.environments().stream().map(SiteEnvironment::id).toList(), List.of());
     }
 
     @Test
-    void generate_thenASiteWithARootPagePerEnvironmentAndTheConfiguredPlugins() {
+    void generate_thenASiteWithARootPagePerEnvironmentAndTheConfiguredPlugins() throws IOException {
         Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
         ListAppender<ILoggingEvent> logged = new ListAppender<>();
         logged.start();
@@ -359,8 +389,70 @@ class DocusaurusSiteBuilderIT {
         assertThat(built.directory().resolve("abn/index.html")).isRegularFile();
 
         assertThat(built.pageCount()).isPositive();
+        for (SiteEnvironment environment : site.environments()) {
+            String tree = environment.main() ? "" : environment.id() + "/";
+            assertThat(built.directory().resolve(tree + "reactions/index.html")).doesNotExist();
+            assertThat(Files.readString(built.directory().resolve(tree + "index.html")))
+                    .doesNotContain("Reaction Graph Explorer", "jeap-explorer-link");
+        }
         assertThat(built.sizeInBytes()).isPositive();
         assertThat(built.docusaurusMillis()).isPositive();
+    }
+
+    @Test
+    void generate_whenOnlyDevImportsReactions_thenOnlyDevHasExplorerRoutesAndNavigationWaitsForPublication() throws IOException {
+        Mockito.when(reactions.isEnabled("dev")).thenReturn(true);
+        Site site = new DocumentationSites(new SiteProperties()).find(Site.DEFAULT_SITE).orElseThrow();
+        BuiltSite built = builder.generate(builder.prepare(17, site, wholeSiteOf(site), GENERATED_AT));
+        for (SiteEnvironment environment : site.environments()) {
+            String tree = environment.main() ? "" : environment.id() + "/";
+            Path explorer = built.directory().resolve(tree + "reactions/index.html");
+            String html = Files.readString(built.directory().resolve(tree + "index.html"));
+            if (environment.id().equals("dev")) {
+                assertThat(explorer).isRegularFile();
+                assertThat(html).doesNotContainPattern("href=\"?" + Pattern.quote("/docs/dev/reactions/") + "[\"> ]");
+            } else {
+                assertThat(explorer).doesNotExist();
+                assertThat(html).doesNotContain("Reaction Graph Explorer", "jeap-explorer-link");
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"default", "handbook"})
+    void generate_whenAnExistingEnvironmentIsNamedReactions_thenItsPagesAndBothExplorersCoexist(String siteId)
+            throws IOException {
+        var prod = new SiteProperties.Environment();
+        prod.setId("prod");
+        prod.setMain(true);
+        var observed = new SiteProperties.Environment();
+        observed.setId("reactions");
+        observed.setLatest(true);
+        var configuration = new SiteProperties.Site();
+        configuration.setEnvironments(List.of(prod, observed));
+        var configured = new SiteProperties();
+        configured.getSites().put(siteId, configuration);
+        var sites = new DocumentationSites(configured);
+        Site site = sites.find(siteId).orElseThrow();
+        Mockito.when(reactions.isEnabled(ArgumentMatchers.anyString())).thenReturn(true);
+        SiteSources writing = new SiteSources(urls, resourceLoader,
+                List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls),
+                        mock(ReactionNetworkFiles.class), reactions)), sites,
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), properties,
+                TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
+                        new StructureTemplates(List.of())),
+                new AboutThisDocumentation(), new PublicationProperties());
+        var compatible = builderWriting(writing);
+        BuiltSite built = compatible.generate(compatible.prepare(18, site, wholeSiteOf(site), GENERATED_AT));
+        for (String prefix : List.of("", "reactions/")) {
+            Path root = built.directory().resolve(prefix + "index.html");
+            Path explorer = built.directory().resolve(prefix + "_reactions/index.html");
+            assertThat(root).isRegularFile();
+            assertThat(explorer).isRegularFile();
+            assertThat(Files.readString(root)).doesNotContainPattern("href=\"?"
+                    + Pattern.quote(urls.baseUrl(site) + prefix + "_reactions/") + "[\"> ]");
+            assertThat(Files.readString(explorer)).contains("<h1>Reaction Graph Explorer</h1>");
+        }
     }
 
     /**
@@ -373,12 +465,12 @@ class DocusaurusSiteBuilderIT {
         SiteProperties configured = handbookWithoutEnvironments();
         DocumentationSites sites = new DocumentationSites(configured);
         Site site = sites.find(HANDBOOK).orElseThrow();
-        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
+        SiteSources writing = new SiteSources(urls, resourceLoader, List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class), reactions),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), sites,
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
+                                new CustomProperties())), sites,
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
                 properties, TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
-                        new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of())),
+                        new StructureTemplates(List.of())),
                 new AboutThisDocumentation(), new PublicationProperties());
         DocusaurusSiteBuilder handbookBuilder = builderWriting(writing);
 
@@ -390,6 +482,7 @@ class DocusaurusSiteBuilderIT {
         assertThat(built.directory().resolve(SiteSources.SINGLE_TREE)).doesNotExist();
         String page = Files.readString(built.directory().resolve("index.html"), StandardCharsets.UTF_8);
         assertThat(page).contains("Handbook")
+                .doesNotContain("Graph Explorer")
                 .doesNotContain("Switch environment")
                 .doesNotContain("noindex")
                 .doesNotContain("This is the documentation of the");
@@ -415,12 +508,12 @@ class DocusaurusSiteBuilderIT {
         publication.setTitle("Example Documentation");
         DocumentationSites sites = new DocumentationSites(configured);
         Site site = sites.find(Site.DEFAULT_SITE).orElseThrow();
-        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class)),
+        SiteSources writing = new SiteSources(urls, resourceLoader, List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(urls), mock(ReactionNetworkFiles.class), reactions),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), sites,
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
+                                new CustomProperties())), sites,
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
                 properties, TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
-                        new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of())),
+                        new StructureTemplates(List.of())),
                 new AboutThisDocumentation(), publication);
         DocusaurusSiteBuilder twoSiteBuilder = builderWriting(writing);
 
@@ -452,10 +545,10 @@ class DocusaurusSiteBuilderIT {
                         .getBytes(StandardCharsets.UTF_8))
                 .page("working-agreements/reviews.md", "---\ntitle: Reviews\n---\n\nTwo pairs of eyes.\n")
                 .page("glossary.md", "---\ntitle: Glossary\n---\n\nWords we use.\n");
-        SiteSources writing = new SiteSources(urls, resourceLoader, java.util.List.of(tree.writer()), sites,
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
+        SiteSources writing = new SiteSources(urls, resourceLoader, List.of(tree.writer()), sites,
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
                 properties, TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
-                        new ch.admin.bit.jeap.doc.domain.template.StructureTemplates(java.util.List.of())),
+                        new StructureTemplates(List.of())),
                 new AboutThisDocumentation(), new PublicationProperties());
         DocusaurusSiteBuilder staticBuilder = builderWriting(writing);
 
@@ -480,7 +573,7 @@ class DocusaurusSiteBuilderIT {
         SiteProperties.Site handbook = new SiteProperties.Site();
         handbook.setTitle("Handbook");
         handbook.setPerEnvironment(false);
-        handbook.setContent(ch.admin.bit.jeap.doc.domain.content.StaticSiteContent.SOURCE_ID);
+        handbook.setContent(StaticSiteContent.SOURCE_ID);
         configured.getSites().put(HANDBOOK, handbook);
         return configured;
     }
@@ -561,7 +654,7 @@ class DocusaurusSiteBuilderIT {
         SiteProperties.Site configured = new SiteProperties.Site();
         configured.setTitle("Governance");
         configured.setLogo(logo.toUri().toString());
-        siteProperties.setSites(java.util.Map.of(Site.DEFAULT_SITE, configured));
+        siteProperties.setSites(Map.of(Site.DEFAULT_SITE, configured));
         Site site = new DocumentationSites(siteProperties).find(Site.DEFAULT_SITE).orElseThrow();
 
         BuiltSite built = builder.generate(builder.prepare(5, site, wholeSiteOf(site), GENERATED_AT));
@@ -596,8 +689,8 @@ class DocusaurusSiteBuilderIT {
      * A model source that knows no system, so a site has one part: its shell. What the parts of a site are is
      * SystemSitePartitionTest's business; here they only have to exist.
      */
-    private static final ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource NO_MODEL =
-            new ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource() {
+    private static final ArchitectureModelSource NO_MODEL =
+            new ArchitectureModelSource() {
 
                 @Override
                 public boolean isConfiguredFor(String environment) {
@@ -605,24 +698,24 @@ class DocusaurusSiteBuilderIT {
                 }
 
                 @Override
-                public java.util.Optional<String> sourceUrlOf(String environment) {
-                    return java.util.Optional.empty();
+                public Optional<String> sourceUrlOf(String environment) {
+                    return Optional.empty();
                 }
 
                 @Override
-                public java.util.Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
-                    return java.util.Optional.empty();
+                public Optional<Instant> lastSuccessfulImportAt(String environment) {
+                    return Optional.empty();
                 }
 
                 @Override
-                public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(
+                public ArchitectureSnapshot read(
                         String environment) {
-                    return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot.empty();
+                    return ArchitectureSnapshot.empty();
                 }
 
                 @Override
-                public java.util.List<String> systemSlugsOf(String environment) {
-                    return java.util.List.of();
+                public List<String> systemSlugsOf(String environment) {
+                    return List.of();
                 }
             };
 }

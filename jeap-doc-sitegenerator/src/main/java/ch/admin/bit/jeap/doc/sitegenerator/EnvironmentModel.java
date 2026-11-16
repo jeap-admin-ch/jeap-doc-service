@@ -1,5 +1,7 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
+import ch.admin.bit.jeap.doc.domain.template.ReactionDocumentationLinks;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -18,12 +20,23 @@ import java.util.List;
  * @param components   how many components the model's systems have between them
  * @param messages     how many events and commands they define between them
  * @param importedAt   when the content of that landscape was imported, or null where it has never been
+ * @param reactionLinks template-owned destinations for the shell's reaction graph
  */
 public record EnvironmentModel(List<DocumentedSystemEntry> systems, int modelSystems, int components,
-                               int messages, Instant importedAt) {
+                               int messages, Instant importedAt, ReactionDocumentationLinks reactionLinks) {
 
     public EnvironmentModel {
         systems = systems == null ? List.of() : List.copyOf(systems);
+        reactionLinks = reactionLinks == null ? ReactionDocumentationLinks.empty() : reactionLinks;
+    }
+
+    public EnvironmentModel(List<DocumentedSystemEntry> systems, int modelSystems, int components,
+                            int messages, Instant importedAt) {
+        this(systems, modelSystems, components, messages, importedAt, ReactionDocumentationLinks.empty());
+    }
+
+    EnvironmentModel withReactionLinks(ReactionDocumentationLinks links) {
+        return new EnvironmentModel(systems, modelSystems, components, messages, importedAt, links);
     }
 
     /** An environment whose architecture repository reports no system at all. */

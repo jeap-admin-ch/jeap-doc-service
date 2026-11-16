@@ -14,19 +14,24 @@ import Legend from './Legend';
 import HiddenContent from './HiddenContent';
 import {advanceHistory, backHistory, startHistory} from './history.mjs';
 import {LINK_PREFIX, restoreLink, shareLink} from './sharing.mjs';
-import {ExpansionDialog, PathDialog} from './ExplorationDialog';
+import {ExpansionDialog} from './ExplorationDialog';
 import NodeMenu from './NodeMenu';
 import Tooltip from './Tooltip';
 import Minimap from './Minimap';
 import SourceView from './SourceView';
 import ReactionTable from './ReactionTable';
+import ExplorerControls from '../ReactionExplorer/Controls';
+import SearchPicker from './SearchPicker';
+import {entryCandidates} from './search.mjs';
 import {viewSource} from './source.mjs';
-import {componentHref, interfaceDestination} from './navigation.mjs';
+import {componentHref, interfaceDestination, documentationDestinations} from './navigation.mjs';
 
 function ActionIcon({path}) {
     return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d={path}/></svg>;
 }
+
+class MissingSnapshot extends Error {}
 
 // A page with many variants fetches and validates one snapshot, with independent view states.
 function load(pending, url, site, environment) {
@@ -34,20 +39,24 @@ function load(pending, url, site, environment) {
         const request = fetch(url, {credentials: 'same-origin', cache: 'no-cache'}).then(response => {
             if (!response.ok) throw new Error('Graph unavailable');
             return response.json();
-        }).then(payload => readGraph(payload, site, environment));
+        }).then(payload => {
+            if (payload.formatVersion === 1 && payload.site === site && payload.environment === environment
+                && payload.available === false) throw new MissingSnapshot();
+            return readGraph(payload, site, environment);
+        });
         pending.set(url, request);
         request.catch(() => pending.delete(url));
     }
     return pending.get(url);
 }
 
-export default function ReactionViewer({entry}) {
+export default function ReactionViewer({entry, explorer = false}) {
     const environment = useEnvironment();
     if (!environment) return <p role="status">Reaction graph currently unavailable</p>;
-    return <EnvironmentReactionViewer entry={entry} environment={environment}/>;
+    return <EnvironmentReactionViewer entry={entry} environment={environment} explorer={explorer}/>;
 }
 
-function EnvironmentReactionViewer({entry, environment}) {
+function EnvironmentReactionViewer({entry, environment, explorer}) {
     const {siteConfig: {baseUrl, customFields: {docSite}}} = useDocusaurusContext();
     const {hash, pathname} = useLocation();
     const sharedHash = hash.startsWith(LINK_PREFIX) ? hash : '';
@@ -85,7 +94,8 @@ function EnvironmentReactionViewer({entry, environment}) {
         setSharing(false); setCopyFeedback(null); shareRequest.current++;
         return () => { shareRequest.current++; addressUpdates.cancel(addressOwner); }; }, [entry, url, sharedHash, addressUpdates]);
     const container = useRef(null), panel = useRef(null), controls = useRef(null);
-    const viewport = useRef(null), followedView = useRef(null);
+    const explorerControls = useRef(null);
+    const viewport = useRef(null), followedView = useRef(null), revealedLink = useRef(null);
     const viewKey = JSON.stringify([url, entry, sharedHash]);
     const presentationKey = viewKey + ':' + (editedView?.key === viewKey ? editedView.fitRevision : 0);
     const [activatedView, setActivatedView] = useState(null);
@@ -100,7 +110,7 @@ function EnvironmentReactionViewer({entry, environment}) {
         try {
             if (document.fullscreenElement === panel.current) await document.exitFullscreen();
             else await panel.current.requestFullscreen();
-        } catch { setNotice('Fullscreen is unavailable in this browser.'); }
+        } catch { setCopyFeedback({message: 'Fullscreen is unavailable in this browser.'}); }
     };
     const onKeyDown = event => {
         if (event.key === 'Escape') { setHover(null); return; }
@@ -120,21 +130,23 @@ function EnvironmentReactionViewer({entry, environment}) {
         setSnapshot(null); setFailed(false);
         load(requests, url, docSite, environment.id).then(async graph => {
             if (disposed) return;
-            let session = startHistory(graph, entry);
+            let session = startHistory(graph, entry), reveal = false;
             try {
-                session = await restoreLink(graph, sharedHash,
-                    {site: docSite, environment: environment.id, baseUrl, path: window.location.pathname}, entry) ?? session;
+                const restored = await restoreLink(graph, sharedHash,
+                    {site: docSite, environment: environment.id, baseUrl, path: window.location.pathname}, entry);
+                if (restored) { session = restored; reveal = true; }
             } catch (error) {
                 if (!disposed) {
                     if (!error.unaddressed || !restoreNotices.has(sharedHash) || restoreNotices.get(sharedHash) === addressOwner) {
                         if (error.unaddressed) restoreNotices.set(sharedHash, addressOwner);
                         setNotice(error.message);
+                        reveal = true;
                     }
                 }
             }
             if (disposed) return;
-            setSnapshot({key: viewKey, graph, session});
-        }).catch(() => { if (!disposed) setFailed(true); });
+            setSnapshot({key: viewKey, graph, session, reveal});
+        }).catch(error => { if (!disposed) setFailed(error instanceof MissingSnapshot ? 'empty' : true); });
         return () => { disposed = true; };
     }, [requests, url, docSite, environment.id, baseUrl, entry, sharedHash, viewKey, restoreNotices]);
     const session = editedView?.key === viewKey ? editedView.session : snapshot?.session;
@@ -176,8 +188,28 @@ function EnvironmentReactionViewer({entry, environment}) {
         }
         catch { return {invalid: true}; }
     }, [snapshot, viewKey, session]);
+    // Search the semantic projection, including collapsed groups and offscreen nodes, never the canvas viewport.
+    const localCandidates = useMemo(() => view && !view.invalid ? entryCandidates(snapshot.graph, {
+        scope: 'selection', visibleIds: new Set(view.elements.filter(element => !element.data.source).map(element => element.data.id)),
+    }) : [], [snapshot, view]);
     const source = useMemo(() => sourceOpen && view && !view.invalid
         ? viewSource(view.elements, view.state.entry, docSite, environment.id, snapshot.graph) : '', [sourceOpen, view, entry, docSite, environment.id]);
+    useEffect(() => {
+        if (!sharedHash) { revealedLink.current = null; return; }
+        if (!view || view.invalid || snapshot?.key !== viewKey || !snapshot.reveal
+            || !panel.current || revealedLink.current === viewKey) return;
+        setActivatedView(viewKey);
+        // Wait for the live graph and table to replace their placeholders before positioning the page.
+        if (view.elements.length && !renderer) return;
+        const frame = requestAnimationFrame(() => {
+            revealedLink.current = viewKey;
+            const element = panel.current;
+            if (!element) return;
+            const margin = Number.parseFloat(getComputedStyle(element).scrollMarginTop) || 0;
+            window.scrollTo({top: window.scrollY + element.getBoundingClientRect().top - margin, behavior: 'instant'});
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [view, snapshot, sharedHash, viewKey, renderer]);
     useEffect(() => {
         if (activatedView === viewKey || !panel.current) return;
         if (typeof IntersectionObserver === 'undefined') {
@@ -259,19 +291,32 @@ function EnvironmentReactionViewer({entry, environment}) {
                 await navigator.clipboard.writeText(link);
                 if (request === shareRequest.current) { setCopyFeedback({message: 'Link copied'}); setNotice(''); }
             }
-            catch { if (request === shareRequest.current) setNotice('Copy the shared view link below.'); }
+            catch { if (request === shareRequest.current) { setCopyFeedback({message: 'Copy the shared view link below.'}); setNotice(''); } }
         } catch (error) { if (request === shareRequest.current) { setSharedLink(''); setNotice(error.message); } }
         finally { if (request === shareRequest.current) setSharing(false); }
     };
     const changeGroup = expanded => applyAction({type: expanded ? 'expand-group' : 'collapse', id: menu.group});
     const menuGroup = menu && snapshot?.graph.groups.get(menu.group);
     const environmentPrefix = url.slice(0, -'reaction-graph.json'.length);
+    const documentation = explorer ? snapshot?.graph.documentation ?? {} : entry;
     const destination = !menu ? null : menu.kind === 'group'
-        ? {href: componentHref(entry, menuGroup?.owner, environmentPrefix), label: 'Go to component documentation'}
-        : interfaceDestination(entry, snapshot?.graph.nodes.get(menu.id), environmentPrefix);
+        ? {href: componentHref(documentation, menuGroup?.owner, environmentPrefix), label: 'Go to component documentation'}
+        : interfaceDestination(documentation, snapshot?.graph.nodes.get(menu.id), environmentPrefix);
+    const destinations = !menu ? [] : explorer
+        ? documentationDestinations(documentation, menu.kind === 'group' ? menuGroup?.owner : null,
+            snapshot.graph.nodes.get(menu.id), environmentPrefix)
+        : destination?.href ? [destination] : [];
+    if (explorer && failed === 'empty') return <p role="status">No reaction data has been published for this environment yet.</p>;
     if (failed || view?.invalid) return <p role="status">Reaction graph currently unavailable</p>;
     if (!view) return <p role="status">Loading reaction graph …</p>;
-    if (!view.elements.length && !view.superseded && !view.state.hidden.size && snapshot.graph.ownershipComplete && !notice && !addressError) return null;
+    if (!explorer && !view.elements.length && !view.superseded && !view.state.hidden.size && snapshot.graph.ownershipComplete && !notice && !addressError) return null;
+    const entrySearch = explorer && <ExplorerControls ref={explorerControls} graph={snapshot.graph}
+        state={view.state} environment={environment} onApply={applyAction}/>;
+    if (explorer && view.state.entry.kind === 'EXPLORER') return <>
+        {entrySearch}
+        {!snapshot.graph.ownershipComplete && <p role="status">Incomplete ownership: Not all reactions can be assigned to a system.</p>}
+        {notice && <div role="status" className={styles.explorerError}>{notice}</div>}
+    </>;
     const currentEntry = view.state.entry;
     let focus = `${currentEntry.system} (System)`;
     if (currentEntry.kind === 'COMPONENT') focus = currentEntry.component;
@@ -285,11 +330,15 @@ function EnvironmentReactionViewer({entry, environment}) {
     const count = view.reactionCount;
     const direct = ['MESSAGE', 'INTERFACE'].includes(currentEntry.kind) && !view.state.explored;
     const summary = `${count} ${direct ? 'directly connected ' : ''}${count === 1 ? 'reaction' : 'reactions'}`;
+    const feedback = addressError || notice || copyFeedback?.message;
+    const feedbackError = Boolean(addressError || notice);
     const closeDialog = () => { setDialog(null); container.current?.focus({preventScroll: true}); };
-    return <><section ref={panel} className={styles.viewer} aria-label="Reaction chains">
+    return <>{entrySearch}<section ref={panel} className={styles.viewer} aria-label="Reaction chains">
         <div className={styles.toolbar}>
             <div><strong>{focus}</strong><span className={styles.caption}>{summary}</span></div>
             <div className={styles.actions} role="group" aria-label="Graph view">
+                <SearchPicker compact label="Search this graph" placeholder="Search this graph…" candidates={localCandidates}
+                    disabled={sourceOpen || !renderer} onSelect={candidate => controls.current?.locate(candidate.members)}/>
                 <span className={styles.actionGroup} role="group" aria-label="View history">
                     <button type="button" disabled={sourceOpen || !session.history.length} onClick={() => applyAction({type: 'back'})}
                         aria-label="Back" title="Back"><ActionIcon path="M9 5l-6 6 6 6 M3 11h11a6 6 0 0 1 6 6v2"/></button>
@@ -317,7 +366,8 @@ function EnvironmentReactionViewer({entry, environment}) {
                     </button>
                 </span>
             </div>
-            {copyFeedback && <div role="status" aria-live="polite" aria-atomic="true" className={styles.copyFeedback}>{copyFeedback.message}</div>}
+            {feedback && <div role="status" aria-live="polite" aria-atomic="true"
+                className={`${styles.copyFeedback} ${feedbackError ? styles.errorFeedback : ''}`}>{feedback}</div>}
         </div>
         {!snapshot.graph.ownershipComplete && <p role="status">Incomplete ownership: Not all reactions can be assigned to a system.</p>}
         <HiddenContent title={`${view.superseded} superseded reactions hidden (presumed superseded)`}
@@ -334,26 +384,30 @@ function EnvironmentReactionViewer({entry, environment}) {
                 onClose={() => { setSourceOpen(false); sourceToggle.current?.focus(); }}/>
             }
             {hover && !menu && !sourceOpen && <Tooltip id={tooltipId} hover={hover}/>}
-            {menu && <NodeMenu menu={menu} href={destination.href} linkLabel={destination.label}
+            {menu && <NodeMenu allowPaths={explorer} menu={menu} destinations={destinations}
                 canExpand={menuGroup?.members.some(id => view.state.reactions.has(id)
                     && !view.state.visible.has(id) && availableReaction(snapshot.graph, view.state, id))}
                 canCollapse={menuGroup?.members.some(id => view.state.visible.has(id) && !view.state.pins.has(id))}
                 pinned={view.state.pins.has(menu.id)}
                 groupPinned={menu.kind === 'group' && (view.state.pins.has(menu.id)
                     || menuGroup?.members.some(id => view.state.pins.has(id)))}
-                onExplore={direction => {
-                    setDialog(direction === 'paths' ? {kind: 'paths', ids: [menu.id]}
-                        : {kind: 'expand', id: menu.id, direction});
+                onExplore={async direction => {
+                    const id = menu.id;
                     closeMenu(false);
+                    if (direction === 'paths') {
+                        try {
+                            if (document.fullscreenElement === panel.current) await document.exitFullscreen();
+                        } catch {
+                            // A rejected fullscreen exit must not discard the selected path start.
+                        }
+                        explorerControls.current?.openPaths(id);
+                    } else setDialog({kind: 'expand', id, direction});
                 }}
                 onAction={type => applyAction({type, id: menu.id})}
                 onChange={changeGroup} onClose={closeMenu}/>}
         </div>
         {dialog?.kind === 'expand' && <ExpansionDialog graph={snapshot.graph} state={view.state}
             id={dialog.id} direction={dialog.direction} onApply={applyAction} onClose={closeDialog}/>}
-        {dialog?.kind === 'paths' && <PathDialog graph={snapshot.graph} state={view.state}
-            initialIds={dialog.ids} onApply={applyAction} onClose={closeDialog}/>}
-        {(addressError || notice) && <p role="status">{addressError || notice}</p>}
         {sharedLink && <label>Shared view link <input className={styles.sharedLink} readOnly value={sharedLink}
             onFocus={event => event.target.select()} aria-label="Shared view link"/></label>}
         <Legend dark={colorMode === 'dark'} elements={view.elements}/>

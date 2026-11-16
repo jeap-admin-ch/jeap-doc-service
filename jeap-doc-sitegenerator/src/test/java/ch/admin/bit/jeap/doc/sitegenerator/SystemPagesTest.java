@@ -1,48 +1,65 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
-import java.util.Collection;
-import java.util.ArrayList;
-import ch.admin.bit.jeap.doc.domain.SitePart;
-import ch.admin.bit.jeap.doc.domain.PartKey;
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
+import ch.admin.bit.jeap.doc.domain.PartKey;
+import ch.admin.bit.jeap.doc.domain.PublicationProperties;
+import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
+import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
+import ch.admin.bit.jeap.doc.domain.SitePart;
+import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
 import ch.admin.bit.jeap.doc.domain.architecture.ComponentType;
 import ch.admin.bit.jeap.doc.domain.architecture.DatabaseSchema;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.architecture.MessageKind;
+import ch.admin.bit.jeap.doc.domain.architecture.MessageSchema;
+import ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas;
+import ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions;
+import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
+import ch.admin.bit.jeap.doc.domain.architecture.RelationKind;
 import ch.admin.bit.jeap.doc.domain.architecture.RestApiOverview;
+import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifact;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureArtifactRef;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
+import ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExclusions;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactContent;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactRepository;
-import ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository;
-import ch.admin.bit.jeap.doc.domain.architecture.MessageVersionSchemas;
-import ch.admin.bit.jeap.doc.domain.architecture.imports.MessageVersionRef;
-import ch.admin.bit.jeap.doc.domain.architecture.MessageSchema;
-import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
-import ch.admin.bit.jeap.doc.domain.architecture.RelationKind;
-import ch.admin.bit.jeap.doc.domain.architecture.SystemRelation;
-import ch.admin.bit.jeap.doc.domain.architecture.view.ViewExclusions;
-import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
+import ch.admin.bit.jeap.doc.domain.port.MessageSchemaRepository;
 import ch.admin.bit.jeap.doc.domain.template.GenerationContext;
-import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
-import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
+import ch.admin.bit.jeap.doc.domain.template.ReactionDocumentationLinks;
 import ch.admin.bit.jeap.doc.domain.template.StructureChapter;
-import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
+import ch.admin.bit.jeap.doc.domain.template.StructureTemplate;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
+import ch.admin.bit.jeap.doc.domain.template.SystemDocumentation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * What the pages a system gets say, apart from what a template writes into them.
@@ -337,21 +354,103 @@ class SystemPagesTest {
     }
 
     @Test
+    void shellKeepsAlternativeDocumentationDestinationsFromTwoTemplates() throws IOException {
+        var first = new RecordingTemplate();
+        var alternative = new SilentTemplate() {
+            @Override public String id() { return "alternative"; }
+            @Override public ReactionDocumentationLinks reactionDocumentationLinks(ReactionView destinations, GenerationContext context) {
+                return new ReactionDocumentationLinks(List.of(new ReactionDocumentationLinks.ComponentLink(
+                        "orders", "orders-intake", "/systems/orders/alternative/")), List.of());
+            }
+        };
+        var snapshot = new PublishedReactions(
+                new ObservedReactions(List.of(), List.of(), List.of(), List.of()),
+                GENERATED_AT, List.of(), List.of(), true);
+        var shell = new SitePart(PartKey.shellOf("default"), "shell", "", false, List.of("prod"), List.of());
+        var forward = pagesWith(first, alternative).write("default", "prod", shell, "/", directory.resolve("first"), GENERATED_AT, Optional.of(snapshot));
+        var reverse = pagesWith(alternative, first).write("default", "prod", shell, "/", directory.resolve("reverse"), GENERATED_AT, Optional.of(snapshot));
+        assertThat(forward.orElseThrow().reactionLinks().componentLinks()).containsExactly(
+                new ReactionDocumentationLinks.ComponentLink("orders", "orders-intake", "/systems/orders/alternative/", "alternative"),
+                new ReactionDocumentationLinks.ComponentLink("orders", "orders-intake", "/systems/orders/custom/", "silence"));
+        assertThat(reverse.orElseThrow().reactionLinks()).isEqualTo(forward.orElseThrow().reactionLinks());
+    }
+
+    @Test
+    void shellWriterPublishesTemplateDocumentationDestinationsForEachEnvironment() throws IOException {
+        var site = new Site("handbook", "Documentation", null, null, null, "jeap", List.of(
+                new SiteEnvironment("prod", "PROD", "Production", 1, true, false),
+                new SiteEnvironment("dev", "DEV", "Development", 2, false, true)), true, true);
+        var shell = new SitePart(PartKey.shellOf(site.id()), "shell", "", false,
+                List.of("prod", "dev"), List.of());
+        var event = new ObservedReactions.ObservedMessage(
+                new ObservedReactions.Identity("MESSAGE", "paid"), "OrdersPaidEvent", null);
+        var reaction = new ObservedReactions.ObservedReaction(
+                new ObservedReactions.Identity("REACTION", "intake"), "orders-intake", BigDecimal.ONE);
+        var graph = new ObservedReactions(List.of(event), List.of(reaction), List.of(
+                new ObservedReactions.ObservedTrigger(event.identity(), reaction.identity())), List.of());
+        var snapshot = new PublishedReactions(graph, GENERATED_AT, List.of(
+                new PublishedReactions.Ownership(reaction.identity(), "ORDERS", "orders-intake")), List.of(), true);
+        var networks = mock(ReactionNetworkPublication.class);
+        when(networks.read("prod")).thenReturn(Optional.of(snapshot));
+        when(networks.read("dev")).thenReturn(Optional.of(snapshot));
+        var template = new SilentTemplate() {
+            @Override
+            public ReactionDocumentationLinks reactionDocumentationLinks(ReactionView destinations, GenerationContext context) {
+                assertThat(destinations.components()).singleElement().satisfies(component ->
+                        assertThat(component.component()).isEqualTo("orders-intake"));
+                return new ReactionDocumentationLinks(List.of(new ReactionDocumentationLinks.ComponentLink(
+                        "orders", "orders-intake", context.linkPrefix() + "systems/orders/custom/intake/")),
+                        List.of(new ReactionDocumentationLinks.InterfaceLink(
+                                "EVENT", "OrdersPaidEvent", context.linkPrefix() + "systems/orders/custom/paid/")));
+            }
+        };
+        var publication = new PublicationProperties();
+        publication.setUrl("https://doc.example.ch");
+        var urls = new SiteUrls(publication, "");
+        var writer = new SystemDocumentationWriter(pagesWith(urls, template), new ReactionNetworkFiles(networks), networks);
+
+        writer.write(site, shell, directory, GENERATED_AT);
+
+        var json = JsonMapper.builder().build();
+        for (var environment : Map.of("prod", "/site/handbook/", "dev", "/site/handbook/dev/").entrySet()) {
+            String tree = environment.getKey().equals("prod") ? "static" : "static/dev";
+            var published = json.readTree(Files.readAllBytes(directory.resolve(tree + "/reaction-graph.json")));
+            assertThat(published.path("environment").asString()).isEqualTo(environment.getKey());
+            assertThat(published.path("documentation")).isEqualTo(json.readTree("""
+                    {
+                      "componentLinks": [{"system":"orders","component":"orders-intake",
+                        "href":"%ssystems/orders/custom/intake/","templateId":"silence"}],
+                      "interfaceLinks": [{"kind":"EVENT","name":"OrdersPaidEvent",
+                        "href":"%ssystems/orders/custom/paid/","templateId":"silence"}]
+                    }
+                    """.formatted(environment.getValue(), environment.getValue())));
+            verify(networks).read(environment.getKey());
+        }
+    }
+
+    @Test
     void fullSnapshotAloneSuppliesReactionPagesTablesAndImportTime() throws IOException {
         var template = new RecordingTemplate();
-        var event = new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.ObservedMessage(
-                new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.Identity("MESSAGE", "opaque:event"),
+        var event = new ObservedReactions.ObservedMessage(
+                new ObservedReactions.Identity("MESSAGE", "opaque:event"),
                 "OrdersPaidEvent", "express");
-        var reaction = new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.ObservedReaction(
-                new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.Identity("REACTION", "opaque:reaction"),
-                "orders-intake", new java.math.BigDecimal("1.5"));
-        var graph = new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions(List.of(event), List.of(reaction), List.of(
-                new ch.admin.bit.jeap.doc.domain.architecture.ObservedReactions.ObservedTrigger(event.identity(), reaction.identity())), List.of());
+        var reaction = new ObservedReactions.ObservedReaction(
+                new ObservedReactions.Identity("REACTION", "opaque:reaction"),
+                "orders-intake", new BigDecimal("1.5"));
+        var graph = new ObservedReactions(List.of(event), List.of(reaction), List.of(
+                new ObservedReactions.ObservedTrigger(event.identity(), reaction.identity())), List.of());
         var importedAt = GENERATED_AT.minusSeconds(1234);
-        var snapshot = new ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions(graph, importedAt, List.of(
-                new ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions.Ownership(reaction.identity(), "ORDERS", "orders-intake")), List.of(), true);
+        var snapshot = new PublishedReactions(graph, importedAt, List.of(
+                new PublishedReactions.Ownership(reaction.identity(), "ORDERS", "orders-intake")), List.of(), true);
 
-        pagesWith(template).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT, Optional.of(snapshot));
+        var result = pagesWith(template).write("default", "prod", wholeSite(), "/", directory, GENERATED_AT, Optional.of(snapshot));
+        assertThat(result.orElseThrow().reactionLinks()).isEqualTo(template.links.forTemplate(template.id()));
+        assertThat(template.destinations.components()).singleElement().satisfies(component ->
+                assertThat(component.component()).isEqualTo("orders-intake"));
+        assertThat(template.linkContext.model()).isSameAs(template.context.model());
+        var shell = new SitePart(PartKey.shellOf("default"), "shell", "", false, List.of("prod"), List.of());
+        var shellModel = pagesWith(template).write("default", "prod", shell, "/", directory.resolve("shell"), GENERATED_AT, Optional.of(snapshot));
+        assertThat(shellModel.orElseThrow().reactionLinks()).isEqualTo(template.links.forTemplate(template.id()));
 
         var reactions = template.context.reactions();
         assertThat(reactions.importedAt()).isEqualTo(importedAt);
@@ -491,12 +590,16 @@ class SystemPagesTest {
                 BuildMetrics.NONE, null);
     }
 
-    private SystemPages pagesWith(StructureTemplate template) {
+    private SystemPages pagesWith(StructureTemplate... templates) {
+        return pagesWith(null, templates);
+    }
+
+    private SystemPages pagesWith(SiteUrls urls, StructureTemplate... templates) {
         return new SystemPages(new OneSystem(), NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                 NoArchitectureArtifacts.INSTANCE, new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
-                new StructureTemplates(List.of(template)),
+                new StructureTemplates(List.of(templates)),
                 new GeneratorProperties(), new ArchitectureImportProperties(),
-                BuildMetrics.NONE, null);
+                BuildMetrics.NONE, urls);
     }
 
     /**
@@ -508,7 +611,7 @@ class SystemPagesTest {
         private final OneSystem orders = new OneSystem();
 
         @Override
-        public Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
+        public Optional<Instant> lastSuccessfulImportAt(String environment) {
             return orders.lastSuccessfulImportAt(environment);
         }
 
@@ -523,7 +626,7 @@ class SystemPagesTest {
         }
 
         @Override
-        public java.util.List<String> systemSlugsOf(String environment) {
+        public List<String> systemSlugsOf(String environment) {
             return read(environment).model().systems().stream()
                     .map(DocumentedSystem::slug).sorted().toList();
         }
@@ -531,7 +634,7 @@ class SystemPagesTest {
         @Override
         public ArchitectureSnapshot read(String environment) {
             ArchitectureSnapshot orderly = orders.read(environment);
-            List<DocumentedSystem> systems = new java.util.ArrayList<>(orderly.model().systems());
+            List<DocumentedSystem> systems = new ArrayList<>(orderly.model().systems());
             systems.add(new DocumentedSystem("SHIPPING", "shipping", null, List.of(), null,
                     List.of(new DocumentedComponent("shipping-dispatch", "shipping-dispatch", null,
                             ComponentType.BACKEND_SERVICE, null, null, null, List.of(), null, null, null)),
@@ -544,8 +647,8 @@ class SystemPagesTest {
     private static final class OneSystem implements ArchitectureModelSource {
 
         @Override
-        public java.util.Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
-            return java.util.Optional.of(LAST_SUCCESSFUL_IMPORT);
+        public Optional<Instant> lastSuccessfulImportAt(String environment) {
+            return Optional.of(LAST_SUCCESSFUL_IMPORT);
         }
 
         @Override
@@ -559,9 +662,9 @@ class SystemPagesTest {
         }
 
         @Override
-        public java.util.List<String> systemSlugsOf(String environment) {
+        public List<String> systemSlugsOf(String environment) {
             return read(environment).model().systems().stream()
-                    .map(ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem::slug).sorted().toList();
+                    .map(DocumentedSystem::slug).sorted().toList();
         }
 
         @Override
@@ -573,9 +676,9 @@ class SystemPagesTest {
                                     null)),
                             List.of(), List.of(new ch.admin.bit.jeap.doc.domain.architecture
                             .DocumentedMessage("OrdersPaidEvent", "orders-paid-event",
-                            ch.admin.bit.jeap.doc.domain.architecture.MessageKind.EVENT, null, "orders.paid",
+                            MessageKind.EVENT, null, "orders.paid",
                             null, null, null,
-                            List.of(ch.admin.bit.jeap.doc.domain.architecture.DocumentedMessageVersion
+                            List.of(DocumentedMessageVersion
                                     .of("1.0.0")),
                             List.of()))))),
                     CONTENT_IMPORTED_AT);
@@ -585,8 +688,8 @@ class SystemPagesTest {
     /** A template with nothing to say about this system, which is a legitimate template. */
     private static class SilentTemplate implements StructureTemplate {
         @Override
-        public java.util.Set<String> allowedFileExtensions() {
-            return java.util.Set.of("md");
+        public Set<String> allowedFileExtensions() {
+            return Set.of("md");
         }
 
 
@@ -674,6 +777,17 @@ class SystemPagesTest {
 
         private GenerationContext context;
         private SystemDocumentation system;
+        private ReactionView destinations;
+        private GenerationContext linkContext;
+        private final ReactionDocumentationLinks links = new ReactionDocumentationLinks(List.of(
+                new ReactionDocumentationLinks.ComponentLink("orders", "orders-intake", "/systems/orders/custom/")), List.of());
+
+        @Override
+        public ReactionDocumentationLinks reactionDocumentationLinks(ReactionView destinations, GenerationContext context) {
+            this.destinations = destinations;
+            this.linkContext = context;
+            return links;
+        }
 
         @Override
         public void writeSystem(SystemDocumentation system, GenerationContext context, Path systemDirectory) {

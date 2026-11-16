@@ -26,7 +26,7 @@ public interface ContentWriter {
      * @param contentDirectory the content directory of the build: one directory per environment tree below it,
      *                         or {@link SiteSources#SINGLE_TREE} for a site without environments
      * @return what each environment's model contributed, and the source's provenance timestamps that the
-     *         content digest must ignore; both may be empty for a source that reads no model
+     *         content digest must ignore, plus source-specific site metadata; all may be empty
      */
     WrittenContent write(Site site, SitePart part, Path contentDirectory, Instant generatedAt)
             throws IOException;

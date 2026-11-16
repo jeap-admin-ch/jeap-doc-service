@@ -20,6 +20,8 @@ function wrap(label, kind) {
     }).join('\n');
 }
 
+const minimumZoom = 0.03;
+
 const httpHeight = node => Math.max(60, node.data('displayLabel').split('\n')
     .reduce((lines, line) => lines + Math.max(1, Math.ceil(line.length / 22)), 0) * 20 + 20);
 
@@ -77,7 +79,7 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     const arrow = dark ? '#9CA3AF' : '#6B7280';
     const appearance = nodeAppearance(dark);
     const cy = cytoscape({container, elements: positioned, layout: {name: 'preset', fit: false},
-        minZoom: 0.03, maxZoom: 3, autoungrabify: true,
+        minZoom: minimumZoom, maxZoom: 3, autoungrabify: true,
         style: [
             {selector: 'node', style: {label: 'data(displayLabel)', color, 'font-family': 'system-ui, sans-serif',
                 'font-size': 15, 'text-wrap': 'wrap', 'text-max-width': 180, 'text-valign': 'center',
@@ -129,7 +131,18 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
         onHover?.({text: event.target.data('tooltip'), x: event.renderedPosition.x, y: event.renderedPosition.y});
     });
     cy.on('mouseout', 'edge, node[kind="reaction"], node[kind="marker"][tooltip]', () => onHover?.(null));
-    cy.on('zoom', () => onZoom(Math.round(cy.zoom() * 100)));
+    cy.on('zoom', () => {
+        if (cy.zoom() >= minimumZoom) cy.minZoom(minimumZoom);
+        onZoom(Math.round(cy.zoom() * 100));
+    });
+    // A tiny fitted viewport is its own lower bound until zooming back into the normal range.
+    // Restoring the normal minimum earlier makes Cytoscape's wheel/pinch zoom-out jump inward.
+    const setViewport = (zoom, pan) => {
+        try {
+            cy.minZoom(Math.min(minimumZoom, zoom));
+            cy.zoom(zoom); cy.pan(pan);
+        } finally { cy.minZoom(Math.min(minimumZoom, cy.zoom())); }
+    };
     const fit = () => { cy.stop(); cy.resize(); cy.fit(undefined, 45); onZoom(Math.round(cy.zoom() * 100)); };
     const reset = () => {
         fit();
@@ -141,8 +154,7 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
         cy.batch(() => cy.nodes(':childless').positions(node => positions.get(node.id()) ?? node.position()));
     }
     if (viewport) {
-        cy.minZoom(Math.min(cy.minZoom(), viewport.zoom));
-        cy.zoom(viewport.zoom); cy.pan(presentationPan(viewport, cy.width(), cy.height()));
+        setViewport(viewport.zoom, presentationPan(viewport, cy.width(), cy.height()));
         onZoom(Math.round(cy.zoom() * 100));
     }
     else reset();
@@ -166,6 +178,8 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     }
     let highlightTimer;
     const highlight = elements => {
+        clearTimeout(highlightTimer);
+        cy.elements().removeClass('newlyExpanded');
         elements.addClass('newlyExpanded');
         highlightTimer = setTimeout(() => cy.elements().removeClass('newlyExpanded'), 1800);
     };
@@ -178,9 +192,8 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
             const expansion = added.union(anchor).union(added.edges().connectedNodes());
             const next = expansionViewport({bounds: expansion.boundingBox({includeLabels: true}),
                 width: cy.width(), height: cy.height(), zoom: cy.zoom(), pan: {...cy.pan()}, anchor: anchor.position()});
-            cy.minZoom(Math.min(cy.minZoom(), next.zoom));
             const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            if (reducedMotion) { cy.zoom(next.zoom); cy.pan(next.pan); }
+            if (next.zoom < cy.minZoom() || reducedMotion) setViewport(next.zoom, next.pan);
             else cy.animate({zoom: next.zoom, pan: next.pan}, {duration: 250});
             highlight(added.union(added.connectedEdges()));
         }
@@ -194,6 +207,24 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
     resize.observe(container);
     return {
         fit, reset,
+        locate: ids => {
+            let targets = cy.collection(ids.flatMap(id => cy.getElementById(id).toArray())).nodes();
+            // A component is represented by its visible groups, whether their members are expanded or collapsed.
+            const groups = targets.filter('[kind="group"]');
+            if (groups.length) targets = groups;
+            if (!targets.length) return;
+            cy.stop(); onHover?.(null); onDismissMenu?.();
+            const bounds = targets.boundingBox({includeLabels: true, includeOverlays: false, includeUnderlays: false});
+            const fitZoom = Math.min(Math.max(1, cy.width() - 96) / Math.max(1, bounds.w),
+                Math.max(1, cy.height() - 96) / Math.max(1, bounds.h));
+            const zoom = Math.min(cy.maxZoom(), Math.max(1, cy.zoom()), fitZoom);
+            const pan = {x: cy.width() / 2 - (bounds.x1 + bounds.x2) / 2 * zoom,
+                y: cy.height() / 2 - (bounds.y1 + bounds.y2) / 2 * zoom};
+            if (zoom < cy.minZoom() || window.matchMedia('(prefers-reduced-motion: reduce)').matches) setViewport(zoom, pan);
+            else cy.animate({zoom, pan}, {duration: 250});
+            activeNode = targets.first().id(); activeGroup = groupOf(targets.first()).id();
+            highlight(targets);
+        },
         actionFocus: (id, expanding = false, hiding = false) => {
             const node = cy.getElementById(id);
             if (!node.length) return {candidates: [{id, point: {x: cy.width() / 2, y: cy.height() / 2}}]};
@@ -237,7 +268,11 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
             const node = activeNode ? cy.getElementById(activeNode) : cy.collection();
             openNodeMenu(node.length ? node : activeGroup ? cy.getElementById(activeGroup) : cy.nodes('[kind="group"]').first());
         },
-        zoom: factor => cy.zoom({level: cy.zoom() * factor, renderedPosition: {x: cy.width() / 2, y: cy.height() / 2}}),
+        zoom: factor => {
+            if (factor < 1 && cy.zoom() <= cy.minZoom()) return;
+            cy.zoom({level: Math.max(cy.minZoom(), Math.min(cy.maxZoom(), cy.zoom() * factor)),
+                renderedPosition: {x: cy.width() / 2, y: cy.height() / 2}});
+        },
         pan: (x, y) => cy.panBy({x, y}),
         destroy: () => { clearTimeout(highlightTimer); gestureArea.removeEventListener('pointerdown', stopFollowing); container.removeEventListener('wheel', stopFollowing); resize.disconnect(); cy.destroy(); },
     };

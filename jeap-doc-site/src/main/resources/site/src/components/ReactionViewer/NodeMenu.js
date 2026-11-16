@@ -33,7 +33,7 @@ function MenuSection({label, children}) {
     </>;
 }
 
-export default function NodeMenu({menu, href, linkLabel, canExpand, canCollapse, pinned, groupPinned, onExplore, onAction, onChange, onClose}) {
+export default function NodeMenu({allowPaths = false, menu, destinations, canExpand, canCollapse, pinned, groupPinned, onExplore, onAction, onChange, onClose}) {
     const ref = useRef(null);
     useLayoutEffect(() => {
         const element = ref.current, parent = element.parentElement;
@@ -55,8 +55,9 @@ export default function NodeMenu({menu, href, linkLabel, canExpand, canCollapse,
     return <div ref={ref} role="menu" tabIndex={-1} aria-label={menu.label} className={styles.groupMenu}
         onKeyDown={onKeyDown} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) onClose(false); }}>
         <div className={styles.menuTitle}>{menu.label}</div>
-        {(href || !menu.group) && <MenuSection label="Documentation">
-            {href ? <a role="menuitem" href={href}><MenuIcon name="documentation"/>{linkLabel}</a>
+        {(destinations.length > 0 || !menu.group) && <MenuSection label="Documentation">
+            {destinations.length ? destinations.map(link => <a role="menuitem" key={link.href} href={link.href}>
+                <MenuIcon name="documentation"/>{link.label}</a>)
                 : <button type="button" role="menuitem" disabled><MenuIcon name="documentation"/>Documentation unavailable</button>}
         </MenuSection>}
         <MenuSection label="Visibility">
@@ -81,6 +82,8 @@ export default function NodeMenu({menu, href, linkLabel, canExpand, canCollapse,
             <button type="button" role="menuitem" onClick={() => onExplore('outgoing')}>
                 <MenuIcon name="outgoing"/>Expand outgoing paths…</button>
 
+            {allowPaths && ['message', 'http', 'interface'].includes(menu.kind) && <button type="button" role="menuitem" onClick={() => onExplore('paths')}>
+                <MenuIcon name="paths"/>Find paths from here</button>}
         </MenuSection>
     </div>;
 }

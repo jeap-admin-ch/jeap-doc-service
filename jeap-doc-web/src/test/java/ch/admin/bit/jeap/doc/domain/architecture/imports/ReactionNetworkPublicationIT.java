@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -121,7 +122,8 @@ class ReactionNetworkPublicationIT extends DocServiceIntegrationTestBase {
 
     private void publish(Path content) throws Exception {
         var site = sites.find(SITE).orElseThrow();
-        files.write(site, SitePart.wholeSiteOf(site), content);
+        var part = SitePart.wholeSiteOf(site);
+        files.write(site, part, content, files.read(site, part), Map.of());
         Files.writeString(content.resolve("static/index.html"), "Documentation");
         var build = builds.start(PartKey.shellOf(SITE), BuildTrigger.IMPORT, "test", Instant.now(), null);
         String prefix = SITE + "/" + build.id();

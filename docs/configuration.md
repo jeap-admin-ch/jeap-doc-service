@@ -207,7 +207,13 @@ or `prod` without colliding with anything.
 What still takes a top-level segment is **the default site's environments** - `/dev/`, `/prod/` - so it is
 there that the paths the service answers on itself are unusable. Reserved for them: `api`, `ui-api`, `actuator`,
 `swagger-ui`, `api-docs`, `webjars`, `error`, `assets`, `img`, and `site`, which is where every other site is
-served. The environments of any other site sit below `/site/<id>/` and may be called anything.
+served. The environments of any other site sit below `/site/<id>/` and are not subject to these service-level restrictions.
+
+The Reaction Graph Explorer uses `/reactions/`. If a non-main environment already has that name, it automatically
+uses `/_reactions/` instead; existing configuration and environment URLs remain valid.
+Adding such an environment later changes the Explorer path in every environment of that site, for example
+from `/dev/reactions/` to `/dev/_reactions/`. Existing Explorer bookmarks and shared links must be updated;
+old Explorer routes can return 404.
 
 An environment of any site may not be called `default` or `static`, whatever its URL: those are names the site
 generator uses inside a site's own content tree. Nor `microsites`: every site serves its uploaded microsites
@@ -527,6 +533,12 @@ jeap:
 | `jeap.doc.reactions.client.retry-delay`                             | `PT0.5S`  | How long to wait before the first retry, doubled for each further one                                                                                                                                                                                                                                               |
 | `jeap.doc.reactions.client.retry-jitter`                            | `PT0.25S` | How much the delay is varied, so that instances whose schedules fire together do not retry in lockstep                                                                                                                                                                                                              |
 | `jeap.doc.reactions.client.max-retry-delay`                         | `PT2S`    | The longest a retry waits, however often the delay has been doubled                                                                                                                                                                                                                                                 |
+
+Enabling or disabling an observer for a site's environment changes `reactionEnvironments` in `site.json`.
+Because this shared navigation metadata participates in every part's content digest, the next build of each
+part rebuilds and republishes it once, including system parts without reactions. Explorer navigation appears
+only after the shell has successfully published its route and a reaction snapshot; a configured observer
+without an imported snapshot does not expose a navigation link.
 
 The complete reaction snapshot is imported on `jeap.doc.archrepo.import.cron`, as one step of that import.
 An environment named here must also be named under `jeap.doc.archrepo.environments`, and the startup fails

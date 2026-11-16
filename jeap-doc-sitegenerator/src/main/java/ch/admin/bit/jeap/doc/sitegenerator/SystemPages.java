@@ -26,6 +26,7 @@ import ch.admin.bit.jeap.doc.domain.architecture.Team;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactContent;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureArtifactRepository;
 import ch.admin.bit.jeap.doc.domain.template.ReactionViews;
+import ch.admin.bit.jeap.doc.domain.template.ReactionDocumentationLinks;
 import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
 import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionDocumentation;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
@@ -253,18 +254,27 @@ public class SystemPages {
                     StandardCharsets.UTF_8);
             writeIndex(model, documentedSlugs, context, systems);
         }
-        if (!part.carriesSystems()) {
-            log.debug("Wrote the index of {} systems into the {} tree of {}.",
-                    model.systems().size(), environment, part.key());
-            return counted(model, documentedSlugs, snapshot);
-        }
-
         // Once for the environment, ahead of the systems: what it answers is the same for every one of them,
         // and most landscapes run no reaction observer at all.
+        // The shell also needs this index for Explorer links before returning without writing system pages.
         Optional<ReactionDocumentation> reactionPages = reactions.map(graph ->
                 heldReactions.compute(environment, (id, previous) ->
                         previous != null && previous.snapshot() == graph && previous.model() == model
                                 ? previous : new HeldReactions(graph, model, new ReactionDocumentation(graph, model))).index());
+
+        ReactionDocumentationLinks links = ReactionDocumentationLinks.empty();
+        if (part.carriesWholeEnvironments() && reactionPages.isPresent()) {
+            var destinations = reactionPages.orElseThrow().destinations();
+            var contributed = templates.all().stream()
+                    .map(template -> template.reactionDocumentationLinks(destinations, context).forTemplate(template.id())).toList();
+            links = new ReactionDocumentationLinks(contributed.stream().flatMap(each -> each.componentLinks().stream()).toList(),
+                    contributed.stream().flatMap(each -> each.interfaceLinks().stream()).toList());
+        }
+        if (!part.carriesSystems()) {
+            log.debug("Wrote the index of {} systems into the {} tree of {}.",
+                    model.systems().size(), environment, part.key());
+            return counted(model, documentedSlugs, snapshot).withReactionLinks(links);
+        }
 
         List<String> slugs = slugsToWrite(model, part, documentedSlugs);
         for (String slug : slugs) {
@@ -318,7 +328,7 @@ public class SystemPages {
                 slugs.size(), environment, part.key());
         // Counted off the landscape this run has just generated from, so that the page describing the
         // documentation says what is in it without asking the database again.
-        return counted(model, documentedSlugs, snapshot);
+        return counted(model, documentedSlugs, snapshot).withReactionLinks(links);
     }
 
     /**

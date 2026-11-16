@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.SequencedSet;
+import java.util.Set;
 
 /**
  * Writes what a documentation site contains, into the content directory of a build workspace.
@@ -79,6 +80,11 @@ public class SiteSources {
     private static final String TITLE = "title";
     private static final String LABEL = "label";
     private static final String FAVICON = "favicon";
+    // Conditional properties remain owned by the site even when omitted from its JSON.
+    private static final Set<String> SITE_PROPERTIES = Set.of(
+            "id", TITLE, "tagline", "colorScheme", LOGO, FAVICON, "url", "baseUrl", "hasSystems",
+            "perEnvironment", "ssgWorkerThreads", "sites", "navigation", "part", "generatedAt",
+            "generatedAtDisplay", "serviceVersion");
 
     /**
      * Its own, deliberately not the application's: what is written here is the contract between the generator
@@ -150,12 +156,13 @@ public class SiteSources {
         writeJson(contentDirectory, "environments.json", environmentsOf(site, part, models));
         writeJson(contentDirectory, "site.json", descriptionOf(site, part, generatedAt,
                 site.environments().stream()
-                        .anyMatch(environment -> environment.main() && hasSystems(models, environment.id()))));
+                        .anyMatch(environment -> environment.main() && hasSystems(models, environment.id())),
+                written.siteMetadata()));
         CrossPartLinks.rewrite(contentDirectory, part, otherPartsOf(site, part, models), linkPrefixesOf(site));
         log.debug("Wrote the content of {} - {} - into {}.", part.key(), part.documents(), contentDirectory);
         SequencedSet<String> timestamps = volatileTextOf(buildId, generatedAt, models);
         timestamps.addAll(written.volatileTimestamps());
-        return new WrittenContent(models, timestamps);
+        return new WrittenContent(models, timestamps, written.siteMetadata());
     }
 
     /**
@@ -323,7 +330,7 @@ public class SiteSources {
      * site needs for its page metadata.
      */
     private Map<String, Object> descriptionOf(Site site, SitePart part, Instant generatedAt,
-                                              boolean mainHasSystems) {
+                                              boolean mainHasSystems, Map<String, Object> contentMetadata) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", site.id());
         values.put(TITLE, site.title());
@@ -356,6 +363,12 @@ public class SiteSources {
         // For the footer, which names the service that generated the site. Null where the version cannot be
         // read, and the footer then says the same sentence without it.
         values.put("serviceVersion", DocServiceVersion.get());
+        contentMetadata.forEach((key, value) -> {
+            if (SITE_PROPERTIES.contains(key) || values.containsKey(key)) {
+                throw new IllegalArgumentException("Content metadata must not replace the site property '" + key + "'.");
+            }
+            values.put(key, value);
+        });
         return values;
     }
 

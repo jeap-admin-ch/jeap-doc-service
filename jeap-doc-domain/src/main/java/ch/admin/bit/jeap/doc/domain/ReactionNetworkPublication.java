@@ -39,8 +39,13 @@ public class ReactionNetworkPublication {
     private record HeldGraph(java.time.Instant importedAt, ObservedReactions graph,
                              ArchitectureModel model, PublishedReactions published) {}
 
+    /** Whether this environment publishes reactions, even before its first snapshot arrives. */
+    public boolean isEnabled(String environment) {
+        return upstream.isConfiguredFor(environment);
+    }
+
     public Optional<PublishedReactions> read(String environment) {
-        if (!upstream.isConfiguredFor(environment)) {
+        if (!isEnabled(environment)) {
             return Optional.empty();
         }
         return Optional.ofNullable(held.compute(environment, this::refresh)).map(HeldGraph::published);

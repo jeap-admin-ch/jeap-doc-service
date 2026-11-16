@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import remarkReactionView from '../../main/resources/site/plugins/remark-reaction-view/index.js';
 import {overviewFrame, overviewPoint, overviewSize} from '../../main/resources/site/src/components/ReactionViewer/overview.mjs';
 import {viewSource} from '../../main/resources/site/src/components/ReactionViewer/source.mjs';
-import {componentHref, interfaceDestination} from '../../main/resources/site/src/components/ReactionViewer/navigation.mjs';
+import {componentHref, interfaceDestination, documentationDestinations} from '../../main/resources/site/src/components/ReactionViewer/navigation.mjs';
 import {readGraph, entryView, expandGroups, setGroupExpanded, project, widthOf, identity, labelOf, focusedReactionCount, visibleReactionRows} from '../../main/resources/site/src/components/ReactionViewer/model.mjs';
 const key = (key, nodeType = 'INTERFACE') => ({nodeType, key});
 const message = name => ({identity: key(name), nodeType: 'MESSAGE', interfaceDetails: {message: {messageType: name, variant: ''}}});
@@ -150,6 +150,34 @@ test('component navigation uses generated destinations in the current site and e
         '/site/docs/dev/systems/c#fragment']) {
         assert.equal(componentHref({...entry, componentLinks: [{...owner, href}]}, owner, '/site/docs/dev/'), null);
     }
+});
+test('global documentation catalog survives graph reading and refuses ambiguous component destinations', () => {
+    const data = payload();
+    const owner = {system: 's', component: 'c'};
+    data.documentation = {componentLinks: [{...owner, href: '/dev/systems/s/components/c/'}], interfaceLinks: []};
+    const graph = readGraph(data, 'site', 'dev');
+    assert.equal(componentHref(graph.documentation, owner, '/dev/'), '/dev/systems/s/components/c/');
+    graph.documentation.componentLinks.push({...owner, href: '/dev/systems/s/other-template/c/'});
+    assert.equal(componentHref(graph.documentation, owner, '/dev/'), null);
+    assert.equal(componentHref({componentLinks: [null]}, owner, '/dev/'), null);
+});
+test('alternative templates keep their links while ambiguity within one template remains unavailable', () => {
+    const owner = {system: 's', component: 'c'};
+    const first = {...owner, href: '/dev/systems/s/arc42/c/', templateId: 'arc42'};
+    const second = {...owner, href: '/dev/systems/s/other/c/', templateId: 'other'};
+    const catalog = {componentLinks: [second, first, first], interfaceLinks: [
+        {kind: 'EVENT', name: 'A', href: '/dev/systems/s/arc42/a/', templateId: 'arc42'},
+        {kind: 'EVENT', name: 'A', href: '/dev/systems/s/other/a/', templateId: 'other'}]};
+    assert.deepEqual(documentationDestinations(catalog, owner, null, '/dev/'), [
+        {href: first.href, label: 'Go to component documentation (arc42)'},
+        {href: second.href, label: 'Go to component documentation (other)'}]);
+    assert.deepEqual(documentationDestinations(catalog, null, message('A'), '/dev/').map(link => link.label),
+        ['Go to event documentation (arc42)', 'Go to event documentation (other)']);
+    catalog.componentLinks.push({...first, href: '/dev/systems/ambiguous/c/'});
+    assert.deepEqual(documentationDestinations(catalog, owner, null, '/dev/'),
+        [{href: second.href, label: 'Go to component documentation'}]);
+    assert.deepEqual(documentationDestinations(catalog, owner, null, '/prod/'), []);
+    assert.deepEqual(documentationDestinations({componentLinks: [{...first, href: 'https://elsewhere.invalid'}]}, owner, null, '/dev/'), []);
 });
 test('system boundary, stable grouping, collapsed contributions and deduplication', () => {
     const data = payload(); data.graph.edges.push(edge('r1','B','ACTION'));

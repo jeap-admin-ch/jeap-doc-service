@@ -33,6 +33,7 @@ class ReactionNetworkPublicationTest {
         var node = new ObservedReactions.ObservedReaction(new ObservedReactions.Identity("REACTION", "123"), "gateway", BigDecimal.ZERO);
         var network = new ObservedReactions(List.of(), List.of(node), List.of(), List.of());
         when(upstream.isConfiguredFor("dev")).thenReturn(true);
+        assertThat(publication.isEnabled("dev")).isTrue();
         when(graphs.find("dev")).thenReturn(Optional.of(
                 new StoredReactionGraph("dev", "", "tag", "fp", data, 1, Instant.EPOCH)));
         when(content.readFull(data)).thenReturn(network);
@@ -106,6 +107,7 @@ class ReactionNetworkPublicationTest {
 
     @Test
     void disabledObserverDoesNotPublishPreviouslyStoredData() {
+        assertThat(publication.isEnabled("prod")).isFalse();
         assertThat(publication.read("prod")).isEmpty();
         verifyNoInteractions(graphs, content, models);
     }

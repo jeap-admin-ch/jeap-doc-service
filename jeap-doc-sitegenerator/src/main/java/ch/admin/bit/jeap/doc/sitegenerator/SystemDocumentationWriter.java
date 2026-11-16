@@ -1,6 +1,7 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
 import ch.admin.bit.jeap.doc.domain.Site;
+import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
 import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.architecture.PublishedReactions;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
@@ -28,6 +29,7 @@ public class SystemDocumentationWriter implements ContentWriter {
 
     private final SystemPages systemPages;
     private final ReactionNetworkFiles reactionNetworkFiles;
+    private final ReactionNetworkPublication reactionPublication;
 
     @Override
     public String contentSource() {
@@ -38,7 +40,7 @@ public class SystemDocumentationWriter implements ContentWriter {
     public WrittenContent write(Site site, SitePart part, Path contentDirectory,
                                                Instant generatedAt) throws IOException {
         // The graph file and the pages must describe the same snapshot even if an import lands mid-build.
-        var reactions = reactionNetworkFiles.write(site, part, contentDirectory);
+        var reactions = reactionNetworkFiles.read(site, part);
         Map<String, EnvironmentModel> models = new LinkedHashMap<>();
         for (SiteEnvironment environment : site.environments()) {
             if (!part.carries(environment.id())) {
@@ -53,6 +55,7 @@ public class SystemDocumentationWriter implements ContentWriter {
             }
             model.ifPresent(counts -> models.put(environment.id(), counts));
         }
+        reactionNetworkFiles.write(site, part, contentDirectory, reactions, models);
         var timestamps = new LinkedHashSet<String>();
         reactions.values().stream().flatMap(Optional::stream)
                 .map(PublishedReactions::importedAt).filter(Objects::nonNull)
@@ -60,7 +63,12 @@ public class SystemDocumentationWriter implements ContentWriter {
                     timestamps.add(importedAt.toString());
                     timestamps.add(DisplayTime.of(importedAt));
                 });
-        return new WrittenContent(models, timestamps);
+        // All site environments, not only this part's: shared navigation must agree across builds.
+        var reactionEnvironments = site.environments().stream().map(SiteEnvironment::id)
+                .filter(reactionPublication::isEnabled).toList();
+        Map<String, Object> metadata = reactionEnvironments.isEmpty()
+                ? Map.of() : Map.of("reactionEnvironments", reactionEnvironments);
+        return new WrittenContent(models, timestamps, metadata);
     }
 
     /** What the root page says about this tree: where to start, or that nothing has been published yet. */

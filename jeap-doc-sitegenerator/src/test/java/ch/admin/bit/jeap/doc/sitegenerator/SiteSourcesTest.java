@@ -1,29 +1,33 @@
 package ch.admin.bit.jeap.doc.sitegenerator;
 
-import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.ArchitectureImportProperties;
 import ch.admin.bit.jeap.doc.domain.BuildProperties;
+import ch.admin.bit.jeap.doc.domain.DisplayTime;
 import ch.admin.bit.jeap.doc.domain.DocumentationSites;
-import ch.admin.bit.jeap.doc.domain.PublicationProperties;
-import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.PartKey;
-import ch.admin.bit.jeap.doc.domain.SitePart;
+import ch.admin.bit.jeap.doc.domain.PublicationProperties;
+import ch.admin.bit.jeap.doc.domain.ReactionNetworkPublication;
+import ch.admin.bit.jeap.doc.domain.Site;
 import ch.admin.bit.jeap.doc.domain.SiteEnvironment;
+import ch.admin.bit.jeap.doc.domain.SitePart;
 import ch.admin.bit.jeap.doc.domain.SiteProperties;
+import ch.admin.bit.jeap.doc.domain.SystemSitePartition;
 import ch.admin.bit.jeap.doc.domain.architecture.ArchitectureModel;
+import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportKind;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureImportState;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot;
 import ch.admin.bit.jeap.doc.domain.architecture.imports.ImportOutcome;
-import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.content.StaticSiteContent;
+import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource;
 import ch.admin.bit.jeap.doc.domain.port.BuildMetrics;
-import ch.admin.bit.jeap.doc.domain.custom.CustomProperties;
 import ch.admin.bit.jeap.doc.domain.template.StructureTemplates;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.DefaultResourceLoader;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -34,16 +38,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.stream.StreamSupport;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.StreamSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 /**
  * What the doc service hands the site generator.
@@ -72,6 +80,7 @@ class SiteSourcesTest {
     Path content;
 
     private SiteSources sources;
+    private final ReactionNetworkPublication reactions = mock(ReactionNetworkPublication.class);
     private BuildProperties buildProperties;
     private final ReactionNetworkFiles reactionFiles = mock(ReactionNetworkFiles.class);
 
@@ -87,15 +96,15 @@ class SiteSourcesTest {
         siteProperties.getSites().put("governance", new SiteProperties.Site());
         SiteProperties.Site handbook = new SiteProperties.Site();
         handbook.setPerEnvironment(false);
-        handbook.setContent(ch.admin.bit.jeap.doc.domain.content.StaticSiteContent.SOURCE_ID);
+        handbook.setContent(StaticSiteContent.SOURCE_ID);
         siteProperties.getSites().put("handbook", handbook);
         sources = new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
-                java.util.List.of(new SystemDocumentationWriter(
-                        NoArchitectureModel.systemPages(new SiteUrls(publication, "")), reactionFiles),
+                List.of(new SystemDocumentationWriter(
+                        NoArchitectureModel.systemPages(new SiteUrls(publication, "")), reactionFiles, reactions),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
+                                new CustomProperties())),
                 new DocumentationSites(siteProperties),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
                 TestProvenance.of(siteProperties, NoArchitectureModel.INSTANCE,
                         new StructureTemplates(List.of())),
                 new AboutThisDocumentation(), publication);
@@ -115,6 +124,64 @@ class SiteSourcesTest {
         sources.write(1L, siteOf("default"), wholeSiteOf(siteOf("default")), content, GENERATED_AT);
 
         assertThat(siteJson().path("ssgWorkerThreads").asBoolean()).isTrue();
+    }
+
+    @Test
+    void write_thenOnlyConfiguredReactionEnvironmentsAreAdvertisedInEveryPart() throws IOException {
+        Site site = siteOf("default");
+        sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
+        assertThat(siteJson().has("reactionEnvironments")).isFalse();
+
+        when(reactions.isEnabled("dev")).thenReturn(true);
+        SitePart prodOnly = new SitePart(PartKey.of(site.id(), "system-orders"), "orders", "systems/orders",
+                true, List.of("prod"), List.of("orders"));
+        for (SitePart part : List.of(wholeSiteOf(site), systemPartOf(site, "orders"), prodOnly)) {
+            sources.write(1L, site, part, content, GENERATED_AT);
+            assertThat(siteJson().path("reactionEnvironments").toString()).isEqualTo("[\"dev\"]");
+        }
+        Site handbook = new Site("handbook", "Handbook", null, null, null, "jeap", List.of(), true, false,
+                1, null, StaticSiteContent.SOURCE_ID);
+        sources.write(1L, handbook, wholeSiteOf(handbook), content, GENERATED_AT);
+        assertThat(siteJson().has("reactionEnvironments")).isFalse();
+    }
+
+    @Test
+    void write_thenForwardsSourceMetadataWithoutKnowingItsMeaning() throws IOException {
+        Map<String, Object> metadata = Map.of("sourceFeature", true, "sourceEntries", List.of("one", "two"));
+        Site site = siteOf("default");
+        WrittenContent written = sourcesWithMetadata(metadata)
+                .write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
+
+        assertThat(siteJson().path("sourceFeature").asBoolean()).isTrue();
+        assertThat(siteJson().path("sourceEntries").toString()).isEqualTo("[\"one\",\"two\"]");
+        assertThat(written.siteMetadata()).isEqualTo(metadata);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"id", "perEnvironment", "navigation"})
+    void write_whenSourceMetadataReplacesACommonProperty_thenRejectsIt(String property) throws IOException {
+        Site site = siteOf("default");
+        sourcesWithMetadata(Map.of()).write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
+        assertThat(siteJson().has("perEnvironment")).isFalse();
+        assertThat(siteJson().has("navigation")).isFalse();
+
+        SiteSources writing = sourcesWithMetadata(Map.of(property, "source-value"));
+        assertThatThrownBy(() -> writing.write(1L, site, wholeSiteOf(site), content, GENERATED_AT))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("site property '" + property + "'");
+    }
+
+    private SiteSources sourcesWithMetadata(Map<String, Object> metadata) throws IOException {
+        ContentWriter writer = mock(ContentWriter.class);
+        when(writer.contentSource()).thenReturn(siteOf("default").content());
+        when(writer.write(any(), any(),
+                any(), any()))
+                .thenReturn(new WrittenContent(Map.of(), new LinkedHashSet<>(), metadata));
+        PublicationProperties publication = new PublicationProperties();
+        publication.setUrl("https://doc.example.ch");
+        return new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
+                List.of(writer), new DocumentationSites(new SiteProperties()),
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
+                TestProvenance.of(NoArchitectureModel.INSTANCE), new AboutThisDocumentation(), new PublicationProperties());
     }
 
     /**
@@ -163,11 +230,11 @@ class SiteSourcesTest {
             }
         };
         return new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
-                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(new SiteUrls(publication, "")), mock(ReactionNetworkFiles.class)),
+                List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(new SiteUrls(publication, "")), mock(ReactionNetworkFiles.class), mock(ReactionNetworkPublication.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
+                                new CustomProperties())),
                 new DocumentationSites(siteProperties),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), buildProperties,
                 TestProvenance.of(siteProperties, configured, new StructureTemplates(List.of()), imports),
                 new AboutThisDocumentation(), new PublicationProperties());
     }
@@ -219,15 +286,15 @@ class SiteSourcesTest {
         publication.setUrl("https://doc.example.ch");
         SiteUrls urls = new SiteUrls(publication, "");
         return new SiteSources(urls, new DefaultResourceLoader(),
-                java.util.List.of(new SystemDocumentationWriter(new SystemPages(new OneSystemIn(modelled), NoMessageSchemas.INSTANCE,
+                List.of(new SystemDocumentationWriter(new SystemPages(new OneSystemIn(modelled), NoMessageSchemas.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                         new StructureTemplates(List.of()), new GeneratorProperties(),
-                        new ArchitectureImportProperties(), BuildMetrics.NONE, urls), mock(ReactionNetworkFiles.class)),
+                        new ArchitectureImportProperties(), BuildMetrics.NONE, urls), mock(ReactionNetworkFiles.class), mock(ReactionNetworkPublication.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
+                                new CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), new BuildProperties(),
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()), new BuildProperties(),
                 TestProvenance.of(new OneSystemIn(modelled)), new AboutThisDocumentation(), new PublicationProperties());
     }
 
@@ -237,15 +304,15 @@ class SiteSourcesTest {
         publication.setUrl("https://doc.example.ch");
         SiteUrls urls = new SiteUrls(publication, "");
         return new SiteSources(urls, new DefaultResourceLoader(),
-                java.util.List.of(new SystemDocumentationWriter(new SystemPages(landscape, NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
+                List.of(new SystemDocumentationWriter(new SystemPages(landscape, NoMessageSchemas.INSTANCE, NoArchitectureArtifacts.INSTANCE,
                         NoArchitectureArtifacts.INSTANCE,
                 new NoCustomDocumentation(), NoCustomStorage.INSTANCE, new CustomProperties(),
                 new StructureTemplates(List.of()),
-                        new GeneratorProperties(), new ArchitectureImportProperties(), BuildMetrics.NONE, urls), mock(ReactionNetworkFiles.class)),
+                        new GeneratorProperties(), new ArchitectureImportProperties(), BuildMetrics.NONE, urls), mock(ReactionNetworkFiles.class), mock(ReactionNetworkPublication.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())),
+                                new CustomProperties())),
                 new DocumentationSites(new SiteProperties()),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(landscape, new NoCustomDocumentation()), new BuildProperties(),
+                new SystemSitePartition(landscape, new NoCustomDocumentation()), new BuildProperties(),
                 TestProvenance.of(landscape), new AboutThisDocumentation(), new PublicationProperties());
     }
 
@@ -369,7 +436,7 @@ class SiteSourcesTest {
     void write_whenTheSiteHasNoEnvironments_thenItsOwnPagesGoIntoTheOneTreeAndNameNoEnvironment()
             throws IOException {
         Site site = new Site("handbook", "Handbook", null, null, null, "jeap", List.of(), true, false, 1, null,
-                ch.admin.bit.jeap.doc.domain.content.StaticSiteContent.SOURCE_ID);
+                StaticSiteContent.SOURCE_ID);
 
         sources.write(1L, site, wholeSiteOf(site), content, GENERATED_AT);
 
@@ -688,10 +755,10 @@ class SiteSourcesTest {
 
     private SiteSources sourcesOf(SiteProperties configured, PublicationProperties publication) {
         return new SiteSources(new SiteUrls(publication, ""), new DefaultResourceLoader(),
-                java.util.List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(new SiteUrls(publication, "")), mock(ReactionNetworkFiles.class)),
+                List.of(new SystemDocumentationWriter(NoArchitectureModel.systemPages(new SiteUrls(publication, "")), mock(ReactionNetworkFiles.class), mock(ReactionNetworkPublication.class)),
                         new StaticSiteWriter(new NoCustomDocumentation(), new NoCustomStorage(),
-                                new ch.admin.bit.jeap.doc.domain.custom.CustomProperties())), new DocumentationSites(configured),
-                new ch.admin.bit.jeap.doc.domain.SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
+                                new CustomProperties())), new DocumentationSites(configured),
+                new SystemSitePartition(NO_MODEL, new NoCustomDocumentation()),
                 buildProperties, TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
                         new StructureTemplates(List.of())),
                 new AboutThisDocumentation(), publication);
@@ -732,9 +799,9 @@ class SiteSourcesTest {
         }
 
         @Override
-        public java.util.List<String> systemSlugsOf(String environment) {
+        public List<String> systemSlugsOf(String environment) {
             return read(environment).model().systems().stream()
-                    .map(ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem::slug).sorted().toList();
+                    .map(DocumentedSystem::slug).sorted().toList();
         }
 
         @Override
@@ -811,8 +878,8 @@ class SiteSourcesTest {
      * A model source that knows no system, so a site has one part: its shell. What the parts of a site are is
      * SystemSitePartitionTest's business; here they only have to exist.
      */
-    private static final ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource NO_MODEL =
-            new ch.admin.bit.jeap.doc.domain.port.ArchitectureModelSource() {
+    private static final ArchitectureModelSource NO_MODEL =
+            new ArchitectureModelSource() {
 
                 @Override
                 public boolean isConfiguredFor(String environment) {
@@ -820,24 +887,24 @@ class SiteSourcesTest {
                 }
 
                 @Override
-                public java.util.Optional<String> sourceUrlOf(String environment) {
-                    return java.util.Optional.empty();
+                public Optional<String> sourceUrlOf(String environment) {
+                    return Optional.empty();
                 }
 
                 @Override
-                public java.util.Optional<java.time.Instant> lastSuccessfulImportAt(String environment) {
-                    return java.util.Optional.empty();
+                public Optional<Instant> lastSuccessfulImportAt(String environment) {
+                    return Optional.empty();
                 }
 
                 @Override
-                public ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot read(
+                public ArchitectureSnapshot read(
                         String environment) {
-                    return ch.admin.bit.jeap.doc.domain.architecture.imports.ArchitectureSnapshot.empty();
+                    return ArchitectureSnapshot.empty();
                 }
 
                 @Override
-                public java.util.List<String> systemSlugsOf(String environment) {
-                    return java.util.List.of();
+                public List<String> systemSlugsOf(String environment) {
+                    return List.of();
                 }
             };
 }

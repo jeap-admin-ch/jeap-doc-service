@@ -953,7 +953,8 @@ Message entry views contain only the selected variant, its incident flow edges a
 Group expansion must not add sibling reactions or other interfaces. The generated and live tables use the
 same selection. Reaction labels show daily medians; IDs remain opaque identities in the source.
 
-Message entry views initially pin the selected message variant. Other entries, focus and path selection start unpinned.
+Message entry views initially pin the selected message variant; Explorer interface selections pin the selected
+interface. Other entries, focus and path selection start unpinned.
 Component entry groups start collapsed; path selection is reserved for the standalone explorer.
 Visibility commands live in `ReactionViewer/visibility.mjs` and return a new complete state per action.
 Keep explicit hiding separate from collapsing: collapsed reactions contribute bundled arrows, hidden reactions
@@ -973,7 +974,7 @@ reachability for ordered endpoint pairs, including cycles without enumerating wa
 use the same one-edge expansion command as the depth dialog. PREDECESSOR edges are never traversed.
 
 
-Viewer semantic actions pass through `history.mjs`, including Focus, Reset and future search-result jumps.
+Viewer semantic actions pass through `history.mjs`, including Focus, Reset and global entry selections.
 Keep the reset baseline in that state and restore it with Back. Each viewer retains 100 undoable steps;
 its complete link replay script is separate. `sharing.mjs` encodes versioned steps in the URL fragment and
 replays them atomically against the current site/environment. Use interface keys and group keys, never
@@ -1010,3 +1011,63 @@ identities and text values intact; never remove backslashes from serialized JSON
 Cache identity indexes per immutable graph and compact semantic payloads per session; pan/zoom only changes
 presentation. Encoding errors say the view cannot be shared. Check the addressed viewer before resolving
 replay targets; undecodable links show one restoration notice per page.
+
+Opening a reaction link scrolls once to its addressed viewer and activates it below the fold. Ordinary
+rendering and automatic URL updates never scroll. Keep link errors in the toolbar feedback style, in red,
+and keep an undecodable link's error limited to one viewer per page. Informational clipboard/fullscreen
+hints use transient neutral feedback; red is for failures. Errors take precedence over copy confirmations.
+
+### Standalone Reaction Graph Explorer
+
+The standalone Reaction Graph Explorer lives at `/reactions/` under each environment with a configured
+Reaction Observer. Only the shell publishes it. Use `/_reactions/` when a non-main environment already
+owns `/reactions/`. The config selects the path once and shares it with navigation through
+`customFields.reactionExplorerPath`. Do not reserve `reactions`: existing instances must continue to
+start without configuration changes. The navbar link crosses part builds with `pathname://`.
+
+`ReactionNetworkPublication.isEnabled` decides whether an environment has an Observer configured.
+`SystemDocumentationWriter` contributes those environments to `site.json` as `reactionEnvironments`
+through `WrittenContent.siteMetadata`. Omit the key entirely when empty to preserve content digests.
+Routes, navbar and footer honor that list, including in system parts. `SiteSources` only merges generic
+metadata and must not depend on reaction ports.
+
+Navigation also requires the published shell's `reaction-explorer.json` marker with an available snapshot
+and an existing Explorer route. System parts must never advertise an Explorer based only on their own
+build-time configuration: the shell may still be old or its build may have failed. The marker is published
+atomically with the shell and graph; system parts must not write it. Header, footer and mobile navigation
+share pending checks and cache successful results for ten minutes, negative results for one minute.
+Keep that cache per tab in session storage, scoped by site, environment and URLs, so it survives navigation
+between part builds. Fall back to memory if storage is blocked. Recheck on navigation after expiry;
+never poll or check on focus or visibility changes. Requests respect the normal HTTP cache policy.
+
+The shell's graph carries a documentation catalogue: `SystemPages` asks structure templates for its URLs
+from the same architecture snapshot as the pages. Never invent template paths in the generator or client,
+or repeat that catalogue in every embedded viewer. Keep the template ID on each catalogue link;
+alternative templates are distinct choices. Missing or ambiguous destinations within one template stay
+unavailable.
+
+The Explorer shares the published snapshot and viewer, starts with an empty EXPLORER entry, and renders
+no canvas until selection. Search and path endpoints share `SearchPicker` and `search.mjs`; choose the
+whole graph or explicitly supplied visible IDs, never infer the scope from the viewport. All matches
+remain reachable. Explorer entry selections go through history and replace the Reset baseline.
+Prepared documentation viewers must never expose path selection.
+
+Component search candidates require a known system; unknown owners must not be merged by component name.
+Their interfaces remain searchable and their reactions remain in the graph.
+
+Explorer entry and path searches are inline tabs in `ReactionExplorer/Controls`. Switching tabs preserves
+drafts and never changes the graph; Show paths applies the selected endpoints through the same history action.
+Context-menu path starts and restored path links select the path tab instead of opening a dialog.
+
+### Local search and zoom
+
+The toolbar's **Search this graph** uses `entryCandidates` with `selection` scope and node IDs from the semantic
+projection, never the canvas viewport. Collapsed groups still represent their components; hidden groups and
+interfaces must not be found. Visibility actions update candidates, while typing and pan/zoom do not change
+semantic state. Local result selection only centres and highlights existing nodes through the renderer;
+it must never collapse groups, reposition nodes, change pins or add history. Only the Explorer's global entry
+search uses the `entry` action and replaces the Reset baseline.
+
+Locating and restoring very large selections may use a smaller zoom temporarily. That viewport becomes
+the lower bound until zoom returns to the normal range; restoring the normal limit earlier reverses wheel
+and pinch zoom-out. Restore the normal limit when that range is reached.

@@ -1320,7 +1320,7 @@ from one to the reachable depth, capped at 50. Existing contents and pins remain
 from all eligible members without unfolding the group. Already visible selections disable the action.
 Superseded reactions participate only after explicit reveal; PREDECESSOR history never participates.
 
-Path selection is reserved for the future standalone Graph Explorer, including a searchable endpoint picker.
+Path selection is reserved for the standalone Graph Explorer, including a searchable endpoint picker.
 Its existing graph algorithm selects at least two distinct interfaces in a new, unpinned view. After the first selection,
 candidates are interfaces reachable in either direction from an endpoint. The result includes all directed
 connections between every ordered pair, including cyclic detours, without a depth cutoff. Dead-end branches
@@ -1345,7 +1345,8 @@ navigate browser history. Reloading a page or opening a shared link starts with 
 
 **Reset view** restores the current entry's initial selection, visibility, pins and group state. Focus keeps
 that baseline. The state transition for selecting a search result establishes a new entry baseline; Back
-restores the preceding view and baseline together. The embedded viewer does not yet expose that search.
+restores the preceding view and baseline together. This applies to the Explorer's global entry search;
+the local toolbar search only locates a node in the current graph and creates no history step.
 Reset is itself undoable, so Back returns to the edited view.
 
 The browser address follows semantic viewer actions, zoom and pan automatically. Updates wait until 250 ms
@@ -1417,5 +1418,102 @@ no historical snapshot and promise no best-effort recovery.
 Sharing an unidentifiable entry or target reports **This view cannot be shared: an entry or target is not
 uniquely identifiable on the current graph.** Back can undo the action that introduced it. Restoration
 failures appear only on the addressed viewer; undecodable links produce one notice per page.
+Errors appear beside the toolbar in the same style as copy confirmations, with a red border and text;
+they remain until a subsequent action clears them. Opening a shared link scrolls directly to its viewer
+below the navigation bar and activates it even when it starts below the fold. Other viewers retain their
+ordinary entry views. Scrolling afterwards is unrestricted; automatic URL updates do not scroll the page.
 Identity indexes are retained per graph snapshot and compact semantic payloads per session, so pan and
 zoom only replace the viewport tuple before compression.
+
+
+### Search this graph
+
+Every reaction viewer has **Search this graph**, marked with a magnifying-glass icon, to the left of Back and Reset, including prepared message,
+component and system views. It searches messages by type and variant, components by name and system,
+HTTP operations by provider/method/path, and generic interfaces by type/FQN. Results carry the available
+system, variant and interface context; reactions, groups and systems are not separate search targets.
+
+The scope is the displayed graph selection, including nodes outside the viewport and components represented
+by collapsed groups. Explicitly hidden contents are excluded. Hide, restore and expansion update the
+candidates; pan and zoom do not. Each viewer keeps its own search. Typing makes no additional graph request
+and changes neither visibility, pins nor history. An empty query has no list; an unsuccessful query reports
+**No matches in this graph.** Matching ignores surrounding whitespace and case, ranks exact names before
+prefixes and substrings, and sorts each category alphabetically without dropping results. Arrow keys navigate,
+Enter selects and Escape dismisses the scrollable list. The search is disabled while source view is open
+or the graph renderer is not ready.
+
+Selecting a result centres the existing node and briefly highlights it in yellow. A component result locates
+its visible groups together. Zoom adjusts to make the target readable and fit it into the viewport, respecting
+reduced-motion preferences. Below the normal minimum zoom, the small viewport remains the lower bound so
+wheel and pinch zoom-out do not jump inward. The normal minimum returns once the reader zooms back into
+the normal range. Repeated selections replace the previous highlight. Expanded contents, node positions,
+pins, semantic history and the Reset baseline stay unchanged: local search is a presentation action.
+The usual automatic URL update retains the new viewport. Opening a new entry view remains the job of the
+Explorer's global **Find an entry** tab.
+
+### Standalone Reaction Graph Explorer
+
+The graph icon to the right of the header search shows **Reaction Graph Explorer** on hover or keyboard focus. The mobile menu keeps
+the full label, and the footer provides a **Reaction Graph Explorer** link under **Documentation**. Both entries
+open `/reactions/` in the current environment, for example
+`/dev/reactions/` or `/site/handbook/dev/reactions/`. It is built with the shell that publishes that
+site/environment's `reaction-graph.json`; system parts link back to that shell. If a non-main environment is
+already named `reactions`, the Explorer automatically uses `/_reactions/` on that site to preserve the
+environment URLs. Adding such an environment later moves the Explorer in every environment of the site,
+for example from `/dev/reactions/` to `/dev/_reactions/`. Existing Explorer bookmarks and shared links must
+be updated; old Explorer routes can return 404.
+Sites without environments have no Explorer route or navigation item. The same applies to environments
+without a configured Reaction Observer, including every environment when `jeap.doc.reactions.enabled` is false.
+The system documentation writer contributes
+`reactionEnvironments` to `site.json` only when at least one environment imports reactions; routes and both
+navigation links use this list as eligibility. Navigation also checks the published shell's small
+`reaction-explorer.json` marker and the Explorer route itself. A link appears only when a snapshot and its
+page have been published together, even if a system part was rebuilt before the shell or the shell build
+failed. Before the first snapshot, the link remains hidden. Navigation entries share checks and cache
+successful results for ten minutes, negative results for one minute. This per-tab cache survives page
+changes between system parts and is scoped to the site, environment and URLs. After expiry, the next
+navigation checks again; focus and visibility changes trigger no requests. Publication changes can
+therefore take up to the cache lifetime to appear on a subsequent navigation. Requests use the normal
+HTTP cache policy. A published Explorer without a snapshot shows
+**No reaction data has been published for this environment yet.** when opened directly. Observer
+configuration is decided by `ReactionNetworkPublication`; build-time configuration alone never advertises
+an unpublished Explorer.
+
+Node menus link to component runtime views, events, commands and REST documentation in the current site
+and environment. The shell includes a shared destination catalogue in `reaction-graph.json`, built from
+the same architecture snapshot used for its pages. The catalogue is part of the shell's content digest,
+so adding or renaming a component or interface page referenced by it triggers a shell rebuild even when
+the reactions and systems index are unchanged. Structure templates supply the URLs; the Explorer does
+not invent paths or duplicate the catalogue in each embedded viewer. Distinct destinations from different
+templates appear as separate links labelled with their template IDs. Unknown or ambiguous destinations
+within one template remain unavailable. Clipboard fallback and fullscreen availability hints use neutral,
+temporary feedback. Invalid shared links and actual restore/share failures retain the red error style
+and take precedence over copy confirmations.
+
+The entry search covers the complete published graph, including content outside the current view. It
+matches message type and variant, component name and system, HTTP provider/method/path, and generic
+interface type/FQN. The displayed label is also searchable, including the identity of an interface whose
+type or details are unknown. Matching ignores case and surrounding whitespace, ranks exact names before prefixes
+and substrings, and keeps all results reachable in a scrollable list. Arrow keys navigate, Enter selects,
+and Escape dismisses results. Labels retain system, variant and interface context and render as text.
+Typing changes neither the graph nor its pins and makes no additional network request. The initial page
+allocates no graph canvas. An interface selection pins that interface and displays its incident reactions;
+a component selection starts with collapsed groups. Components without a known system are not offered as
+component results; their interfaces remain searchable. Selection replaces the Reset baseline; Back restores
+the preceding selection and baseline. Shared links also restore an Explorer selection from its empty start.
+
+The **Find an entry** and **Find paths** tabs keep both searches on the Explorer page. Switching tabs
+preserves the search drafts and selected endpoints without changing the displayed graph. Arrow keys,
+Home and End navigate the tabs. **Find paths** is available only in this Explorer. Its visible search field
+filters eligible unselected interfaces using the existing directed reachability rules. Selected endpoints
+remain visible as numbered chips with Remove buttons usable by mouse or keyboard; **Clear selection**
+starts a new selection. Hints explain the next step, and **Show paths** applies the selection to the graph.
+An interface's **Find paths from here** menu item opens this tab with that interface selected. Opening a
+shared path link also selects the path tab and restores its endpoints. At least two connected endpoints
+are required. Reactions and groups
+are never selectable endpoints. The view uses the existing path algorithm, including directed cycles and
+excluding PREDECESSOR relationships. A failed search says **No matches.** and changes no selection.
+
+Entry search and path selection share the matching and keyboard component. The matching model requires
+an explicit `graph` or `selection` scope; selection scope receives the visible IDs and excludes hidden
+content. **Search this graph** uses selection scope, while **Find an entry** uses the complete published graph.

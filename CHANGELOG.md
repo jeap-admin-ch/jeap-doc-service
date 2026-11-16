@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Reaction Graph Explorer** at `/reactions/`, accessible from the header and Documentation footer in the
+  current site and environment after the shell has published the Explorer and a reaction snapshot. Existing
+  environment names, including `reactions`, remain valid. **Find an entry** searches the complete published graph for messages, variants,
+  components with a known system and HTTP/generic interfaces without drawing the whole graph. Selecting a
+  result opens its entry view and sets a new Reset baseline; Back restores the preceding view and baseline.
+  Node menus link to available component, message and REST documentation in the current environment,
+  with separate choices when several structure templates document the same target.
+- **Find paths** in the Explorer, with searchable endpoints, keyboard navigation and removable selection
+  chips. Only connected, unselected interfaces are offered. Search drafts and selections survive tab changes;
+  **Show paths** displays their connections. Path selection is available only in the Explorer.
+- **Search this graph** in each viewer's toolbar. It searches displayed contents, including offscreen nodes
+  and collapsed components, while excluding hidden contents. Selecting a result centres and briefly highlights
+  it in yellow without changing expanded contents, node positions, pins, history or the Reset baseline.
+
+### Changed
+- Shared reaction links scroll directly to the addressed graph, including viewers below the fold. Link
+  errors appear beside the toolbar with red text and border, matching the copy-confirmation style.
+
 ## [4.16.0] - 2026-11-18
 
 ### Dependencies

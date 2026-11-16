@@ -55,21 +55,26 @@ call site.
 
 ## What the interface asks for
 
-| Member                                        | What it is                                                                                                  |
-|-----------------------------------------------|-------------------------------------------------------------------------------------------------------------|
-| `id()`                                        | What an upload names in its `template` parameter                                                            |
-| `systemPathSegment()` / `systemLabel()`       | The segment and the navigation label below a system                                                         |
-| `componentPathSegment()` / `componentLabel()` | The same below a component                                                                                  |
-| `libraryPathSegment()` / `libraryLabel()`     | And below a library, which no architecture model holds - every chapter of one is written by hand            |
-| `chapters()`                                  | The chapters. Nothing else writes a chapter folder name, and the order they are declared in does not matter |
-| `chapterOfFolder(folder)`                     | The chapter a folder belongs to, which is how an upload's first path segment is checked                     |
-| `allowedFileExtensions()`                     | What an upload to this template may carry, lower case and without the dot. No default: an empty set would silently forbid everything |
-| `generatedSiblings(chapter, subject)`         | The page and group names it writes into a chapter, for a system, a component or a library, **in the order it writes them** - the one declaration an uploaded page's `sidebar_after`/`sidebar_before` can name a sibling from. Defaults to nothing |
-| `generatedNames(chapter, subject)`            | The same names, as a set rather than a list - what an upload may not reuse. A default method derived from `generatedSiblings`, so a template overrides one rather than two |
-| `siblingPosition(chapter, subject, name)`     | The `sidebar_position` a generated sibling's own page carries, computed from its place in `generatedSiblings` - the one formula both the writer of that page and the chapter order agree on. A default method |
-| `orderedChapters()`                           | The chapters in the order the navigation shows them - by number, or alphabetically. A default method        |
-| `positionOf(chapter)`                         | Where a chapter goes among its siblings, which is the `position` of its `_category_.json`. A default method |
-| `writeSystem(system, context, directory)`     | Writes the pages of one system. A template with nothing to say writes nothing                               |
+| Member                                              | What it is                                                                                                                                                                                                                                        |
+|-----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id()`                                              | What an upload names in its `template` parameter                                                                                                                                                                                                  |
+| `systemPathSegment()` / `systemLabel()`             | The segment and the navigation label below a system                                                                                                                                                                                               |
+| `componentPathSegment()` / `componentLabel()`       | The same below a component                                                                                                                                                                                                                        |
+| `libraryPathSegment()` / `libraryLabel()`           | And below a library, which no architecture model holds - every chapter of one is written by hand                                                                                                                                                  |
+| `chapters()`                                        | The chapters. Nothing else writes a chapter folder name, and the order they are declared in does not matter                                                                                                                                       |
+| `chapterOfFolder(folder)`                           | The chapter a folder belongs to, which is how an upload's first path segment is checked                                                                                                                                                           |
+| `allowedFileExtensions()`                           | What an upload to this template may carry, lower case and without the dot. No default: an empty set would silently forbid everything                                                                                                              |
+| `generatedSiblings(chapter, subject)`               | The page and group names it writes into a chapter, for a system, a component or a library, **in the order it writes them** - the one declaration an uploaded page's `sidebar_after`/`sidebar_before` can name a sibling from. Defaults to nothing |
+| `generatedNames(chapter, subject)`                  | The same names, as a set rather than a list - what an upload may not reuse. A default method derived from `generatedSiblings`, so a template overrides one rather than two                                                                        |
+| `siblingPosition(chapter, subject, name)`           | The `sidebar_position` a generated sibling's own page carries, computed from its place in `generatedSiblings` - the one formula both the writer of that page and the chapter order agree on. A default method                                     |
+| `orderedChapters()`                                 | The chapters in the order the navigation shows them - by number, or alphabetically. A default method                                                                                                                                              |
+| `positionOf(chapter)`                               | Where a chapter goes among its siblings, which is the `position` of its `_category_.json`. A default method                                                                                                                                       |
+| `reactionDocumentationLinks(destinations, context)` | URLs this template generates for observed components and interfaces; empty by default. See below.                                                                                                                                                 |
+| `writeSystem(system, context, directory)`           | Writes the pages of one system. A template with nothing to say writes nothing                                                                                                                                                                     |
+
+The shell calls `reactionDocumentationLinks` once per environment with all observed destinations. Return
+only URLs of pages the template actually generates. Contributions retain their template IDs, so the Explorer
+offers distinct links from different templates separately.
 
 A template is named for what it describes, so the same structure reads as *System Architecture* below a system
 and as *Component Architecture* below a component.

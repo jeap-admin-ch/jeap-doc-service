@@ -2,6 +2,7 @@ package ch.admin.bit.jeap.doc.domain.template;
 
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedComponent;
 import ch.admin.bit.jeap.doc.domain.architecture.DocumentedSystem;
+import ch.admin.bit.jeap.doc.domain.architecture.view.ReactionView;
 import ch.admin.bit.jeap.doc.domain.upload.SubjectKind;
 
 import java.io.IOException;
@@ -131,6 +132,12 @@ public interface StructureTemplate {
      */
     void writeSystem(SystemDocumentation system, GenerationContext context, Path systemDirectory)
             throws IOException;
+
+    /** Destinations this template actually generates for the observed graph; absent by default. */
+    default ReactionDocumentationLinks reactionDocumentationLinks(
+            ReactionView destinations, GenerationContext context) {
+        return ReactionDocumentationLinks.empty();
+    }
 
     /**
      * The file extensions an upload to this template may carry, lower case and without the dot.

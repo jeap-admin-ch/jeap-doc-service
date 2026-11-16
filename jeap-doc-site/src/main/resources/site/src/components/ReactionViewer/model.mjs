@@ -80,6 +80,7 @@ export function readGraph(payload, site, environment) {
         incoming.get(edge.target).add(edge.id);
     }
     return {nodes, edges, flow, outgoing, incoming, groups, groupOf, adjacent, messageSystems,
+        documentation: payload.documentation,
         ownershipComplete: payload.ownershipComplete};
 }
 
@@ -92,6 +93,7 @@ export function createView(entry, revealed = new Set()) {
 /** The scope is explicit: showing a group never silently selects its other members or edges. */
 export function entryView(graph, entry, revealed = new Set()) {
     const state = createView(entry, revealed);
+    if (entry.kind === 'EXPLORER') return state;
     const entryInterfaces = new Set();
     const interfaceEntry = entry.kind === 'MESSAGE' || entry.kind === 'INTERFACE';
     if (interfaceEntry) {
