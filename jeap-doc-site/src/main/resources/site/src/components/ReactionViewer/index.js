@@ -312,8 +312,16 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
     if (!explorer && !view.elements.length && !view.superseded && !view.state.hidden.size && snapshot.graph.ownershipComplete && !notice && !addressError) return null;
     const entrySearch = explorer && <ExplorerControls ref={explorerControls} graph={snapshot.graph}
         state={view.state} environment={environment} onApply={applyAction}/>;
+    const historyControls = <span className={styles.actionGroup} role="group" aria-label="View history">
+        <button type="button" disabled={sourceOpen || !session.history.length} onClick={() => applyAction({type: 'back'})}
+            aria-label="Back" title="Back"><ActionIcon path="M9 5l-6 6 6 6 M3 11h11a6 6 0 0 1 6 6v2"/></button>
+        <button type="button" disabled={sourceOpen} aria-label="Reset view" title="Reset view" onClick={() => applyAction({type: 'reset'})}><ResetZoomIcon/></button>
+    </span>;
     if (explorer && view.state.entry.kind === 'EXPLORER') return <>
         {entrySearch}
+        {session.history.length > 0 && <div className={styles.toolbar}>
+            <div className={styles.actions}>{historyControls}</div>
+        </div>}
         {!snapshot.graph.ownershipComplete && <p role="status">Incomplete ownership: Not all reactions can be assigned to a system.</p>}
         {notice && <div role="status" className={styles.explorerError}>{notice}</div>}
     </>;
@@ -339,11 +347,7 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
             <div className={styles.actions} role="group" aria-label="Graph view">
                 <SearchPicker compact label="Search this graph" placeholder="Search this graph…" candidates={localCandidates}
                     disabled={sourceOpen || !renderer} onSelect={candidate => controls.current?.locate(candidate.members)}/>
-                <span className={styles.actionGroup} role="group" aria-label="View history">
-                    <button type="button" disabled={sourceOpen || !session.history.length} onClick={() => applyAction({type: 'back'})}
-                        aria-label="Back" title="Back"><ActionIcon path="M9 5l-6 6 6 6 M3 11h11a6 6 0 0 1 6 6v2"/></button>
-                    <button type="button" disabled={sourceOpen} aria-label="Reset view" title="Reset view" onClick={() => applyAction({type: 'reset'})}><ResetZoomIcon/></button>
-                </span>
+                {historyControls}
                 <span className={styles.actionGroup} role="group" aria-label="Share and source">
                     <button type="button" disabled={sharing} aria-busy={sharing} onClick={share} aria-label="Share link" title="Share link">
                         <ActionIcon path="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2 M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/>

@@ -1500,7 +1500,9 @@ Typing changes neither the graph nor its pins and makes no additional network re
 allocates no graph canvas. An interface selection pins that interface and displays its incident reactions;
 a component selection starts with collapsed groups. Components without a known system are not offered as
 component results; their interfaces remain searchable. Selection replaces the Reset baseline; Back restores
-the preceding selection and baseline. Shared links also restore an Explorer selection from its empty start.
+the preceding selection and baseline. If Reset returns to the empty Explorer, history controls remain
+available while there are undoable steps. Back restores the previous graph and viewport.
+Shared links also restore an Explorer selection from its empty start.
 
 The **Find an entry** and **Find paths** tabs keep both searches on the Explorer page. Switching tabs
 preserves the search drafts and selected endpoints without changing the displayed graph. Arrow keys,

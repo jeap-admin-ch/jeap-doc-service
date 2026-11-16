@@ -414,6 +414,45 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     @Test
+    void resetToTheEmptyExplorerKeepsBackAvailableAndRestoresThePathAndViewport() {
+        installVisibilityFixture(false);
+        open("/reactions/");
+        var back = page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Back").setExact(true));
+        assertThat(page.locator("canvas")).hasCount(0);
+        assertThat(back).hasCount(0);
+        page.getByRole(AriaRole.TAB, new Page.GetByRoleOptions().setName("Find paths").setExact(true)).click();
+        var search = page.getByRole(AriaRole.COMBOBOX, new Page.GetByRoleOptions().setName("Add interface"));
+        search.fill("A");
+        search.press("Enter");
+        search.fill("C");
+        search.press("Enter");
+        page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Show paths")).click();
+        showReactionViewer(0);
+        awaitGraphKeys(List.of("A", "B", "C", "r1", "r2"), true);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
+                element => { element._cyreg.cy.zoom(1.3); element._cyreg.cy.pan({x: -200, y: 80}); }
+                """);
+        String path = semanticProjection(viewer);
+        Object viewport = presentationOf(viewer);
+
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Reset view")).click();
+        assertThat(page.locator("canvas")).hasCount(0);
+        assertThat(back).isVisible();
+        assertThat(back).isEnabled();
+        back.click();
+        awaitSemanticProjection(page, 0, path);
+        awaitPresentation(page, 0, viewport, true);
+        assertThat(page.getByRole(AriaRole.LIST, new Page.GetByRoleOptions().setName("Selected interfaces"))
+                .locator("li")).hasCount(2);
+
+        back.click();
+        assertThat(page.locator("canvas")).hasCount(0);
+        assertThat(back).hasCount(0);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
     void explorerPathSelectionFiltersCandidatesAndSupportsKeyboardRemovalAndSeveralEndpoints() {
         installVisibilityFixture(false);
         open("/reactions/");
