@@ -1788,21 +1788,57 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                 """, reaction);
     }
 
+    /**
+     * Right-clicks the group itself and asserts that it was the group the renderer received the click on.
+     * <p>
+     * The point is chosen by the renderer's own hit test, not derived from the group's bounds: a band a few pixels
+     * below the group's top edge was missed now and then, and the click then fell on the empty canvas - which
+     * Playwright cannot tell from a hit, since every point of the canvas is the same element to it.
+     */
     private void openGroupMenu(com.microsoft.playwright.Locator viewer, String group) {
         viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
-        var position = (java.util.Map<?, ?>) canvas.evaluate("""
-                (element, id) => {
-                    const cy = element._cyreg.cy;
-                    const group = cy.getElementById(id);
-                    const bounds = group.renderedBoundingBox({includeLabels: false});
-                    // Pinned nodes include the overhanging badge in their texture bounds.
-                    return {x: (bounds.x1 + bounds.x2) / 2,
-                        y: bounds.y1 + (group.data('pinned') ? 24 : 8) * cy.zoom()};
-                }
-                """, group);
-        canvas.click(new com.microsoft.playwright.Locator.ClickOptions().setButton(com.microsoft.playwright.options.MouseButton.RIGHT)
-                .setPosition(((Number) position.get("x")).doubleValue(), ((Number) position.get("y")).doubleValue()));
+        String clicked = null;
+        java.util.Map<?, ?> position = null;
+        for (int attempt = 0; attempt < 2 && !group.equals(clicked); attempt++) {
+            if (clicked != null && !clicked.isEmpty()) {
+                page.keyboard().press("Escape");
+            }
+            // Finish scrolling before resolving the renderer's click coordinates.
+            canvas.scrollIntoViewIfNeeded();
+            position = (java.util.Map<?, ?>) canvas.evaluate("""
+                    async (element, id) => {
+                        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                        const cy = element._cyreg.cy, group = cy.getElementById(id), box = group.boundingBox({includeLabels: false});
+                        const answersFor = (x, y) => cy.renderer().findNearestElement(x, y, true, false)?.same(group);
+                        for (let y = box.y1 + 2; y < box.y2; y += 2) {
+                            for (const x of [(box.x1 + box.x2) / 2, box.x1 + 4, box.x2 - 4]) {
+                                if (answersFor(x, y)) {
+                                    delete element.dataset.clickedNode;
+                                    cy.one('cxttap', 'node', event => { element.dataset.clickedNode = event.target.id(); });
+                                    return {x: x * cy.zoom() + cy.pan().x, y: y * cy.zoom() + cy.pan().y};
+                                }
+                            }
+                        }
+                        return null;
+                    }
+                    """, group);
+            org.assertj.core.api.Assertions.assertThat(position).as("A point of the group %s that is not covered", group)
+                    .isNotNull();
+            canvas.click(new com.microsoft.playwright.Locator.ClickOptions().setButton(com.microsoft.playwright.options.MouseButton.RIGHT)
+                    .setPosition(((Number) position.get("x")).doubleValue(), ((Number) position.get("y")).doubleValue()));
+            try {
+                page.waitForCondition(() -> canvas.getAttribute("data-clicked-node") != null,
+                        new com.microsoft.playwright.Page.WaitForConditionOptions().setTimeout(2_000));
+            } catch (com.microsoft.playwright.TimeoutError missed) {
+                // The click reached no node at all; the next attempt resolves the point again.
+            }
+            clicked = canvas.getAttribute("data-clicked-node");
+            if (clicked == null) {
+                clicked = "";
+            }
+        }
+        org.assertj.core.api.Assertions.assertThat(clicked).as("The node right-clicked at %s", position).isEqualTo(group);
         assertThat(viewer.getByRole(AriaRole.MENU)).isVisible();
     }
 
