@@ -1,5 +1,6 @@
 package ch.admin.bit.jeap.doc.web.uiapi.sites;
 
+import ch.admin.bit.jeap.doc.domain.DocumentationLiveStatus;
 import ch.admin.bit.jeap.doc.domain.DocumentationProvenance;
 import ch.admin.bit.jeap.doc.web.uiapi.UiApiPaths;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,9 +11,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The live status of one documentation site, which its About page fetches: answered from the service's own
@@ -37,16 +40,22 @@ class SiteLiveStatusController {
                           + "site's About page tabulates fires next. Never cached; 404 for a site that is not "
                           + "configured.")
     @GetMapping(UiApiPaths.LIVE_STATUS)
-    public ResponseEntity<?> liveStatus(@PathVariable String site) {
-        return provenance.liveStatusOf(site)
-                .<ResponseEntity<?>>map(status -> ResponseEntity.ok()
-                        .cacheControl(CacheControl.noStore())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(status))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                        .body(ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,
-                                "No documentation site of this name is configured.")));
+    public ResponseEntity<DocumentationLiveStatus> liveStatus(@PathVariable String site) {
+        DocumentationLiveStatus status = provenance.liveStatusOf(site)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No documentation site of this name is configured."));
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(status);
+    }
+
+    /** Nothing else renders a problem document below {@code /ui-api}, and the 404 carries one. */
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<ProblemDetail> problem(ResponseStatusException e) {
+        return ResponseEntity.status(e.getStatusCode())
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(e.getBody());
     }
 
 }
