@@ -59,7 +59,7 @@ function Score({score, trend, history}) {
             {label && <span className={styles.trend}>{label.arrow} {label.text}</span>}
             {points && (
                 <span className={styles.history}>
-                    <svg width="120" height="24" viewBox="-1 -1 122 26" role="img" aria-label="score of the last 14 days">
+                    <svg width="120" height="24" viewBox="-1 -1 122 26" aria-hidden="true">
                         <polyline points={points} fill="none" className={styles.historyLine}/>
                     </svg>
                     <span className={styles.historyLabel}>last 14 days</span>
@@ -113,9 +113,9 @@ function ComponentGovernance({excerpt, entry}) {
     const component = componentEntry(excerpt, entry.components[0]);
     if (!component) return null;
     return (
-        <Frame title="Governance" href={component.link} source={sourceLine(excerpt)} footer={<>
+        <Frame title="Governance" href={component.link} source={sourceLine(excerpt)} footer={
             <Link className={styles.bottomLink} href={component.link}>{component.name} on the governance site →</Link>
-        </>}>
+        }>
             <Score score={component.score} trend={component.trend} history={component.history}/>
             {component.failingRules.length > 0 && (
                 <table className={styles.table}>

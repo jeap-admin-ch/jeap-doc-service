@@ -40,7 +40,7 @@ public record DocumentationLiveStatus(String site, Instant at, List<EnvironmentS
      * The path is written into the page as an absolute link, and the client module takes the URL from that
      * link, so the two cannot disagree.
      */
-    public static final String PATH = "/ui-api/sites/{site}/live-status";
+    public static final String PATH = "/ui-api/sites/{site}/live-status"; // NOSONAR a route of this API, not a setting
 
     /** The last segment of {@link #PATH}, which is how the client module recognises the link. */
     public static final String RESOURCE_NAME = "live-status";
