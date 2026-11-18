@@ -46,8 +46,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GovernanceExcerptIT extends DocServiceIntegrationTestBase {
 
     private static final String SITE = "govexcerpt";
-    private static final String EXCERPT = "/ui-api/excerpts/governance/systems/";
+    private static final String EXCERPT = "/ui-api/excerpts/governance/systems?system=";
     private static final LocalDate TODAY = LocalDate.now();
+
+    /** Every character a path segment could not carry past the firewall. */
+    private static final String ODD_NAME = "Orders/EU; 100% \\ done";
+    private static final String ODD_NAME_JSON = ODD_NAME.replace("\\", "\\\\");
 
     @Autowired
     private MockMvc mockMvc;
@@ -77,8 +81,9 @@ class GovernanceExcerptIT extends DocServiceIntegrationTestBase {
     void storeTheGovernanceData() {
         store(GovernanceResourceKind.SYSTEMS_INDEX, null, """
                 {"scoredAt": "2026-10-22T06:45:21Z", "trendPeriodDays": 30,
-                 "systems": [{"name": "Inspecziun", "score": 86, "trend": "STABLE"}]}
-                """);
+                 "systems": [{"name": "Inspecziun", "score": 86, "trend": "STABLE"},
+                             {"name": "%s", "score": 70, "trend": "UP"}]}
+                """.formatted(ODD_NAME_JSON));
         store(GovernanceResourceKind.RULES_INDEX, null, """
                 {"scoredAt": "2026-10-22T06:45:21Z",
                  "rules": [{"ruleId": "signed-messages", "name": "Component Consumes Signed Messages",
@@ -98,6 +103,9 @@ class GovernanceExcerptIT extends DocServiceIntegrationTestBase {
                                    {"ruleId": "other", "state": "OK"},
                                    {"ruleId": "paused", "state": "PAUSED"}]}]}
                 """.formatted(history(20)));
+        store(GovernanceResourceKind.SYSTEM, ODD_NAME, """
+                {"name": "%s", "score": 70, "trend": "UP", "history": [], "components": []}
+                """.formatted(ODD_NAME_JSON));
     }
 
     @AfterEach
@@ -165,6 +173,20 @@ class GovernanceExcerptIT extends DocServiceIntegrationTestBase {
                 .andExpect(status().isNoContent())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-cache"))
                 .andExpect(content().bytes(new byte[0]));
+    }
+
+    @Test
+    void get_whenTheNameHoldsWhatAPathSegmentCannot_thenItsExcerpt() throws Exception {
+        mockMvc.perform(get(UiApiPaths.GOVERNANCE_EXCERPT).queryParam("system", ODD_NAME))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.system").value(ODD_NAME))
+                .andExpect(jsonPath("$.score").value(70));
+    }
+
+    @Test
+    void get_whenNoSystemIsNamed_thenNoContentRatherThanAnError() throws Exception {
+        mockMvc.perform(get(UiApiPaths.GOVERNANCE_EXCERPT))
+                .andExpect(status().isNoContent());
     }
 
     @Test

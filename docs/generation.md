@@ -549,7 +549,7 @@ the site the excerpt comes from. The template that writes a component's page say
 It names what the architecture model of the tree holds and nothing else - the system, and on a system page its
 components sorted by name, on a component page that one component - so a scoring run changes no part's content
 hash. The site template hands the block to its excerpts component, which reads
-[`GET /ui-api/excerpts/governance/systems/{system}`](api.md#the-governance-excerpt) once the page has mounted:
+[`GET /ui-api/excerpts/governance/systems?system={system}`](api.md#the-governance-excerpt) once the page has mounted:
 
 - **System page**: the system's score with its marker, trend and the last 14 days as a line, the time of the
   scoring run, and a row per component of the placeholder - the lowest score first - with its score and the

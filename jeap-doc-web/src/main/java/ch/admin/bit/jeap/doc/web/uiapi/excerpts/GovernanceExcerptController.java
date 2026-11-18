@@ -10,7 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -39,9 +39,11 @@ class GovernanceExcerptController {
                           + "score and the rules it fails, with links into the governance site. Answered from the "
                           + "governance data this service imported, never from the Governance Service. 204 without "
                           + "a body where no governance site is configured, nothing is imported yet, or the system "
-                          + "is not scored. A weak entity tag, no-cache, and 304 for a matching If-None-Match.")
+                          + "is not scored or not named. A weak entity tag, no-cache, and 304 for a matching "
+                          + "If-None-Match.")
     @GetMapping(UiApiPaths.GOVERNANCE_EXCERPT)
-    public ResponseEntity<byte[]> governanceExcerpt(@PathVariable String system, HttpServletRequest request) {
+    public ResponseEntity<byte[]> governanceExcerpt(@RequestParam(required = false) String system,
+                                                    HttpServletRequest request) {
         return excerpts.ofSystem(system)
                 .map(excerpt -> EntityTagged.json(
                         json.writeValueAsBytes(GovernanceExcerptDto.of(excerpt, request.getContextPath()))))

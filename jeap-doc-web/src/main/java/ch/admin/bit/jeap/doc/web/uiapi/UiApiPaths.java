@@ -15,7 +15,8 @@ public final class UiApiPaths {
 
     public static final String UI_API = "/ui-api";
 
-    public static final String GOVERNANCE_EXCERPT = UI_API + "/excerpts/governance/systems/{system}";
+    /** The system is a query parameter, as everywhere else in the API: a name may hold what a path cannot. */
+    public static final String GOVERNANCE_EXCERPT = UI_API + "/excerpts/governance/systems";
 
     /** Spelled in the domain, because the site generator writes it into the About page as well. */
     public static final String LIVE_STATUS = DocumentationLiveStatus.PATH;

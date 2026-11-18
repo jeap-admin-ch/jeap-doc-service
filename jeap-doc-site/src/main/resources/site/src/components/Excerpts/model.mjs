@@ -42,7 +42,7 @@ export function contextPathOf(baseUrl, site) {
 
 /** Where the governance excerpt of a system is read. */
 export function governanceUrl(contextPath, system) {
-    return `${contextPath}/ui-api/excerpts/governance/systems/${encodeURIComponent(system)}`;
+    return `${contextPath}/ui-api/excerpts/governance/systems?system=${encodeURIComponent(system)}`;
 }
 
 /** The governance site's markers: green from 80 percent, yellow from 50, red below. */

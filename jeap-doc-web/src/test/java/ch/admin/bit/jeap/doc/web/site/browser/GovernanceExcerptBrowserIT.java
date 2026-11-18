@@ -239,7 +239,7 @@ class GovernanceExcerptBrowserIT extends BrowserTestBase {
         PlaywrightAssertions.assertThat(excerpt.locator("footer")).containsText("Rules overview →");
 
         assertThat(excerptRequests).hasSize(1);
-        assertThat(excerptRequests.getFirst().url()).endsWith("/ui-api/excerpts/governance/systems/" + SCORED);
+        assertThat(excerptRequests.getFirst().url()).endsWith("/ui-api/excerpts/governance/systems?system=" + SCORED);
         assertThat(excerptRequests.getFirst().headers()).doesNotContainKey("authorization");
         assertNothingWentWrongInTheBrowser();
     }
@@ -377,7 +377,7 @@ class GovernanceExcerptBrowserIT extends BrowserTestBase {
     @Order(8)
     void aSystemWithoutGovernanceDataShowsNone() {
         Response answered = page.waitForResponse(
-                response -> response.url().endsWith("/ui-api/excerpts/governance/systems/" + UNSCORED),
+                response -> response.url().endsWith("/ui-api/excerpts/governance/systems?system=" + UNSCORED),
                 () -> open(ROOT + "/systems/" + UNSCORED + "/"));
 
         assertThat(answered.status()).isEqualTo(204);

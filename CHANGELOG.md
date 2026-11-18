@@ -11,8 +11,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Show a live governance excerpt on the generated system and component pages: the system's score, trend and
   last 14 days, and per component its score and the rules it fails, each linking into the governance site. The
   pages read it in the browser, so a scoring run rebuilds no page; nothing is shown without governance data.
-- `GET /ui-api/excerpts/governance/systems/{system}` answers the excerpt from the stored governance data, with a
-  weak entity tag and `no-cache`, and `204` where there is nothing to show.
+- `GET /ui-api/excerpts/governance/systems?system={system}` answers the excerpt from the stored governance data,
+  with a weak entity tag and `no-cache`, and `204` where there is nothing to show.
 - `jeap.doc.governance.excerpts.site` names the governance site the excerpts link into. It is only needed, and
   then required, where an instance configures more than one site with `content: governance`.
 - A system's root page lists its components, each linking to its page on the site.

@@ -704,10 +704,10 @@ below it. `/api` is called by pipelines and services and always needs a bearer t
 So `/ui-api` is **open and read-only**: `GET` and `HEAD` are answered without a token, and every other method is
 refused. Nothing below it answers what the open sites would not show.
 
-| Resource                                           | What it answers                                                                                                                                                                                       |
-|----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `GET /ui-api/sites/{site}/live-status`             | When each environment of the site last read its architecture repository, whether the import is behind, and when each schedule fires next. Never cached (`no-store`); `404` for a site not configured  |
-| `GET /ui-api/excerpts/governance/systems/{system}` | The governance excerpt of a system, which its architecture pages show - see below                                                                                                                     |
+| Resource                                                  | What it answers                                                                                                                                                                                      |
+|-----------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `GET /ui-api/sites/{site}/live-status`                    | When each environment of the site last read its architecture repository, whether the import is behind, and when each schedule fires next. Never cached (`no-store`); `404` for a site not configured |
+| `GET /ui-api/excerpts/governance/systems?system={system}` | The governance excerpt of a system, which its architecture pages show - see below                                                                                                                    |
 
 The live status is answered whether or not the site has been published, so a site that has never been generated
 still reports why. The About page fetches it, because those statements would freeze into a page that is not
@@ -716,9 +716,10 @@ failure reason and the upstream URL stay.
 
 ### The governance excerpt
 
-`GET /ui-api/excerpts/governance/systems/{system}` is what a system's and a component's architecture page show
-of the system's governance scores. `{system}` is the system's name in the architecture model, matched against
-the governance data's names exactly and, failing that, ignoring case. It is answered from the governance data
+`GET /ui-api/excerpts/governance/systems?system={system}` is what a system's and a component's architecture
+page show of the system's governance scores. `system` is the system's name in the architecture model, matched
+against the governance data's names exactly and, failing that, ignoring case. It is a query parameter, as
+everywhere else in the API, because a name may hold characters a path segment cannot carry. It is answered from the governance data
 the [governance import](governance-import.md) stored, **never from the Governance Service** - a page asks on
 every view, and must not depend on another service being up.
 
@@ -760,7 +761,7 @@ every view, and must not depend on another service being up.
   same either way. The tag is computed over the answer, so a `304` saves the transfer and not the reading of the
   stored governance data.
 - `204` without a body where no site has `content: governance`, nothing has been imported yet, or the system is
-  not scored, and a page shows no excerpt then. Not a `404`: every generated page asks, on every instance, and a
+  not scored or not named, and a page shows no excerpt then. Not a `404`: every generated page asks, on every instance, and a
   browser reports each `404` of a fetch as a resource that failed to load - nothing being scored is not an error.
 
 There is one resource per system and none per component: a component page reads its system's answer and shows

@@ -19,7 +19,8 @@ test('the context path is the base URL without the site, and the default site ow
     assert.equal(contextPathOf('/', 'default'), '');
     assert.equal(contextPathOf('/docs/site/architecture/', 'architecture'), '/docs');
     assert.equal(contextPathOf('/site/architecture/', 'architecture'), '');
-    assert.equal(governanceUrl('/docs', 'Orders & Co'), '/docs/ui-api/excerpts/governance/systems/Orders%20%26%20Co');
+    assert.equal(governanceUrl('/docs', 'Orders & Co'), '/docs/ui-api/excerpts/governance/systems?system=Orders%20%26%20Co');
+    assert.equal(governanceUrl('', 'a/b;c\\d%e'), '/ui-api/excerpts/governance/systems?system=a%2Fb%3Bc%5Cd%25e');
 });
 
 test('scores carry the governance site markers', () => {
