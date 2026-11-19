@@ -80,7 +80,7 @@ export function readGraph(payload, site, environment) {
         incoming.get(edge.target).add(edge.id);
     }
     return {nodes, edges, flow, outgoing, incoming, groups, groupOf, adjacent, messageSystems,
-        documentation: payload.documentation,
+        documentation: payload.documentation, snapshot: payload.snapshot,
         ownershipComplete: payload.ownershipComplete};
 }
 

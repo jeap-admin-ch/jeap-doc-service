@@ -320,8 +320,10 @@ semantic identity on the current graph. Changing or reusing the key cannot redir
 interface. Group targets use their system, component and `groupKey`; legacy groups without that key use
 their trigger's semantic identity. An individual reaction additionally matches
 its trigger, sorted action-interface identities, reaction model version and status within that group. Frequencies
-and mutable reaction IDs are excluded. All matches must be unique; indistinguishable reactions or standalone
-groups cannot be shared individually. This deliberately refuses ambiguity instead of guessing a member.
+and mutable reaction IDs are excluded from durable semantic references. If reactions in the same group have
+identical signatures, a reference additionally records the concrete reaction key and the published snapshot
+hash. Such a reference is valid only on that exact snapshot and still validates the complete signature.
+Indistinguishable standalone groups and reactions without a published snapshot hash cannot be shared individually.
 
 A malformed or unsupported format, a different site or environment, a missing entry or target, an ambiguous
 match or an inapplicable step displays **This view cannot be restored on the current graph.** No partially
@@ -333,8 +335,9 @@ no historical snapshot and promise no best-effort recovery.
 Sharing an unidentifiable entry or target reports **This view cannot be shared: an entry or target is not
 uniquely identifiable on the current graph.** Back can undo the action that introduced it. Restoration
 failures appear only on the addressed viewer; undecodable links produce one notice per page.
-Errors appear beside the toolbar in the same style as copy confirmations, with a red border and text;
-they remain until a subsequent action clears them. Opening a shared link scrolls directly to its viewer
+Messages appear beside the toolbar: failures to generate a link (automatically or through Share) are yellow
+warnings; failures to restore an opened link remain red. Each message has a dismiss button; closing a
+message does not change the graph. A later failed operation may display a new message. Opening a shared link scrolls directly to its viewer
 below the navigation bar and activates it even when it starts below the fold. Other viewers retain their
 ordinary entry views. Nearby preceding viewers finish replacing their fallback tables before that one
 scroll, so their height changes do not move the target afterwards. Scrolling afterwards is unrestricted; automatic URL updates do not scroll the page.

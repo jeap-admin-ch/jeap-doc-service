@@ -84,8 +84,12 @@ export function referenceOf(graph, id) {
     const references = cacheOf(graph).references;
     if (references.has(id)) return references.get(id);
     const node = graph.nodes.get(id);
-    const ref = graph.groups.has(id) ? groupReference(graph, id) : node?.reaction ? reactionReference(graph, id)
+    let ref = graph.groups.has(id) ? groupReference(graph, id) : node?.reaction ? reactionReference(graph, id)
         : node ? {kind: 'interface', key: node.identity.key, identity: interfaceIdentity(node) ?? fail()} : fail();
+    if (node?.reaction && text(graph.snapshot)
+        && uniqueIndex(graph, graph.groupOf.get(id)).get(json(ref)) === null) {
+        ref = {...ref, snapshot: graph.snapshot, key: node.identity.key};
+    }
     if (resolveReference(graph, ref) !== id) fail();
     references.set(id, ref);
     return ref;
@@ -103,9 +107,16 @@ export function resolveReference(graph, ref) {
         return uniqueIndex(graph, 'group').get(json(ref)) ?? fail();
     }
     if (ref.kind === 'reaction') {
-        fields(ref, ['kind', 'group', 'trigger', 'actions', 'model', 'status']);
+        fields(ref, ['kind', 'group', 'trigger', 'actions', 'model', 'status', 'snapshot', 'key']);
         // Ambiguous standalone groups cannot choose a member by accident.
         const group = resolveReference(graph, ref.group);
+        if ('snapshot' in ref || 'key' in ref) {
+            if (!text(ref.snapshot) || ref.snapshot !== graph.snapshot || !text(ref.key)) fail();
+            const {snapshot, key, ...signature} = ref;
+            const matches = graph.groups.get(group).members.filter(id =>
+                graph.nodes.get(id).identity.key === key && json(reactionReference(graph, id)) === json(signature));
+            return matches.length === 1 ? matches[0] : fail();
+        }
         return uniqueIndex(graph, group).get(json(ref)) ?? fail();
     }
     return fail();

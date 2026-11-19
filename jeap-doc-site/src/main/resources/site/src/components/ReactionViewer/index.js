@@ -314,7 +314,7 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
                 if (request === shareRequest.current) { setCopyFeedback({message: 'Link copied'}); setNotice(''); }
             }
             catch { if (request === shareRequest.current) { setCopyFeedback({message: 'Copy the shared view link below.'}); setNotice(''); } }
-        } catch (error) { if (request === shareRequest.current) { setSharedLink(''); setNotice(error.message); } }
+        } catch (error) { if (request === shareRequest.current) { setSharedLink(''); setAddressError(error.message); } }
         finally { if (request === shareRequest.current) setSharing(false); }
     };
     const changeGroup = expanded => applyAction({type: expanded ? 'expand-group' : 'collapse', id: menu.group});
@@ -345,7 +345,11 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
             <div className={styles.actions}>{historyControls}</div>
         </div>}
         {!snapshot.graph.ownershipComplete && <p role="status">Incomplete ownership: Not all reactions can be assigned to a system.</p>}
-        {notice && <div role="status" className={styles.explorerError}>{notice}</div>}
+        {(notice || addressError) && <div role="status" className={`${styles.explorerError} ${notice ? styles.errorFeedback : styles.warningFeedback}`}>
+            <span>{notice || addressError}</span>
+            <button type="button" aria-label="Dismiss message" title="Dismiss message"
+                onClick={() => { setNotice(''); setAddressError(''); }}><CloseIcon/></button>
+        </div>}
     </>;
     const currentEntry = view.state.entry;
     let focus = `${currentEntry.system} (System)`;
@@ -360,8 +364,9 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
     const count = view.reactionCount;
     const direct = ['MESSAGE', 'INTERFACE'].includes(currentEntry.kind) && !view.state.explored;
     const summary = `${count} ${direct ? 'directly connected ' : ''}${count === 1 ? 'reaction' : 'reactions'}`;
-    const feedback = addressError || notice || copyFeedback?.message;
-    const feedbackError = Boolean(addressError || notice);
+    const feedback = notice || addressError || copyFeedback?.message;
+    const feedbackStyle = notice ? styles.errorFeedback : addressError ? styles.warningFeedback : '';
+    const dismissFeedback = () => { setAddressError(''); setNotice(''); setCopyFeedback(null); };
     const closeDialog = () => { setDialog(null); container.current?.focus({preventScroll: true}); };
     return <>{entrySearch}<section ref={panel} className={styles.viewer} aria-label="Reaction chains"
         data-reaction-state={tableReady ? 'ready' : activatedView === viewKey ? 'rendering' : 'idle'}>
@@ -394,7 +399,10 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
                 </span>
             </div>
             {feedback && <div role="status" aria-live="polite" aria-atomic="true"
-                className={`${styles.copyFeedback} ${feedbackError ? styles.errorFeedback : ''}`}>{feedback}</div>}
+                className={`${styles.copyFeedback} ${feedbackStyle}`}>
+                <span>{feedback}</span>
+                <button type="button" aria-label="Dismiss message" title="Dismiss message" onClick={dismissFeedback}><CloseIcon/></button>
+            </div>}
         </div>
         {!snapshot.graph.ownershipComplete && <p role="status">Incomplete ownership: Not all reactions can be assigned to a system.</p>}
         <HiddenContent title={`${view.superseded} superseded reactions hidden (presumed superseded)`}

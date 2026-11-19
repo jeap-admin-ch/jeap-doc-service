@@ -336,6 +336,28 @@ test('unidentifiable targets report a sharing error and Back makes the view shar
     assert.deepEqual((await restore(g, link(g, backHistory(session)))).state, initial.state);
 });
 
+test('indistinguishable reactions can be shared within their exact published snapshot', async () => {
+    const data = fixture();
+    data.snapshot = 'published-snapshot';
+    const original = data.graph.nodes.find(node => node.identity.key === 'r1');
+    data.graph.nodes.push({...structuredClone(original), identity: {nodeType: 'REACTION', key: 'copy'}});
+    data.graph.edges.push(...data.graph.edges.filter(edge => edge.source.key === 'r1' || edge.target.key === 'r1')
+        .map(edge => JSON.parse(JSON.stringify(edge).replaceAll('r1', 'copy'))));
+    const g = read(data), expanded = apply(g, startHistory(g, entry), 'expand-group', g.groupOf.get(rid('copy')));
+    const session = apply(g, expanded, 'pin', rid('copy'));
+    const url = await link(g, session);
+    assert.deepEqual((await restore(read(structuredClone(data)), url)).state, session.state);
+    const ref = (await payloadOf(url)).steps.at(-1).target;
+    assert.equal(ref.key, 'copy');
+    assert.equal(ref.snapshot, data.snapshot);
+    const changed = structuredClone(data);
+    changed.snapshot = 'new-snapshot';
+    await assert.rejects(() => restore(read(changed), url), /cannot be restored/);
+    const tampered = await payloadOf(url);
+    tampered.steps.at(-1).target.actions = [];
+    await assert.rejects(() => restore(g, encode(tampered)), /cannot be restored/);
+});
+
 test('pan and zoom reuse the semantic payload without reading targets or projecting entries again', async () => {
     const g = graph(), viewer = {kind: 'MESSAGE', message: 'A', variant: ''};
     const session = apply(g, startHistory(g, viewer), 'pin', rid('r1'));

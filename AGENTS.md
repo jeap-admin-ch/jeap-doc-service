@@ -983,7 +983,9 @@ Viewer semantic actions pass through `history.mjs`, including Focus, Reset and g
 Keep the reset baseline in that state and restore it with Back. Each viewer retains 100 undoable steps;
 its complete link replay script is separate. `sharing.mjs` encodes versioned steps in the URL fragment and
 replays them atomically against the current site/environment. Use interface keys and group keys, never
-mutable reaction IDs as durable targets. Individual reaction signatures must resolve uniquely or fail.
+mutable reaction IDs as durable targets. Individual reaction signatures resolve uniquely where possible. For identical signatures within a group,
+a concrete reaction key may disambiguate only when bound to the exact published snapshot hash; still
+validate the full signature and reject a changed snapshot. Never use that key as a durable target.
 Presentation changes create no history steps. Each semantic checkpoint retains its preceding viewport and
 node positions for Back. Links retain zoom and the centred model point, not per-node positions or
 undo history. Interface references carry their semantic identity as well as an upstream key. Resolve by the
@@ -1020,7 +1022,7 @@ replay targets; undecodable links show one restoration notice per page.
 
 Opening a reaction link scrolls once to its addressed viewer and activates it below the fold. Settle nearby
 preceding viewers and their live tables first, so their height changes cannot shift the target afterwards. Ordinary
-rendering and automatic URL updates never scroll. Keep link errors in the toolbar feedback style, in red,
+rendering and automatic URL updates never scroll. Keep restoration errors red and link-generation warnings yellow in the toolbar feedback style, with a dismiss button,
 and keep an undecodable link's error limited to one viewer per page. Informational clipboard/fullscreen
 hints use transient neutral feedback; red is for failures. Errors take precedence over copy confirmations.
 
