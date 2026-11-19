@@ -373,11 +373,8 @@ The graph icon to the right of the header search shows **Reaction Graph Explorer
 the full label, and the footer provides a **Reaction Graph Explorer** link under **Documentation**. Both entries
 open `/reactions/` in the current environment, for example
 `/dev/reactions/` or `/site/handbook/dev/reactions/`. It is built with the shell that publishes that
-site/environment's `reaction-graph.json`; system parts link back to that shell. If a non-main environment is
-already named `reactions`, the Explorer automatically uses `/_reactions/` on that site to preserve the
-environment URLs. Adding such an environment later moves the Explorer in every environment of the site,
-for example from `/dev/reactions/` to `/dev/_reactions/`. Existing Explorer bookmarks and shared links must
-be updated; old Explorer routes can return 404.
+site/environment's `reaction-graph.json`; system parts link back to that shell. The environment ID
+`reactions` is reserved on every site, so the Explorer path does not depend on environment names.
 Sites without environments have no Explorer route or navigation item. The same applies to environments
 without a configured Reaction Observer, including every environment when `jeap.doc.reactions.enabled` is false.
 The system documentation writer contributes

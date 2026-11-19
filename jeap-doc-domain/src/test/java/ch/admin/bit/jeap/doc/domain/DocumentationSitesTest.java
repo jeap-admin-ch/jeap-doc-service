@@ -209,7 +209,7 @@ class DocumentationSitesTest {
      */
     @ParameterizedTest
     @ValueSource(strings = {"api", "ui-api", "actuator", "swagger-ui", "api-docs", "webjars", "error", "assets", "img",
-            "site", "default-site", "dev", "prod"})
+            "site", "default-site", "dev", "prod", "reactions"})
     void construct_whenTheSiteIsNamedAfterAPathTheServiceAnswersOn_thenItIsAccepted(String id) {
         SiteProperties properties = properties(Map.of(id, site(configured -> {
         })));
@@ -299,16 +299,15 @@ class DocumentationSitesTest {
 
     @ParameterizedTest
     @CsvSource({"default,true", "default,false", "handbook,true", "handbook,false"})
-    void construct_whenAnEnvironmentIsCalledReactions_thenExistingConfigurationRemainsValid(
+    void construct_whenAnEnvironmentIsCalledReactions_thenFailsRegardlessOfObserverConfiguration(
             String siteId, boolean main) {
         SiteProperties properties = properties(Map.of(siteId, site(configured ->
                 configured.setEnvironments(List.of(environment("reactions", main, true),
                         environment("prod", !main, false))))));
 
-        Site configured = new DocumentationSites(properties).find(siteId).orElseThrow();
-        assertThat(configured.environments()).extracting(SiteEnvironment::id)
-                .containsExactlyInAnyOrder("reactions", "prod");
-        assertThat(configured.mainEnvironment().id()).isEqualTo(main ? "reactions" : "prod");
+        assertThatThrownBy(() -> new DocumentationSites(properties))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("'" + siteId + "'", "'reactions'", "site generator");
     }
 
     /**

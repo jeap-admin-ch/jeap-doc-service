@@ -209,16 +209,11 @@ there that the paths the service answers on itself are unusable. Reserved for th
 `swagger-ui`, `api-docs`, `webjars`, `error`, `assets`, `img`, and `site`, which is where every other site is
 served. The environments of any other site sit below `/site/<id>/` and are not subject to these service-level restrictions.
 
-The Reaction Graph Explorer uses `/reactions/`. If a non-main environment already has that name, it automatically
-uses `/_reactions/` instead; existing configuration and environment URLs remain valid.
-Adding such an environment later changes the Explorer path in every environment of that site, for example
-from `/dev/reactions/` to `/dev/_reactions/`. Existing Explorer bookmarks and shared links must be updated;
-old Explorer routes can return 404.
-
 An environment of any site may not be called `default` or `static`, whatever its URL: those are names the site
 generator uses inside a site's own content tree. Nor `microsites`: every site serves its uploaded microsites
 below its own root, `/microsites/` or `/site/<id>/microsites/`, and an environment of that name would lose its
-pages to them. All of it is checked while the service starts.
+pages to them. `reactions` is also reserved on every site for the Reaction Graph Explorer, whether or not
+an observer is configured. All of it is checked while the service starts.
 
 ### Where a site's content comes from
 

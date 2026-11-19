@@ -420,13 +420,13 @@ class DocusaurusSiteBuilderIT {
 
     @ParameterizedTest
     @ValueSource(strings = {"default", "handbook"})
-    void generate_whenAnExistingEnvironmentIsNamedReactions_thenItsPagesAndBothExplorersCoexist(String siteId)
+    void generate_whenASiteHasSeveralEnvironments_thenEachExplorerUsesTheReservedRoute(String siteId)
             throws IOException {
         var prod = new SiteProperties.Environment();
         prod.setId("prod");
         prod.setMain(true);
         var observed = new SiteProperties.Environment();
-        observed.setId("reactions");
+        observed.setId("dev");
         observed.setLatest(true);
         var configuration = new SiteProperties.Site();
         configuration.setEnvironments(List.of(prod, observed));
@@ -442,15 +442,15 @@ class DocusaurusSiteBuilderIT {
                 TestProvenance.of(configured, NoArchitectureModel.INSTANCE,
                         new StructureTemplates(List.of())),
                 new AboutThisDocumentation(), new PublicationProperties());
-        var compatible = builderWriting(writing);
-        BuiltSite built = compatible.generate(compatible.prepare(18, site, wholeSiteOf(site), GENERATED_AT));
-        for (String prefix : List.of("", "reactions/")) {
+        var generating = builderWriting(writing);
+        BuiltSite built = generating.generate(generating.prepare(18, site, wholeSiteOf(site), GENERATED_AT));
+        for (String prefix : List.of("", "dev/")) {
             Path root = built.directory().resolve(prefix + "index.html");
-            Path explorer = built.directory().resolve(prefix + "_reactions/index.html");
+            Path explorer = built.directory().resolve(prefix + "reactions/index.html");
             assertThat(root).isRegularFile();
             assertThat(explorer).isRegularFile();
             assertThat(Files.readString(root)).doesNotContainPattern("href=\"?"
-                    + Pattern.quote(urls.baseUrl(site) + prefix + "_reactions/") + "[\"> ]");
+                    + Pattern.quote(urls.baseUrl(site) + prefix + "reactions/") + "[\"> ]");
             assertThat(Files.readString(explorer)).contains("<h1>Reaction Graph Explorer</h1>");
         }
     }

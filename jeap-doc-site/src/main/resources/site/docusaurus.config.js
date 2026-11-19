@@ -39,9 +39,6 @@ const {environments} = readGenerated('environments.json');
 const perEnvironment = site.perEnvironment !== false;
 const reactionEnvironments = perEnvironment ? (site.reactionEnvironments || []) : [];
 const hasReactions = reactionEnvironments.length > 0;
-// Keep existing environment roots intact without requiring configuration changes.
-const reactionExplorerPath = environments.some(environment => !environment.main && environment.id === 'reactions')
-    ? '/_reactions/' : '/reactions/';
 
 if (perEnvironment && !environments.some((environment) => environment.main)) {
     throw new Error('No environment is marked as the main one; the site generator guarantees exactly one.');
@@ -340,7 +337,7 @@ function reactionExplorerPages() {
         contentLoaded({actions}) {
             for (const environment of environments.filter(each => part.environments.includes(each.id) && reactionEnvironments.includes(each.id))) {
                 actions.addRoute({
-                    path: `${site.baseUrl.replace(/\/$/, '')}${routePrefixOf(environment)}${reactionExplorerPath}`,
+                    path: `${site.baseUrl.replace(/\/$/, '')}${routePrefixOf(environment)}/reactions/`,
                     component: '@site/src/components/ReactionExplorer/index.js',
                     exact: true,
                 });
@@ -357,7 +354,7 @@ const config = {
 
     url: site.url,
     baseUrl: site.baseUrl,
-    customFields: {docSite: site.id, reactionEnvironments, reactionExplorerPath},
+    customFields: {docSite: site.id, reactionEnvironments},
 
     // Every route is emitted as <route>/index.html. The doc service serves the site from object storage and
     // resolves a directory to its index.html, so the two have to agree.

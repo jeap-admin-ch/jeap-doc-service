@@ -9,8 +9,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - **Reaction Graph Explorer** at `/reactions/`, accessible from the header and Documentation footer in the
-  current site and environment after the shell has published the Explorer and a reaction snapshot. Existing
-  environment names, including `reactions`, remain valid. **Find an entry** searches the complete published graph for messages, variants,
+  current site and environment after the shell has published the Explorer and a reaction snapshot.
+  **Find an entry** searches the complete published graph for messages, variants,
   components with a known system and HTTP/generic interfaces without drawing the whole graph. Selecting a
   result opens its entry view and sets a new Reset baseline; Back restores the preceding view and baseline.
   Node menus link to available component, message and REST documentation in the current environment,
@@ -23,6 +23,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it in yellow without changing expanded contents, node positions, pins, history or the Reset baseline.
 
 ### Changed
+- `reactions` is reserved as an environment ID on every site, even without a configured observer, to keep
+  Explorer URLs stable. Existing environments with this name must be renamed before upgrading.
 - Reaction groups start collapsed, including in path views. A separate outgoing opener reveals direct
   actions without expanding the group. Hidden actions reuse this opener instead of adding a second button.
   Previously shared links retain their original presentation.

@@ -13,7 +13,7 @@ export function useExplorerHref() {
     const {pathname, search} = useLocation();
     const fromSearch = useIsBrowser() && /^\/search\/?$/.test(relative);
     const environment = fromSearch ? environmentById(new URLSearchParams(search).get('env')) : fromPath;
-    const {siteConfig: {baseUrl, customFields: {docSite, reactionEnvironments = [], reactionExplorerPath = '/reactions/'}}} = useDocusaurusContext();
+    const {siteConfig: {baseUrl, customFields: {docSite, reactionEnvironments = []}}} = useDocusaurusContext();
     const prefix = environment && reactionEnvironments.includes(environment.id)
         ? `${baseUrl.replace(/\/$/, '')}${routePrefixOf(environment)}` : null;
     const environmentId = environment?.id;
@@ -21,12 +21,12 @@ export function useExplorerHref() {
     useEffect(() => {
         if (prefix === null) return;
         let active = true;
-        publishedExplorerAvailable(`${prefix}/reaction-explorer.json`, `${prefix}${reactionExplorerPath}`, docSite, environmentId)
+        publishedExplorerAvailable(`${prefix}/reaction-explorer.json`, `${prefix}/reactions/`, docSite, environmentId)
             .then(available => { if (active) setPublication({prefix, available}); });
         return () => { active = false; };
-    }, [prefix, reactionExplorerPath, docSite, environmentId, pathname, search]);
+    }, [prefix, docSite, environmentId, pathname, search]);
     if (prefix === null || publication?.prefix !== prefix || !publication.available) return null;
-    return `pathname://${prefix}${reactionExplorerPath}`;
+    return `pathname://${prefix}/reactions/`;
 }
 
 export default function ExplorerNavLink({mobile, onClick}) {

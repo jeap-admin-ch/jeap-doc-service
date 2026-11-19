@@ -1027,10 +1027,9 @@ hints use transient neutral feedback; red is for failures. Errors take precedenc
 ### Standalone Reaction Graph Explorer
 
 The standalone Reaction Graph Explorer lives at `/reactions/` under each environment with a configured
-Reaction Observer. Only the shell publishes it. Use `/_reactions/` when a non-main environment already
-owns `/reactions/`. The config selects the path once and shares it with navigation through
-`customFields.reactionExplorerPath`. Do not reserve `reactions`: existing instances must continue to
-start without configuration changes. The navbar link crosses part builds with `pathname://`.
+Reaction Observer. Only the shell publishes it. `reactions` is reserved as an environment id on every
+site, even without an observer, because each environment serves its Explorer there. The navbar link
+crosses part builds with `pathname://`.
 
 `ReactionNetworkPublication.isEnabled` decides whether an environment has an Observer configured.
 `SystemDocumentationWriter` contributes those environments to `site.json` as `reactionEnvironments`

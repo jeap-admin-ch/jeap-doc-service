@@ -87,7 +87,7 @@ test('stored results are scoped to the site, environment and route', async () =>
     assert.equal(await check('/marker', route, 'other', 'dev'), false);
     assert.equal(await check('/marker', route, 'docs', 'prod'), false);
     assert.equal(requests, 4);
-    assert.equal(await check('/marker', '/site/docs/dev/_reactions/', 'docs', 'dev'), true);
+    assert.equal(await check('/marker', '/another-context/site/docs/dev/reactions/', 'docs', 'dev'), true);
     assert.equal(requests, 6);
 });
 

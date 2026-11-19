@@ -51,9 +51,9 @@ public class DocumentationSites {
 
     /**
      * Names the site generator uses for itself, which an environment therefore may not be called: the id of its
-     * own documentation instance, and the static directory it copies verbatim to the site root.
+     * own documentation instance, the static directory it copies verbatim to the site root, and the Explorer route.
      */
-    static final Set<String> GENERATOR_RESERVED_ENVIRONMENT_IDS = Set.of(Site.DEFAULT_SITE, "static");
+    static final Set<String> GENERATOR_RESERVED_ENVIRONMENT_IDS = Set.of(Site.DEFAULT_SITE, "static", "reactions");
 
     private static final List<SiteEnvironment> DEFAULT_ENVIRONMENTS = List.of(
             new SiteEnvironment("dev", "DEV", "Development", 1, false, true),
@@ -203,10 +203,11 @@ public class DocumentationSites {
                     + "documentation site is served below (/%s/<site>/). Rename the environment.",
                     siteId, id, Site.SITE_SEGMENT);
         }
-        // And two the site generator itself owns: 'default' is the id of its own docs instance, so an
+        // And the names the site generator itself owns: 'default' is the id of its own docs instance, so an
         // environment named after it fails every build on a duplicate plugin id - and 'static' is one of its
         // static directories, so an environment named after it would have its Markdown copied verbatim to the
-        // site root instead of being rendered.
+        // site root instead of being rendered. The Reaction Graph Explorer owns /reactions/ in every
+        // environment, so reserve it on every site even when no observer is configured.
         require(!GENERATOR_RESERVED_ENVIRONMENT_IDS.contains(id),
                 "The site '%s' configures an environment called '%s', which is a name the site generator uses "
                 + "for itself. Reserved: %s.", siteId, id,
