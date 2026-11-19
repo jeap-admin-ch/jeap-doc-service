@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.17.0] - 2026-11-19
 
 ### Added
 - **Reaction Graph Explorer** at `/reactions/`, accessible from the header and Documentation footer in the
@@ -29,7 +29,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   actions without expanding the group. Hidden actions reuse this opener instead of adding a second button.
   Previously shared links retain their original presentation.
 - Shared reaction links scroll directly to the addressed graph, including viewers below the fold. Link
-  errors appear beside the toolbar with red text and border, matching the copy-confirmation style.
+  generation failures appear as yellow warnings; restoration failures remain red. Both can be dismissed.
+- Reactions with identical signatures can be shared using a reference bound to the exact published snapshot.
+  Unique semantic reaction references continue to survive snapshot changes.
 
 ## [4.16.0] - 2026-11-18
 
