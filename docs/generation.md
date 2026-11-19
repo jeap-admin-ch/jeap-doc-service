@@ -1167,11 +1167,10 @@ Its subtitle counts reactions belonging to that system or component. For message
 directly triggering on or publishing the selected message variant, once each. Superseded reactions are excluded,
 and collapsing a group does not change the count.
 It loads the complete `reaction-graph.json` of the current site and environment once per browser application,
-then derives independent entry states for each embedded viewer. System entries start with their selected
-reaction groups expanded; component entries start collapsed. Both show their adjacent interfaces. Message
-entries show only the selected
-variant, its incoming and outgoing edges, and the reactions at their other ends. Other members of the same
-group and other interfaces of those reactions stay outside the selection, including after expanding a group.
+then derives independent entry states for each embedded viewer. System and component entries start with
+collapsed reaction groups and show their adjacent interfaces. Message entries show only the selected
+variant, its incoming and outgoing edges, and the collapsed reaction groups at their other ends. Other
+members of the same group and other interfaces of those reactions stay outside the selection, including after expanding a group.
 Their tables follow the same restriction.
 Layout and canvas creation wait until the viewer approaches the viewport; scrolling away retains its state.
 Sites without environments show an unavailable message and keep the generated table without fetching a graph.
@@ -1312,8 +1311,14 @@ and returning creates a fresh request with HTTP cache revalidation; the server s
 ### Focusing and exploring reaction chains
 
 **Focus** in a node menu starts a new selection without pinning the node. An interface shows its directly connected
-reactions; a reaction shows its trigger and action interfaces; a group starts collapsed with its adjacent
+reaction groups; a reaction shows its trigger and action interfaces; a group starts collapsed with its adjacent
 interfaces. Focus preserves the entry used by Reset view.
+
+Reaction groups start collapsed in new entry and path views. Newly reached groups also stay collapsed
+during exploration. Use the numbered marker inside a group or **Expand group** to show its individual
+reactions. A separate marker on the outgoing side, also available as **Show outgoing actions** in the group
+menu, reveals the direct action interfaces of its selected, available reactions without unfolding the group.
+It does not add sibling reactions or follow downstream reactions. Back and Reset view undo this action.
 
 **Expand incoming paths** and **Expand outgoing paths** add directed connections at a chosen edge depth,
 from one to the reachable depth, capped at 50. Existing contents and pins remain. Group expansion starts
@@ -1371,7 +1376,7 @@ canvas size changes the pixel pan to keep that point centred. Individual node po
 undo buffer are not included. The replay script retains
 steps beyond the 100-entry undo buffer; Back branches that script along with the view.
 
-The compact JSON format is version 1. A shared reference table stores each entry or target once; ordered
+New shared views use compact JSON version 2. A shared reference table stores each entry or target once; ordered
 steps contain numeric opcodes and indices into that table. These indices address the link's own dictionary,
 not upstream graph IDs. The context is a tuple of site, environment, base URL and page path. The viewer and
 initial entry use dictionary indices; the optional viewport is a tuple of zoom and centre coordinates.
@@ -1384,8 +1389,9 @@ Their API does not expose a compression level. Compression preserves the exact c
 not parse or reserialize that text. The format compaction preserves the semantic state, rather than the
 whitespace or number spelling of an earlier JSON representation.
 
-Only the compact version 1 payload behind `d1.` is accepted. Interface references require semantic
-identity because upstream IDs can be reused. Links without a viewport start with a fitted view. Unsupported or malformed compressed links fail with the same
+Compact versions 1 and 2 behind `d1.` are accepted. Version 1 links retain their previous expanded defaults
+and expansion behaviour; version 2 uses collapsed defaults and supports the outgoing group opener.
+Interface references require semantic identity because upstream IDs can be reused. Links without a viewport start with a fitted view. Unsupported or malformed compressed links fail with the same
 restoration message as a failed replay. The documentation remains usable.
 
 The complete URL may contain at most 16,384 characters. The decoded compact JSON is limited to 256 KiB,
@@ -1421,7 +1427,8 @@ failures appear only on the addressed viewer; undecodable links produce one noti
 Errors appear beside the toolbar in the same style as copy confirmations, with a red border and text;
 they remain until a subsequent action clears them. Opening a shared link scrolls directly to its viewer
 below the navigation bar and activates it even when it starts below the fold. Other viewers retain their
-ordinary entry views. Scrolling afterwards is unrestricted; automatic URL updates do not scroll the page.
+ordinary entry views. Nearby preceding viewers finish replacing their fallback tables before that one
+scroll, so their height changes do not move the target afterwards. Scrolling afterwards is unrestricted; automatic URL updates do not scroll the page.
 Identity indexes are retained per graph snapshot and compact semantic payloads per session, so pan and
 zoom only replace the viewport tuple before compression.
 
@@ -1497,8 +1504,8 @@ type or details are unknown. Matching ignores case and surrounding whitespace, r
 and substrings, and keeps all results reachable in a scrollable list. Arrow keys navigate, Enter selects,
 and Escape dismisses results. Labels retain system, variant and interface context and render as text.
 Typing changes neither the graph nor its pins and makes no additional network request. The initial page
-allocates no graph canvas. An interface selection pins that interface and displays its incident reactions;
-a component selection starts with collapsed groups. Components without a known system are not offered as
+allocates no graph canvas. An interface selection pins that interface and displays its incident reaction
+groups. Both interface and component selections start with collapsed groups. Components without a known system are not offered as
 component results; their interfaces remain searchable. Selection replaces the Reset baseline; Back restores
 the preceding selection and baseline. If Reset returns to the empty Explorer, history controls remain
 available while there are undoable steps. Back restores the previous graph and viewport.

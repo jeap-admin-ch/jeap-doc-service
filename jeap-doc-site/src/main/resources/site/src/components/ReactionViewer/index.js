@@ -6,7 +6,7 @@ import {
     CloseIcon, FitIcon, MaximizeIcon, MinimapIcon, ResetZoomIcon, SourceIcon, ZoomInIcon, ZoomOutIcon,
 } from '@matfsw/docusaurus-plantuml-plugin/theme/PlantUmlDiagram/icons.js';
 import {useEnvironment, routePrefixOf} from '../../data/environments';
-import {readGraph, availableReaction, project, labelOf, focusedReactionCount, visibleReactionRows} from './model.mjs';
+import {missingGroupActions, readGraph, availableReaction, project, labelOf, focusedReactionCount, visibleReactionRows} from './model.mjs';
 import styles from './styles.module.css';
 import {hiddenMarkers} from './visibility.mjs';
 import {AddressUpdates, SnapshotRequests, RestoreNotices} from './SnapshotProvider';
@@ -201,30 +201,52 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
         setActivatedView(viewKey);
         // Wait for the live graph and table to replace their placeholders before positioning the page.
         if (view.elements.length && !renderer) return;
-        const frame = requestAnimationFrame(() => {
-            revealedLink.current = viewKey;
+        let frame;
+        const pending = new Set();
+        const reveal = () => {
             const element = panel.current;
             if (!element) return;
-            const margin = Number.parseFloat(getComputedStyle(element).scrollMarginTop) || 0;
-            window.scrollTo({top: window.scrollY + element.getBoundingClientRect().top - margin, behavior: 'instant'});
-        });
-        return () => cancelAnimationFrame(frame);
+            const targetTop = element.getBoundingClientRect().top;
+            // Nearby preceding viewers replace fallback tables too. Settle those before scrolling once.
+            for (const previous of document.querySelectorAll('[data-reaction-state]')) {
+                if (!(previous.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING)
+                    || previous.dataset.reactionState === 'ready') continue;
+                const bounds = previous.getBoundingClientRect();
+                if (previous.dataset.reactionState === 'rendering' || bounds.bottom >= targetTop - 300
+                    || bounds.bottom >= -300 && bounds.top <= window.innerHeight + 300) {
+                    if (!pending.has(previous)) {
+                        pending.add(previous);
+                        previous.dispatchEvent(new Event('reaction-view-prepare'));
+                    }
+                }
+            }
+            if ([...pending].some(previous => previous.isConnected && previous.dataset.reactionState !== 'ready')) return;
+            observer.disconnect();
+            frame = requestAnimationFrame(() => {
+                revealedLink.current = viewKey;
+                const margin = Number.parseFloat(getComputedStyle(element).scrollMarginTop) || 0;
+                window.scrollTo({top: window.scrollY + element.getBoundingClientRect().top - margin, behavior: 'instant'});
+            });
+        };
+        const observer = new MutationObserver(reveal);
+        observer.observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['data-reaction-state']});
+        reveal();
+        return () => { observer.disconnect(); cancelAnimationFrame(frame); };
     }, [view, snapshot, sharedHash, viewKey, renderer]);
     useEffect(() => {
         if (activatedView === viewKey || !panel.current) return;
-        if (typeof IntersectionObserver === 'undefined') {
-            setActivatedView(viewKey);
-            return;
-        }
+        const element = panel.current;
+        const activate = () => setActivatedView(viewKey);
+        element.addEventListener('reaction-view-prepare', activate);
         // Variants share the snapshot, but only nearby diagrams allocate canvases and run their layout.
-        const observer = new IntersectionObserver(entries => {
+        const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(entries => {
             if (entries.some(entry => entry.isIntersecting)) {
-                setActivatedView(viewKey);
+                activate();
                 observer.disconnect();
             }
         }, {rootMargin: '300px'});
-        observer.observe(panel.current);
-        return () => observer.disconnect();
+        if (observer) observer.observe(element); else activate();
+        return () => { observer?.disconnect(); element.removeEventListener('reaction-view-prepare', activate); };
     }, [view, viewKey, activatedView]);
     useEffect(() => {
         setRenderer(null);
@@ -260,7 +282,7 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
     const applyAction = (action, anchor = action.id) => {
         shareRequest.current++; setSharing(false); setCopyFeedback(null);
         const beforePresentation = controls.current?.viewport();
-        const actionFocus = anchor ? controls.current?.actionFocus(anchor, ['expand', 'expand-group', 'show'].includes(action.type),
+        const actionFocus = anchor ? controls.current?.actionFocus(anchor, ['expand', 'expand-group', 'show', 'show-actions'].includes(action.type),
             ['hide', 'outgoing', 'connected'].includes(action.type)) : null;
         setEditedView(previous => {
             const current = previous?.key === viewKey ? previous.session : session;
@@ -341,7 +363,8 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
     const feedback = addressError || notice || copyFeedback?.message;
     const feedbackError = Boolean(addressError || notice);
     const closeDialog = () => { setDialog(null); container.current?.focus({preventScroll: true}); };
-    return <>{entrySearch}<section ref={panel} className={styles.viewer} aria-label="Reaction chains">
+    return <>{entrySearch}<section ref={panel} className={styles.viewer} aria-label="Reaction chains"
+        data-reaction-state={tableReady ? 'ready' : activatedView === viewKey ? 'rendering' : 'idle'}>
         <div className={styles.toolbar}>
             <div><strong>{focus}</strong><span className={styles.caption}>{summary}</span></div>
             <div className={styles.actions} role="group" aria-label="Graph view">
@@ -389,6 +412,7 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
             }
             {hover && !menu && !sourceOpen && <Tooltip id={tooltipId} hover={hover}/>}
             {menu && <NodeMenu allowPaths={explorer} menu={menu} destinations={destinations}
+                canShowActions={menu.kind === 'group' && missingGroupActions(snapshot.graph, view.state, menu.id).size > 0}
                 canExpand={menuGroup?.members.some(id => view.state.reactions.has(id)
                     && !view.state.visible.has(id) && availableReaction(snapshot.graph, view.state, id))}
                 canCollapse={menuGroup?.members.some(id => view.state.visible.has(id) && !view.state.pins.has(id))}
@@ -411,7 +435,7 @@ function EnvironmentReactionViewer({entry, environment, explorer}) {
                 onChange={changeGroup} onClose={closeMenu}/>}
         </div>
         {dialog?.kind === 'expand' && <ExpansionDialog graph={snapshot.graph} state={view.state}
-            id={dialog.id} direction={dialog.direction} onApply={applyAction} onClose={closeDialog}/>}
+            id={dialog.id} direction={dialog.direction} keepGroupsCollapsed={session.version !== 1} onApply={applyAction} onClose={closeDialog}/>}
         {sharedLink && <label>Shared view link <input className={styles.sharedLink} readOnly value={sharedLink}
             onFocus={event => event.target.select()} aria-label="Shared view link"/></label>}
         <Legend dark={colorMode === 'dark'} elements={view.elements}/>

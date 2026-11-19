@@ -105,6 +105,13 @@ export function render(container, elements, dark, onZoom, {onNodeMenu, onDismiss
                 'target-endpoint': edge => edge.target().data('kind') === 'reaction' ? '-50% 0%' : 'outside-to-node',
                 'source-endpoint': edge => edge.source().data('kind') === 'reaction' ? '50% 0%' : 'outside-to-node'}},
         ]});
+    // Group padding grows with its title; keep the action opener outside the actual frame.
+    cy.nodes('[kind="marker"]').forEach(marker => {
+        if (marker.data('explore')?.type !== 'show-actions') return;
+        const group = cy.getElementById(marker.data('anchor'));
+        const bounds = group.boundingBox({includeLabels: false, includeOverlays: false});
+        marker.position('x', bounds.x2 + marker.outerWidth() / 2 + 6);
+    });
     let activeGroup = viewport?.group, activeNode = viewport?.node;
     const groupOf = node => node.data('kind') === 'group' ? node : node.parent();
     const openNodeMenu = (node, position) => {

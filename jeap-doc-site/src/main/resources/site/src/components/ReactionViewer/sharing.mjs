@@ -167,13 +167,13 @@ function decodeAction(graph, state, step) {
     if (!step || typeof step !== 'object') return fail();
     if (step.type === 'reset') { fields(step, ['type']); return {type: 'reset'}; }
     if (step.type === 'entry') { fields(step, ['type', 'entry']); return {type: 'entry', entry: resolveEntry(graph, step.entry)}; }
-    if (!['paths', 'show', 'expand', 'focus', 'pin', 'hide', 'outgoing', 'connected', 'collapse', 'expand-group'].includes(step.type)) fail();
+    if (!['paths', 'show', 'expand', 'focus', 'pin', 'hide', 'outgoing', 'connected', 'collapse', 'expand-group', 'show-actions'].includes(step.type)) fail();
     fields(step, ['type', 'target', 'targets', ...(step.type === 'expand' ? ['direction', 'depth'] : [])]);
     if (step.type === 'paths' || step.type === 'show' && step.targets) {
         if (!Array.isArray(step.targets) || !step.targets.length || step.target) fail();
         const ids = step.targets.map(ref => resolveReference(graph, ref));
         if (new Set(ids).size !== ids.length) fail();
-        if (step.type === 'show' && ids.some(id => !state.hidden.has(id))) fail();
+        if (step.type === 'show' && ids.some(id => !state.hidden.has(id) && (!state.reactions.has(id) || state.visible.has(id)))) fail();
         return {type: step.type, ids};
     }
     if (step.targets) fail();
@@ -191,7 +191,7 @@ export async function shareLink(graph, session, context, viewer, location, viewp
     let cached = sessionPayloads.get(session);
     if (!cached || cached.graph !== graph || cached.key !== key) {
         try {
-            const payload = {version: 1, context, viewer: entryReference(graph, viewer),
+            const payload = {version: session.version, context, viewer: entryReference(graph, viewer),
                 entry: entryReference(graph, session.entry),
                 steps: session.steps.map(action => encodeAction(graph, action, id => referenceOf(graph, id)))};
             resolveEntry(graph, payload.viewer);
@@ -240,12 +240,12 @@ export async function restoreLink(graph, hash, context, viewer) {
         // Compare semantic viewer identities before resolving the entry, context or replay targets.
         // Upstream keys may change while the same message variant remains on the page.
         if (!matchesViewer(graph, payload.viewer, viewer)) return null;
-        if (payload.version !== 1 || json(payload.context) !== json(context) || !Array.isArray(payload.steps)
+        if (![1, 2].includes(payload.version) || json(payload.context) !== json(context) || !Array.isArray(payload.steps)
             || payload.steps.length > MAX_REPLAY_STEPS) fail();
         if ('presentation' in payload && !validPresentation(payload.presentation)) fail();
         resolveEntry(graph, payload.viewer);
         const entry = resolveEntry(graph, payload.entry);
-        let session = startHistory(graph, entry);
+        let session = startHistory(graph, entry, payload.version);
         for (const step of payload.steps) {
             const action = decodeAction(graph, session.state, step);
             const next = advanceHistory(graph, session, action);

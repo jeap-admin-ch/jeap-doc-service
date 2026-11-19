@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readGraph, identity} from '../../main/resources/site/src/components/ReactionViewer/model.mjs';
+import {readGraph, identity, project, missingGroupActions} from '../../main/resources/site/src/components/ReactionViewer/model.mjs';
 import {startHistory, advanceHistory, backHistory, HISTORY_LIMIT} from '../../main/resources/site/src/components/ReactionViewer/history.mjs';
 import {shareLink, restoreLink, LINK_PREFIX, MAX_LINK_LENGTH, referenceOf} from '../../main/resources/site/src/components/ReactionViewer/sharing.mjs';
 import {decodeLinkText, encodeLinkText} from '../../main/resources/site/src/components/ReactionViewer/linkCodec.mjs';
@@ -38,7 +38,7 @@ const payloadOf = async url => expandState(JSON.parse(await decodeLinkText(new U
 test('combined actions, group state, superseded reveals, focus and reset each undo completely', async () => {
     const g = graph(), initial = startHistory(g, entry), group = g.groupOf.get(rid('r2'));
     let session = initial;
-    const actions = [{type: 'collapse', id: group}, {type: 'show', id: rid('old')}, {type: 'pin', id: rid('old')},
+    const actions = [{type: 'expand-group', id: group}, {type: 'show', id: rid('old')}, {type: 'pin', id: rid('old')},
         {type: 'hide', id: group}, {type: 'focus', id: iid('A')}, {type: 'expand', id: iid('A'), direction: 'outgoing', depth: 4},
         {type: 'paths', ids: [iid('A'), iid('generic')]}, {type: 'reset'}];
     const preceding = [];
@@ -53,11 +53,12 @@ test('combined actions, group state, superseded reveals, focus and reset each un
 test('search jumps replace the reset baseline, while focus preserves it and Back restores it', async () => {
     const g = graph(), initial = apply(g, startHistory(g, entry), 'hide', iid('generic'));
     const jumped = advanceHistory(g, initial, {type: 'entry', entry: {kind: 'INTERFACE', id: iid('http')}});
-    const focused = apply(g, jumped, 'focus', rid('r1'));
+    const opened = apply(g, jumped, 'expand-group', g.groupOf.get(rid('r1')));
+    const focused = apply(g, opened, 'focus', rid('r1'));
     const reset = advanceHistory(g, focused, {type: 'reset'});
     assert.deepEqual(reset.state, jumped.state);
     assert.deepEqual(backHistory(reset), focused);
-    assert.deepEqual(backHistory(backHistory(reset)), jumped);
+    assert.deepEqual(backHistory(backHistory(reset)), opened);
     assert.deepEqual(backHistory(jumped), initial);
     const oldReset = advanceHistory(g, backHistory(jumped), {type: 'reset'});
     assert.deepEqual(oldReset.state, startHistory(g, entry).state);
@@ -134,8 +135,10 @@ test('replay uses stable interface keys, group keys and unique reaction signatur
 });
 
 test('missing and ambiguous targets, missing entries and inapplicable steps reject the entire replay', async () => {
-    const g = graph(), session = apply(g, apply(g, startHistory(g, entry), 'pin', iid('A')), 'pin', rid('r1'));
+    const g = graph(), opened = apply(g, startHistory(g, entry), 'expand-group', g.groupOf.get(rid('r1')));
+    const session = apply(g, apply(g, opened, 'pin', iid('A')), 'pin', rid('r1'));
     const url = link(g, session), original = structuredClone(session);
+    assert.deepEqual((await restore(g, url)).state, session.state);
     for (const mutate of [
         p => { p.graph.nodes = p.graph.nodes.filter(n => n.identity.key !== 'r1'); p.graph.edges = p.graph.edges.filter(e => e.source.key !== 'r1' && e.target.key !== 'r1'); },
         p => { const duplicate = structuredClone(p.graph.nodes.find(n => n.identity.key === 'r1')); duplicate.identity.key = 'duplicate'; p.graph.nodes.push(duplicate);
@@ -203,8 +206,8 @@ test('reused or swapped interface keys cannot redirect a link to a different mes
 test('reaction and legacy group references survive renumbering of trigger and action interfaces', async () => {
     const payload = fixture();
     for (const node of payload.graph.nodes) if (node.reaction) delete node.reaction.groupKey;
-    const g = read(payload), group = g.groupOf.get(rid('r1'));
-    let session = apply(g, startHistory(g, entry), 'collapse', group);
+    const g = read(payload);
+    let session = apply(g, startHistory(g, entry), 'expand-group', g.groupOf.get(rid('r2')));
     session = apply(g, session, 'pin', rid('r2'));
     const changed = read(renameInterfaces(structuredClone(payload), {A: 'http', http: 'generic', generic: 'A'}));
     const restored = await restore(changed, link(g, session));
@@ -239,7 +242,7 @@ test('links retain zoom and the centred model point across different canvas dime
     assert.deepEqual(presentationPan(restored.presentation, 1400, 900), {x: -20, y: 223});
     assert.deepEqual(presentationPan(viewport, 1400, 900), viewport.pan);
     assert.equal(restored.history.length, 0);
-    assert.equal((await payloadOf(url)).version, 1);
+    assert.equal((await payloadOf(url)).version, 2);
 });
 
 test('invalid shared presentation is rejected atomically instead of changing zoom or view state', async () => {
@@ -266,7 +269,7 @@ test('expansion, path selection, marker restores and group actions replay throug
     for (const action of [
         {type: 'focus', id: iid('A')}, {type: 'expand', id: iid('A'), direction: 'outgoing', depth: 4},
         {type: 'hide', id: iid('generic')}, {type: 'show', ids: [iid('generic')]},
-        {type: 'collapse', id: g.groupOf.get(rid('r2'))}, {type: 'expand-group', id: g.groupOf.get(rid('r2'))},
+        {type: 'expand-group', id: g.groupOf.get(rid('r2'))}, {type: 'collapse', id: g.groupOf.get(rid('r2'))},
         {type: 'outgoing', id: iid('http')}, {type: 'reset'},
         {type: 'paths', ids: [iid('A'), iid('generic')]}, {type: 'connected', id: iid('generic')},
     ]) {
@@ -344,4 +347,113 @@ test('pan and zoom reuse the semantic payload without reading targets or project
             {zoom: 1.5, pan: {x: 30, y: 60}, width: 900, height: 600}));
     } finally { g.nodes.get = get; }
     assert.deepEqual(second, {...first, presentation: {zoom: 1.5, center: {x: 280, y: 160}}});
+});
+
+test('new entries, focus, paths and boundary expansion keep reaction groups collapsed', () => {
+    const g = graph(), group = g.groupOf.get(rid('r1'));
+    const collapsed = state => assert.ok([...state.visible].every(id => !g.nodes.get(id).reaction));
+    for (const selected of [entry, {kind: 'COMPONENT', system: 'orders', component: 'dispatcher'},
+        {kind: 'MESSAGE', message: 'A', variant: ''}, {kind: 'INTERFACE', id: iid('http')}, {kind: 'GROUP', id: group}]) {
+        const session = startHistory(g, selected);
+        assert.ok(session.state.reactions.size);
+        collapsed(session.state);
+    }
+    const initial = startHistory(g, entry);
+    collapsed(apply(g, initial, 'focus', iid('A')).state);
+    collapsed(advanceHistory(g, initial, {type: 'paths', ids: [iid('A'), iid('generic')]}).state);
+    const focused = apply(g, initial, 'focus', iid('A'));
+    assert.strictEqual(apply(g, focused, 'expand', iid('A'), {direction: 'outgoing', depth: 1}), focused);
+    collapsed(apply(g, focused, 'expand', iid('A'), {direction: 'outgoing', depth: 4}).state);
+    // Explicitly focusing an individual reaction still shows that reaction.
+    const opened = apply(g, initial, 'expand-group', group);
+    assert.ok(apply(g, opened, 'focus', rid('r1')).state.visible.has(rid('r1')));
+});
+
+test('the outgoing opener shows direct actions without opening groups and supports Back, Reset and sharing', async () => {
+    const g = graph(), selected = {kind: 'MESSAGE', message: 'A', variant: ''};
+    const initial = startHistory(g, selected), group = g.groupOf.get(rid('r1'));
+    const marker = project(g, initial.state).elements.find(e => e.data.id === 'actions:' + group).data;
+    assert.equal(marker.label, '1');
+    assert.equal(marker.anchor, group);
+    assert.deepEqual(marker.explore, {type: 'show-actions', id: group});
+    const session = advanceHistory(g, initial, marker.explore);
+    assert.deepEqual(session.state.visible, new Set([iid('A'), iid('http')]));
+    assert.deepEqual(session.state.reactions, new Set([rid('r1')]));
+    assert.deepEqual(session.state.pins, initial.state.pins);
+    assert.equal(missingGroupActions(g, session.state, group).size, 0);
+    assert.ok(!project(g, session.state).elements.some(e => e.data.id === marker.id));
+    assert.deepEqual(backHistory(session), initial);
+    assert.deepEqual(advanceHistory(g, session, {type: 'reset'}).state, initial.state);
+    assert.deepEqual((await restore(g, link(g, session, selected), selected)).state, session.state);
+    // The separate inner marker unfolds members without adding more outgoing connections.
+    const inner = project(g, session.state).elements.find(e => e.data.id === 'hidden:' + group).data;
+    const unfolded = advanceHistory(g, session, {type: 'show', ids: inner.restore});
+    assert.ok(unfolded.state.visible.has(rid('r1')));
+    assert.deepEqual(unfolded.state.edges, session.state.edges);
+    assert.deepEqual((await restore(g, link(g, unfolded, selected), selected)).state, unfolded.state);
+});
+
+test('the outgoing opener excludes unselected siblings, hidden members and unrevealed superseded reactions', () => {
+    const payload = fixture();
+    const sibling = structuredClone(payload.graph.nodes.find(n => n.identity.key === 'r1'));
+    sibling.identity.key = 'sibling';
+    payload.graph.nodes.push(sibling);
+    payload.graph.edges.push({edgeType: 'TRIGGER', source: {nodeType: 'INTERFACE', key: 'generic'}, target: sibling.identity},
+        {edgeType: 'ACTION', source: sibling.identity, target: {nodeType: 'INTERFACE', key: 'generic'}});
+    const superseded = payload.graph.nodes.find(n => n.identity.key === 'old');
+    superseded.reaction.groupKey = 'start';
+    const g = read(payload), group = g.groupOf.get(rid('r1'));
+    const selected = startHistory(g, {kind: 'MESSAGE', message: 'A', variant: ''});
+    const expanded = apply(g, selected, 'show-actions', group);
+    assert.deepEqual(expanded.state.reactions, new Set([rid('r1')]));
+    assert.ok(!expanded.state.visible.has(iid('generic')));
+    const full = apply(g, startHistory(g, entry), 'expand-group', group);
+    const hidden = apply(g, full, 'hide', rid('sibling'));
+    const withoutActions = apply(g, hidden, 'hide', iid('http'));
+    const restored = apply(g, withoutActions, 'show-actions', group);
+    assert.ok(restored.state.visible.has(iid('http')));
+    assert.ok(restored.state.visible.has(rid('r1')), 'already open members remain open');
+    assert.ok(restored.state.hidden.has(rid('sibling')));
+    assert.ok(!restored.state.visible.has(rid('old')));
+});
+
+test('version 1 links retain expanded defaults and their original collapse and expansion replay', async () => {
+    const g = graph(), legacy = startHistory(g, entry, 1);
+    assert.ok(legacy.state.visible.has(rid('r1')));
+    const collapsed = apply(g, legacy, 'collapse', g.groupOf.get(rid('r1')));
+    const focused = apply(g, collapsed, 'focus', iid('A'));
+    const expanded = apply(g, focused, 'expand', iid('A'), {direction: 'outgoing', depth: 4});
+    for (const session of [legacy, collapsed, expanded]) {
+        const url = link(g, session);
+        assert.equal((await payloadOf(url)).version, 1);
+        const restored = await restore(g, url);
+        assert.deepEqual(restored.state, session.state);
+        assert.equal(restored.version, 1);
+    }
+});
+
+test('outgoing markers count distinct targets and include superseded actions only after explicit reveal', () => {
+    const payload = fixture();
+    const duplicate = structuredClone(payload.graph.nodes.find(n => n.identity.key === 'r1'));
+    duplicate.identity.key = 'duplicate';
+    payload.graph.nodes.push(duplicate);
+    payload.graph.edges.push(...payload.graph.edges.filter(e => e.source.key === 'r1' || e.target.key === 'r1')
+        .map(e => JSON.parse(JSON.stringify(e).replaceAll('r1', 'duplicate'))));
+    payload.graph.nodes.find(n => n.identity.key === 'old').reaction.groupKey = 'start';
+    payload.graph.edges.find(e => e.target.key === 'old').source.key = 'A';
+    const g = read(payload), initial = startHistory(g, {kind: 'MESSAGE', message: 'A', variant: ''});
+    const group = g.groupOf.get(rid('r1'));
+    const markerCount = session => project(g, session.state).elements.find(e => e.data.id === 'actions:' + group)?.data.label;
+    assert.equal(markerCount(initial), '1');
+    const active = apply(g, initial, 'show-actions', group);
+    assert.ok(active.state.visible.has(iid('http')));
+    assert.ok(!active.state.visible.has(iid('generic')));
+    assert.equal(markerCount(active), undefined);
+    const revealed = apply(g, active, 'show', rid('old'));
+    assert.equal(markerCount(revealed), '1');
+    const expanded = apply(g, revealed, 'show-actions', group);
+    assert.ok(expanded.state.visible.has(iid('generic')));
+    assert.ok(expanded.state.visible.has(rid('old')));
+    assert.ok(!expanded.state.visible.has(rid('r1')));
+    assert.ok(!expanded.state.visible.has(rid('duplicate')));
 });

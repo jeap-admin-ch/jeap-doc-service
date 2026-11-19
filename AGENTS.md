@@ -955,7 +955,10 @@ same selection. Reaction labels show daily medians; IDs remain opaque identities
 
 Message entry views initially pin the selected message variant; Explorer interface selections pin the selected
 interface. Other entries, focus and path selection start unpinned.
-Component entry groups start collapsed; path selection is reserved for the standalone explorer.
+Reaction groups start collapsed in new entries, focus and path selections, and remain collapsed when
+newly reached by expansion. Explicitly focusing an individual reaction shows it. Path selection is reserved
+for the standalone explorer. The outgoing group marker and **Show outgoing actions** reveal only direct
+actions of selected, available members, without unfolding the group or selecting sibling reactions.
 Visibility commands live in `ReactionViewer/visibility.mjs` and return a new complete state per action.
 Keep explicit hiding separate from collapsing: collapsed reactions contribute bundled arrows, hidden reactions
 contribute none. Ordinary Hide only removes the target and unpinned direct neighbours that become isolated; it never
@@ -987,12 +990,13 @@ identity. Links without enough identity information fail instead of selecting a 
 Recalculate layout on link opening, and apply the shared
 viewport instead of fitting it. Normal presentation redraws preserve node positions too.
 
-`linkState.mjs` packs version 1 links with one reference dictionary and opcode/index tuples. Dictionary
+`linkState.mjs` packs version 2 links with one reference dictionary and opcode/index tuples. Dictionary
 indices refer only to that link's entries, never to upstream graph IDs. `linkCodec.mjs` encodes the exact
 compact UTF-8 JSON as DEFLATE raw plus Base64URL with the independent `d1.` prefix. Keep the fragment,
 the 16,384-character URL cap, bounded streaming decompression (256 KiB) and the 2,048-step replay cap.
-Only compact version 1 payloads behind `d1.` are accepted. Native decompression validates the stream. Sharing and restoration are asynchronous; cancel stale
-results when the viewer changes or unmounts. Compression must not weaken target validation or change steps.
+Compact versions 1 and 2 behind `d1.` are accepted. Version 1 retains the previous expanded defaults and
+expansion semantics for replay; version 2 uses collapsed defaults and supports the outgoing group opener.
+Native decompression validates the stream. Sharing and restoration are asynchronous; cancel stale results when the viewer changes or unmounts. Compression must not weaken target validation or change steps.
 Sharing replaces the current browser-history entry with the captured link without notifying the router;
 a router replay would reset every viewer and discard local undo history. Keep copy feedback near the toolbar,
 announce it accessibly, expire it after three seconds and show success only after clipboard writing succeeds.
@@ -1012,7 +1016,8 @@ Cache identity indexes per immutable graph and compact semantic payloads per ses
 presentation. Encoding errors say the view cannot be shared. Check the addressed viewer before resolving
 replay targets; undecodable links show one restoration notice per page.
 
-Opening a reaction link scrolls once to its addressed viewer and activates it below the fold. Ordinary
+Opening a reaction link scrolls once to its addressed viewer and activates it below the fold. Settle nearby
+preceding viewers and their live tables first, so their height changes cannot shift the target afterwards. Ordinary
 rendering and automatic URL updates never scroll. Keep link errors in the toolbar feedback style, in red,
 and keep an undecodable link's error limited to one viewer per page. Informational clipboard/fullscreen
 hints use transient neutral feedback; red is for failures. Errors take precedence over copy confirmations.

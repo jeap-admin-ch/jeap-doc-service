@@ -192,6 +192,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var search = viewer.getByRole(AriaRole.COMBOBOX, new Locator.GetByRoleOptions().setName("Search this graph"));
         var back = viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true));
         var reset = viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Reset view"));
+        String baseline = semanticProjection(viewer);
+        showExpandedReactionViewer(0);
         String initial = semanticProjection(viewer);
         Object positions = ((Map<?, ?>) presentationOf(viewer)).get("positions");
         Assertions.assertThat(search.boundingBox().x).isLessThan(back.boundingBox().x);
@@ -202,7 +204,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(cResult).isVisible();
         viewer.locator("div[aria-label^='Reaction graph.']").evaluate("element => element._cyreg.cy.pan({x: 5000, y: 5000})");
         assertThat(cResult).isVisible();
-        assertThat(back).isDisabled();
+        assertThat(back).isEnabled();
         search.press("Escape");
         assertThat(viewer.getByRole(AriaRole.LISTBOX)).hasCount(0);
         search.press("ArrowDown");
@@ -210,7 +212,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         awaitSearchHighlight("C");
         Assertions.assertThat(semanticProjection(viewer)).isEqualTo(initial);
         Assertions.assertThat(((Map<?, ?>) presentationOf(viewer)).get("positions")).isEqualTo(positions);
-        assertThat(back).isDisabled();
+        assertThat(back).isEnabled();
         openFixtureInterfaceMenu(viewer, "C");
         menuAction(viewer, "Hide");
         awaitGraphKeys(List.of("C"), false);
@@ -236,7 +238,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         openFixtureInterfaceMenu(viewer, "D");
         menuAction(viewer, "Hide");
         reset.click();
-        awaitSemanticProjection(page, 0, initial);
+        awaitSemanticProjection(page, 0, baseline);
         Assertions.assertThat(requests.get()).isEqualTo(1);
         assertNothingWentWrongInTheBrowser();
     }
@@ -386,7 +388,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         search.press("Enter");
         assertThat(search).not().hasAttribute("aria-controls", Pattern.compile(".*"));
         showReactionViewer(0);
-        awaitGraphKeys(List.of("A", "r1"), true);
+        awaitGraphKeys(List.of("A"), true);
+        awaitGraphKeys(List.of("r1"), false);
         awaitGraphKeys(List.of("C", "D"), false);
         var viewer = page.locator("section[aria-label='Reaction chains']");
         assertThat(viewer.locator("output[aria-label='Zoom']")).isVisible();
@@ -400,10 +403,12 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(page.getByRole(AriaRole.LISTBOX)).isVisible();
         assertThat(search).hasAttribute("aria-controls", page.getByRole(AriaRole.LISTBOX).getAttribute("id"));
         search.press("Enter");
-        awaitGraphKeys(List.of("D", "r4"), true);
+        awaitGraphKeys(List.of("D"), true);
+        awaitGraphKeys(List.of("r4"), false);
         awaitGraphKeys(List.of("A"), false);
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
-        awaitGraphKeys(List.of("A", "r1"), true);
+        awaitGraphKeys(List.of("A"), true);
+        awaitGraphKeys(List.of("r1"), false);
         String selected = semanticProjection(viewer);
         String link = sharedLink(viewer);
         page.navigate(link);
@@ -428,7 +433,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         search.press("Enter");
         page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Show paths")).click();
         showReactionViewer(0);
-        awaitGraphKeys(List.of("A", "B", "C", "r1", "r2"), true);
+        awaitGraphKeys(List.of("A", "B", "C"), true);
+        awaitGraphKeys(List.of("r1", "r2"), false);
         var viewer = page.locator("section[aria-label='Reaction chains']");
         viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
                 element => { element._cyreg.cy.zoom(1.3); element._cyreg.cy.pan({x: -200, y: 80}); }
@@ -493,7 +499,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(search).hasValue("pending query");
         show.click();
         showReactionViewer(0);
-        awaitGraphKeys(List.of("A", "B", "C", "r1", "r2"), true);
+        awaitGraphKeys(List.of("A", "B", "C"), true);
+        awaitGraphKeys(List.of("r1", "r2"), false);
         awaitGraphKeys(List.of("D", "E", "r4"), false);
         assertThat(page.getByRole(AriaRole.DIALOG)).hasCount(0);
         String pathLink = sharedLink(page.locator("section[aria-label='Reaction chains']"));
@@ -503,7 +510,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(panel.getByRole(AriaRole.LIST, new Locator.GetByRoleOptions().setName("Selected interfaces")).locator("li")).hasCount(2);
         panel.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Clear selection")).click();
         assertThat(show).isDisabled();
-        awaitGraphKeys(List.of("A", "B", "C", "r1", "r2"), true);
+        awaitGraphKeys(List.of("A", "B", "C"), true);
+        awaitGraphKeys(List.of("r1", "r2"), false);
         openFixtureInterfaceMenu(page.locator("section[aria-label='Reaction chains']"), "A");
         page.getByRole(AriaRole.MENUITEM, new Page.GetByRoleOptions().setName("Find paths from here")).click();
         assertThat(search).isFocused();
@@ -641,7 +649,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         // Docusaurus changes the URL before it replaces the page while loading the next route.
         assertThat(page.locator(".jeapReactionView")).hasCount(0);
         page.goBack();
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         showReactionViewer(1);
         assertThat(page.locator("table[data-reaction-table='live']").first()).containsText("9876");
         Assertions.assertThat(requests.get()).isEqualTo(2);
@@ -687,6 +695,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             var viewer = page.getByRole(AriaRole.REGION, new Page.GetByRoleOptions().setName("Reaction chains")).first();
             assertThat(viewer).isVisible();
             showReactionViewer(0);
+            Assertions.assertThat(viewer.locator("div[aria-label^='Reaction graph.']").evaluate(
+                    "element => element._cyreg.cy.nodes('[kind=\"reaction\"]').length")).isEqualTo(0);
             assertGraphFitted(viewer);
             viewer.getByRole(AriaRole.BUTTON,
                     new Locator.GetByRoleOptions().setName("Fit all")).click();
@@ -712,7 +722,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var viewers = page.locator("section[aria-label='Reaction chains']");
         assertThat(viewers).hasCount(2);
         for (int index = 0; index < 2; index++) {
-            showReactionViewer(index);
+            showExpandedReactionViewer(index);
             viewers.nth(index).getByRole(AriaRole.BUTTON,
                     new Locator.GetByRoleOptions().setName("Fit all")).click();
             var canvas = viewers.nth(index).locator("div[aria-label^='Reaction graph.']");
@@ -742,7 +752,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void largeGraph_hasUsableIconControlsAndAlwaysVisibleLegend() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         var viewer = page.locator("section[aria-label='Reaction chains']");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         assertThat(viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions()
                 .setName("Open path view"))).hasCount(0);
         var buttons = viewer.getByRole(AriaRole.GROUP, new Locator.GetByRoleOptions()
@@ -807,7 +817,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void diagramLabels_followTheOriginalConventionsAndFitInsideGroups() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         var viewer = page.locator("section[aria-label='Reaction chains']");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         @SuppressWarnings("unchecked")
         var labels = (Map<String, Object>) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
                 element => {
@@ -825,10 +835,10 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                         ownBorder: cy.nodes('[kind="message"]').filter(node => node.data('label') === 'ShippingDispatchedEvent')
                             .first().style('border-color'),
                         titlesInside: groups.every(group => {
-                            const box = group.boundingBox({includeLabels: false, includeOverlays: false});
-                            const title = group.boundingBox({includeNodes: false, includeEdges: false, includeOverlays: false});
+                            const box = group.boundingBox({includeLabels: false, includeOverlays: false, includeUnderlays: false});
+                            const title = group.boundingBox({includeNodes: false, includeEdges: false, includeOverlays: false, includeUnderlays: false});
                             return title.x1 >= box.x1 && title.x2 <= box.x2 && title.y1 >= box.y1
-                                && title.y2 < group.children().boundingBox({includeLabels: false}).y1;
+                                && title.y2 < group.children().boundingBox({includeLabels: false, includeOverlays: false, includeUnderlays: false}).y1;
                         })
                     };
                 }
@@ -851,7 +861,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (String route : List.of(SYSTEM_REACTIONS_ROUTE, MESSAGE_REACTIONS_ROUTE)) {
             open("/" + route + "/");
             var viewer = page.locator("section[aria-label='Reaction chains']").first();
-            showReactionViewer(0);
+            showExpandedReactionViewer(0);
             var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
             var targets = (List<?>) canvas.evaluate("""
                     element => {
@@ -943,8 +953,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
         var viewers = page.locator("section[aria-label='Reaction chains']");
         var first = viewers.first();
-        showReactionViewer(0);
-        showReactionViewer(1);
+        showExpandedReactionViewer(0);
+        showExpandedReactionViewer(1);
         String group = groupOfReaction(first, "4243");
         var secondCanvas = viewers.nth(1).locator("div[aria-label^='Reaction graph.']");
         Object otherNodes = secondCanvas.evaluate("element => element._cyreg.cy.elements().map(node => node.id())");
@@ -983,8 +993,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var viewer = entries.first().locator("section[aria-label='Reaction chains']");
         var table = entries.first().locator("table[data-reaction-table='live']");
         var otherTable = entries.nth(1).locator("table[data-reaction-table='live']");
-        showReactionViewer(0);
-        showReactionViewer(1);
+        showExpandedReactionViewer(0);
+        showExpandedReactionViewer(1);
         assertThat(table).isVisible();
         assertThat(otherTable).isVisible();
         assertThat(entries.first().locator(".jeapReactionTableFallback")).isHidden();
@@ -1019,7 +1029,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (String prefix : List.of("", otherEnvironment)) {
             open(prefix + "/" + SYSTEM_REACTIONS_ROUTE + "/");
             var viewer = page.locator("section[aria-label='Reaction chains']").first();
-            showReactionViewer(0);
+            showExpandedReactionViewer(0);
             openGroupMenu(viewer, groupOfReaction(viewer, "4246"));
             assertThat(viewer.getByRole(AriaRole.MENU).locator("a")).hasCount(0);
             page.keyboard().press("Escape");
@@ -1129,7 +1139,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void locatingAndRestoringVeryLargeGroupsKeepsTheInteractiveZoomLimit() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         var viewer = page.locator("section[aria-label='Reaction chains']");
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         canvas.evaluate("""
@@ -1262,7 +1272,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void edgeDetailsAppearOnHoverAndDisappearWhenLeavingTheGraph() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         var viewer = page.locator("section[aria-label='Reaction chains']").first();
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Fit all")).click();
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         var position = (Map<?, ?>) canvas.evaluate("""
@@ -1293,8 +1303,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
         var viewers = page.locator("section[aria-label='Reaction chains']");
         var viewer = viewers.first();
-        showReactionViewer(0);
-        showReactionViewer(1);
+        showExpandedReactionViewer(0);
+        showExpandedReactionViewer(1);
         String group = groupOfReaction(viewer, "4243");
         openGroupMenu(viewer, group);
         viewer.getByRole(AriaRole.MENUITEM, new Locator.GetByRoleOptions().setName("Collapse group")).click();
@@ -1308,7 +1318,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                 "el => el.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true}))"))
                 .isEqualTo(true);
         assertThat(viewers.nth(1).getByRole(AriaRole.TEXTBOX)).hasCount(0);
-        showReactionViewer(1);
+        showExpandedReactionViewer(1);
         Assertions.assertThat(source.inputValue()).contains("<script>alert(1)</script>");
         assertThat(viewer.locator("script")).hasCount(0);
         Object sourceIds = source.evaluate("el => JSON.parse(el.value).elements.filter(n => n.data.identity).map(n => JSON.stringify(n.data.identity)).sort()");
@@ -1347,8 +1357,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
         var viewers = page.locator("section[aria-label='Reaction chains']");
         var viewer = viewers.first();
-        showReactionViewer(0);
-        showReactionViewer(1);
+        showExpandedReactionViewer(0);
+        showExpandedReactionViewer(1);
         var otherCanvas = viewers.nth(1).locator("div[aria-label^='Reaction graph.']");
         Object otherView = otherCanvas.evaluate("el => ({zoom: el._cyreg.cy.zoom(), pan: el._cyreg.cy.pan()})");
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Show minimap")).click();
@@ -1397,7 +1407,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void groupMenuPreservesHiddenMembersAndGroupMarkerRestoresThem() {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         var viewer = page.locator("section[aria-label='Reaction chains']").first();
         String group = groupOfReaction(viewer, "4243");
         openReactionMenu(viewer, "4244");
@@ -1420,7 +1430,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void pinnedReactionSurvivesCollapseAndMarkerRestoresTheOtherMembers() {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         var viewer = page.locator("section[aria-label='Reaction chains']").first();
         String group = groupOfReaction(viewer, "4243");
         openReactionMenu(viewer, "4243");
@@ -1462,7 +1472,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (boolean group : List.of(false, true)) {
             installVisibilityFixture(false);
             open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-            showReactionViewer(0);
+            showExpandedReactionViewer(0);
             var viewer = page.locator("section[aria-label='Reaction chains']");
             if (group) {
                 openGroupMenu(viewer, groupOfReaction(viewer, "r1"));
@@ -1483,7 +1493,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void hiddenTriggerMarkersFollowReactionRowsAndCollapseToOneGroupMarker() {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         var viewer = page.locator("section[aria-label='Reaction chains']").first();
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         String group = groupOfReaction(viewer, "4243");
@@ -1520,7 +1530,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (boolean alternate : List.of(false, true)) {
             installVisibilityFixture(alternate);
             open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-            showReactionViewer(0);
+            showExpandedReactionViewer(0);
             var viewer = page.locator("section[aria-label='Reaction chains']");
             openFixtureInterfaceMenu(viewer, "A");
             menuAction(viewer, "Pin");
@@ -1546,7 +1556,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (boolean predecessor : List.of(true, false)) {
             installVisibilityFixture(false);
             open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-            showReactionViewer(0);
+            showExpandedReactionViewer(0);
             var viewer = page.locator("section[aria-label='Reaction chains']");
             if (predecessor) {
                 openFixtureInterfaceMenu(viewer, "B");
@@ -1581,7 +1591,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         for (boolean pinned : List.of(false, true)) {
             installVisibilityFixture(false);
             open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-            showReactionViewer(0);
+            showExpandedReactionViewer(0);
             var viewer = page.locator("section[aria-label='Reaction chains']");
             if (pinned) {
                 openFixtureInterfaceMenu(viewer, "B");
@@ -1606,7 +1616,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void downstreamSubgraphHideStopsAtPinnedReaction() {
         installVisibilityFixture(false);
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         var viewer = page.locator("section[aria-label='Reaction chains']");
         openReactionMenu(viewer, "r2");
         menuAction(viewer, "Pin");
@@ -1622,7 +1632,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     void outgoingHideTerminatesOnCyclesAndSupersededRevealCanBePinned() {
         installVisibilityFixture(true);
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         var viewer = page.locator("section[aria-label='Reaction chains']");
         viewer.locator("summary").filter(new Locator.FilterOptions().setHasText("superseded reactions hidden")).click();
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Show shipping-dispatch: old")).click();
@@ -1641,31 +1651,78 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     @Test
-    void boundaryCirclesOpenTheNextReactionAndInterface() {
+    void boundaryCirclesRevealOutgoingActionsWithoutUnfoldingReactionGroups() {
         installVisibilityFixture(false);
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
         showReactionViewer(0);
         var viewer = page.locator("section[aria-label='Reaction chains']");
+        String baseline = semanticProjection(viewer);
+        awaitGraphKeys(List.of("r1", "r2", "r4"), false);
         openFixtureInterfaceMenu(viewer, "A");
         menuAction(viewer, "Focus");
-        awaitGraphKeys(List.of("A", "r1"), true);
-        awaitGraphKeys(List.of("B", "r2", "C"), false);
+        awaitGraphKeys(List.of("A"), true);
+        awaitGraphKeys(List.of("r1", "B", "r2", "C"), false);
+        String focused = semanticProjection(viewer);
+        String group = groupOfReaction(viewer, "r1");
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+        String marker = "actions:" + group;
+        Assertions.assertThat(canvas.evaluate("""
+                (el, groupId) => {
+                    const cy = el._cyreg.cy, bounds = {includeLabels: false, includeOverlays: false};
+                    return cy.getElementById('actions:' + groupId).boundingBox(bounds).x1
+                        > cy.getElementById(groupId).boundingBox(bounds).x2;
+                }
+                """, group)).isEqualTo(true);
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Fit all")).click();
+        Object beforeExpand = actionPosition(viewer, group);
+        clickGraphNode(viewer, marker, false);
+        awaitGraphKeys(List.of("A", "B"), true);
+        awaitGraphKeys(List.of("r1", "r2", "C"), false);
+        awaitGroupMembers(group, 0);
+        awaitExpansionPosition(group, beforeExpand);
+        String actions = semanticProjection(viewer);
         assertNoPins(viewer);
-        for (String key : List.of("B", "r2", "C")) {
-            viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Fit all")).click();
-            String marker = (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
-                    el => el._cyreg.cy.nodes('[kind="marker"]').filter(n => n.data('explore')?.direction === 'outgoing').first().id()
-                    """);
-            String anchor = (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate(
-                    "(el, id) => el._cyreg.cy.getElementById(id).data('anchor')", marker);
-            Object beforeExpand = actionPosition(viewer, anchor);
-            clickGraphNode(viewer, marker, false);
-            awaitGraphKeys(List.of(key), true);
-            awaitExpansionPosition(anchor, beforeExpand);
-            assertThat(viewer.locator("div[aria-label^='Reaction graph.']")).isFocused();
-        }
-        awaitGraphKeys(List.of("D", "E", "r4", "old"), false);
-        assertNoPins(viewer);
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitSemanticProjection(page, 0, focused);
+        openGroupMenu(viewer, group);
+        menuAction(viewer, "Show outgoing actions");
+        awaitSemanticProjection(page, 0, actions);
+        String link = sharedLink(viewer);
+        page.navigate(link);
+        page.reload();
+        awaitSemanticProjection(page, 0, actions);
+        // Continue one directed step from B, then expose the next group's actions separately.
+        String nextReaction = (String) canvas.evaluate("""
+                el => el._cyreg.cy.nodes('[kind="marker"]').filter(node =>
+                    node.data('explore')?.direction === 'outgoing').first().id()
+                """);
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Fit all")).click();
+        clickGraphNode(viewer, nextReaction, false);
+        page.waitForCondition(() -> groupOfReaction(viewer, "r2") != null);
+        String nextGroup = groupOfReaction(viewer, "r2");
+        awaitGroupMembers(nextGroup, 0);
+        awaitGraphKeys(List.of("r2", "C"), false);
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Fit all")).click();
+        clickGraphNode(viewer, "actions:" + nextGroup, false);
+        awaitGraphKeys(List.of("C"), true);
+        awaitGraphKeys(List.of("r1", "r2"), false);
+        var back = viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true));
+        back.click();
+        back.click();
+        awaitSemanticProjection(page, 0, actions);
+        // The inner marker remains an independent control for the individual reactions.
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Fit all")).click();
+        clickGraphNode(viewer, "hidden:" + group, false);
+        awaitGroupMembers(group, 1);
+        awaitGraphKeys(List.of("A", "B", "r1"), true);
+        awaitGraphKeys(List.of("r2", "C"), false);
+        String unfolded = semanticProjection(viewer);
+        String unfoldedLink = sharedLink(viewer);
+        page.navigate(unfoldedLink);
+        page.reload();
+        awaitSemanticProjection(page, 0, unfolded);
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Reset view")).click();
+        awaitSemanticProjection(page, 0, baseline);
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -1677,7 +1734,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var viewer = page.locator("section[aria-label='Reaction chains']");
         openFixtureInterfaceMenu(viewer, "B");
         menuAction(viewer, "Focus");
-        awaitGraphKeys(List.of("B", "r1", "r2"), true);
+        awaitGraphKeys(List.of("B"), true);
+        awaitGraphKeys(List.of("r1", "r2"), false);
         openFixtureInterfaceMenu(viewer, "B");
         menuAction(viewer, "Expand outgoing paths…");
         var dialog = page.getByRole(AriaRole.DIALOG);
@@ -1713,7 +1771,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         dialog.getByLabel("Edge depth").fill("4");
         dialog.getByRole(AriaRole.BUTTON,
                 new Locator.GetByRoleOptions().setName("Expand").setExact(true)).click();
-        awaitGraphKeys(List.of("C", "r2"), true);
+        awaitGraphKeys(List.of("C"), true);
+        awaitGraphKeys(List.of("r2"), false);
         var fit = viewer.getByRole(AriaRole.BUTTON,
                 new Locator.GetByRoleOptions().setName("Show expansion").setExact(true));
         assertThat(fit).hasCount(0);
@@ -1934,9 +1993,9 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         String group = groupOfReaction(viewer, "4243");
         assertThat(viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
         openGroupMenu(viewer, group);
-        viewer.getByRole(AriaRole.MENUITEM, new Locator.GetByRoleOptions().setName("Collapse group").setExact(true)).click();
-        awaitGroupMembers(group, 0);
-        String collapsed = semanticProjection(viewer);
+        viewer.getByRole(AriaRole.MENUITEM, new Locator.GetByRoleOptions().setName("Expand group").setExact(true)).click();
+        awaitGroupMembers(group, 3);
+        String expanded = semanticProjection(viewer);
         openGroupMenu(viewer, group);
         viewer.getByRole(AriaRole.MENUITEM, new Locator.GetByRoleOptions().setName("Pin").setExact(true)).click();
         page.waitForFunction("""
@@ -1967,7 +2026,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
         awaitSemanticProjection(page, 0, pinned);
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
-        awaitSemanticProjection(page, 0, collapsed);
+        awaitSemanticProjection(page, 0, expanded);
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
         awaitSemanticProjection(page, 0, initial);
         assertThat(viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
@@ -1987,10 +2046,10 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         String initial = semanticProjection(viewer), other = semanticProjection(viewers.first());
         String group = groupOfReaction(viewer, "5242");
         openGroupMenu(viewer, group);
-        viewer.getByRole(AriaRole.MENUITEM, new Locator.GetByRoleOptions().setName("Collapse group").setExact(true)).click();
+        viewer.getByRole(AriaRole.MENUITEM, new Locator.GetByRoleOptions().setName("Expand group").setExact(true)).click();
         page.waitForFunction("""
                 () => document.querySelectorAll('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')[1]
-                    ?._cyreg?.cy.nodes('[kind="reaction"]').every(node => JSON.parse(node.id())[1] !== '5242')
+                    ?._cyreg?.cy.nodes('[kind="reaction"]').some(node => JSON.parse(node.id())[1] === '5242')
                 """);
         String shared = semanticProjection(viewer);
         String link = sharedLink(viewer);
@@ -2025,6 +2084,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
             restored.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
             awaitSemanticProjection(document, 1, shared);
             Assertions.assertThat(document.evaluate("window.reactionPageScrolls")).isEqualTo(initialScrolls);
+            awaitAutomaticLink(document, 1, VARIANT);
             document.reload();
             // Opening the link itself activates and scrolls to the second variant, even below the fold.
             awaitSemanticProjection(document, 1, shared);
@@ -2091,7 +2151,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void sharedReactionSurvivesANewOpaqueIdButFailsAtomicallyWhenItsTargetIsRemoved() {
         open("/" + MESSAGE_REACTIONS_ROUTE + "/");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         var viewer = page.locator("section[aria-label='Reaction chains']").first();
         String group = groupOfReaction(viewer, "4243");
         openGroupMenu(viewer, group);
@@ -2147,7 +2207,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                     document.waitForFunction("""
                             () => {
                                 const cy = document.querySelector('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')?._cyreg?.cy;
-                                return cy && cy.nodes('[kind="reaction"]').length
+                                return cy && cy.nodes('[kind="group"]').length
                                     && !cy.nodes('[kind="reaction"], [kind="group"]').some(node => node.data('pinned'));
                             }
                             """);
@@ -2201,9 +2261,9 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         String initial = semanticProjection(first), other = semanticProjection(viewers.nth(1));
         String group = groupOfReaction(first, "4243");
         openGroupMenu(first, group);
-        menuAction(first, "Collapse group");
-        awaitGroupMembers(group, 0);
-        String collapsed = semanticProjection(first);
+        menuAction(first, "Expand group");
+        awaitGroupMembers(group, 3);
+        String expanded = semanticProjection(first);
         Object viewport = presentationOf(first);
         Object historyLength = page.evaluate("window.reactionShareDocument = 'same-document'; history.length");
         first.locator("div[aria-label^='Reaction graph.']").evaluate("el => { window.reactionShareRenderer = el._cyreg.cy; }");
@@ -2218,7 +2278,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         Assertions.assertThat(page.evaluate("window.reactionShareDocument")).isEqualTo("same-document");
         Assertions.assertThat(first.locator("div[aria-label^='Reaction graph.']")
                 .evaluate("el => el._cyreg.cy === window.reactionShareRenderer")).isEqualTo(true);
-        awaitSemanticProjection(page, 0, collapsed);
+        awaitSemanticProjection(page, 0, expanded);
         awaitSemanticProjection(page, 1, other);
         awaitPresentation(page, 0, viewport, true);
         assertThat(viewers.nth(1).getByText("Link copied")).hasCount(0);
@@ -2286,16 +2346,16 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var viewers = page.locator("section[aria-label='Reaction chains']");
         String firstInitial = semanticProjection(viewers.first());
         openGroupMenu(viewers.first(), groupOfReaction(viewers.first(), "4243"));
-        menuAction(viewers.first(), "Collapse group");
+        menuAction(viewers.first(), "Expand group");
         awaitAutomaticLink(1, "");
         String group = groupOfReaction(viewers.nth(1), "5242");
         openGroupMenu(viewers.nth(1), group);
-        menuAction(viewers.nth(1), "Collapse group");
+        menuAction(viewers.nth(1), "Expand group");
         page.waitForFunction("""
                 group => {
                     const cy = document.querySelectorAll('div[aria-label^="Reaction graph."]')[1]?._cyreg?.cy;
                     return cy && !cy.destroyed() && cy.getElementById(group).length === 1
-                        && cy.getElementById(group).children('[kind="reaction"]').length === 0;
+                        && cy.getElementById(group).children('[kind="reaction"]').length > 0;
                 }
                 """, group);
         String secondSelection = semanticProjection(viewers.nth(1));
@@ -2315,10 +2375,14 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     private void awaitAutomaticLink(int steps, String variant) {
+        awaitAutomaticLink(page, steps, variant);
+    }
+
+    private void awaitAutomaticLink(Page document, int steps, String variant) {
         var expected = new HashMap<String, Object>();
         expected.put("steps", steps);
         if (variant != null) expected.put("variant", variant);
-        page.waitForCondition(() -> Boolean.TRUE.equals(page.evaluate("""
+        document.waitForCondition(() -> Boolean.TRUE.equals(document.evaluate("""
                 async expected => {
                     const prefix = '#reaction-view=d1.', hash = location.hash;
                     if (!hash.startsWith(prefix)) return false;
@@ -2327,13 +2391,13 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                         const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
                         const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
                         const state = JSON.parse(await new Response(stream).text());
-                        return state.v === 1 && state.s.length === expected.steps
+                        return state.v === 2 && state.s.length === expected.steps
                             && (!('variant' in expected) || state.r[state.w].targets[0].identity.message[1] === expected.variant);
                     } catch { return false; }
                 }
                 """, expected)));
-        String current = (String) page.evaluate("location.href");
-        page.waitForURL(address -> address.equals(current));
+        String current = (String) document.evaluate("location.href");
+        document.waitForURL(address -> address.equals(current));
     }
 
     @Test
@@ -2481,6 +2545,9 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(page.locator(".jeapReactionTableFallback")).isHidden();
         assertThat(viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true))).isDisabled();
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Reset view").setExact(true)).click();
+        awaitGraphKeys(List.of("A", "B", "C", "D", "E"), true);
+        assertThat(table.locator("tbody tr")).hasCount(0);
+        showExpandedReactionViewer(0);
         assertThat(table.locator("tbody tr")).hasCount(4);
         assertNothingWentWrongInTheBrowser();
     }
@@ -2585,10 +2652,32 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         assertThat(viewer.getByRole(AriaRole.MENU)).isVisible();
     }
 
+    /** Tests about individual reaction nodes explicitly unfold the otherwise collapsed entry. */
+    private void showExpandedReactionViewer(int index) {
+        showReactionViewer(index);
+        var viewer = page.locator("section[aria-label='Reaction chains']").nth(index);
+        @SuppressWarnings("unchecked")
+        var groups = (List<String>) viewer.locator("div[aria-label^='Reaction graph.']").evaluate(
+                "element => element._cyreg.cy.nodes('[kind=\"group\"]').map(group => group.id())");
+        for (String group : groups) {
+            var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+            String expanded = "(el, id) => el._cyreg.cy.getElementById(id).children('[kind=\"reaction\"]').length > 0";
+            if (Boolean.TRUE.equals(canvas.evaluate(expanded, group))) continue;
+            openGroupMenu(viewer, group);
+            menuAction(viewer, "Expand group");
+            page.waitForCondition(() -> Boolean.TRUE.equals(canvas.evaluate(expanded, group)));
+        }
+    }
+
     private String groupOfReaction(Locator viewer, String reaction) {
         return (String) viewer.locator("div[aria-label^='Reaction graph.']").evaluate("""
-                (element, reaction) => element._cyreg.cy.nodes('[kind="reaction"]')
-                    .filter(node => JSON.parse(node.id())[1] === reaction).first().parent().id()
+                (element, reaction) => {
+                    const cy = element._cyreg.cy;
+                    const member = cy.nodes('[kind="reaction"]').filter(node => JSON.parse(node.id())[1] === reaction).first();
+                    if (member.length) return member.parent().id();
+                    return cy.nodes('[kind="marker"]').filter(node => node.data('restore')
+                        ?.some(id => JSON.parse(id)[1] === reaction)).first().parent().id();
+                }
                 """, reaction);
     }
 
@@ -2650,7 +2739,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         page.waitForFunction("""
                 args => {
                     const cy = document.querySelector('section[aria-label="Reaction chains"] div[aria-label^="Reaction graph."]')?._cyreg?.cy;
-                    return cy && cy.getElementById(args.group).children('[kind="reaction"]').length === args.count;
+                    return cy && cy.getElementById(args.group).length === 1 && cy.getElementById(args.group).children('[kind="reaction"]').length === args.count;
                 }
                 """, Map.of("group", group, "count", count));
     }
@@ -2658,7 +2747,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     @Test
     void systemFixture_usesTheSameReactionsAndMediansAsTheDocumentationTable() {
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");
-        showReactionViewer(0);
+        showExpandedReactionViewer(0);
         assertThat(page.locator("table[data-reaction-table='live']")).isVisible();
         Object comparison = page.evaluate("""
                 async () => {

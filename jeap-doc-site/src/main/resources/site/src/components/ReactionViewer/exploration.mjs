@@ -1,4 +1,4 @@
-import {copyView, createView, entryView, labelOf, reactionOf} from './model.mjs';
+import {copyView, createView, entryView, labelOf, missingGroupActions, reactionOf} from './model.mjs';
 import {changeVisibility} from './visibility.mjs';
 
 const eligible = (graph, state, id) => graph.nodes.get(id).reaction?.status !== 'SUPERSEDED' || state.revealed.has(id);
@@ -43,7 +43,7 @@ export function expansionLimit(graph, state, id, direction) {
 
 const equalSet = (left, right) => left.size === right.size && [...left].every(id => right.has(id));
 
-export function expandView(graph, previous, id, direction, depth) {
+export function expandView(graph, previous, id, direction, depth, {keepGroupsCollapsed = false} = {}) {
     const maximum = expansionLimit(graph, previous, id, direction);
     if (typeof depth !== 'number' || !Number.isInteger(depth) || depth < 1 || depth > maximum) {
         throw new Error(maximum ? `Enter a whole number from 1 to ${maximum}.` : 'No reachable neighbours.');
@@ -58,7 +58,8 @@ export function expandView(graph, previous, id, direction, depth) {
             const group = graph.groupOf.get(nodeId);
             state.selected.add(group); state.hidden.delete(group);
         }
-        if (distance > 0 || !graph.groups.has(id)) state.visible.add(nodeId);
+        if ((distance > 0 || !graph.groups.has(id))
+            && (!keepGroupsCollapsed || !node.reaction || previous.visible.has(nodeId))) state.visible.add(nodeId);
     }
     for (const edge of walk.edges) state.edges.add(edge);
     if (['visible', 'reactions', 'edges', 'hidden', 'selected'].every(key => equalSet(state[key], previous[key]))) return previous;
@@ -135,9 +136,20 @@ export function pathView(graph, previous, ids) {
 }
 
 /** All semantic actions share one boundary; presentation changes never enter it. */
-export function changeView(graph, previous, action) {
+export function changeView(graph, previous, action, options) {
+    if (action.type === 'show-actions') {
+        if (!graph.groups.has(action.id)) throw new Error('Select a reaction group.');
+        const edges = missingGroupActions(graph, previous, action.id);
+        if (!edges.size) return previous;
+        const state = copyView(previous);
+        for (const edgeId of edges) {
+            const target = graph.flow.get(edgeId).target;
+            state.edges.add(edgeId); state.visible.add(target); state.hidden.delete(target);
+        }
+        return {...state, explored: true};
+    }
     if (action.type === 'focus') return focusView(graph, previous, action.id);
-    if (action.type === 'expand') return expandView(graph, previous, action.id, action.direction, action.depth);
+    if (action.type === 'expand') return expandView(graph, previous, action.id, action.direction, action.depth, options);
     if (action.type === 'paths') return pathView(graph, previous, action.ids);
     return changeVisibility(graph, previous, action);
 }

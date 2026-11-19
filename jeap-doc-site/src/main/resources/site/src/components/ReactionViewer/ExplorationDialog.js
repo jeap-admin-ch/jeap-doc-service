@@ -16,16 +16,16 @@ function Dialog({title, onClose, children}) {
     </dialog>;
 }
 
-export function ExpansionDialog({graph, state, id, direction, onApply, onClose}) {
+export function ExpansionDialog({graph, state, id, direction, keepGroupsCollapsed, onApply, onClose}) {
     const [depth, setDepth] = useState('1');
     const helpId = useId();
     const maximum = useMemo(() => expansionLimit(graph, state, id, direction), [graph, state, id, direction]);
     const preview = useMemo(() => {
         try {
-            const next = expandView(graph, state, id, direction, depth.trim() ? Number(depth) : NaN);
+            const next = expandView(graph, state, id, direction, depth.trim() ? Number(depth) : NaN, {keepGroupsCollapsed});
             return {changed: next !== state, message: next === state ? 'Already expanded at this depth.' : ''};
         } catch (error) { return {changed: false, message: error.message}; }
-    }, [graph, state, id, direction, depth]);
+    }, [graph, state, id, direction, depth, keepGroupsCollapsed]);
     return <Dialog title={`Expand ${direction} paths`} onClose={onClose}>
         <form onSubmit={event => { event.preventDefault(); if (preview.changed) onApply({type: 'expand', id, direction, depth: Number(depth)}); }}>
             <label>Edge depth

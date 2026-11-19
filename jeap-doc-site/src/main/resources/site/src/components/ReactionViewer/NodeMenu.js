@@ -33,7 +33,7 @@ function MenuSection({label, children}) {
     </>;
 }
 
-export default function NodeMenu({allowPaths = false, menu, destinations, canExpand, canCollapse, pinned, groupPinned, onExplore, onAction, onChange, onClose}) {
+export default function NodeMenu({allowPaths = false, menu, destinations, canShowActions, canExpand, canCollapse, pinned, groupPinned, onExplore, onAction, onChange, onClose}) {
     const ref = useRef(null);
     useLayoutEffect(() => {
         const element = ref.current, parent = element.parentElement;
@@ -76,6 +76,8 @@ export default function NodeMenu({allowPaths = false, menu, destinations, canExp
                 <MenuIcon name="connectedHide"/>Hide connected subgraph</button>
         </MenuSection>
         <MenuSection label="Exploration">
+            {menu.kind === 'group' && <button type="button" role="menuitem" disabled={!canShowActions}
+                onClick={() => onAction('show-actions')}><MenuIcon name="outgoing"/>Show outgoing actions</button>}
             <button type="button" role="menuitem" onClick={() => onAction('focus')}><MenuIcon name="focus"/>Focus</button>
             <button type="button" role="menuitem" onClick={() => onExplore('incoming')}>
                 <MenuIcon name="incoming"/>Expand incoming paths…</button>

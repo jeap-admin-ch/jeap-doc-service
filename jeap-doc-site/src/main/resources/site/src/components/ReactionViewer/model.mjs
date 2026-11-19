@@ -231,6 +231,20 @@ function diagramLabelOf(node) {
     return labelOf(node);
 }
 
+/** Direct actions of selected, available members; never pull sibling reactions into a partial view. */
+export function missingGroupActions(graph, state, groupId) {
+    const edges = new Set();
+    if (!state.selected.has(groupId) || state.hidden.has(groupId)) return edges;
+    for (const member of graph.groups.get(groupId).members) {
+        if (!state.reactions.has(member) || !availableReaction(graph, state, member)) continue;
+        for (const edgeId of graph.outgoing.get(member) ?? []) {
+            const edge = graph.flow.get(edgeId);
+            if (!state.edges.has(edgeId) || !state.visible.has(edge.target)) edges.add(edgeId);
+        }
+    }
+    return edges;
+}
+
 export function project(graph, state) {
     const elements = [], bundles = new Map();
     const foreign = system => Boolean(state.system && system && fold(system) !== fold(state.system));
@@ -249,6 +263,12 @@ export function project(graph, state) {
             && (graph.nodes.get(member).reaction.status !== 'SUPERSEDED' || state.revealed.has(member)));
         if (hiddenMembers.length) elements.push({data: {id: 'hidden:' + id, parent: id, kind: 'marker',
             label: String(hiddenMembers.length), restore: hiddenMembers}});
+        if (active.some(member => !state.visible.has(member))) {
+            const targets = new Set([...missingGroupActions(graph, state, id)].map(edgeId => graph.flow.get(edgeId).target));
+            if (targets.size) elements.push({data: {id: 'actions:' + id, kind: 'marker', label: String(targets.size),
+                anchor: id, direction: 'outgoing', explore: {type: 'show-actions', id},
+                tooltip: `Show ${targets.size} outgoing actions without expanding the group`}});
+        }
     }
     for (const id of state.visible) {
         const node = graph.nodes.get(id);
