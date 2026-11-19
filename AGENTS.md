@@ -1004,6 +1004,7 @@ Native decompression validates the stream. Sharing and restoration are asynchron
 Sharing replaces the current browser-history entry with the captured link without notifying the router;
 a router replay would reset every viewer and discard local undo history. Keep copy feedback near the toolbar,
 announce it accessibly, expire it after three seconds and show success only after clipboard writing succeeds.
+Feedback text must not intercept graph or source-control clicks; only its dismiss button captures them.
 `addressUpdates.mjs` coordinates one address per page with a 250 ms debounce after semantic actions and pan/zoom.
 The last interacted viewer wins. Initial rendering and offscreen activation do not publish addresses. Cancel
 stale or unmounted owners before they publish, including when another viewer takes over. Automatic updates

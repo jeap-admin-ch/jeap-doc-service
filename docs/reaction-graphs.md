@@ -337,7 +337,8 @@ uniquely identifiable on the current graph.** Back can undo the action that intr
 failures appear only on the addressed viewer; undecodable links produce one notice per page.
 Messages appear beside the toolbar: failures to generate a link (automatically or through Share) are yellow
 warnings; failures to restore an opened link remain red. Each message has a dismiss button; closing a
-message does not change the graph. A later failed operation may display a new message. Opening a shared link scrolls directly to its viewer
+message does not change the graph. The message text lets pointer events through to graph and source controls;
+only the dismiss button captures clicks. A later failed operation may display a new message. Opening a shared link scrolls directly to its viewer
 below the navigation bar and activates it even when it starts below the fold. Other viewers retain their
 ordinary entry views. Nearby preceding viewers finish replacing their fallback tables before that one
 scroll, so their height changes do not move the target afterwards. Scrolling afterwards is unrestricted; automatic URL updates do not scroll the page.

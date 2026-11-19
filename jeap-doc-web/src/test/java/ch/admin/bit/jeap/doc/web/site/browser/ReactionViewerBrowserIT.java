@@ -1333,7 +1333,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                 }
                 """)).isEqualTo(true);
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Copy source")).click();
-        var feedback = viewer.getByText("Code copied", new Locator.GetByTextOptions().setExact(true));
+        var feedback = viewer.getByRole(AriaRole.STATUS).filter(new Locator.FilterOptions().setHasText("Code copied"));
         assertThat(feedback).isVisible();
         assertThat(feedback).hasAttribute("role", "status");
         assertThat(viewer.locator("section[aria-label='Graph source'] [role='status']")).hasCount(0);
@@ -2309,7 +2309,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
 
         String link = sharedLink(first);
 
-        var feedback = first.getByText("Link copied", new Locator.GetByTextOptions().setExact(true));
+        var feedback = first.getByRole(AriaRole.STATUS).filter(new Locator.FilterOptions().setHasText("Link copied"));
         assertThat(feedback).isVisible();
         assertThat(feedback).hasAttribute("role", "status");
         Assertions.assertThat(page.evaluate("window.copiedReactionLink")).isEqualTo(link);
@@ -2458,10 +2458,14 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Show source")).click();
         viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Copy source")).click();
         page.waitForFunction("() => typeof window.sourceCopied === 'string'");
-        var error = viewer.getByText("test compression failure", new Locator.GetByTextOptions().setExact(true));
+        var error = viewer.getByRole(AriaRole.STATUS).filter(new Locator.FilterOptions().setHasText("test compression failure"));
         assertThat(error).isVisible();
-        assertThat(error).hasClass(Pattern.compile(".*errorFeedback.*"));
+        assertThat(error).hasClass(Pattern.compile(".*warningFeedback.*"));
         assertThat(viewer.getByText("Code copied", new Locator.GetByTextOptions().setExact(true))).hasCount(0);
+        String projection = semanticProjection(viewer);
+        error.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Dismiss message")).click();
+        assertThat(error).hasCount(0);
+        awaitSemanticProjection(page, 0, projection);
         assertNothingWentWrongInTheBrowser();
     }
 
@@ -2477,7 +2481,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         var viewer = page.locator("section[aria-label='Reaction chains']");
         String link = sharedLink(viewer);
         assertThat(viewer.getByText("Link copied")).hasCount(0);
-        var feedback = viewer.getByText("Copy the shared view link below.", new Locator.GetByTextOptions().setExact(true));
+        var feedback = viewer.getByRole(AriaRole.STATUS).filter(new Locator.FilterOptions().setHasText("Copy the shared view link below."));
         assertThat(feedback).isVisible();
         assertThat(feedback).not().hasClass(Pattern.compile(".*errorFeedback.*"));
         assertThat(feedback).hasCount(0, new LocatorAssertions.HasCountOptions().setTimeout(5000));
@@ -2531,7 +2535,8 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
         showReactionViewer(1);
         assertThat(viewers.first().getByText("This view cannot be restored on the current graph.")).isVisible();
         assertThat(viewers.nth(1).getByText("This view cannot be restored on the current graph.")).hasCount(0);
-        var error = viewers.first().getByText("This view cannot be restored on the current graph.");
+        var error = viewers.first().getByRole(AriaRole.STATUS)
+                .filter(new Locator.FilterOptions().setHasText("This view cannot be restored on the current graph."));
         Assertions.assertThat(error.evaluate("""
                 el => {
                     const style = getComputedStyle(el), probe = document.createElement('span');
@@ -2721,48 +2726,53 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     /**
-     * Right-clicks the group itself and asserts that it was the group the renderer received the click on.
-     * <p>
-     * The point is chosen by the renderer's own hit test, not derived from the group's bounds: a band a few pixels
-     * below the group's top edge was missed now and then, and the click then fell on the empty canvas - which
-     * Playwright cannot tell from a hit, since every point of the canvas is the same element to it.
+     * Right-clicks a collapsed group's marker, or an uncovered interior point of an expanded group.
+     * The marker provides a stable target even where a cycle crosses the group's narrow header. The renderer
+     * maps its context menu to the parent group. Check the actual click target, not only that a menu appeared.
      */
-    private void openGroupMenu(com.microsoft.playwright.Locator viewer, String group) {
-        viewer.getByRole(AriaRole.BUTTON, new com.microsoft.playwright.Locator.GetByRoleOptions().setName("Fit all")).click();
+    private void openGroupMenu(Locator viewer, String group) {
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Fit all")).click();
         var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
         String clicked = null;
-        java.util.Map<?, ?> position = null;
+        Map<?, ?> position = null;
         for (int attempt = 0; attempt < 2 && !group.equals(clicked); attempt++) {
             if (clicked != null && !clicked.isEmpty()) {
                 page.keyboard().press("Escape");
             }
             // Finish scrolling before resolving the renderer's click coordinates.
             canvas.scrollIntoViewIfNeeded();
-            position = (java.util.Map<?, ?>) canvas.evaluate("""
+            position = (Map<?, ?>) canvas.evaluate("""
                     async (element, id) => {
                         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
                         const cy = element._cyreg.cy, group = cy.getElementById(id), box = group.boundingBox({includeLabels: false});
+                        const marker = group.children('[kind="marker"]').first();
+                        const point = (x, y) => {
+                            delete element.dataset.clickedNode;
+                            cy.one('cxttap', 'node', event => {
+                                const target = event.target;
+                                element.dataset.clickedNode = target.data('kind') === 'marker'
+                                    ? target.parent().id() : target.id();
+                            });
+                            return {x: x * cy.zoom() + cy.pan().x, y: y * cy.zoom() + cy.pan().y};
+                        };
+                        if (marker.length) return point(marker.position('x'), marker.position('y'));
                         const answersFor = (x, y) => cy.renderer().findNearestElement(x, y, true, false)?.same(group);
                         for (let y = box.y1 + 2; y < box.y2; y += 2) {
                             for (const x of [(box.x1 + box.x2) / 2, box.x1 + 4, box.x2 - 4]) {
-                                if (answersFor(x, y)) {
-                                    delete element.dataset.clickedNode;
-                                    cy.one('cxttap', 'node', event => { element.dataset.clickedNode = event.target.id(); });
-                                    return {x: x * cy.zoom() + cy.pan().x, y: y * cy.zoom() + cy.pan().y};
-                                }
+                                if (answersFor(x, y)) return point(x, y);
                             }
                         }
                         return null;
                     }
                     """, group);
-            org.assertj.core.api.Assertions.assertThat(position).as("A point of the group %s that is not covered", group)
+            Assertions.assertThat(position).as("A point of the group %s that is not covered", group)
                     .isNotNull();
-            canvas.click(new com.microsoft.playwright.Locator.ClickOptions().setButton(com.microsoft.playwright.options.MouseButton.RIGHT)
+            canvas.click(new Locator.ClickOptions().setButton(MouseButton.RIGHT)
                     .setPosition(((Number) position.get("x")).doubleValue(), ((Number) position.get("y")).doubleValue()));
             try {
                 page.waitForCondition(() -> canvas.getAttribute("data-clicked-node") != null,
-                        new com.microsoft.playwright.Page.WaitForConditionOptions().setTimeout(2_000));
-            } catch (com.microsoft.playwright.TimeoutError missed) {
+                        new Page.WaitForConditionOptions().setTimeout(2_000));
+            } catch (TimeoutError missed) {
                 // The click reached no node at all; the next attempt resolves the point again.
             }
             clicked = canvas.getAttribute("data-clicked-node");
@@ -2770,7 +2780,7 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
                 clicked = "";
             }
         }
-        org.assertj.core.api.Assertions.assertThat(clicked).as("The node right-clicked at %s", position).isEqualTo(group);
+        Assertions.assertThat(clicked).as("The node right-clicked at %s", position).isEqualTo(group);
         assertThat(viewer.getByRole(AriaRole.MENU)).isVisible();
     }
 

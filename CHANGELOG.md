@@ -33,6 +33,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Reactions with identical signatures can be shared using a reference bound to the exact published snapshot.
   Unique semantic reaction references continue to survive snapshot changes.
 
+### Fixed
+- Viewer feedback no longer intercepts clicks on graph and source controls; its dismiss button remains usable.
+
 ## [4.16.0] - 2026-11-18
 
 ### Dependencies

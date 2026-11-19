@@ -1,6 +1,6 @@
 .viewer { scroll-margin-top: calc(var(--ifm-navbar-height) + 1rem); border: 1px solid var(--ifm-color-emphasis-300); border-radius: 10px; margin: 1.5rem 0; overflow: hidden; background: var(--ifm-background-color); }
 .toolbar { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--ifm-color-emphasis-200); }
-.copyFeedback { display: flex; align-items: center; gap: 12px; position: absolute; top: calc(100% + 8px); right: 12px; z-index: 5; max-width: calc(100% - 24px); padding: 8px 12px; border: 1px solid var(--ifm-color-success); border-radius: 6px; background: var(--ifm-background-color); color: var(--ifm-font-color-base); box-shadow: 0 3px 12px #0003; font-size: .85rem; pointer-events: auto; }
+.copyFeedback { display: flex; align-items: center; gap: 12px; position: absolute; top: calc(100% + 8px); right: 12px; z-index: 5; max-width: calc(100% - 24px); padding: 8px 12px; border: 1px solid var(--ifm-color-success); border-radius: 6px; background: var(--ifm-background-color); color: var(--ifm-font-color-base); box-shadow: 0 3px 12px #0003; font-size: .85rem; pointer-events: none; }
 .errorFeedback { border-color: var(--ifm-color-danger); color: var(--ifm-color-danger); }
 .caption { display: block; color: var(--ifm-color-emphasis-600); font-size: 0.8rem; }
 .reactionTable { margin: 1rem 0; overflow-x: auto; }
@@ -72,5 +72,5 @@
 .explorerError { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: .75rem; border: 1px solid var(--ifm-color-danger); border-radius: 6px; color: var(--ifm-color-danger); }
 
 .warningFeedback { border-color: var(--ifm-color-warning); background: var(--ifm-color-warning-contrast-background); color: var(--ifm-color-warning-contrast-foreground); }
-.copyFeedback button, .explorerError button { display: flex; flex-shrink: 0; padding: 2px; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.copyFeedback button, .explorerError button { pointer-events: auto; display: flex; flex-shrink: 0; padding: 2px; border: 0; background: transparent; color: inherit; cursor: pointer; }
 .copyFeedback button svg, .explorerError button svg { width: 16px; height: 16px; }
