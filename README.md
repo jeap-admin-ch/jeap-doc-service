@@ -20,6 +20,7 @@ to their code, their build pipelines upload it, and the doc service combines it 
 | [What an upload is validated against](docs/upload-validation.md) | The structural rules an upload is checked against, per template, and the finding codes |
 | [Security](docs/security.md)                         | The semantic roles and the rule that a system may only change its own documentation    |
 | [Generation](docs/generation.md)                     | How the documentation site is generated, what triggers a build and how it is published |
+| [Reaction graphs](docs/reaction-graphs.md)           | Published snapshots, graph viewers, the Explorer, search and shared links              |
 | [Architecture import](docs/architecture-import.md)   | What is replicated from the architecture repository, and what a partial run leaves     |
 | [Importing the Governance Service](docs/governance-import.md) | The webhook, the safety-net schedule, and what is stored                      |
 | [The governance site](docs/governance-site.md)       | Its configuration, its pages, the highlighting and the score history chart            |

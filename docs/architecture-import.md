@@ -330,7 +330,7 @@ together in `ReactionObserverUpstream`. The format selects the matching parser; 
 browser publication and page projections already support V2. The V2 interface
 index is not needed for the complete-graph import; no interface URL is constructed from its FQN.
 
-See [Generation](generation.md#complete-reaction-graph-data) for the published browser format.
+See [Reaction graphs](reaction-graphs.md#complete-reaction-graph-data) for the published browser format.
 
 ## Every name becomes a slug
 

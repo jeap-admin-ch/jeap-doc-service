@@ -901,6 +901,7 @@ it touched and check them against what the code now does:
 | A module, a port, or the way the parts fit together                                          | `docs/architecture.md`         |
 | A role, or who may do what                                                                   | `docs/security.md`             |
 | What a build does, what triggers one, how a site is published                                | `docs/generation.md`           |
+| Reaction snapshots, viewers, exploration, search or shared links                            | `docs/reaction-graphs.md`      |
 | A meter, or what to alarm on                                                                 | `docs/observability.md`        |
 | What an instance's image has to carry                                                        | `docs/site-image.md`           |
 | What the bucket has to expire                                                                | `docs/operating-the-bucket.md` |

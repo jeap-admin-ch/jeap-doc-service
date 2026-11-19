@@ -852,4 +852,4 @@ curl -X DELETE -H "Authorization: Bearer $TOKEN" \
 
 The static site also serves `reaction-graph.json` under each environment's root, subject to the site's access
 policy. This is generated data rather than an administration endpoint. See
-[Complete reaction graph data](generation.md#complete-reaction-graph-data) for the format and unavailable state.
+[Complete reaction graph data](reaction-graphs.md#complete-reaction-graph-data) for the format and unavailable state.

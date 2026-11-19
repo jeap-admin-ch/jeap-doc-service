@@ -509,6 +509,7 @@ architecture repository is not: it may be deploying.
 What reacts to what at runtime, read from the [reaction observer](architecture-import.md) of each stage and
 drawn as the runtime views of a system, a component and a message. **Off by default**, because a platform may
 run no reaction observer at all.
+The published graph, viewer and Explorer are described in [Reaction graphs](reaction-graphs.md).
 
 ```yaml
 jeap:

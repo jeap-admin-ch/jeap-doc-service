@@ -170,6 +170,33 @@ class SiteSourcesTest {
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("site property '" + property + "'");
     }
 
+    @Test
+    void write_whenSourceMetadataUsesAnySiteProperty_thenRejectsEvenOmittedConditionalProperties() throws IOException {
+        SiteProperties configured = new SiteProperties();
+        SiteProperties.Site handbook = new SiteProperties.Site();
+        handbook.setPerEnvironment(false);
+        handbook.setContent(StaticSiteContent.SOURCE_ID);
+        configured.getSites().put("handbook", handbook);
+        PublicationProperties publication = publication();
+        publication.setTitle("Documentation");
+        Site full = new DocumentationSites(configured).find("handbook").orElseThrow();
+        sourcesOf(configured, publication).write(1L, full, wholeSiteOf(full), content, GENERATED_AT);
+        var properties = siteJson().propertyNames();
+        assertThat(properties).contains("perEnvironment", "navigation");
+
+        Site minimal = siteOf("default");
+        sourcesWithMetadata(Map.of()).write(1L, minimal, wholeSiteOf(minimal), content, GENERATED_AT);
+        assertThat(siteJson().has("perEnvironment")).isFalse();
+        assertThat(siteJson().has("navigation")).isFalse();
+        for (String property : properties) {
+            SiteSources writing = sourcesWithMetadata(Map.of(property, "source-value"));
+            assertThatThrownBy(() -> writing.write(1L, minimal, wholeSiteOf(minimal), content, GENERATED_AT))
+                    .as("site property %s must stay protected when omitted", property)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("site property '" + property + "'");
+        }
+    }
+
     private SiteSources sourcesWithMetadata(Map<String, Object> metadata) throws IOException {
         ContentWriter writer = mock(ContentWriter.class);
         when(writer.contentSource()).thenReturn(siteOf("default").content());
