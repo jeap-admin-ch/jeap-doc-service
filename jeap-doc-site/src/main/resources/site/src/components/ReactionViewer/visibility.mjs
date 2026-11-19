@@ -1,12 +1,12 @@
 import {availableReaction, copyView, project, setGroupExpanded} from './model.mjs';
 
-function topology(graph, state, directed = false) {
+function topology(elements, directed = false) {
     const adjacency = new Map();
     const connect = (from, to) => {
         if (!adjacency.has(from)) adjacency.set(from, new Set());
         adjacency.get(from).add(to);
     };
-    for (const {data} of project(graph, state).elements) {
+    for (const {data} of elements) {
         if (data.source) {
             connect(data.source, data.target);
             if (!directed) connect(data.target, data.source);
@@ -95,12 +95,12 @@ export function changeVisibility(graph, previous, action) {
             } else showNode(graph, state, target);
         }
     } else if (action.type === 'hide') {
-        const before = topology(graph, previous);
+        const before = topology(project(graph, previous).elements);
         const neighbours = new Set(seeds(graph, previous, [id]).flatMap(seed => [...(before.get(seed) ?? [])]));
         state.pins.delete(id);
         for (const member of graph.groups.get(id)?.members ?? []) state.pins.delete(member);
         remove(graph, state, [id]);
-        const after = topology(graph, state);
+        const after = topology(project(graph, state).elements);
         const orphans = [...neighbours].filter(node => {
             if (!after.has(node) || after.get(node).size || state.pins.has(node)
                 || state.pins.has(graph.groupOf.get(node))) return false;
@@ -113,7 +113,7 @@ export function changeVisibility(graph, previous, action) {
         const protectedIds = new Set(seeds(graph, previous, state.pins));
         if (action.type === 'outgoing') starts.forEach(node => protectedIds.add(node));
         const stops = new Set([...protectedIds].filter(node => !starts.includes(node)));
-        const reached = reach(topology(graph, previous, action.type === 'outgoing'), starts, stops);
+        const reached = reach(topology(project(graph, previous).elements, action.type === 'outgoing'), starts, stops);
         removeProjected(graph, state, [...reached].filter(node => !protectedIds.has(node)));
     } else throw new Error('Unknown visibility action');
     return state;
@@ -127,12 +127,17 @@ export function hiddenMarkers(graph, state) {
     full.hidden.clear();
     for (const id of state.hidden) if (!graph.groups.has(id) && (!graph.nodes.get(id).reaction
         || graph.nodes.get(id).reaction.status !== 'SUPERSEDED' || state.revealed.has(id))) full.visible.add(id);
-    const displayed = topology(graph, state);
+    const elements = project(graph, state).elements;
+    const displayed = topology(elements);
+    // The collapsed group's action opener already reveals its hidden outgoing interfaces.
+    const actionAnchors = new Set(elements.filter(({data}) => data.explore?.type === 'show-actions')
+        .map(({data}) => data.anchor));
     const hiddenByAnchor = new Map();
     for (const {data} of project(graph, full).elements) {
         if (!data.source) continue;
         for (const [anchor, target, direction] of [[data.source, data.target, 'outgoing'], [data.target, data.source, 'incoming']]) {
             if (!displayed.has(anchor) || displayed.has(target) || !state.hidden.has(target)) continue;
+            if (direction === 'outgoing' && actionAnchors.has(anchor)) continue;
             const key = JSON.stringify([anchor, direction]);
             if (!hiddenByAnchor.has(key)) hiddenByAnchor.set(key, {anchor, direction, ids: new Set()});
             hiddenByAnchor.get(key).ids.add(target);

@@ -1727,6 +1727,45 @@ class ReactionViewerBrowserIT extends SiteBrowserTestBase {
     }
 
     @Test
+    void hidingAnExpandedActionKeepsOnlyOneOpenerAfterSharingAndBack() {
+        installVisibilityFixture(false);
+        open("/reactions/");
+        var search = page.getByRole(AriaRole.COMBOBOX, new Page.GetByRoleOptions().setName("Find an entry"));
+        search.fill("A");
+        search.press("Enter");
+        showReactionViewer(0);
+        var viewer = page.locator("section[aria-label='Reaction chains']");
+        var canvas = viewer.locator("div[aria-label^='Reaction graph.']");
+        String group = groupOfReaction(viewer, "r1");
+        String actionMarker = "actions:" + group;
+        for (int repetition = 0; repetition < 2; repetition++) {
+            viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Fit all")).click();
+            clickGraphNode(viewer, actionMarker, false);
+            awaitGraphKeys(List.of("B"), true);
+            openFixtureInterfaceMenu(viewer, "B");
+            menuAction(viewer, "Hide");
+            awaitGraphKeys(List.of("B"), false);
+            awaitGroupMembers(group, 0);
+            Assertions.assertThat(canvas.evaluate("""
+                    (el, group) => el._cyreg.cy.nodes('[kind="marker"]').filter(node =>
+                        node.data('anchor') === group && node.data('direction') === 'outgoing').map(node => node.id())
+                    """, group)).isEqualTo(List.of(actionMarker));
+        }
+        String hidden = semanticProjection(viewer);
+        String link = sharedLink(viewer);
+        page.navigate(link);
+        page.reload();
+        awaitSemanticProjection(page, 0, hidden);
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Fit all")).click();
+        clickGraphNode(viewer, actionMarker, false);
+        awaitGraphKeys(List.of("B"), true);
+        awaitGroupMembers(group, 0);
+        viewer.getByRole(AriaRole.BUTTON, new Locator.GetByRoleOptions().setName("Back").setExact(true)).click();
+        awaitSemanticProjection(page, 0, hidden);
+        assertNothingWentWrongInTheBrowser();
+    }
+
+    @Test
     void directedExpansionChecksDepthAndPreparedViewsDoNotOfferPathSearch() {
         installVisibilityFixture(true);
         open("/" + SYSTEM_REACTIONS_ROUTE + "/");

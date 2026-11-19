@@ -959,6 +959,7 @@ Reaction groups start collapsed in new entries, focus and path selections, and r
 newly reached by expansion. Explicitly focusing an individual reaction shows it. Path selection is reserved
 for the standalone explorer. The outgoing group marker and **Show outgoing actions** reveal only direct
 actions of selected, available members, without unfolding the group or selecting sibling reactions.
+Do not add a second outgoing restore marker where this opener already covers the hidden action interfaces.
 Visibility commands live in `ReactionViewer/visibility.mjs` and return a new complete state per action.
 Keep explicit hiding separate from collapsing: collapsed reactions contribute bundled arrows, hidden reactions
 contribute none. Ordinary Hide only removes the target and unpinned direct neighbours that become isolated; it never

@@ -1318,7 +1318,8 @@ Reaction groups start collapsed in new entry and path views. Newly reached group
 during exploration. Use the numbered marker inside a group or **Expand group** to show its individual
 reactions. A separate marker on the outgoing side, also available as **Show outgoing actions** in the group
 menu, reveals the direct action interfaces of its selected, available reactions without unfolding the group.
-It does not add sibling reactions or follow downstream reactions. Back and Reset view undo this action.
+It does not add sibling reactions or follow downstream reactions. Hidden action interfaces use the same
+opener, without an additional restore marker beside the group. Back and Reset view undo this action.
 
 **Expand incoming paths** and **Expand outgoing paths** add directed connections at a chosen edge depth,
 from one to the reachable depth, capped at 50. Existing contents and pins remain. Group expansion starts

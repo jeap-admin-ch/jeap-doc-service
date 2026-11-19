@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readGraph, identity, project, missingGroupActions} from '../../main/resources/site/src/components/ReactionViewer/model.mjs';
+import {hiddenMarkers} from '../../main/resources/site/src/components/ReactionViewer/visibility.mjs';
 import {startHistory, advanceHistory, backHistory, HISTORY_LIMIT} from '../../main/resources/site/src/components/ReactionViewer/history.mjs';
 import {shareLink, restoreLink, LINK_PREFIX, MAX_LINK_LENGTH, referenceOf} from '../../main/resources/site/src/components/ReactionViewer/sharing.mjs';
 import {decodeLinkText, encodeLinkText} from '../../main/resources/site/src/components/ReactionViewer/linkCodec.mjs';
@@ -456,4 +457,54 @@ test('outgoing markers count distinct targets and include superseded actions onl
     assert.ok(expanded.state.visible.has(rid('old')));
     assert.ok(!expanded.state.visible.has(rid('r1')));
     assert.ok(!expanded.state.visible.has(rid('duplicate')));
+});
+
+test('hiding a revealed action leaves one outgoing opener and keeps old restore steps replayable', async () => {
+    const g = graph(), selected = {kind: 'MESSAGE', message: 'A', variant: ''};
+    const group = g.groupOf.get(rid('r1')), initial = startHistory(g, selected);
+    const markers = session => [...project(g, session.state).elements, ...hiddenMarkers(g, session.state)]
+        .map(e => e.data).filter(data => data.anchor === group && data.direction === 'outgoing');
+    let session = apply(g, initial, 'show-actions', group);
+    for (const type of ['show-actions', 'show-actions', 'show']) {
+        session = apply(g, session, 'hide', iid('http'));
+        assert.equal(markers(session).length, 1);
+        assert.deepEqual(markers(session)[0].explore, {type: 'show-actions', id: group});
+        assert.equal(markers(session)[0].label, '1');
+        assert.ok(!session.state.visible.has(rid('r1')));
+        assert.deepEqual((await restore(g, link(g, session, selected), selected)).state, session.state);
+        const before = session;
+        session = advanceHistory(g, session, type === 'show' ? {type, ids: [iid('http')]}
+            : {type, id: group});
+        assert.ok(session.state.visible.has(iid('http')));
+        assert.equal(markers(session).length, 0);
+        assert.deepEqual(backHistory(session), before);
+    }
+    assert.deepEqual((await restore(g, link(g, session, selected), selected)).state, session.state);
+    assert.deepEqual(advanceHistory(g, session, {type: 'reset'}).state, initial.state);
+    // Expanded reactions still need their own restore markers, as do hidden triggers.
+    const expanded = apply(g, session, 'expand-group', group);
+    const hiddenAction = apply(g, expanded, 'hide', iid('http'));
+    assert.ok(hiddenMarkers(g, hiddenAction.state).some(e => e.data.anchor === rid('r1')
+        && e.data.direction === 'outgoing' && e.data.restore.includes(iid('http'))));
+    const unpinned = apply(g, session, 'pin', iid('A'));
+    const hiddenTrigger = apply(g, unpinned, 'hide', iid('A'));
+    assert.ok(hiddenMarkers(g, hiddenTrigger.state).some(e => e.data.anchor === group
+        && e.data.direction === 'incoming' && e.data.restore.includes(iid('A'))));
+});
+
+test('a single action opener covers hidden and unexplored targets together', () => {
+    const payload = fixture();
+    payload.graph.edges.push({edgeType: 'ACTION', source: {nodeType: 'REACTION', key: 'r1'},
+        target: {nodeType: 'INTERFACE', key: 'generic'}});
+    const g = read(payload), group = g.groupOf.get(rid('r1'));
+    const path = advanceHistory(g, startHistory(g, entry), {type: 'paths', ids: [iid('A'), iid('http')]});
+    const hidden = apply(g, path, 'hide', iid('http'));
+    const markers = [...project(g, hidden.state).elements, ...hiddenMarkers(g, hidden.state)]
+        .map(e => e.data).filter(data => data.anchor === group && data.direction === 'outgoing');
+    assert.equal(markers.length, 1);
+    assert.equal(markers[0].label, '2');
+    const shown = advanceHistory(g, hidden, markers[0].explore);
+    assert.ok(shown.state.visible.has(iid('http')));
+    assert.ok(shown.state.visible.has(iid('generic')));
+    assert.ok(!shown.state.visible.has(rid('r1')));
 });

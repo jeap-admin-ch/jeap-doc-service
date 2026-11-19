@@ -24,7 +24,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 - Reaction groups start collapsed, including in path views. A separate outgoing opener reveals direct
-  actions without expanding the group. Previously shared links retain their original presentation.
+  actions without expanding the group. Hidden actions reuse this opener instead of adding a second button.
+  Previously shared links retain their original presentation.
 - Shared reaction links scroll directly to the addressed graph, including viewers below the fold. Link
   errors appear beside the toolbar with red text and border, matching the copy-confirmation style.
 
