@@ -358,6 +358,46 @@ test('indistinguishable reactions can be shared within their exact published sna
     await assert.rejects(() => restore(g, encode(tampered)), /cannot be restored/);
 });
 
+test('triggerless groups and their reactions share and restore only within their published snapshot', async () => {
+    const data = fixture();
+    data.snapshot = 'standalone-snapshot';
+    data.graph.edges = data.graph.edges.filter(edge => edge.edgeType !== 'TRIGGER');
+    data.graph.nodes.filter(node => node.reaction).forEach(node => { node.reaction.groupKey = null; });
+    const g = read(data), group = g.groupOf.get(rid('r1'));
+    const expanded = apply(g, startHistory(g, entry), 'expand-group', group);
+    const session = apply(g, expanded, 'pin', rid('r1'));
+    for (const current of [expanded, session, apply(g, session, 'hide', group),
+        startHistory(g, {kind: 'GROUP', id: group}), startHistory(g, {kind: 'REACTION', id: rid('r1')})]) {
+        const url = await link(g, current);
+        assert.deepEqual((await restore(read(structuredClone(data)), url)).state, current.state);
+        const changed = structuredClone(data);
+        changed.snapshot = 'new-snapshot';
+        await assert.rejects(() => restore(read(changed), url), /cannot be restored/);
+    }
+    const url = await link(g, session), payload = await payloadOf(url);
+    assert.equal(payload.steps[0].target.id, group);
+    assert.equal(payload.steps[0].target.snapshot, data.snapshot);
+    assert.equal(payload.steps[1].target.group.id, group);
+    for (const mutate of [
+        ref => { delete ref.snapshot; },
+        ref => { delete ref.id; },
+        ref => { ref.id = 'missing'; },
+        ref => { ref.component = 'another-component'; },
+    ]) {
+        const tampered = structuredClone(payload);
+        mutate(tampered.steps[0].target);
+        await assert.rejects(() => restore(g, encode(tampered)), /cannot be restored/);
+    }
+    const tampered = structuredClone(payload);
+    tampered.steps[1].target.actions = [];
+    await assert.rejects(() => restore(g, encode(tampered)), /cannot be restored/);
+
+    delete data.snapshot;
+    const unpublished = read(data);
+    await assert.rejects(() => link(unpublished, apply(unpublished, startHistory(unpublished, entry),
+        'expand-group', group)), /cannot be shared/);
+});
+
 test('pan and zoom reuse the semantic payload without reading targets or projecting entries again', async () => {
     const g = graph(), viewer = {kind: 'MESSAGE', message: 'A', variant: ''};
     const session = apply(g, startHistory(g, viewer), 'pin', rid('r1'));

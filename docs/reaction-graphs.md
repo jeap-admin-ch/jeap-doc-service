@@ -323,7 +323,10 @@ its trigger, sorted action-interface identities, reaction model version and stat
 and mutable reaction IDs are excluded from durable semantic references. If reactions in the same group have
 identical signatures, a reference additionally records the concrete reaction key and the published snapshot
 hash. Such a reference is valid only on that exact snapshot and still validates the complete signature.
-Indistinguishable standalone groups and reactions without a published snapshot hash cannot be shared individually.
+Groups with identical semantic identities, including standalone reactions without a trigger, also carry their
+local group ID and the exact published snapshot hash. The group identity is still validated; the local ID
+never identifies a group across snapshots. Without a published snapshot hash, ambiguous groups and reactions
+cannot be shared individually.
 
 A malformed or unsupported format, a different site or environment, a missing entry or target, an ambiguous
 match or an inapplicable step displays **This view cannot be restored on the current graph.** No partially

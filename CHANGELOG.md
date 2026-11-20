@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Sharing reaction views containing separate triggerless groups of the same component now identifies those
+  groups within the exact published snapshot instead of rejecting the link as ambiguous.
+
 ## [4.18.0] - 2026-11-22
 
 ### Dependencies

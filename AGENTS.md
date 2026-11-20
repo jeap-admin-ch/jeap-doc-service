@@ -986,6 +986,9 @@ replays them atomically against the current site/environment. Use interface keys
 mutable reaction IDs as durable targets. Individual reaction signatures resolve uniquely where possible. For identical signatures within a group,
 a concrete reaction key may disambiguate only when bound to the exact published snapshot hash; still
 validate the full signature and reject a changed snapshot. Never use that key as a durable target.
+Ambiguous group identities use the same snapshot boundary: include the local group ID and exact snapshot
+hash, and validate the group's semantic signature on restore. This covers separate triggerless groups of
+the same component. A local group ID must never resolve across snapshots or without the hash.
 Presentation changes create no history steps. Each semantic checkpoint retains its preceding viewport and
 node positions for Back. Links retain zoom and the centred model point, not per-node positions or
 undo history. Interface references carry their semantic identity as well as an upstream key. Resolve by the

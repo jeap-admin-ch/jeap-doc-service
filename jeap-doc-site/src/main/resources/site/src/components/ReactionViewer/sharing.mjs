@@ -73,18 +73,26 @@ function groupReference(graph, id) {
 
 function reactionReference(graph, id) {
     const node = graph.nodes.get(id);
-    return {kind: 'reaction', group: groupReference(graph, graph.groupOf.get(id)),
+    return {kind: 'reaction', group: shareableGroupReference(graph, graph.groupOf.get(id)),
         trigger: interfaceIdentities(graph, graph.incoming.get(id), 'source'),
         actions: interfaceIdentities(graph, graph.outgoing.get(id), 'target'),
         model: node.reaction.reactionModelVersion ?? null, status: node.reaction.status};
 }
 
-/** Frequencies and mutable reaction IDs never identify a shared target. Ambiguity fails closed. */
+function shareableGroupReference(graph, id) {
+    const ref = groupReference(graph, id);
+    // Triggerless reactions form separate groups with otherwise identical semantic identities.
+    // Their local group ID is usable only within the exact immutable published snapshot.
+    return text(graph.snapshot) && uniqueIndex(graph, 'group').get(json(ref)) === null
+        ? {...ref, snapshot: graph.snapshot, id} : ref;
+}
+
+/** Mutable IDs identify targets only within an exact snapshot, never durably across snapshots. */
 export function referenceOf(graph, id) {
     const references = cacheOf(graph).references;
     if (references.has(id)) return references.get(id);
     const node = graph.nodes.get(id);
-    let ref = graph.groups.has(id) ? groupReference(graph, id) : node?.reaction ? reactionReference(graph, id)
+    let ref = graph.groups.has(id) ? shareableGroupReference(graph, id) : node?.reaction ? reactionReference(graph, id)
         : node ? {kind: 'interface', key: node.identity.key, identity: interfaceIdentity(node) ?? fail()} : fail();
     if (node?.reaction && text(graph.snapshot)
         && uniqueIndex(graph, graph.groupOf.get(id)).get(json(ref)) === null) {
@@ -103,7 +111,13 @@ export function resolveReference(graph, ref) {
         return uniqueIndex(graph, 'interface').get(json(ref.identity)) ?? fail();
     }
     if (ref.kind === 'group') {
-        fields(ref, ['kind', 'system', 'component', 'key', 'trigger']);
+        fields(ref, ['kind', 'system', 'component', 'key', 'trigger', 'snapshot', 'id']);
+        if ('snapshot' in ref || 'id' in ref) {
+            if (!text(ref.snapshot) || ref.snapshot !== graph.snapshot || !text(ref.id)) fail();
+            const {snapshot, id, ...signature} = ref;
+            if (!graph.groups.has(id) || json(groupReference(graph, id)) !== json(signature)) fail();
+            return id;
+        }
         return uniqueIndex(graph, 'group').get(json(ref)) ?? fail();
     }
     if (ref.kind === 'reaction') {
