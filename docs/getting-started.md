@@ -27,7 +27,7 @@ Two settings of the template's own build are worth undoing in an instance:
 
 | | |
 | --- | --- |
-| **Javadoc** | The template generates a javadoc artifact because Maven Central requires one. An instance that is configuration has no API to document, so it sets `maven.javadoc.skip` back to `true` |
+| **Javadoc** | The template generates a javadoc artifact. An instance that is configuration has no API to document, so it sets `maven.javadoc.skip` back to `true` |
 | **`unpack-site-manifest`** | The template manages an execution of that id for its own integration tests, where it is skipped along with the tests. An instance unpacking the site manifest for [its image](site-image.md) declares the same id and inherits that skip - and the image cannot be built without the two files, so it pins `<skip>false</skip>` |
 
 ### As a dependency
