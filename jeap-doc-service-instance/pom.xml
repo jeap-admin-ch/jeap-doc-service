@@ -23,8 +23,8 @@
 
     <build>
         <pluginManagement>
-            <!-- While the doc service must produce a javadoc artifact for all modules due to Maven Central
-            requirements, service instances will often not contain any code and javadoc generation would fail.
+            <!-- While the doc service produces a javadoc artifact for all modules, service instances will
+            often not contain any code and javadoc generation would fail.
             Such failures are ignored here, and instances can still decide to skip javadoc generation altogether
             using maven.javadoc.skip=true. -->
             <plugins>
